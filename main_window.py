@@ -2074,14 +2074,17 @@ class MainWindow(QMainWindow):
     def handle_process_finished(self, process_id, message, time_taken):
         conn = sqlite.connect("databases/hierarchy.db")
         cursor = conn.cursor()
+        if "0 rows" in message.lower() or "no data" in message.lower() or "empty" in message.lower():
+            status = "Warning"
         cursor.execute("""
           UPDATE usf_processes
           SET status = ?, time_taken = ?, end_time = ?, details = ?
           WHERE pid = ?
      """, (
-          "Successful",
+           status,
           time_taken,
-          datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
+          datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        #   datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
           message,
           process_id
       ))
