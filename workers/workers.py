@@ -288,9 +288,12 @@ class RunnableQuery(QRunnable):
             )
 
         except Exception as e:
-            if not self._is_cancelled:
-                elapsed_time = time.time() - start_time
-                self.signals.error.emit(self.conn_data, self.query, 0, elapsed_time, str(e))
+             if not self._is_cancelled:
+                elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
+                self.signals.error.emit(self.conn_data, self.query, 0, elapsed_time, str(e) )
+            # if not self._is_cancelled:
+            #     elapsed_time = time.time() - start_time
+            #     self.signals.error.emit(self.conn_data, self.query, 0, elapsed_time, str(e))
 
         finally:
             if cursor:
