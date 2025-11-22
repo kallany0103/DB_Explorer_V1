@@ -13,7 +13,7 @@ from table_properties import TablePropertiesDialog
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QTabWidget,
     QSplitter, QLineEdit, QTextEdit, QComboBox, QTableView, QHeaderView, QVBoxLayout, QWidget, QStatusBar, QToolBar, QFileDialog,
-    QSizePolicy, QPushButton, QInputDialog, QMessageBox, QMenu, QAbstractItemView, QDialog, QFormLayout, QHBoxLayout,
+    QSizePolicy, QPushButton,QToolButton, QInputDialog, QMessageBox, QMenu, QAbstractItemView, QDialog, QFormLayout, QHBoxLayout,
     QStackedWidget, QLabel, QGroupBox,QCheckBox,QStyle,QDialogButtonBox, QPlainTextEdit, QButtonGroup
 )
 from PyQt6.QtWidgets import QAbstractItemView
@@ -39,13 +39,11 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool.globalInstance()
         self.tab_timers = {}
         self.running_queries = {}
-        #self._initialize_processes_model() # <<< MODIFIED >>> Initialize shared model
 
         self._create_actions()
         self._create_menu()
         self._create_centered_toolbar()
 
-        # main_splitter কে self attribute হিসেবে রাখা হলো
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(self.main_splitter)
 
@@ -57,23 +55,42 @@ class MainWindow(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
 
         self.tree = QTreeView()
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
         self.tree.clicked.connect(self.item_clicked)
-        # Connect the doubleClicked signal
         self.tree.doubleClicked.connect(self.item_double_clicked)
-        self.tree.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         
-        # Disable editing
         self.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['Object Explorer'])
         self.tree.setModel(self.model)
+        
+        self.tree.setHeaderHidden(True)
 
-        # vertical_splitter কে self attribute হিসেবে রাখা হলো
+        # --- Create Object Explorer Header (Query Tool Button) ---
+        object_explorer_header = QWidget()
+        object_explorer_header.setObjectName("objectExplorerHeader")
+        object_explorer_header_layout = QHBoxLayout(object_explorer_header)
+        object_explorer_header_layout.setContentsMargins(5, 0, 2, 0)
+        object_explorer_header_layout.setSpacing(4)
+
+        object_explorer_label = QLabel("Object Explorer")
+        
+        object_explorer_header_layout.addWidget(object_explorer_label)
+        object_explorer_header_layout.addStretch()
+
+        self.explorer_query_tool_btn = QToolButton()
+        self.explorer_query_tool_btn.setDefaultAction(self.query_tool_action) 
+        self.explorer_query_tool_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_query_tool_btn.setToolTip("Open new query tool")
+        self.explorer_query_tool_btn.setIconSize(QSize(20, 20))
+        
+        object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
+        
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.left_vertical_splitter.addWidget(self.tree)
 
@@ -81,13 +98,13 @@ class MainWindow(QMainWindow):
         self.schema_model = QStandardItemModel()
         self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
         self.schema_tree.setModel(self.schema_model)
-        self.schema_tree.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu)
-        self.schema_tree.customContextMenuRequested.connect(
-            self.show_schema_context_menu)
+        self.schema_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.schema_tree.customContextMenuRequested.connect(self.show_schema_context_menu)
         self.left_vertical_splitter.addWidget(self.schema_tree)
 
         self.left_vertical_splitter.setSizes([240, 360])
+        
+        left_layout.addWidget(object_explorer_header) 
         left_layout.addWidget(self.left_vertical_splitter)
         self.main_splitter.addWidget(left_panel)
 
@@ -109,14 +126,23 @@ class MainWindow(QMainWindow):
         self.notification_manager = NotificationManager(self)
         self._apply_styles()
 
+
     def _create_actions(self):
+        style = QApplication.style()
+        open_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
+        save_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
+        
+        self.open_file_action = QAction(open_icon, "Open File", self)
+        self.open_file_action.triggered.connect(self.open_sql_file)
+        
+        self.save_as_action = QAction(save_icon, "Save As...", self)
+        self.save_as_action.triggered.connect(self.save_sql_file_as)
+        
         self.exit_action = QAction(QIcon("assets/exit_icon.png"), "Exit", self)
         self.exit_action.triggered.connect(self.close)
-        self.execute_action = QAction(
-            QIcon("assets/execute_icon.png"), "Execute", self)
+        self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
         self.execute_action.triggered.connect(self.execute_query)
-        self.cancel_action = QAction(
-            QIcon("assets/cancel_icon.png"), "Cancel", self)
+        self.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", self)
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
         self.undo_action = QAction("Undo", self)
@@ -131,8 +157,10 @@ class MainWindow(QMainWindow):
         self.paste_action.triggered.connect(self.paste_text)
         self.delete_action = QAction("Delete", self)
         self.delete_action.triggered.connect(self.delete_text)
-        self.query_tool_action = QAction("Query Tool", self)
+        
+        self.query_tool_action = QAction(QIcon("assets/sql_icon.png"), "Query Tool", self)
         self.query_tool_action.triggered.connect(self.add_tab)
+        
         self.restore_action = QAction("Restore Layout", self)
         self.restore_action.triggered.connect(self.restore_tool)
         self.refresh_action = QAction("Refresh Explorer", self)
@@ -156,6 +184,9 @@ class MainWindow(QMainWindow):
     def _create_menu(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("&File")
+        file_menu.addAction(self.open_file_action)
+        file_menu.addAction(self.save_as_action)
+        file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
         edit_menu = menubar.addMenu("&Edit")
         edit_menu.addAction(self.undo_action)
@@ -186,22 +217,79 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
         help_menu.addAction(self.about_action)
 
-
     def _create_centered_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon) 
+        toolbar.setIconSize(QSize(16, 16)) 
         left_spacer = QWidget()
-        left_spacer.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        left_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         right_spacer = QWidget()
-        right_spacer.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(left_spacer)
+        toolbar.addAction(self.open_file_action)
+        toolbar.addAction(self.save_as_action)
         toolbar.addAction(self.exit_action)
         toolbar.addAction(self.execute_action)
         toolbar.addAction(self.cancel_action)
         toolbar.addWidget(right_spacer)
         self.addToolBar(toolbar)
+
+    def open_sql_file(self):
+        editor = self._get_current_editor()
+        
+        if not editor:
+            current_tab = self.tab_widget.currentWidget()
+            if not current_tab:
+                self.add_tab()
+                current_tab = self.tab_widget.currentWidget()
+           
+            editor_stack = current_tab.findChild(QStackedWidget, "editor_stack")
+            if editor_stack and editor_stack.currentIndex() != 0:
+                editor_stack.setCurrentIndex(0)
+                query_view_btn = current_tab.findChild(QPushButton, "Query")
+                history_view_btn = current_tab.findChild(QPushButton, "Query History")
+                if query_view_btn: query_view_btn.setChecked(True)
+                if history_view_btn: history_view_btn.setChecked(False)
+
+            editor = self._get_current_editor()
+            if not editor: 
+                QMessageBox.warning(self, "Error", "Could not find a query editor to open the file into.")
+                return
+
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open SQL File", "", "SQL Files (*.sql);;All Files (*)")
+        if file_name:
+            try:
+                with open(file_name, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    editor.setPlainText(content)
+                    self.status.showMessage(f"File opened: {file_name}", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
+
+    def save_sql_file_as(self):
+        editor = self._get_current_editor()
+        if not editor:
+            QMessageBox.warning(self, "Error", "No active query editor to save from.")
+            return
+
+        content = editor.toPlainText()
+        default_dir = QDir.homePath()
+        
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save SQL File As", 
+            default_dir,
+            "SQL Files (*.sql);;All Files (*)"
+        )
+        
+        if file_name:
+            try:
+                with open(file_name, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                self.status.showMessage(f"File saved: {file_name}", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not save file:\n{e}")
+
 
     # --- New Handler Methods for Menu Actions ---
 
