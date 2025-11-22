@@ -2069,8 +2069,7 @@ class MainWindow(QMainWindow):
         # OR manually if the combobox was already on the right connection
         if not target_conn_id:
              self.refresh_processes_view()
-
-
+    # change
     def handle_process_finished(self, process_id, message, time_taken):
         conn = sqlite.connect("databases/hierarchy.db")
         cursor = conn.cursor()

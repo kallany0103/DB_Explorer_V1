@@ -62,9 +62,16 @@ class RunnableExport(QRunnable):
                           'delimiter'], encoding=self.export_options['encoding'], quotechar=self.export_options['quote'])
             
             time_taken = time.time() - start_time
-            success_message = f"Successfully exported {len(df)} rows to {os.path.basename(file_path)}"
+            if len(df) == 0:
+                success_message = f"Export completed with no data (0 rows) exported to {os.path.basename(file_path)}"
+            else:
+                success_message = f"Successfully exported {len(df)} rows to {os.path.basename(file_path)}"
+            
             self.signals.finished.emit(
                 self.process_id, success_message, time_taken)
+            # success_message = f"Successfully exported {len(df)} rows to {os.path.basename(file_path)}"
+            # self.signals.finished.emit(
+            #     self.process_id, success_message, time_taken)
                 
         except Exception as e:
             error_msg = f"An error occurred during export: {e}"
@@ -116,8 +123,14 @@ class RunnableExportFromModel(QRunnable):
                 )
 
             time_taken = time.time() - start_time
-            msg = f"Exported {len(df)} rows to {os.path.basename(file_path)}"
+            if len(df) == 0:
+                msg = f"Export completed with no data (0 rows) exported to {os.path.basename(file_path)}"
+            else:
+                msg = f"Exported {len(df)} rows to {os.path.basename(file_path)}"
+                
             self.signals.finished.emit(self.process_id, msg, time_taken)
+            # msg = f"Exported {len(df)} rows to {os.path.basename(file_path)}"
+            # self.signals.finished.emit(self.process_id, msg, time_taken)
         except Exception as e:
             self.signals.error.emit(self.process_id, str(e))
 
