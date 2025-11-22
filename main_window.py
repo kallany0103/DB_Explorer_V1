@@ -2160,7 +2160,6 @@ class MainWindow(QMainWindow):
 
             status_text = row[2]  # 3rd column: Status
             brush = None
-            
             if status_text == "Error":
                brush = QBrush(QColor("#BD3020"))      # 🔴 
             elif status_text == "Successful":
