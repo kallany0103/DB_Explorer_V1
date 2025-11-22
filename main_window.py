@@ -2177,7 +2177,6 @@ class MainWindow(QMainWindow):
         #  Apply background color to all cells of this row
             for item in items:
               item.setBackground(brush)
-
         # for row in data:
         #   items = [QStandardItem(str(col)) for col in row]
           
