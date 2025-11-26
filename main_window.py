@@ -24,6 +24,7 @@ from dialogs.postgres_dialog import PostgresConnectionDialog
 from dialogs.sqlite_dialog import SQLiteConnectionDialog
 from dialogs.oracle_dialog import OracleConnectionDialog
 from dialogs.export_dialog import ExportDialog
+from dialogs.csv_dialog import CSVConnectionDialog
 from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
 from notification_manager import NotificationManager
 from code_editor import CodeEditor
@@ -906,6 +907,11 @@ class MainWindow(QMainWindow):
                add_oracle_action = QAction("New Oracle Connection", self)
                add_oracle_action.triggered.connect(lambda: self.add_oracle_connection(item))
                menu.addAction(add_oracle_action)
+               
+            elif code == 'CSV':
+               add_sqlite_action = QAction("New CSV Connection", self)
+               add_sqlite_action.triggered.connect(lambda: self.add_csv_connection(item))
+               menu.addAction(add_sqlite_action)
 
         elif depth == 3:
             conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -945,7 +951,12 @@ class MainWindow(QMainWindow):
             elif code in ['ORACLE_FA', 'ORACLE_DB']:
                edit_action = QAction("Edit Connection", self)
                edit_action.triggered.connect(lambda: self.edit_oracle_connection(item))
-               menu.addAction(edit_action)    
+               menu.addAction(edit_action)  
+               
+            elif code == 'CSV' and conn_data.get("db_path"):
+               edit_action = QAction("Edit Connection", self)
+               edit_action.triggered.connect(lambda: self.edit_csv_connection(item))
+               menu.addAction(edit_action)  
                
             delete_action = QAction("Delete Connection", self)
             delete_action.triggered.connect(lambda: self.delete_connection(item))
@@ -1133,6 +1144,41 @@ class MainWindow(QMainWindow):
                         break
         except Exception as e:
             self.status.showMessage(f"Error loading connections: {e}", 4000)
+            
+            
+    def add_csv_connection(self, parent_item):
+        connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+
+        dialog = CSVConnectionDialog(self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.getData()
+            try:
+                db.add_connection(data, connection_group_id)
+                self.load_data()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save CSV connection:\n{e}")
+                
+                
+    def edit_csv_connection(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+
+        # Only allow editing if folder_path exists (CSV connection)
+        if not conn_data or not conn_data.get("db_path"):
+            QMessageBox.warning(self, "Invalid", "This is not a CSV connection.")
+            return
+
+        dialog = CSVConnectionDialog(self, conn_data=conn_data)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_data = dialog.getData()
+            try:
+                db.update_connection(new_data)
+                self.load_data()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to update CSV connection:\n{e}")
 
     def show_info(self, message: str):
        QMessageBox.information(self, "Info", message)
