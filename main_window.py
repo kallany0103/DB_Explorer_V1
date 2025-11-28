@@ -73,10 +73,9 @@ class MainWindow(QMainWindow):
         self.model.setHorizontalHeaderLabels(['Object Explorer'])
         self.tree.setModel(self.model)
 
-        # vertical_splitter কে self attribute হিসেবে রাখা হলো
+        # vertical_splitter 
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.left_vertical_splitter.addWidget(self.tree)
-
         self.schema_tree = QTreeView()
         self.schema_model = QStandardItemModel()
         self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
