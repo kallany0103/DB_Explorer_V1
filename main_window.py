@@ -13,7 +13,7 @@ from table_properties import TablePropertiesDialog
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QTabWidget,
     QSplitter, QLineEdit, QTextEdit, QComboBox, QTableView, QHeaderView, QVBoxLayout, QWidget, QStatusBar, QToolBar, QFileDialog,
-    QSizePolicy, QPushButton, QInputDialog, QMessageBox, QMenu, QAbstractItemView, QDialog, QFormLayout, QHBoxLayout,
+    QSizePolicy, QPushButton,QToolButton, QInputDialog, QMessageBox, QMenu, QAbstractItemView, QDialog, QFormLayout, QHBoxLayout,
     QStackedWidget, QLabel, QGroupBox,QCheckBox,QStyle,QDialogButtonBox, QPlainTextEdit, QButtonGroup
 )
 from PyQt6.QtWidgets import QAbstractItemView
@@ -24,6 +24,7 @@ from dialogs.postgres_dialog import PostgresConnectionDialog
 from dialogs.sqlite_dialog import SQLiteConnectionDialog
 from dialogs.oracle_dialog import OracleConnectionDialog
 from dialogs.export_dialog import ExportDialog
+from dialogs.csv_dialog import CSVConnectionDialog
 from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
 from notification_manager import NotificationManager
 from code_editor import CodeEditor
@@ -39,13 +40,11 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool.globalInstance()
         self.tab_timers = {}
         self.running_queries = {}
-        #self._initialize_processes_model() # <<< MODIFIED >>> Initialize shared model
 
         self._create_actions()
         self._create_menu()
         self._create_centered_toolbar()
 
-        # main_splitter কে self attribute হিসেবে রাখা হলো
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(self.main_splitter)
 
@@ -57,21 +56,28 @@ class MainWindow(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
 
         self.tree = QTreeView()
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
         self.tree.clicked.connect(self.item_clicked)
-        # Connect the doubleClicked signal
         self.tree.doubleClicked.connect(self.item_double_clicked)
-        self.tree.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         
-        # Disable editing
         self.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['Object Explorer'])
         self.tree.setModel(self.model)
+        
+        self.tree.setHeaderHidden(True)
+
+        # --- Create Object Explorer Header (Query Tool Button) ---
+        object_explorer_header = QWidget()
+        object_explorer_header.setObjectName("objectExplorerHeader")
+        object_explorer_header_layout = QHBoxLayout(object_explorer_header)
+        object_explorer_header_layout.setContentsMargins(5, 0, 2, 0)
+        object_explorer_header_layout.setSpacing(4)
 
         # vertical_splitter 
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -80,13 +86,13 @@ class MainWindow(QMainWindow):
         self.schema_model = QStandardItemModel()
         self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
         self.schema_tree.setModel(self.schema_model)
-        self.schema_tree.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu)
-        self.schema_tree.customContextMenuRequested.connect(
-            self.show_schema_context_menu)
+        self.schema_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.schema_tree.customContextMenuRequested.connect(self.show_schema_context_menu)
         self.left_vertical_splitter.addWidget(self.schema_tree)
 
         self.left_vertical_splitter.setSizes([240, 360])
+        
+        left_layout.addWidget(object_explorer_header) 
         left_layout.addWidget(self.left_vertical_splitter)
         self.main_splitter.addWidget(left_panel)
 
@@ -108,14 +114,23 @@ class MainWindow(QMainWindow):
         self.notification_manager = NotificationManager(self)
         self._apply_styles()
 
+
     def _create_actions(self):
+        style = QApplication.style()
+        open_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
+        save_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
+        
+        self.open_file_action = QAction(open_icon, "Open File", self)
+        self.open_file_action.triggered.connect(self.open_sql_file)
+        
+        self.save_as_action = QAction(save_icon, "Save As...", self)
+        self.save_as_action.triggered.connect(self.save_sql_file_as)
+        
         self.exit_action = QAction(QIcon("assets/exit_icon.png"), "Exit", self)
         self.exit_action.triggered.connect(self.close)
-        self.execute_action = QAction(
-            QIcon("assets/execute_icon.png"), "Execute", self)
+        self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
         self.execute_action.triggered.connect(self.execute_query)
-        self.cancel_action = QAction(
-            QIcon("assets/cancel_icon.png"), "Cancel", self)
+        self.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", self)
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
         self.undo_action = QAction("Undo", self)
@@ -130,8 +145,10 @@ class MainWindow(QMainWindow):
         self.paste_action.triggered.connect(self.paste_text)
         self.delete_action = QAction("Delete", self)
         self.delete_action.triggered.connect(self.delete_text)
-        self.query_tool_action = QAction("Query Tool", self)
+        
+        self.query_tool_action = QAction(QIcon("assets/sql_icon.png"), "Query Tool", self)
         self.query_tool_action.triggered.connect(self.add_tab)
+        
         self.restore_action = QAction("Restore Layout", self)
         self.restore_action.triggered.connect(self.restore_tool)
         self.refresh_action = QAction("Refresh Explorer", self)
@@ -155,6 +172,9 @@ class MainWindow(QMainWindow):
     def _create_menu(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("&File")
+        file_menu.addAction(self.open_file_action)
+        file_menu.addAction(self.save_as_action)
+        file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
         edit_menu = menubar.addMenu("&Edit")
         edit_menu.addAction(self.undo_action)
@@ -185,22 +205,79 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
         help_menu.addAction(self.about_action)
 
-
     def _create_centered_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon) 
+        toolbar.setIconSize(QSize(16, 16)) 
         left_spacer = QWidget()
-        left_spacer.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        left_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         right_spacer = QWidget()
-        right_spacer.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(left_spacer)
+        toolbar.addAction(self.open_file_action)
+        toolbar.addAction(self.save_as_action)
         toolbar.addAction(self.exit_action)
         toolbar.addAction(self.execute_action)
         toolbar.addAction(self.cancel_action)
         toolbar.addWidget(right_spacer)
         self.addToolBar(toolbar)
+
+    def open_sql_file(self):
+        editor = self._get_current_editor()
+        
+        if not editor:
+            current_tab = self.tab_widget.currentWidget()
+            if not current_tab:
+                self.add_tab()
+                current_tab = self.tab_widget.currentWidget()
+           
+            editor_stack = current_tab.findChild(QStackedWidget, "editor_stack")
+            if editor_stack and editor_stack.currentIndex() != 0:
+                editor_stack.setCurrentIndex(0)
+                query_view_btn = current_tab.findChild(QPushButton, "Query")
+                history_view_btn = current_tab.findChild(QPushButton, "Query History")
+                if query_view_btn: query_view_btn.setChecked(True)
+                if history_view_btn: history_view_btn.setChecked(False)
+
+            editor = self._get_current_editor()
+            if not editor: 
+                QMessageBox.warning(self, "Error", "Could not find a query editor to open the file into.")
+                return
+
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open SQL File", "", "SQL Files (*.sql);;All Files (*)")
+        if file_name:
+            try:
+                with open(file_name, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    editor.setPlainText(content)
+                    self.status.showMessage(f"File opened: {file_name}", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
+
+    def save_sql_file_as(self):
+        editor = self._get_current_editor()
+        if not editor:
+            QMessageBox.warning(self, "Error", "No active query editor to save from.")
+            return
+
+        content = editor.toPlainText()
+        default_dir = QDir.homePath()
+        
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save SQL File As", 
+            default_dir,
+            "SQL Files (*.sql);;All Files (*)"
+        )
+        
+        if file_name:
+            try:
+                with open(file_name, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                self.status.showMessage(f"File saved: {file_name}", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not save file:\n{e}")
+
 
     # --- New Handler Methods for Menu Actions ---
 
@@ -817,6 +894,11 @@ class MainWindow(QMainWindow):
                add_oracle_action = QAction("New Oracle Connection", self)
                add_oracle_action.triggered.connect(lambda: self.add_oracle_connection(item))
                menu.addAction(add_oracle_action)
+               
+            elif code == 'CSV':
+               add_sqlite_action = QAction("New CSV Connection", self)
+               add_sqlite_action.triggered.connect(lambda: self.add_csv_connection(item))
+               menu.addAction(add_sqlite_action)
 
         elif depth == 3:
             conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -856,7 +938,12 @@ class MainWindow(QMainWindow):
             elif code in ['ORACLE_FA', 'ORACLE_DB']:
                edit_action = QAction("Edit Connection", self)
                edit_action.triggered.connect(lambda: self.edit_oracle_connection(item))
-               menu.addAction(edit_action)    
+               menu.addAction(edit_action)  
+               
+            elif code == 'CSV' and conn_data.get("db_path"):
+               edit_action = QAction("Edit Connection", self)
+               edit_action.triggered.connect(lambda: self.edit_csv_connection(item))
+               menu.addAction(edit_action)  
                
             delete_action = QAction("Delete Connection", self)
             delete_action.triggered.connect(lambda: self.delete_connection(item))
@@ -1044,6 +1131,41 @@ class MainWindow(QMainWindow):
                         break
         except Exception as e:
             self.status.showMessage(f"Error loading connections: {e}", 4000)
+            
+            
+    def add_csv_connection(self, parent_item):
+        connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+
+        dialog = CSVConnectionDialog(self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.getData()
+            try:
+                db.add_connection(data, connection_group_id)
+                self.load_data()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save CSV connection:\n{e}")
+                
+                
+    def edit_csv_connection(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+
+        # Only allow editing if folder_path exists (CSV connection)
+        if not conn_data or not conn_data.get("db_path"):
+            QMessageBox.warning(self, "Invalid", "This is not a CSV connection.")
+            return
+
+        dialog = CSVConnectionDialog(self, conn_data=conn_data)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_data = dialog.getData()
+            try:
+                db.update_connection(new_data)
+                self.load_data()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to update CSV connection:\n{e}")
 
     def show_info(self, message: str):
        QMessageBox.information(self, "Info", message)
@@ -2068,19 +2190,21 @@ class MainWindow(QMainWindow):
         # OR manually if the combobox was already on the right connection
         if not target_conn_id:
              self.refresh_processes_view()
-
-
+    # change
     def handle_process_finished(self, process_id, message, time_taken):
         conn = sqlite.connect("databases/hierarchy.db")
         cursor = conn.cursor()
+        if "0 rows" in message.lower() or "no data" in message.lower() or "empty" in message.lower():
+            status = "Warning"
         cursor.execute("""
           UPDATE usf_processes
           SET status = ?, time_taken = ?, end_time = ?, details = ?
           WHERE pid = ?
      """, (
-          "Successful",
+           status,
           time_taken,
-          datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
+          datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        #   datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
           message,
           process_id
       ))
@@ -2159,7 +2283,6 @@ class MainWindow(QMainWindow):
 
             status_text = row[2]  # 3rd column: Status
             brush = None
-            
             if status_text == "Error":
                brush = QBrush(QColor("#BD3020"))      # 🔴 
             elif status_text == "Successful":
@@ -2176,7 +2299,6 @@ class MainWindow(QMainWindow):
         #  Apply background color to all cells of this row
             for item in items:
               item.setBackground(brush)
-
         # for row in data:
         #   items = [QStandardItem(str(col)) for col in row]
           
