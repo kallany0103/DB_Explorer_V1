@@ -79,22 +79,9 @@ class MainWindow(QMainWindow):
         object_explorer_header_layout.setContentsMargins(5, 0, 2, 0)
         object_explorer_header_layout.setSpacing(4)
 
-        object_explorer_label = QLabel("Object Explorer")
-        
-        object_explorer_header_layout.addWidget(object_explorer_label)
-        object_explorer_header_layout.addStretch()
-
-        self.explorer_query_tool_btn = QToolButton()
-        self.explorer_query_tool_btn.setDefaultAction(self.query_tool_action) 
-        self.explorer_query_tool_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.explorer_query_tool_btn.setToolTip("Open new query tool")
-        self.explorer_query_tool_btn.setIconSize(QSize(20, 20))
-        
-        object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
-        
+        # vertical_splitter 
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.left_vertical_splitter.addWidget(self.tree)
-
         self.schema_tree = QTreeView()
         self.schema_model = QStandardItemModel()
         self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
