@@ -4,6 +4,7 @@ import os
 import time
 import datetime
 import psycopg2
+import sqlparse
 import cdata.csv as mod
 import sqlite3 as sqlite # This can be removed if not used elsewhere directly
 from functools import partial
@@ -79,9 +80,22 @@ class MainWindow(QMainWindow):
         object_explorer_header_layout.setContentsMargins(5, 0, 2, 0)
         object_explorer_header_layout.setSpacing(4)
 
-        # vertical_splitter 
+        object_explorer_label = QLabel("Object Explorer")
+        
+        object_explorer_header_layout.addWidget(object_explorer_label)
+        object_explorer_header_layout.addStretch()
+
+        self.explorer_query_tool_btn = QToolButton()
+        self.explorer_query_tool_btn.setDefaultAction(self.query_tool_action) 
+        self.explorer_query_tool_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_query_tool_btn.setToolTip("Open new query tool")
+        self.explorer_query_tool_btn.setIconSize(QSize(20, 20))
+        
+        object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
+        
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.left_vertical_splitter.addWidget(self.tree)
+
         self.schema_tree = QTreeView()
         self.schema_model = QStandardItemModel()
         self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
@@ -114,7 +128,6 @@ class MainWindow(QMainWindow):
         self.notification_manager = NotificationManager(self)
         self._apply_styles()
 
-
     def _create_actions(self):
         style = QApplication.style()
         open_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
@@ -146,7 +159,7 @@ class MainWindow(QMainWindow):
         self.delete_action = QAction("Delete", self)
         self.delete_action.triggered.connect(self.delete_text)
         
-        self.query_tool_action = QAction(QIcon("assets/sql_icon.png"), "Query Tool", self)
+        self.query_tool_action = QAction(QIcon("assets/execute_icon.png"), "Query Tool", self)
         self.query_tool_action.triggered.connect(self.add_tab)
         
         self.restore_action = QAction("Restore Layout", self)
@@ -168,6 +181,12 @@ class MainWindow(QMainWindow):
             lambda: self.open_help_url("https://www.oracle.com/database/"))
         self.about_action = QAction("About", self)
         self.about_action.triggered.connect(self.show_about_dialog)
+        self.format_sql_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", self)
+        self.format_sql_action.setShortcut("Ctrl+Shift+F")
+        self.format_sql_action.triggered.connect(self.format_sql_text)
+
+        self.clear_query_action = QAction(QIcon("assets/delete_icon.png"), "Clear Query", self)
+        self.clear_query_action.triggered.connect(self.clear_query_text)
 
     def _create_menu(self):
         menubar = self.menuBar()
@@ -214,11 +233,44 @@ class MainWindow(QMainWindow):
         right_spacer = QWidget()
         right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(left_spacer)
+        
+        # --- Existing Actions ---
         toolbar.addAction(self.open_file_action)
         toolbar.addAction(self.save_as_action)
         toolbar.addAction(self.exit_action)
+        toolbar.addSeparator() # Separator for clearer UI
         toolbar.addAction(self.execute_action)
         toolbar.addAction(self.cancel_action)
+        toolbar.addSeparator()
+
+        edit_button = QToolButton()
+        edit_button.setText("Edit")
+        edit_button.setToolTip("Edit Query")
+        # edit_button.setIcon(QIcon("assets/edit.png"))
+        edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
+        edit_menu = QMenu(edit_button)
+        edit_menu.addAction(self.format_sql_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.clear_query_action)
+        
+        edit_button.setMenu(edit_menu)
+        toolbar.addWidget(edit_button)
+        
+        # --- NEW: Limit Dropdown (Like pgAdmin) ---
+        toolbar.addSeparator()
+        
+        self.rows_limit_combo = QComboBox()
+        self.rows_limit_combo.setToolTip("Rows limit")
+        self.rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
+        self.rows_limit_combo.setCurrentIndex(1) 
+        self.rows_limit_combo.setFixedWidth(100) 
+
+        self.rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query())
+
+        toolbar.addWidget(self.rows_limit_combo)
+        # ------------------------------------------
+
         toolbar.addWidget(right_spacer)
         self.addToolBar(toolbar)
 
@@ -279,7 +331,74 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Could not save file:\n{e}")
 
 
-    # --- New Handler Methods for Menu Actions ---
+    def format_sql_text(self):
+        editor = self._get_current_editor()
+        if not editor:
+            QMessageBox.warning(self, "Warning", "No active query editor found.")
+            return
+
+        cursor = editor.textCursor()
+        
+        if cursor.hasSelection():
+            raw_sql = cursor.selectedText()
+            raw_sql = raw_sql.replace('\u2029', '\n') 
+            mode = "selection"
+        else:
+            raw_sql = editor.toPlainText()
+            mode = "full"
+
+        if not raw_sql.strip():
+            return
+
+        try:
+            formatted_sql = sqlparse.format(
+                raw_sql,
+                reindent=True,          
+                keyword_case='upper',   
+                identifier_case=None,   
+                strip_comments=False,   
+                indent_width=4,         
+                comma_first=False       
+            )
+
+            formatted_sql = formatted_sql.replace("SELECT *", "SELECT\n    *")
+            formatted_sql = formatted_sql.replace("\nFROM ", "\nFROM\n    ")
+
+            if mode == "selection":
+                cursor.beginEditBlock()
+                cursor.insertText(formatted_sql)
+                cursor.endEditBlock()
+            else:
+                scroll_pos = editor.verticalScrollBar().value()
+                editor.setPlainText(formatted_sql)
+                editor.verticalScrollBar().setValue(scroll_pos)
+                editor.moveCursor(cursor.MoveOperation.End)
+
+            self.status.showMessage("SQL formatted successfully.", 3000)
+
+        except ImportError:
+             QMessageBox.critical(self, "Error", "Library 'sqlparse' is missing.\nPlease run: pip install sqlparse")
+        except Exception as e:
+            QMessageBox.warning(self, "Formatting Error", f"Error: {e}")
+
+    def clear_query_text(self):
+        editor = self._get_current_editor()
+        if editor:
+            if editor.toPlainText().strip():
+                reply = QMessageBox.question(
+                    self, "Clear Query", 
+                    "Are you sure you want to clear the editor?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.No:
+                    return
+            
+            editor.clear()
+            editor.setFocus()
+            self.status.showMessage("Editor cleared.", 3000)
+
+#
+    # --- New Handler Methods for Menu Actions ---km
 
     def show_about_dialog(self):
         QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.0.0</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
@@ -957,6 +1076,10 @@ class MainWindow(QMainWindow):
       if not conn_data:
           QMessageBox.warning(self, "Error", "Could not retrieve connection data.")
           return
+      
+      parent = item.parent()
+      grandparent = parent.parent() if parent else None
+      code = grandparent.data(Qt.ItemDataRole.UserRole) if grandparent else None
 
       details_title = f"Connection Details: {conn_data.get('name')}"
 
@@ -971,11 +1094,25 @@ class MainWindow(QMainWindow):
               f"<b>User:</b> {conn_data.get('user', 'N/A')}"
           )
       elif conn_data.get("db_path"):
+          
+          if code == 'CSV':
+                 db_type_str = "CSV Connection"
+                 path_label = "Folder Path"
+          else:
+                 # Default to SQLite if not CSV
+                 db_type_str = "SQLite"
+                 path_label = "Database Path"
+          
           details_text = (
+              
               f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
-              f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
-              f"<b>Type:</b> SQLite<br>"
-              f"<b>Database Path:</b> {conn_data.get('db_path', 'N/A')}"
+                f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
+                f"<b>Type:</b> {db_type_str}<br>"
+                f"<b>{path_label}:</b> {conn_data.get('db_path', 'N/A')}"
+            #   f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
+            #   f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
+            #   f"<b>Type:</b> SQLite<br>"
+            #   f"<b>Database Path:</b> {conn_data.get('db_path', 'N/A')}"
           )
       else:
           details_text = "Could not determine connection type or details."
