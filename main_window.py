@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QTabWidget,
     QSplitter, QLineEdit, QTextEdit, QComboBox, QTableView, QHeaderView, QVBoxLayout, QWidget, QStatusBar, QToolBar, QFileDialog,
     QSizePolicy, QPushButton,QToolButton, QInputDialog, QMessageBox, QMenu, QAbstractItemView, QDialog, QFormLayout, QHBoxLayout,
-    QStackedWidget, QLabel, QGroupBox,QCheckBox,QStyle,QDialogButtonBox, QPlainTextEdit, QButtonGroup
+    QStackedWidget, QLabel,QFrame, QGroupBox,QCheckBox,QStyle,QDialogButtonBox, QPlainTextEdit, QButtonGroup
 )
 from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
@@ -235,40 +235,40 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(left_spacer)
         
         # --- Existing Actions ---
-        toolbar.addAction(self.open_file_action)
-        toolbar.addAction(self.save_as_action)
+        # toolbar.addAction(self.open_file_action)
+        # toolbar.addAction(self.save_as_action)
         toolbar.addAction(self.exit_action)
         toolbar.addSeparator() # Separator for clearer UI
-        toolbar.addAction(self.execute_action)
+       # toolbar.addAction(self.execute_action)
         toolbar.addAction(self.cancel_action)
         toolbar.addSeparator()
 
-        edit_button = QToolButton()
-        edit_button.setText("Edit")
-        edit_button.setToolTip("Edit Query")
-        # edit_button.setIcon(QIcon("assets/edit.png"))
-        edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-        edit_menu = QMenu(edit_button)
-        edit_menu.addAction(self.format_sql_action)
-        edit_menu.addSeparator()
-        edit_menu.addAction(self.clear_query_action)
+        # edit_button = QToolButton()
+        # edit_button.setText("Edit")
+        # edit_button.setToolTip("Edit Query")
+        # # edit_button.setIcon(QIcon("assets/edit.png"))
+        # edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        # edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
+        # edit_menu = QMenu(edit_button)
+        # edit_menu.addAction(self.format_sql_action)
+        # edit_menu.addSeparator()
+        # edit_menu.addAction(self.clear_query_action)
         
-        edit_button.setMenu(edit_menu)
-        toolbar.addWidget(edit_button)
+        # edit_button.setMenu(edit_menu)
+        # toolbar.addWidget(edit_button)
         
-        # --- NEW: Limit Dropdown (Like pgAdmin) ---
-        toolbar.addSeparator()
+        # # --- NEW: Limit Dropdown (Like pgAdmin) ---
+        # toolbar.addSeparator()
         
-        self.rows_limit_combo = QComboBox()
-        self.rows_limit_combo.setToolTip("Rows limit")
-        self.rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
-        self.rows_limit_combo.setCurrentIndex(1) 
-        self.rows_limit_combo.setFixedWidth(100) 
+        # self.rows_limit_combo = QComboBox()
+        # self.rows_limit_combo.setToolTip("Rows limit")
+        # self.rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
+        # self.rows_limit_combo.setCurrentIndex(1) 
+        # self.rows_limit_combo.setFixedWidth(100) 
 
-        self.rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query())
+        # self.rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query())
 
-        toolbar.addWidget(self.rows_limit_combo)
+        # toolbar.addWidget(self.rows_limit_combo)
         # ------------------------------------------
 
         toolbar.addWidget(right_spacer)
@@ -357,12 +357,13 @@ class MainWindow(QMainWindow):
                 keyword_case='upper',   
                 identifier_case=None,   
                 strip_comments=False,   
-                indent_width=4,         
+                indent_width=1,         
                 comma_first=False       
             )
 
-            formatted_sql = formatted_sql.replace("SELECT *", "SELECT\n    *")
-            formatted_sql = formatted_sql.replace("\nFROM ", "\nFROM\n    ")
+            formatted_sql = formatted_sql.replace("SELECT\n  *", "SELECT  *")
+            formatted_sql = formatted_sql.replace("FROM\n  ", "FROM ")
+            formatted_sql = formatted_sql.replace(";", "\n;")
 
             if mode == "selection":
                 cursor.beginEditBlock()
@@ -479,21 +480,89 @@ class MainWindow(QMainWindow):
         primary_color, header_color, selection_color = "#D3D3D3", "#A9A9A9", "#A9A9A9"
         text_color_on_primary, alternate_row_color, border_color = "#000000", "#f0f0f0", "#A9A9A9"
         self.setStyleSheet(f"""QMainWindow, QToolBar, QStatusBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }} QTreeView {{ background-color: white; alternate-background-color: {alternate_row_color}; border: 1px solid {border_color}; }} QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}} QTableView::item {{ padding: 4px; }} QTableView::item:selected {{ background-color: {selection_color}; color: white; }} QHeaderView::section {{ background-color: {header_color}; color: white; padding: 4px; border: none; border-right: 1px solid #d3d3d3; border-bottom: 1px solid {border_color}; font-weight: bold; font-size: 9pt;  }} QTableView QTableCornerButton::section {{ background-color: {header_color}; border: 1px solid {border_color}; }} #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }} #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }} #resultsHeader QPushButton:checked, #editorHeader QPushButton:checked {{ background-color: {selection_color}; border-bottom: 1px solid {selection_color}; font-weight: bold; color: white; }} #resultsHeader, #editorHeader {{ background-color: {alternate_row_color}; padding-bottom: -1px; }} #messageView, #history_details_view, QTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }} #tab_status_label {{ padding: 3px 5px; background-color: {alternate_row_color}; border-top: 1px solid {border_color}; }} QGroupBox {{ font-size: 9pt; font-weight: bold; color: {text_color_on_primary}; }} QTabWidget::pane {{ border-top: 1px solid {border_color}; }} QTabBar::tab {{ background: #E0E0E0; border: 1px solid {border_color}; padding: 5px 10px; border-bottom: none; }} QTabBar::tab:selected {{ background: {selection_color}; color: white; }} QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; }}""")
-    
-    
+
     def add_tab(self):
         tab_content = QWidget(self.tab_widget)
         layout = QVBoxLayout(tab_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # 1. Database Selection Combo Box
         db_combo_box = QComboBox()
         db_combo_box.setObjectName("db_combo_box")
         layout.addWidget(db_combo_box)
         self.load_joined_connections(db_combo_box)
         db_combo_box.currentIndexChanged.connect(lambda: self.refresh_processes_view())
 
+        # 2. Tab-specific Toolbar (Between Combobox and Editor)
+        toolbar_widget = QWidget()
+        toolbar_widget.setObjectName("tab_toolbar")
+        toolbar_layout = QHBoxLayout(toolbar_widget)
+        toolbar_layout.setContentsMargins(5, 5, 5, 5)
+        toolbar_layout.setSpacing(5)
 
+        # --- Group A: File Actions ---
+        open_btn = QToolButton()
+        open_btn.setDefaultAction(self.open_file_action)
+        open_btn.setToolTip("Open SQL File")
+        toolbar_layout.addWidget(open_btn)
+
+        save_btn = QToolButton()
+        save_btn.setDefaultAction(self.save_as_action)
+        save_btn.setToolTip("Save SQL File")
+        toolbar_layout.addWidget(save_btn)
+        
+        toolbar_layout.addWidget(self.create_vertical_separator())
+
+        # --- Group B: Execution & Edit Actions ---
+        # Execute
+        exec_btn = QToolButton()
+        exec_btn.setDefaultAction(self.execute_action)
+        exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar_layout.addWidget(exec_btn)
+
+        # Cancel
+        cancel_btn = QToolButton()
+        cancel_btn.setDefaultAction(self.cancel_action)
+        cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar_layout.addWidget(cancel_btn)
+
+        # Edit Menu Button
+        edit_button = QToolButton()
+        edit_button.setText("Edit")
+        edit_button.setToolTip("Edit Query")
+        edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
+        edit_menu = QMenu(edit_button)
+        edit_menu.addAction(self.format_sql_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.clear_query_action)
+        edit_button.setMenu(edit_menu)
+        toolbar_layout.addWidget(edit_button)
+
+        # Limit ComboBox (New instance per tab)
+        rows_limit_combo = QComboBox()
+        rows_limit_combo.setObjectName("rows_limit_combo") # Important for finding it later
+        rows_limit_combo.setToolTip("Rows limit")
+        rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
+        rows_limit_combo.setCurrentIndex(1) 
+        rows_limit_combo.setFixedWidth(100)
+        rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query()) 
+        toolbar_layout.addWidget(rows_limit_combo)
+
+        toolbar_layout.addWidget(self.create_vertical_separator())
+
+        # --- Group C: Exit (As requested) ---
+        # exit_btn = QToolButton()
+        # exit_btn.setDefaultAction(self.exit_action)
+        # exit_btn.setToolTip("Exit Application")
+        # toolbar_layout.addWidget(exit_btn)
+
+        toolbar_layout.addStretch() # Push everything to the left
+        layout.addWidget(toolbar_widget) # Add the new toolbar to the main tab layout
+
+
+        # 3. Main Splitter (Editor vs Results)
         main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         main_vertical_splitter.setObjectName("tab_vertical_splitter")
         layout.addWidget(main_vertical_splitter)
@@ -595,14 +664,14 @@ class MainWindow(QMainWindow):
         # ----------------- Results Container -----------------
         results_container = QWidget()
         results_layout = QVBoxLayout(results_container)
-        results_layout.setContentsMargins(0, 5, 0, 0)
+        results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(0)
 
         results_header = QWidget()
         results_header.setObjectName("resultsHeader")
-        header_layout = QHBoxLayout(results_header)
-        header_layout.setContentsMargins(5, 2, 5, 0)
-        header_layout.setSpacing(2)
+        results_header_layout = QHBoxLayout(results_header)
+        results_header_layout.setContentsMargins(5, 2, 5, 0)
+        results_header_layout.setSpacing(2)
 
         output_btn = QPushButton("Output")
         message_btn = QPushButton("Messages")
@@ -611,22 +680,24 @@ class MainWindow(QMainWindow):
 
         output_btn.setMinimumWidth(100)
         message_btn.setMinimumWidth(100)
-        notification_btn.setMinimumWidth(130)
+        notification_btn.setMinimumWidth(120)
         process_btn.setMinimumWidth(100)
 
-        for btn in [output_btn, message_btn, notification_btn, process_btn]:
-            btn.setCheckable(True)
-
+        output_btn.setCheckable(True)
+        message_btn.setCheckable(True)
+        notification_btn.setCheckable(True)
+        process_btn.setCheckable(True)
         output_btn.setChecked(True)
 
-        header_layout.addWidget(output_btn)
-        header_layout.addWidget(message_btn)
-        header_layout.addWidget(notification_btn)
-        header_layout.addWidget(process_btn)
-        header_layout.addStretch()
-        results_layout.addWidget(results_header)
+        results_header_layout.addWidget(output_btn)
+        results_header_layout.addWidget(message_btn)
+        results_header_layout.addWidget(notification_btn)
+        results_header_layout.addWidget(process_btn)
+        results_header_layout.addStretch()
+        
+        # <<< FIX applied here: Adding the header to the layout >>>
+        results_layout.addWidget(results_header) 
 
-        # --- Results toggle button group ---
         results_button_group = QButtonGroup(self)
         results_button_group.setExclusive(True)
         results_button_group.addButton(output_btn, 0)
@@ -637,6 +708,7 @@ class MainWindow(QMainWindow):
         results_stack = QStackedWidget()
         results_stack.setObjectName("results_stacked_widget")
 
+        # Page 0: Table View
         table_view = QTableView()
         table_view.setObjectName("result_table")
         table_view.setAlternatingRowColors(True)
@@ -644,22 +716,24 @@ class MainWindow(QMainWindow):
         table_view.customContextMenuRequested.connect(self.show_results_context_menu)
         results_stack.addWidget(table_view)
 
+        # Page 1: Message View
         message_view = QTextEdit()
         message_view.setObjectName("message_view")
         message_view.setReadOnly(True)
         results_stack.addWidget(message_view)
 
+        # Page 2: Notification View
         notification_view = QLabel("Notifications will appear here.")
         notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
         results_stack.addWidget(notification_view)
 
+        # Page 3: Processes View
         processes_view = QTableView()
         processes_view.setObjectName("processes_view")
         processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         processes_view.setAlternatingRowColors(True)
         processes_view.horizontalHeader().setStretchLastSection(True)
-        #processes_view.setModel(self.processes_model)
         processes_view.setColumnWidth(0, 150)
         processes_view.setColumnWidth(1, 100)
         processes_view.setColumnWidth(2, 100)
@@ -669,7 +743,8 @@ class MainWindow(QMainWindow):
         processes_view.setColumnWidth(6, 150)
         processes_view.setColumnWidth(7, 150)
         results_stack.addWidget(processes_view)
-
+        
+        # Page 4: Spinner / Loading
         spinner_overlay_widget = QWidget()
         spinner_layout = QHBoxLayout(spinner_overlay_widget)
         spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -682,8 +757,8 @@ class MainWindow(QMainWindow):
         else:
             spinner_label.setMovie(spinner_movie)
             spinner_movie.setScaledSize(QSize(32, 32))
-            loading_text_label = QLabel("Waiting for query to complete...")
-
+            
+        loading_text_label = QLabel("Waiting for query to complete...")
         font = QFont()
         font.setPointSize(10)
         loading_text_label.setFont(font)
@@ -698,10 +773,8 @@ class MainWindow(QMainWindow):
         tab_status_label.setObjectName("tab_status_label")
         results_layout.addWidget(tab_status_label)
 
-        # --- Results switching logic ---
         def switch_results_view(index):
            results_stack.setCurrentIndex(index)
-
 
         output_btn.clicked.connect(lambda: switch_results_view(0))
         message_btn.clicked.connect(lambda: switch_results_view(1))
@@ -719,6 +792,20 @@ class MainWindow(QMainWindow):
         self.renumber_tabs()
         self._initialize_processes_model(tab_content)
         return tab_content
+
+    # Helper function for separator
+    def create_vertical_separator(self):
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        return line
+
+    # Helper function for separator
+    def create_vertical_separator(self):
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        return line
 
 
     def close_tab(self, index):
