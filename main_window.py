@@ -32,7 +32,7 @@ from code_editor import CodeEditor
 import db
 
 class MainWindow(QMainWindow):
-    QUERY_TIMEOUT = 60000
+    QUERY_TIMEOUT = 360000
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Universal SQL Client")
@@ -41,6 +41,7 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool.globalInstance()
         self.tab_timers = {}
         self.running_queries = {}
+        self._saved_tree_paths = []
 
         self._create_actions()
         self._create_menu()
@@ -159,7 +160,7 @@ class MainWindow(QMainWindow):
         self.delete_action = QAction("Delete", self)
         self.delete_action.triggered.connect(self.delete_text)
         
-        self.query_tool_action = QAction(QIcon("assets/execute_icon.png"), "Query Tool", self)
+        self.query_tool_action = QAction(QIcon("assets/sql_icon.png"), "Query Tool", self)
         self.query_tool_action.triggered.connect(self.add_tab)
         
         self.restore_action = QAction("Restore Layout", self)
@@ -186,6 +187,7 @@ class MainWindow(QMainWindow):
         self.format_sql_action.triggered.connect(self.format_sql_text)
 
         self.clear_query_action = QAction(QIcon("assets/delete_icon.png"), "Clear Query", self)
+        self.clear_query_action.setShortcut("Ctrl+Shift+c")
         self.clear_query_action.triggered.connect(self.clear_query_text)
 
     def _create_menu(self):
@@ -240,7 +242,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.exit_action)
         toolbar.addSeparator() # Separator for clearer UI
        # toolbar.addAction(self.execute_action)
-        toolbar.addAction(self.cancel_action)
+        # toolbar.addAction(self.cancel_action)
         toolbar.addSeparator()
 
         # edit_button = QToolButton()
@@ -455,7 +457,9 @@ class MainWindow(QMainWindow):
         self.status.showMessage("Layout restored to defaults.", 3000)
 
     def refresh_object_explorer(self):
+        self._save_tree_expansion_state()
         self.load_data()
+        self._restore_tree_expansion_state()
         self.status.showMessage("Object Explorer refreshed.", 3000)
 
     def toggle_maximize(self):
@@ -958,6 +962,52 @@ class MainWindow(QMainWindow):
             self.model.appendRow(connection_type_item)
 
 
+    def _save_tree_expansion_state(self):
+        saved_paths = []
+        model = self.model
+        tree = self.tree
+        
+        # Depth 1: Connection Type ( PostgreSQL, SQLite)
+        for row in range(model.rowCount()):
+            type_index = model.index(row, 0)
+            if tree.isExpanded(type_index):
+                type_name = type_index.data(Qt.ItemDataRole.DisplayRole)
+                
+                saved_paths.append((type_name, None))
+
+                # Depth 2: Connection Group (store group name)
+                for group_row in range(model.rowCount(type_index)):
+                    group_index = model.index(group_row, 0, type_index)
+                    if tree.isExpanded(group_index):
+                        group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
+                        # if group connection expand 
+                        saved_paths.append((type_name, group_name))
+        
+        self._saved_tree_paths = saved_paths
+
+    def _restore_tree_expansion_state(self):
+        if not hasattr(self, '_saved_tree_paths') or not self._saved_tree_paths:
+            return
+
+        model = self.model
+        tree = self.tree
+        
+        for row in range(model.rowCount()): # Depth 1: Connection Type
+            type_index = model.index(row, 0)
+            type_name = type_index.data(Qt.ItemDataRole.DisplayRole)
+            
+            if (type_name, None) in self._saved_tree_paths:
+                tree.expand(type_index)
+            
+            for group_row in range(model.rowCount(type_index)): # Depth 2: Connection Group
+                group_index = model.index(group_row, 0, type_index)
+                group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
+                
+                if (type_name, group_name) in self._saved_tree_paths:
+                    tree.expand(group_index)
+
+        self._saved_tree_paths = []
+
     
     def item_clicked(self, index):
         item = self.model.itemFromIndex(index)
@@ -1183,7 +1233,7 @@ class MainWindow(QMainWindow):
       elif conn_data.get("db_path"):
           
           if code == 'CSV':
-                 db_type_str = "CSV Connection"
+                 db_type_str = "CSV"
                  path_label = "Folder Path"
           else:
                  # Default to SQLite if not CSV
@@ -1232,7 +1282,9 @@ class MainWindow(QMainWindow):
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
+                self._save_tree_expansion_state()
                 self.load_data()
+                self._restore_tree_expansion_state()
                 self.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save PostgreSQL connection:\n{e}")
@@ -1244,7 +1296,9 @@ class MainWindow(QMainWindow):
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
+                self._save_tree_expansion_state()
                 self.load_data()
+                self._restore_tree_expansion_state()
                 self.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save SQLite connection:\n{e}")
@@ -1257,7 +1311,9 @@ class MainWindow(QMainWindow):
             data = dialog.getData()
             try:
                db.add_connection(data, connection_group_id)
+               self._save_tree_expansion_state()
                self.load_data()
+               self._restore_tree_expansion_state()
                self.refresh_all_comboboxes()
             except Exception as e:
                QMessageBox.critical(self, "Error", f"Failed to save Oracle connection:\n{e}")
@@ -1271,7 +1327,9 @@ class MainWindow(QMainWindow):
                 new_data = dialog.getData()
                 try:
                     db.update_connection(new_data)
+                    self._save_tree_expansion_state()
                     self.load_data()
+                    self._restore_tree_expansion_state()
                     self.refresh_all_comboboxes()
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to update SQLite connection:\n{e}")
@@ -1292,7 +1350,9 @@ class MainWindow(QMainWindow):
             new_data["id"] = conn_data.get("id") # Make sure to pass the ID for update
             try:
                 db.update_connection(new_data)
+                self._save_tree_expansion_state()
                 self.load_data()
+                self._restore_tree_expansion_state() 
                 self.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to update PostgreSQL connection:\n{e}")
@@ -1312,7 +1372,9 @@ class MainWindow(QMainWindow):
             new_data["id"] = conn_data.get("id")  # pass ID for update
             try:
               db.update_connection(new_data)
+              self._save_tree_expansion_state()
               self.load_data()
+              self._restore_tree_expansion_state()
               self.refresh_all_comboboxes()
             except Exception as e:
                QMessageBox.critical(self, "Error", f"Failed to update Oracle connection:\n{e}")
@@ -1366,7 +1428,9 @@ class MainWindow(QMainWindow):
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
+                self._save_tree_expansion_state()
                 self.load_data()
+                self._restore_tree_expansion_state()
                 self.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save CSV connection:\n{e}")
@@ -1386,7 +1450,10 @@ class MainWindow(QMainWindow):
             new_data = dialog.getData()
             try:
                 db.update_connection(new_data)
+                self._save_tree_expansion_state()
                 self.load_data()
+                self._restore_tree_expansion_state()
+
                 self.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to update CSV connection:\n{e}")
@@ -2066,12 +2133,12 @@ class MainWindow(QMainWindow):
         
         preview_100_action = QAction("First 100 Rows", self)
         preview_100_action.triggered.connect(lambda: self.query_table_rows(
-            item_data, table_name, limit=100, execute_now=True))
+            item_data, table_name, limit=100, execute_now=True));
         view_menu.addAction(preview_100_action)
 
         last_100_action = QAction("Last 100 Rows", self)
         last_100_action.triggered.connect(lambda: self.query_table_rows(
-            item_data, table_name, limit=100, order='desc', execute_now=True))
+            item_data, table_name, limit=100, order='desc', execute_now=True));
         view_menu.addAction(last_100_action)
 
         count_rows_action = QAction("Count Rows", self)
@@ -2279,8 +2346,8 @@ class MainWindow(QMainWindow):
         # 🧪 Force an invalid export option to simulate an error
         # options["delimiter"] = None   # invalid delimiter will break df.to_csv()
 
-        if options["delimiter"] == ',':
-            options["delimiter"] = None
+        # if options["delimiter"] == ',':
+        #     options["delimiter"] = None
 
         # --- Find connection name dynamically ---
         current_tab = self.tab_widget.currentWidget()
@@ -2416,6 +2483,7 @@ class MainWindow(QMainWindow):
              self.refresh_processes_view()
     # change
     def handle_process_finished(self, process_id, message, time_taken):
+        status = "Successfull"
         conn = sqlite.connect("databases/hierarchy.db")
         cursor = conn.cursor()
         if "0 rows" in message.lower() or "no data" in message.lower() or "empty" in message.lower():
@@ -2509,7 +2577,7 @@ class MainWindow(QMainWindow):
             brush = None
             if status_text == "Error":
                brush = QBrush(QColor("#BD3020"))      # 🔴 
-            elif status_text == "Successful":
+            elif status_text == "Successfull":
                 brush = QBrush(QColor("#28a745"))  # 🟢 Successful
             elif status_text == "Running":
                 brush = QBrush(QColor("#ffc107"))      # 🟡 Running
@@ -2543,21 +2611,48 @@ class MainWindow(QMainWindow):
         processes_view.horizontalHeader().setStretchLastSection(True)
 
     
+    # def count_table_rows(self, item_data, table_name):
+    #     if not item_data:
+    #         return
+    #     conn_data = item_data.get('conn_data')
+        
+    #     # --- MODIFICATION: Handle SQLite query (no schema) ---
+    #     if item_data.get('db_type') == 'postgres':
+    #          query = f'SELECT COUNT(*) FROM "{item_data.get("schema_name")}"."{table_name}";'
+    #     else: # SQLite
+    #          query = f'SELECT COUNT(*) FROM "{table_name}";'
+    #     # --- END MODIFICATION ---
+
+    #     self.status_message_label.setText(f"Counting rows for {table_name}...")
+    #     signals = QuerySignals()
+    #     runnable = RunnableQuery(conn_data, query, signals)
+    #     signals.finished.connect(self.handle_count_result)
+    #     signals.error.connect(self.handle_count_error)
+    #     self.thread_pool.start(runnable)
+
     def count_table_rows(self, item_data, table_name):
         if not item_data:
             return
-        conn_data = item_data.get('conn_data')
         
-        # --- MODIFICATION: Handle SQLite query (no schema) ---
-        if item_data.get('db_type') == 'postgres':
+        conn_data = dict(item_data.get('conn_data', {}))
+        db_type = item_data.get('db_type')
+        
+       
+        conn_data['code'] = (conn_data.get('code') or db_type or '').upper()
+
+        if db_type == 'postgres':
              query = f'SELECT COUNT(*) FROM "{item_data.get("schema_name")}"."{table_name}";'
+        elif db_type == 'csv':
+             
+             query = f'SELECT COUNT(*) FROM [{table_name}]'
         else: # SQLite
              query = f'SELECT COUNT(*) FROM "{table_name}";'
-        # --- END MODIFICATION ---
 
         self.status_message_label.setText(f"Counting rows for {table_name}...")
+        
         signals = QuerySignals()
         runnable = RunnableQuery(conn_data, query, signals)
+        
         signals.finished.connect(self.handle_count_result)
         signals.error.connect(self.handle_count_error)
         self.thread_pool.start(runnable)
@@ -2786,19 +2881,30 @@ class MainWindow(QMainWindow):
         # Construct query
         code = conn_data.get('code')
         if code == 'POSTGRES':
-            query = f'SELECT * FROM "{item_data.get("schema_name")}"."{table_name}"'
+            query = f'SELECT * FROM "{item_data.get("schema_name")}"."{table_name}";'
         elif code == 'SQLITE':
-            query = f'SELECT * FROM "{table_name}"'
+            query = f'SELECT * FROM "{table_name}";'
         elif code == 'CSV':
-            query = f'SELECT * FROM [{item_data.get("table_name")}]'
+            # query = f'SELECT * FROM [{item_data.get("table_name")}]'
+            query = f"SELECT * FROM {table_name}"
         else:
             self.show_info(f"Unsupported db_type: {code}")
             return
+        
+        if order or limit:
+            query = query.rstrip(';')  # 1. শেষের সেমিকোলনটি সরিয়ে ফেলা হলো
 
-        if order:
-            query += f" ORDER BY 1 {order.upper()}"
-        if limit:
-            query += f" LIMIT {limit}"
+            if order:
+                query += f" ORDER BY 1 {order.upper()}"
+            if limit:
+                query += f" LIMIT {limit}"
+            
+            query += ";"  # 2. আবার শেষে সেমিকোলন যোগ করা হলো
+
+        # if order:
+        #     query += f" ORDER BY 1 {order.upper()}"
+        # if limit:
+        #     query += f" LIMIT {limit}"
 
         query_editor.setPlainText(query)
 
