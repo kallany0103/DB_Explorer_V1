@@ -2,6 +2,7 @@ from .db_connections import (
     create_sqlite_connection,
     create_postgres_connection,
     create_oracle_connection,
+    create_servicenow_connection,
     resource_path,
     DB_FILE,
 )

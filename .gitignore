@@ -1,0 +1,5 @@
+db_venv/
+__pycache__/
+build/
+dist/
+DbExplorer.spec
