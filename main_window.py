@@ -2393,67 +2393,52 @@ class MainWindow(QMainWindow):
     #     self._initialize_processes_model(tab_content)
     #     return tab_content
 
-    # def open_limit_offset_dialog(self, tab_content):
-    #     """Opens a dialog to set Limit and Offset like pgAdmin."""
-    #     dialog = QDialog(self)
-    #     dialog.setWindowTitle("Query Options")
-    #     dialog.setFixedSize(300, 150)
+    def open_limit_offset_dialog(self, tab_content):
+        """Opens a dialog to set Limit and Offset like pgAdmin."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Query Options")
+        dialog.setFixedSize(300, 150)
         
-    #     layout = QFormLayout(dialog)
+        layout = QFormLayout(dialog)
 
-    #     # Limit Input
-    #     limit_spin = QSpinBox()
-    #     limit_spin.setRange(0, 999999999) # 0 means no limit (logic handled below)
-    #     limit_spin.setValue(getattr(tab_content, 'current_limit', 1000))
-    #     limit_spin.setSpecialValueText("No Limit") # If value is 0
-    #     layout.addRow("Rows Limit:", limit_spin)
+        # Limit Input
+        limit_spin = QSpinBox()
+        limit_spin.setRange(0, 999999999) # 0 means no limit (logic handled below)
+        limit_spin.setValue(getattr(tab_content, 'current_limit', 1000))
+        limit_spin.setSpecialValueText("No Limit") # If value is 0
+        layout.addRow("Rows Limit:", limit_spin)
 
-    #     # Offset Input
-    #     offset_spin = QSpinBox()
-    #     offset_spin.setRange(0, 999999999)
-    #     offset_spin.setValue(getattr(tab_content, 'current_offset', 0))
-    #     layout.addRow("Start Row (Offset):", offset_spin)
+        # Offset Input
+        offset_spin = QSpinBox()
+        offset_spin.setRange(0, 999999999)
+        offset_spin.setValue(getattr(tab_content, 'current_offset', 0))
+        layout.addRow("Start Row (Offset):", offset_spin)
 
-    #     # Buttons
-    #     buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-    #     buttons.accepted.connect(dialog.accept)
-    #     buttons.rejected.connect(dialog.reject)
-    #     layout.addWidget(buttons)
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
 
-    #     if dialog.exec() == QDialog.DialogCode.Accepted:
-    #         # Update values in tab object
-    #         new_limit = limit_spin.value()
-    #         new_offset = offset_spin.value()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Update values in tab object
+            new_limit = limit_spin.value()
+            new_offset = offset_spin.value()
             
-    #         tab_content.current_limit = new_limit if new_limit > 0 else None
-    #         tab_content.current_offset = new_offset
+            tab_content.current_limit = new_limit if new_limit > 0 else None
+            tab_content.current_offset = new_offset
             
-    #         # Refresh Display Label (Optional immediate update)
-    #         rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
-    #         if rows_info_label:
-    #             limit_text = str(new_limit) if new_limit > 0 else "All"
-    #             rows_info_label.setText(f"Settings: Limit {limit_text}, Offset {new_offset}")
+            # Refresh Display Label (Optional immediate update)
+            rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
+            if rows_info_label:
+                limit_text = str(new_limit) if new_limit > 0 else "All"
+                rows_info_label.setText(f"Settings: Limit {limit_text}, Offset {new_offset}")
 
-    #         # Execute Query with new settings
-    #         self.execute_query()
+            # Execute Query with new settings
+            self.execute_query()
 
 
     def add_tab(self):
-        tab_content = QWidget(self.tab_widget)
-        
-        # --- Initialize tab specific limit and offset settings ---
-        tab_content.current_limit = 1000  # Default Limit
-        tab_content.current_offset = 0    # Default Offset
-        tab_content.current_page = 1
-        tab_content.has_more_pages = True
-        # --------------------------------------------------------------
-
-        layout = QVBoxLayout(tab_content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        font = QFont()
-        font.setBold(True)
 
         # 1. Database Selection Combo Box
         db_combo_box = QComboBox()
@@ -2504,6 +2489,21 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.clear_query_action)
         edit_button.setMenu(edit_menu)
         toolbar_layout.addWidget(edit_button)
+
+        tab_content = QWidget(self.tab_widget)
+        
+        # --- Initialize tab specific limit and offset settings ---
+        tab_content.current_limit = 1000  # Default Limit
+        tab_content.current_offset = 0    # Default Offset
+        tab_content.current_page = 1
+        tab_content.has_more_pages = True
+        # --------------------------------------------------------------
+        layout = QVBoxLayout(tab_content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        font = QFont()
+        font.setBold(True)
 
         # --- Limit ComboBox (Top Toolbar) ---
         toolbar_layout.addWidget(self.create_vertical_separator())
@@ -2711,14 +2711,14 @@ class MainWindow(QMainWindow):
         # results_info_layout.addStretch() # Separate info from pagination controls
 
         # ===== PAGINATION UI =====
-        arrow_font = QFont("Segoe UI", 12, QFont.Weight.Bold)
+        arrow_font = QFont("Segoe UI", 15, QFont.Weight.Bold)
 
         # Prev button
         prev_btn = QPushButton("◀")
         prev_btn.setFixedSize(38, 28)
         prev_btn.setFont(arrow_font)
         prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        prev_btn.setEnabled(False) # Initially disabled
+        prev_btn.setEnabled(True) # Initially disabled
         prev_btn.setObjectName("prev_btn")
 
         # Page label
@@ -2733,7 +2733,7 @@ class MainWindow(QMainWindow):
         next_btn.setFixedSize(38, 28)
         next_btn.setFont(arrow_font)
         next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        next_btn.setEnabled(False) # Initially disabled until results load
+        next_btn.setEnabled(True) # Initially disabled until results load
         next_btn.setObjectName("next_btn")
 
         results_info_layout.addWidget(prev_btn)
@@ -2743,26 +2743,88 @@ class MainWindow(QMainWindow):
         results_layout.addWidget(results_info_bar)
 
         # --- Pagination Logic ---
-        def update_page_label():
-            page_label.setText(f"Page {tab_content.current_page}")
-            prev_btn.setEnabled(tab_content.current_page > 1)
+        def update_page_label(self, tab, row_count):
+
+            next_btn = tab.findChild(QPushButton, "next_btn")
+            prev_btn = tab.findChild(QPushButton, "prev_btn")
+            page_label = tab.findChild(QLabel, "page_label")
+    
+            current_limit = getattr(tab, 'current_limit', 0)
+            current_page = getattr(tab, 'current_page', 1)
+            if page_label:
+               page_label.setText(f"Page {current_page}")
+
+            if next_btn:
+        # If the query returned fewer rows than the limit, 
+        # it means we have reached the last page of results.
+               if current_limit > 0 and row_count < current_limit:
+                  next_btn.setEnabled(False)
+               elif current_limit > 0:
+            # If we returned the full limit, there might be a next page.
+                   next_btn.setEnabled(True)
+               else:
+            # No limit applied (Limit: All), so disable next page.
+                   next_btn.setEnabled(False)
+
+            if prev_btn:
+        # Disable previous button if on the first page
+               prev_btn.setEnabled(current_page > 1)
+            # page_label.setText(f"Page {tab_content.current_page}")
+            # prev_btn.setEnabled(tab_content.current_page > 1)
+
+
+        def update_page_ui(tab):
+            page_label.setText(f"Page {tab.current_page}")
+            
+            # Prev
+            prev_btn.setEnabled(tab.current_page > 1)
+            
+            limit = getattr(tab, 'current_limit', 0)
+            offset = getattr(tab, 'current_offset', 0)
+            
+            if limit and limit > 0:
+                rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
+            else:
+                rows_info_label.setText("No Limit") # No limit set
+
+        def change_page(direction,tab):
+            limit = getattr(tab, 'current_limit', 0)
+            
+            # If no limit is set, do nothing
+            if not limit or limit <= 0:
+                return 
+
+            if direction == "next":
+                tab.current_page += 1
+                tab.current_offset += limit
+            elif direction == "prev":
+                if tab.current_page > 1:
+                    tab.current_page -= 1
+                    # Offset 
+                    tab.current_offset = max(0, tab.current_offset - limit)
+
+            # 1. UI 
+            update_page_ui()
+            self.execute_query()
         
         def go_prev():
-            if tab_content.current_page <= 1:
+            tab = self.tab_widget.currentWidget()
+            if not tab or tab.current_page <= 1:
               return
-            tab_content.current_page -= 1
-            tab_content.current_offset -= tab_content.current_limit
-            if tab_content.current_offset < 0:
-               tab_content.current_offset = 0
-            update_page_label()
+            tab.current_page -= 1
+            tab.current_offset -= (tab.current_page - 1) * tab.current_limit
+            # if tab_content.current_offset < 0:
+            #    tab_content.current_offset = 0
+            update_page_ui(tab)
             self.execute_query()
 
         def go_next():
-            if not tab_content.has_more_pages:
+            tab = self.tab_widget.currentWidget()
+            if not tab.has_more_pages:
                return
-            tab_content.current_page += 1
-            tab_content.current_offset += tab_content.current_limit
-            update_page_label()
+            tab.current_page += 1
+            tab.current_offset = (tab.current_page - 1) * tab.current_limit
+            update_page_ui(tab)
             self.execute_query()
 
         prev_btn.clicked.connect(go_prev)
@@ -3266,8 +3328,6 @@ class MainWindow(QMainWindow):
             delete_action.triggered.connect(lambda: self.delete_connection(item))
             menu.addAction(delete_action)
         menu.exec(self.tree.viewport().mapToGlobal(pos))
-
-
 
     def show_connection_details(self, item):
       conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -3916,6 +3976,15 @@ class MainWindow(QMainWindow):
         # Get stored values (default to 1000 and 0 if not set)
         limit_val = getattr(current_tab, 'current_limit', 1000)
         offset_val = getattr(current_tab, 'current_offset', 0)
+        tab = self.tab_widget.currentWidget()
+
+        limit = tab.current_limit
+        offset = tab.current_offset
+
+        if limit > 0:
+           query = query.rstrip(";")
+           query += f" LIMIT {limit} OFFSET {offset}"
+
         
         # Only apply limit/offset to SELECT queries
         if query.strip().upper().startswith("SELECT"):
@@ -3979,131 +4048,151 @@ class MainWindow(QMainWindow):
         elapsed = time.time() - self.tab_timers[tab]["start_time"]
         label.setText(f"Running... {elapsed:.1f} sec")
 
-    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
-        # Stop timers
-        if target_tab in self.tab_timers:
-            self.tab_timers[target_tab]["timer"].stop()
-            self.tab_timers[target_tab]["timeout_timer"].stop()
-            del self.tab_timers[target_tab]
+#     def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+#         # Stop timers
+#         if target_tab in self.tab_timers:
+#             self.tab_timers[target_tab]["timer"].stop()
+#             self.tab_timers[target_tab]["timeout_timer"].stop()
+#             del self.tab_timers[target_tab]
 
-        self.save_query_to_history(conn_data, query, "Success", row_count, elapsed_time)
+#         self.save_query_to_history(conn_data, query, "Success", row_count, elapsed_time)
 
-        # Get widgets
-        table_view = target_tab.findChild(QTableView, "result_table")
-        message_view = target_tab.findChild(QTextEdit, "message_view")
-        tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
+#         # Get widgets
+#         table_view = target_tab.findChild(QTableView, "result_table")
+#         message_view = target_tab.findChild(QTextEdit, "message_view")
+#         tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
+#         # ===== PAGINATION STATE UPDATE =====
+#         tab = self.tab_widget.currentWidget()
+
+#         tab.has_more_pages = len(result) == tab.current_limit
+
+# # pagination widgets খোঁজা
+#         page_label = tab.findChild(QLabel, "page_label")
+#         prev_btn = tab.findChild(QPushButton, "prev_btn")
+#         next_btn = tab.findChild(QPushButton, "next_btn")
+
+#         if page_label:
+#            page_label.setText(f"Page {tab.current_page}")
+
+#         if prev_btn:
+#            prev_btn.setEnabled(tab.current_page > 1)
+
+#         if next_btn:
+#            next_btn.setEnabled(tab.has_more_pages)
+# # ==================================
+
         
-        # --- Update the Showing Rows Label & Pagination Buttons ---
-        rows_info_label = target_tab.findChild(QLabel, "rows_info_label")
-        prev_btn = target_tab.findChild(QPushButton, "prev_btn")
-        next_btn = target_tab.findChild(QPushButton, "next_btn")
+#         # --- Update the Showing Rows Label & Pagination Buttons ---
+#         rows_info_label = target_tab.findChild(QLabel, "rows_info_label")
+#         prev_btn = target_tab.findChild(QPushButton, "prev_btn")
+#         next_btn = target_tab.findChild(QPushButton, "next_btn")
 
-        if rows_info_label and is_select_query:
-            current_offset = getattr(target_tab, 'current_offset', 0)
-            current_limit = getattr(target_tab, 'current_limit', 1000)
+#         if rows_info_label and is_select_query:
+#             current_offset = getattr(target_tab, 'current_offset', 0)
+#             current_limit = getattr(target_tab, 'current_limit', 1000)
 
-            if row_count > 0:
-                start_row = current_offset + 1
-                end_row = current_offset + row_count
-                rows_info_label.setText(f"Showing rows {start_row} - {end_row}")
-            else:
-                rows_info_label.setText("No rows returned")
+#             if row_count > 0:
+#                 start_row = current_offset + 1
+#                 end_row = current_offset + row_count
+#                 rows_info_label.setText(f"Showing rows {start_row} - {end_row}")
+#             else:
+#                 rows_info_label.setText("No rows returned")
 
-            # Enable/Disable Previous Button
-            if prev_btn:
-                prev_btn.setEnabled(current_offset > 0)
+#             # Enable/Disable Previous Button
+#             if prev_btn:
+#                 prev_btn.setEnabled(current_offset > 0)
             
-            # Enable/Disable Next Button
-            # If we received fewer rows than limit, we are at the end
-            if next_btn:
-                if current_limit > 0 and row_count == current_limit:
-                    next_btn.setEnabled(True)
-                else:
-                    next_btn.setEnabled(False)
+#             # Enable/Disable Next Button
+#             # If we received fewer rows than limit, we are at the end
+#             if next_btn:
+#                 if current_limit > 0 and row_count == current_limit:
+#                     next_btn.setEnabled(True)
+#                 else:
+#                     next_btn.setEnabled(False)
 
-        elif rows_info_label:
-             rows_info_label.setText("Command executed")
-             if prev_btn: prev_btn.setEnabled(False)
-             if next_btn: next_btn.setEnabled(False)
-        # ------------------------------------------
+#         elif rows_info_label:
+#              rows_info_label.setText("Command executed")
+#              if prev_btn: prev_btn.setEnabled(False)
+#              if next_btn: next_btn.setEnabled(False)
+#         # ------------------------------------------
 
-        if is_select_query:
-            model = QStandardItemModel()
-            model.setColumnCount(len(columns))
-            model.setRowCount(len(results))
+#         if is_select_query:
+#             model = QStandardItemModel()
+#             model.setColumnCount(len(columns))
+#             model.setRowCount(len(results))
             
-            # (Keep existing metadata logic)
-            import re
-            match = re.search(r"FROM\s+([\w\.]+)", query, re.IGNORECASE)
-            meta_columns = None
-            if match:
-                table_name = match.group(1).split('.')[-1]
-                meta_columns = self.get_table_column_metadata(conn_data, table_name)
+#             # (Keep existing metadata logic)
+#             import re
+#             match = re.search(r"FROM\s+([\w\.]+)", query, re.IGNORECASE)
+#             meta_columns = None
+#             if match:
+#                 table_name = match.group(1).split('.')[-1]
+#                 meta_columns = self.get_table_column_metadata(conn_data, table_name)
 
-            headers = []
-            if meta_columns and len(meta_columns) == len(columns):
-                for col in meta_columns:
-                    if isinstance(col, str):
-                        parts = col.split(maxsplit=1)
-                        col_name = parts[0]
-                        data_type = parts[1] if len(parts) > 1 else ""
-                    elif isinstance(col, (list, tuple)):
-                        col_name = col[0]
-                        data_type = col[1] if len(col) > 1 else ""
-                    else:
-                        col_name = str(col)
-                        data_type = ""
-                    headers.append(f"{col_name}\n{data_type}")
-            else:
-                headers = [f"{col}\n" for col in columns]
+#             headers = []
+#             if meta_columns and len(meta_columns) == len(columns):
+#                 for col in meta_columns:
+#                     if isinstance(col, str):
+#                         parts = col.split(maxsplit=1)
+#                         col_name = parts[0]
+#                         data_type = parts[1] if len(parts) > 1 else ""
+#                     elif isinstance(col, (list, tuple)):
+#                         col_name = col[0]
+#                         data_type = col[1] if len(col) > 1 else ""
+#                     else:
+#                         col_name = str(col)
+#                         data_type = ""
+#                     headers.append(f"{col_name}\n{data_type}")
+#             else:
+#                 headers = [f"{col}\n" for col in columns]
 
-            for col_idx, header_text in enumerate(headers):
-                model.setHeaderData(col_idx, Qt.Orientation.Horizontal, header_text)
+#             for col_idx, header_text in enumerate(headers):
+#                 model.setHeaderData(col_idx, Qt.Orientation.Horizontal, header_text)
 
-            header = table_view.horizontalHeader()
-            header.setDefaultAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+#             header = table_view.horizontalHeader()
+#             header.setDefaultAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
 
-            for row_idx, row in enumerate(results):
-                for col_idx, cell in enumerate(row):
-                    model.setItem(row_idx, col_idx, QStandardItem(str(cell)))
+#             for row_idx, row in enumerate(results):
+#                 for col_idx, cell in enumerate(row):
+#                     model.setItem(row_idx, col_idx, QStandardItem(str(cell)))
 
-            table_view.setModel(model)
+#             table_view.setModel(model)
             
-            msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
-            status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
+#             msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
+#             status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
 
-        else:
-            # Non-SELECT queries
-            table_view.setModel(QStandardItemModel())
-            msg = f"Command executed successfully.\n\nRows affected: {row_count}\nTime: {elapsed_time:.2f} sec"
-            status = f"Command executed successfully | Rows affected: {row_count} | Time: {elapsed_time:.2f} sec"
+#         else:
+#             # Non-SELECT queries
+#             table_view.setModel(QStandardItemModel())
+#             msg = f"Command executed successfully.\n\nRows affected: {row_count}\nTime: {elapsed_time:.2f} sec"
+#             status = f"Command executed successfully | Rows affected: {row_count} | Time: {elapsed_time:.2f} sec"
             
-        # Update message view
-        if message_view:
-            previous_text = message_view.toPlainText()
-            if previous_text:
-                message_view.append("\n" + "-"*50 + "\n")
-            message_view.append(msg)
+#         # Update message view
+#         if message_view:
+#             previous_text = message_view.toPlainText()
+#             if previous_text:
+#                 message_view.append("\n" + "-"*50 + "\n")
+#             message_view.append(msg)
 
-        if tab_status_label:
-            tab_status_label.setText(status)
+#         if tab_status_label:
+#             tab_status_label.setText(status)
 
-        self.status_message_label.setText("Ready")
+#         self.status_message_label.setText("Ready")
 
-        # Stop spinner
-        spinner_label = target_tab.findChild(QLabel, "spinner_label")
-        if spinner_label and spinner_label.movie():
-            spinner_label.movie().stop()
-            spinner_label.hide()
+#         # Stop spinner
+#         spinner_label = target_tab.findChild(QLabel, "spinner_label")
+#         if spinner_label and spinner_label.movie():
+#             spinner_label.movie().stop()
+#             spinner_label.hide()
 
-        results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
-        if results_stack:
-            results_stack.setCurrentIndex(0)
+#         results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
+#         if results_stack:
+#             results_stack.setCurrentIndex(0)
 
-        if target_tab in self.running_queries:
-            del self.running_queries[target_tab]
-        if not self.running_queries:
-            self.cancel_action.setEnabled(False)
+#         if target_tab in self.running_queries:
+#             del self.running_queries[target_tab]
+#         if not self.running_queries:
+#             self.cancel_action.setEnabled(False)
 
     def update_timer_label(self, label, tab):
         if not label or tab not in self.tab_timers: return
