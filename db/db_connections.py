@@ -55,3 +55,26 @@ def create_oracle_connection(host, port, service_name, user, password):
     except oracledb.DatabaseError as e:
         print(f"Oracle connection error: {e}")
         return None
+    
+def create_servicenow_connection(conn_data):
+    try:
+        import cdata.servicenow as sn
+
+        if not conn_data.get("instance_url"):
+            raise ValueError("Missing instance_url in conn_data")
+
+        conn_str = (
+            f"User={conn_data['user']};"
+            f"Password={conn_data['password']};"
+            f"Url={conn_data['instance_url']};"
+            f"AuthScheme=Basic;"
+            f"ReadOnly=True"
+        )
+
+        conn = sn.connect(conn_str)
+        print("ServiceNow connection established.")
+        return conn
+
+    except Exception as e:
+        print(f"ServiceNow connection error: {e}")
+        return None
