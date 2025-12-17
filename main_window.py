@@ -2437,7 +2437,6 @@ class MainWindow(QMainWindow):
             # Execute Query with new settings
             self.execute_query()
 
-
     def add_tab(self):
         tab_content = QWidget(self.tab_widget)
         # --- Initialize tab specific limit and offset settings ---
@@ -2450,7 +2449,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
         font = QFont()
         font.setBold(True)
-
         # 1. Database Selection Combo Box
         db_combo_box = QComboBox()
         db_combo_box.setObjectName("db_combo_box")
@@ -2500,15 +2498,6 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.clear_query_action)
         edit_button.setMenu(edit_menu)
         toolbar_layout.addWidget(edit_button)
-
-        
-        
-        # --- Initialize tab specific limit and offset settings ---
-        # tab_content.current_limit = 1000  # Default Limit
-        # tab_content.current_offset = 0    # Default Offset
-        # tab_content.current_page = 1
-        # tab_content.has_more_pages = True
-        # --------------------------------------------------------------
        
         
         # --- Limit ComboBox (Top Toolbar) ---
