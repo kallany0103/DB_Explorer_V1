@@ -2439,6 +2439,17 @@ class MainWindow(QMainWindow):
 
 
     def add_tab(self):
+        tab_content = QWidget(self.tab_widget)
+        # --- Initialize tab specific limit and offset settings ---
+        tab_content.current_limit = 1000  # Default Limit
+        tab_content.current_offset = 0    # Default Offset
+        tab_content.current_page = 1
+        tab_content.has_more_pages = True
+        layout = QVBoxLayout(tab_content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        font = QFont()
+        font.setBold(True)
 
         # 1. Database Selection Combo Box
         db_combo_box = QComboBox()
@@ -2490,21 +2501,16 @@ class MainWindow(QMainWindow):
         edit_button.setMenu(edit_menu)
         toolbar_layout.addWidget(edit_button)
 
-        tab_content = QWidget(self.tab_widget)
+        
         
         # --- Initialize tab specific limit and offset settings ---
-        tab_content.current_limit = 1000  # Default Limit
-        tab_content.current_offset = 0    # Default Offset
-        tab_content.current_page = 1
-        tab_content.has_more_pages = True
+        # tab_content.current_limit = 1000  # Default Limit
+        # tab_content.current_offset = 0    # Default Offset
+        # tab_content.current_page = 1
+        # tab_content.has_more_pages = True
         # --------------------------------------------------------------
-        layout = QVBoxLayout(tab_content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+       
         
-        font = QFont()
-        font.setBold(True)
-
         # --- Limit ComboBox (Top Toolbar) ---
         toolbar_layout.addWidget(self.create_vertical_separator())
         rows_label = QLabel("Limit:")
@@ -2789,7 +2795,7 @@ class MainWindow(QMainWindow):
 
         def change_page(direction,tab):
             limit = getattr(tab, 'current_limit', 0)
-            
+
             # If no limit is set, do nothing
             if not limit or limit <= 0:
                 return 
