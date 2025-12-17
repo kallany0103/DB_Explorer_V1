@@ -3127,6 +3127,46 @@ class MainWindow(QMainWindow):
         self._saved_tree_paths = []
 
     
+    # def item_clicked(self, index):
+    #     item = self.model.itemFromIndex(index)
+    #     depth = self.get_item_depth(item)
+    #     self.schema_model.clear()
+    #     self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
+    #     if depth == 3:
+    #         conn_data = item.data(Qt.ItemDataRole.UserRole)
+    #         if not conn_data:
+    #             return
+    #         parent_group = item.parent()
+    #         if not parent_group:
+    #             return
+    #         connection_type = parent_group.parent()
+    #         if not connection_type:
+    #             return
+    #         connection_type_name = connection_type.text().lower()
+    #         if "postgres" in connection_type_name and conn_data.get("host"):
+    #             self.status.showMessage(
+    #                 f"Loading schema for {conn_data.get('name')}...", 3000)
+    #             self.load_postgres_schema(conn_data)
+    #         elif "sqlite" in connection_type_name and conn_data.get("db_path"):
+    #             self.status.showMessage(
+    #                 f"Loading schema for {conn_data.get('name')}...", 3000)
+    #             self.load_sqlite_schema(conn_data)
+                
+    #         elif "csv" in connection_type_name and conn_data.get("db_path"):
+    #             # ← NEW: CSV support using CData
+    #             self.status.showMessage(
+    #                f"Loading CSV folder for {conn_data.get('name')}...", 3000)
+    #             self.load_csv_schema(conn_data)
+            
+    #         elif "oracle" in connection_type_name:
+    #             self.status.showMessage(
+    #                 "Oracle connections are not currently supported.", 5000)
+    #             QMessageBox.information(
+    #                 self, "Not Supported", "Connecting to Oracle databases is not supported in this version.")
+    #         else:
+    #             self.status.showMessage("Unknown connection type.", 3000)
+
+
     def item_clicked(self, index):
         item = self.model.itemFromIndex(index)
         depth = self.get_item_depth(item)
@@ -3157,7 +3197,13 @@ class MainWindow(QMainWindow):
                 self.status.showMessage(
                    f"Loading CSV folder for {conn_data.get('name')}...", 3000)
                 self.load_csv_schema(conn_data)
-            
+
+            elif "servicenow" in connection_type_name:
+                self.status.showMessage(
+                   f"Loading ServiceNow schema for {conn_data.get('name')}...", 3000
+                )
+                self.load_servicenow_schema(conn_data)
+        
             elif "oracle" in connection_type_name:
                 self.status.showMessage(
                     "Oracle connections are not currently supported.", 5000)
@@ -6076,5 +6122,48 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             self.status.showMessage(f"Error loading CSV folder: {e}", 5000)
+
+
+    def load_servicenow_schema(self, conn_data):
+        try:
+            conn = db.create_servicenow_connection(conn_data)
+            if not conn:
+                self.status.showMessage("Unable to connect to ServiceNow", 5000)
+                return
+
+            cursor = conn.cursor()
+        
+            # --- Fetch tables ---
+            # sys_tables may be restricted, so using a known list as fallback
+            try:
+                cursor.execute("SELECT TableName FROM sys_tables")
+                tables = [row[0] for row in cursor.fetchall()]
+            except Exception:
+                # fallback to common ServiceNow tables
+                tables = ['incident', 'task', 'change_request', 'problem', 'change_request']
+
+            if not tables:
+                self.status.showMessage("No tables found or access restricted.", 5000)
+                return
+
+            self.schema_model.clear()
+            self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+            for table_name in tables:
+                table_item = QStandardItem(QIcon("assets/table_icon.png"), table_name)
+                table_item.setEditable(False)
+                table_item.setData({
+                    'db_type': 'servicenow',
+                    'table_name': table_name,
+                    'conn_data': conn_data
+                }, Qt.ItemDataRole.UserRole)
+                table_item.appendRow(QStandardItem("Loading..."))  # expandable placeholder
+
+                type_item = QStandardItem("Table")
+                type_item.setEditable(False)
+                self.schema_model.appendRow([table_item, type_item])
+
+            conn.close()
+        except Exception as e:
+            self.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
 
     
