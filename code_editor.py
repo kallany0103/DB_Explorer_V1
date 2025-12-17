@@ -1,7 +1,7 @@
 # code_editor.py
 
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
-# QTextCursor ইম্পোর্ট করুন
+# QTextCursor 
 from PyQt6.QtGui import QColor, QTextFormat, QFont, QPainter, QPolygon, QBrush, QTextCursor
 from PyQt6.QtCore import QRect, QSize, Qt, QPoint
 
@@ -25,7 +25,7 @@ class CodeEditor(QPlainTextEdit):
         super().__init__(parent)
         self.lineNumberArea = LineNumberArea(self)
         self.folding_markers = {}
-        self.statement_map = {} # প্রতিটি লাইন কোন স্টেটমেন্টের অংশ তা ম্যাপ করবে
+        self.statement_map = {} 
 
         # Use monospace font for SQL editing
         font = QFont("Courier New", 11)
@@ -119,7 +119,7 @@ class CodeEditor(QPlainTextEdit):
 
     def updateFoldingMarkers(self):
         new_markers = {}
-        new_statement_map = {} # <<< নতুন
+        new_statement_map = {} 
         processed_lines = set()
 
         block = self.document().begin()
@@ -154,12 +154,10 @@ class CodeEditor(QPlainTextEdit):
                 # Found a statement (single or multi-line)
                 boundaries = (statement_start, end_block_num)
 
-                # 1. সব লাইনের জন্য ম্যাপ আপডেট করুন
                 for i in range(statement_start, end_block_num + 1):
                     new_statement_map[i] = boundaries
                     processed_lines.add(i)
 
-                # 2. মাল্টি-লাইন হলে ফোল্ডিং মার্কার যোগ করুন
                 if end_block_num > statement_start:
                     is_open = self.folding_markers.get(
                         statement_start, {'open': True})['open']
@@ -173,14 +171,13 @@ class CodeEditor(QPlainTextEdit):
                     block = block.next()
             
             else:
-                # --- কোনো স্টেটমেন্ট পাওয়া যায়নি (যেমন: খালি লাইন, কমেন্ট) ---
                 if block_num not in processed_lines:
                     new_statement_map[block_num] = (block_num, block_num)
                 block = block.next()
 
 
         self.folding_markers = new_markers
-        self.statement_map = new_statement_map # <<< নতুন
+        self.statement_map = new_statement_map 
         self.lineNumberArea.update()
 
 
@@ -246,8 +243,6 @@ class CodeEditor(QPlainTextEdit):
             while block.isValid():
                 bottom = top + self.blockBoundingRect(block).height()
                 if top <= event.pos().y() < bottom:
-                    # লজিকটি handleLineNumberAreaClick এ সরানো হয়েছে
-                    # তাই এখানে শুধু break হবে
                     break
                 block = block.next()
                 top = bottom
@@ -256,7 +251,7 @@ class CodeEditor(QPlainTextEdit):
 
 
     def handleLineNumberAreaClick(self, event):
-        # event.pos() ব্যবহার করা হলো, কারণ এটি QWidget (LineNumberArea) থেকে আসছে
+        
         pos = event.pos() 
         y = pos.y()
         x = pos.x()
@@ -270,35 +265,33 @@ class CodeEditor(QPlainTextEdit):
             if top <= y < bottom:
                 bn = block.blockNumber()
                 
-                # ফোল্ডিং মার্কারের এক্স-পজিশন (lineNumberAreaPaintEvent অনুযায়ী)
+                
                 marker_x_start = self.lineNumberArea.width() - 15 
                 
-                # --- নতুন সম্মিলিত লজিক ---
-                
-                # ১. চেক করুন: ফোল্ডিং মার্কারের উপর ক্লিক পড়েছে?
+    
+            
                 if x >= marker_x_start and bn in self.folding_markers:
                     self.toggleFold(bn)
                 
-                # ২. অন্যথায়: লাইন নম্বরের উপর ক্লিক পড়েছে (সিলেকশন লজিক)
+            
                 elif hasattr(self, 'statement_map') and bn in self.statement_map:
                     start_bn, end_bn = self.statement_map[bn]
                     
-                    # সংশ্লিষ্ট টেক্সট ব্লকগুলো খুঁজুন
+                    
                     start_block = self.document().findBlockByNumber(start_bn)
                     end_block = self.document().findBlockByNumber(end_bn)
 
                     if start_block.isValid() and end_block.isValid():
-                        # একটি নতুন কার্সর তৈরি করুন
+                    
                         cursor = QTextCursor(start_block)
                         
-                        # কার্সরটিকে শেষ ব্লকের শেষ পর্যন্ত মুভ করুন (সিলেকশন সহ)
-                        # (length - 1) ব্যবহার করা হয়েছে যাতে পরবর্তী লাইনের নিউলাইন সিলেক্ট না হয়
+                        
                         cursor.setPosition(end_block.position() + end_block.length() - 1, QTextCursor.MoveMode.KeepAnchor)
                         
-                        # এডিটরের প্রধান কার্সর হিসেবে সেট করুন
+                        
                         self.setTextCursor(cursor)
 
-                break # ক্লিক করা ব্লকটি পাওয়া গেছে, লুপ ব্রেক করুন
+                break 
             
             block = block.next()
             top = bottom

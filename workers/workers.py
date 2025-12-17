@@ -445,7 +445,7 @@ class RunnableExport(QRunnable):
                 delimiter = self.export_options.get('delimiter', ',')
                 
                 # --- NEW LOGIC: Enforce Semicolon (;) ---
-                # যদি CSV বা TXT ফাইল হয় এবং Delimiter সেমিকোলন না হয়, তবে এরর দেওয়া হবে।
+            
                 if file_format in [".csv", ".txt"]:
                     if delimiter != ';':
                         error_msg = (
@@ -513,7 +513,7 @@ class RunnableExportFromModel(QRunnable):
                 delimiter = self.export_options.get('delimiter', ',')
                 
                 # --- NEW LOGIC: Enforce Semicolon (;) ---
-                # যদি CSV বা TXT ফাইল হয় এবং Delimiter সেমিকোলন না হয়, তবে এরর দেওয়া হবে।
+                
                 if file_format in [".csv", ".txt"]:
                     if delimiter != ';':
                         error_msg = (
