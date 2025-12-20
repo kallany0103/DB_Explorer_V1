@@ -2509,19 +2509,19 @@ class MainWindow(QMainWindow):
         rows_limit_combo.setObjectName("rows_limit_combo")
         rows_limit_combo.setEditable(True)
         rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
-        rows_limit_combo.setCurrentText("1000")
+        rows_limit_combo.setCurrentText("No Limit")
         rows_limit_combo.setFixedWidth(90)
 
         # When limit changes, reset offset/page and refresh
         def on_limit_change():
             text = rows_limit_combo.currentText().strip()
-            if text.lower() == "no limit":
+            if text.lower() == 1000:
                tab_content.current_limit = 0
             else:
                try:
                 tab_content.current_limit = int(text)
                except ValueError:
-                tab_content.current_limit = 1000
+                tab_content.current_limit ="No Limit"
 
             tab_content.current_page = 1
             tab_content.current_offset = 0
@@ -4005,8 +4005,8 @@ class MainWindow(QMainWindow):
 
             query = selected_query
 
-        if not query or not query.strip().upper().startswith("SELECT "):
-            if not query.strip():
+        # if not query or not query.strip().upper().startswith("SELECT "):
+        if not query or not query.strip():
                 self.show_info("Please enter a valid query.")
                 return
 
@@ -4014,17 +4014,29 @@ class MainWindow(QMainWindow):
         # --- Apply Row Limit AND Offset Logic from Tab Attributes ---
         # ---------------------------------------------------------
         
+        query = query.strip()
+        has_semicolon = query.endswith(";")
+        query = query.rstrip(";")
         # Get stored values (default to 1000 and 0 if not set)
-        limit_val = getattr(current_tab, 'current_limit', 1000)
-        offset_val = getattr(current_tab, 'current_offset', 0)
-        tab = self.tab_widget.currentWidget()
+        limit = getattr(current_tab, 'current_limit', 1000)
+        offset = getattr(current_tab, 'current_offset', 0)
+        # tab = self.tab_widget.currentWidget()
 
-        limit = tab.current_limit
-        offset = tab.current_offset
+        # limit = tab.current_limit
+        # offset = tab.current_offset
 
-        if limit > 0:
-           query = query.rstrip(";")
-           query += f" LIMIT {limit} OFFSET {offset}"
+        # if limit > 0:
+        #    query = query.rstrip(";")
+        #    query += f" LIMIT {limit} OFFSET {offset}"
+
+        if query.upper().startswith("SELECT") and limit > 0:
+          if "LIMIT" not in query.upper():
+             query += f" LIMIT {limit}"
+          if offset > 0 and "OFFSET" not in query.upper():
+             query += f" OFFSET {offset}"
+
+        if has_semicolon:
+           query += ";"
 
         
         # Only apply limit/offset to SELECT queries
@@ -4034,19 +4046,19 @@ class MainWindow(QMainWindow):
             
             suffix = ""
 
-            # Apply Limit
-            if limit_val and limit_val > 0:
-                if "LIMIT" not in clean_query.upper():
-                    suffix += f" LIMIT {limit_val}"
+            # # Apply Limit
+            # if limit_val and limit_val > 0:
+            #     if "LIMIT" not in clean_query.upper():
+            #         suffix += f" LIMIT {limit_val}"
 
             # Apply Offset
-            if offset_val and offset_val > 0:
-                if "OFFSET" not in clean_query.upper():
-                    suffix += f" OFFSET {offset_val}"
+            # if offset and offset > 0:
+            #     if "OFFSET" not in clean_query.upper():
+            #         suffix += f" OFFSET {offset}"
             
-            query = clean_query + suffix
-            if has_semicolon:
-                query += ";"
+            # query = clean_query + suffix
+            # if has_semicolon:
+            #     query += ";"
 
         # ---------------------------------------------------------
 
@@ -5247,12 +5259,14 @@ class MainWindow(QMainWindow):
         if not target_conn_id:
              self.refresh_processes_view()
     # change
-    def handle_process_finished(self, process_id, message, time_taken):
-        status = "Successfull"
+    def handle_process_finished(self, process_id, message, time_taken, row_count):
+        status = "Successfull" if row_count == 0 else "Successfull"
         conn = sqlite.connect("databases/hierarchy.db")
         cursor = conn.cursor()
-        if "0 rows" in message.lower() or "no data" in message.lower() or "empty" in message.lower():
-            status = "Warning"
+        # if "0 rows" in message.lower() or "no data" in message.lower() or "empty" in message.lower():
+        #     status = "Warning"
+        # else:
+        #     status = "Successfull"
         cursor.execute("""
           UPDATE usf_processes
           SET status = ?, time_taken = ?, end_time = ?, details = ?

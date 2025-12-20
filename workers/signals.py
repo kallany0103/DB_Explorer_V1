@@ -3,7 +3,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 class ProcessSignals(QObject):
     started = pyqtSignal(str, dict)
-    finished = pyqtSignal(str, str, float)
+    finished = pyqtSignal(str, str, float, int)
     error = pyqtSignal(str, str)
       
 class QuerySignals(QObject):
