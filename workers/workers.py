@@ -1095,7 +1095,6 @@ class RunnableQuery(QRunnable):
             self.signals.finished.emit(
                 self.conn_data, self.query, results, columns, row_count, elapsed_time, is_select_query
             )
-
         except Exception as e:
              if not self._is_cancelled:
                 if conn:
