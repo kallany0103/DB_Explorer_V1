@@ -76,13 +76,12 @@ class CSVConnectionDialog(QDialog):
             "id": self.conn_data.get("id") if self.conn_data else None,
             "name": self.name_input.text().strip(),
             "short_name": self.short_name_input.text().strip(), 
-            "db_path": self.path_input.text().strip(), 
-            "code": "CSV",
-            # 
-            "host": None, 
-            "port": None, 
-            "database": None, 
-            "user": None, 
-            "password": None,
-            "dsn": None
+            "db_path": self.path_input.text().strip(),
+            "code": "CSV"
+            # "host": None, 
+            # "port": None, 
+            # "database": None, 
+            # "user": None, 
+            # "password": None,
+            # "dsn": None
         }

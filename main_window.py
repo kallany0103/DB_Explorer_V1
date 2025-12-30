@@ -27,6 +27,7 @@ from dialogs.sqlite_dialog import SQLiteConnectionDialog
 from dialogs.oracle_dialog import OracleConnectionDialog
 from dialogs.export_dialog import ExportDialog
 from dialogs.csv_dialog import CSVConnectionDialog
+from dialogs.servicenow_dialog import ServiceNowConnectionDialog
 from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
 from notification_manager import NotificationManager
 from code_editor import CodeEditor
@@ -3533,6 +3534,13 @@ class MainWindow(QMainWindow):
                           f"Folder Path: {connection_data.get('db_path', 'N/A')}\n"
                           f"Files will appear as tables"
                       )
+                    
+                    elif code == 'SERVICENOW':
+                        tooltip_text = (
+                          f"Name: {connection_data.get('name', 'N/A')}\n"
+                          f"Instance URL: {connection_data.get('instance_url', 'N/A')}\n"
+                          f"User: {connection_data.get('user', 'N/A')}"
+                     )
                     else:
                         tooltip_text = connection_data.get('name', 'N/A')
 
@@ -3804,6 +3812,12 @@ class MainWindow(QMainWindow):
                add_sqlite_action = QAction("New CSV Connection", self)
                add_sqlite_action.triggered.connect(lambda: self.add_csv_connection(item))
                menu.addAction(add_sqlite_action)
+               
+            elif code == 'SERVICENOW':
+               add_sn_action = QAction("New ServiceNow Connection", self)
+               add_sn_action.triggered.connect(lambda: self.add_servicenow_connection(item))
+               menu.addAction(add_sn_action)
+
 
         elif depth == 3:
             conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -3849,6 +3863,11 @@ class MainWindow(QMainWindow):
                edit_action = QAction("Edit Connection", self)
                edit_action.triggered.connect(lambda: self.edit_csv_connection(item))
                menu.addAction(edit_action)  
+            
+            elif code == 'SERVICENOW':
+                edit_action = QAction("Edit Connection", self)
+                edit_action.triggered.connect(lambda: self.edit_servicenow_connection(item))
+                menu.addAction(edit_action)
                
             delete_action = QAction("Delete Connection", self)
             delete_action.triggered.connect(lambda: self.delete_connection(item))
@@ -3856,40 +3875,40 @@ class MainWindow(QMainWindow):
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     def show_connection_details(self, item):
-      conn_data = item.data(Qt.ItemDataRole.UserRole)
-      if not conn_data:
-          QMessageBox.warning(self, "Error", "Could not retrieve connection data.")
-          return
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+        if not conn_data:
+            QMessageBox.warning(self, "Error", "Could not retrieve connection data.")
+            return
       
-      parent = item.parent()
-      grandparent = parent.parent() if parent else None
-      code = grandparent.data(Qt.ItemDataRole.UserRole) if grandparent else None
+        parent = item.parent()
+        grandparent = parent.parent() if parent else None
+        code = grandparent.data(Qt.ItemDataRole.UserRole) if grandparent else None
 
-      details_title = f"Connection Details: {conn_data.get('name')}"
+        details_title = f"Connection Details: {conn_data.get('name')}"
 
-      if conn_data.get("host"):
-          details_text = (
-              f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
-              f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
-              f"<b>Type:</b> PostgreSQL<br>"
-              f"<b>Host:</b> {conn_data.get('host', 'N/A')}<br>"
-              f"<b>Port:</b> {conn_data.get('port', 'N/A')}<br>"
-              f"<b>Database:</b> {conn_data.get('database', 'N/A')}<br>"
-              f"<b>User:</b> {conn_data.get('user', 'N/A')}"
-          )
-      elif conn_data.get("db_path"):
+        if conn_data.get("host"):
+            details_text = (
+                f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
+                f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
+                f"<b>Type:</b> PostgreSQL<br>"
+                f"<b>Host:</b> {conn_data.get('host', 'N/A')}<br>"
+                f"<b>Port:</b> {conn_data.get('port', 'N/A')}<br>"
+                f"<b>Database:</b> {conn_data.get('database', 'N/A')}<br>"
+                f"<b>User:</b> {conn_data.get('user', 'N/A')}"
+            )
+        elif conn_data.get("db_path"):
           
-          if code == 'CSV':
-                 db_type_str = "CSV"
-                 path_label = "Folder Path"
-          else:
-                 # Default to SQLite if not CSV
-                 db_type_str = "SQLite"
-                 path_label = "Database Path"
+            if  code == 'CSV':
+                db_type_str = "CSV"
+                path_label = "Folder Path"
+            else:
+                # Default to SQLite if not CSV
+                db_type_str = "SQLite"
+                path_label = "Database Path"
           
-          details_text = (
+            details_text = (
               
-              f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
+                f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
                 f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
                 f"<b>Type:</b> {db_type_str}<br>"
                 f"<b>{path_label}:</b> {conn_data.get('db_path', 'N/A')}"
@@ -3897,22 +3916,31 @@ class MainWindow(QMainWindow):
             #   f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
             #   f"<b>Type:</b> SQLite<br>"
             #   f"<b>Database Path:</b> {conn_data.get('db_path', 'N/A')}"
-          )
-      else:
-          details_text = "Could not determine connection type or details."
+            )
+          
+        elif conn_data.get("instance_url"):
+            details_text = (
+                f"<b>Name:</b> {conn_data.get('name', 'N/A')}<br>"
+                f"<b>Short Name:</b> {conn_data.get('short_name', 'N/A')}<br>"
+                f"<b>Type:</b> ServiceNow<br>"
+                f"<b>Instance URL:</b> {conn_data.get('instance_url', 'N/A')}<br>"
+                f"<b>User:</b> {conn_data.get('user', 'N/A')}"
+            ) 
+        else:
+            details_text = "Could not determine connection type or details."
 
-      msg = QMessageBox(self)
-      msg.setWindowTitle(details_title)
-      msg.setIcon(QMessageBox.Icon.Information)
-      msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg = QMessageBox(self)
+        msg.setWindowTitle(details_title)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
 
-      label = QLabel(details_text)
-      label.setTextFormat(Qt.TextFormat.RichText)
-      label.setWordWrap(True)
-      label.setMinimumSize(400, 200)
-      msg.layout().addWidget(label, 0, 1)
+        label = QLabel(details_text)
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setWordWrap(True)
+        label.setMinimumSize(400, 200)
+        msg.layout().addWidget(label, 0, 1)
 
-      msg.exec()
+        msg.exec()
 
 
     def add_connection_group(self, parent_item):
@@ -4025,8 +4053,63 @@ class MainWindow(QMainWindow):
               self.refresh_all_comboboxes()
             except Exception as e:
                QMessageBox.critical(self, "Error", f"Failed to update Oracle connection:\n{e}")
+    
+    
+    
+    def add_servicenow_connection(self, parent_item):
+        connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+        dialog = ServiceNowConnectionDialog(self)
 
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.getData()
+            try:
+                db.add_connection(data, connection_group_id)
+                self._save_tree_expansion_state()
+                self.load_data()
+                self._restore_tree_expansion_state()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(
+                   self,
+                   "Error",
+                   f"Failed to save ServiceNow connection:\n{e}"
+                )
 
+    
+    def edit_servicenow_connection(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+        if not conn_data:
+           return
+
+        dialog = ServiceNowConnectionDialog(self, conn_data=conn_data)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_data = dialog.getData()
+            try:
+                db.update_connection(new_data)
+                self._save_tree_expansion_state()
+                self.load_data()
+                self._restore_tree_expansion_state()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Failed to update ServiceNow connection:\n{e}"
+                )
+
+    
+    def delete_connection(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+        connection_id = conn_data.get("id")
+        reply = QMessageBox.question(self, "Delete Connection", "Are you sure you want to delete this connection?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                db.delete_connection(connection_id)
+                self.load_data()
+                self.refresh_all_comboboxes()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{e}")
 
     def refresh_all_comboboxes(self):
         for i in range(self.tab_widget.count()):
