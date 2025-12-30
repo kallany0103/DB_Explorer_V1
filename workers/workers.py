@@ -237,6 +237,31 @@ class RunnableQuery(QRunnable):
                 elif "db_path" in self.conn_data:
                     code = "SQLITE" 
 
+            elif code == "SERVICENOW":
+                conn = db.create_servicenow_connection(self.conn_data)
+                if not conn:
+                    raise ConnectionError("Failed to connect to ServiceNow")
+
+                cursor = conn.cursor()
+
+                # ServiceNow works best with SELECT
+                cursor.execute(self.query)
+
+                columns = [d[0] for d in cursor.description] if cursor.description else []
+                results = cursor.fetchall() if cursor.description else []
+                row_count = len(results)
+
+            # elif code == 'SERVICENOW':
+            #     conn = db.create_servicenow_connection(self.conn_data)
+            #     cursor = conn.cursor()
+            #     cursor.execute(self.query)
+                
+            #     # SELECT কুয়েরির ফলাফল ফেচ করা
+            #     if cursor.description:
+            #         columns = [desc[0] for desc in cursor.description]
+            #         results = cursor.fetchall()
+            #         row_count = len(results)
+
             # --- CSV via CData ---
             if code == "CSV":
                 folder_path = self.conn_data.get("db_path")

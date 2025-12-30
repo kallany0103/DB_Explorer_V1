@@ -6,6 +6,7 @@ import datetime
 import psycopg2
 import sqlparse
 import cdata.csv as mod
+import cdata.servicenow 
 import sqlite3 as sqlite # This can be removed if not used elsewhere directly
 from functools import partial
 import uuid
@@ -116,7 +117,10 @@ class MainWindow(QMainWindow):
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
+
         add_tab_btn = QPushButton("New")
+        add_tab_btn.setIcon(QIcon("assets/sheet-plus.svg"))  # or .svg
+        add_tab_btn.setIconSize(QSize(20, 22))
         add_tab_btn.clicked.connect(self.add_tab)
         self.tab_widget.setCornerWidget(add_tab_btn)
         self.main_splitter.addWidget(self.tab_widget)
@@ -142,7 +146,7 @@ class MainWindow(QMainWindow):
         self.save_as_action = QAction(save_icon, "Save As...", self)
         self.save_as_action.triggered.connect(self.save_sql_file_as)
         
-        self.exit_action = QAction(QIcon("assets/exit_icon.png"), "Exit", self)
+        self.exit_action = QAction(QIcon("assets/exit.svg"), "Exit", self)
         self.exit_action.triggered.connect(self.close)
         self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
         self.execute_action.triggered.connect(self.execute_query)
@@ -247,33 +251,6 @@ class MainWindow(QMainWindow):
         # toolbar.addAction(self.cancel_action)
         toolbar.addSeparator()
 
-        # edit_button = QToolButton()
-        # edit_button.setText("Edit")
-        # edit_button.setToolTip("Edit Query")
-        # # edit_button.setIcon(QIcon("assets/edit.png"))
-        # edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        # edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-        # edit_menu = QMenu(edit_button)
-        # edit_menu.addAction(self.format_sql_action)
-        # edit_menu.addSeparator()
-        # edit_menu.addAction(self.clear_query_action)
-        
-        # edit_button.setMenu(edit_menu)
-        # toolbar.addWidget(edit_button)
-        
-        # # --- NEW: Limit Dropdown (Like pgAdmin) ---
-        # toolbar.addSeparator()
-        
-        # self.rows_limit_combo = QComboBox()
-        # self.rows_limit_combo.setToolTip("Rows limit")
-        # self.rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
-        # self.rows_limit_combo.setCurrentIndex(1) 
-        # self.rows_limit_combo.setFixedWidth(100) 
-
-        # self.rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query())
-
-        # toolbar.addWidget(self.rows_limit_combo)
-        # ------------------------------------------
 
         toolbar.addWidget(right_spacer)
         self.addToolBar(toolbar)
@@ -507,1913 +484,6 @@ class MainWindow(QMainWindow):
         primary_color, header_color, selection_color = "#D3D3D3", "#A9A9A9", "#A9A9A9"
         text_color_on_primary, alternate_row_color, border_color = "#000000", "#f0f0f0", "#A9A9A9"
         self.setStyleSheet(f"""QMainWindow, QToolBar, QStatusBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }} QTreeView {{ background-color: white; alternate-background-color: {alternate_row_color}; border: 1px solid {border_color}; }} QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}} QTableView::item {{ padding: 4px; }} QTableView::item:selected {{ background-color: {selection_color}; color: white; }} QHeaderView::section {{ background-color: {header_color}; color: white; padding: 4px; border: none; border-right: 1px solid #d3d3d3; border-bottom: 1px solid {border_color}; font-weight: bold; font-size: 9pt;  }} QTableView QTableCornerButton::section {{ background-color: {header_color}; border: 1px solid {border_color}; }} #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }} #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }} #resultsHeader QPushButton:checked, #editorHeader QPushButton:checked {{ background-color: {selection_color}; border-bottom: 1px solid {selection_color}; font-weight: bold; color: white; }} #resultsHeader, #editorHeader {{ background-color: {alternate_row_color}; padding-bottom: -1px; }} #messageView, #history_details_view, QTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }} #tab_status_label {{ padding: 3px 5px; background-color: {alternate_row_color}; border-top: 1px solid {border_color}; }} QGroupBox {{ font-size: 9pt; font-weight: bold; color: {text_color_on_primary}; }} QTabWidget::pane {{ border-top: 1px solid {border_color}; }} QTabBar::tab {{ background: #E0E0E0; border: 1px solid {border_color}; padding: 5px 10px; border-bottom: none; }} QTabBar::tab:selected {{ background: {selection_color}; color: white; }} QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; }}""")
-
-    # def add_tab(self):
-    #     tab_content = QWidget(self.tab_widget)
-    #     layout = QVBoxLayout(tab_content)
-    #     layout.setContentsMargins(0, 0, 0, 0)
-    #     layout.setSpacing(0)
-
-    #     # 1. Database Selection Combo Box
-    #     db_combo_box = QComboBox()
-    #     db_combo_box.setObjectName("db_combo_box")
-    #     layout.addWidget(db_combo_box)
-    #     self.load_joined_connections(db_combo_box)
-    #     db_combo_box.currentIndexChanged.connect(lambda: self.refresh_processes_view())
-
-    #     # 2. Tab-specific Toolbar (Between Combobox and Editor)
-    #     toolbar_widget = QWidget()
-    #     toolbar_widget.setObjectName("tab_toolbar")
-    #     toolbar_layout = QHBoxLayout(toolbar_widget)
-    #     toolbar_layout.setContentsMargins(5, 5, 5, 5)
-    #     toolbar_layout.setSpacing(5)
-
-    #     # --- Group A: File Actions ---
-    #     open_btn = QToolButton()
-    #     open_btn.setDefaultAction(self.open_file_action)
-    #     open_btn.setToolTip("Open SQL File")
-    #     toolbar_layout.addWidget(open_btn)
-
-    #     save_btn = QToolButton()
-    #     save_btn.setDefaultAction(self.save_as_action)
-    #     save_btn.setToolTip("Save SQL File")
-    #     toolbar_layout.addWidget(save_btn)
-        
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # --- Group B: Execution & Edit Actions ---
-    #     # Execute
-    #     exec_btn = QToolButton()
-    #     exec_btn.setDefaultAction(self.execute_action)
-    #     exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(exec_btn)
-
-    #     # Cancel
-    #     cancel_btn = QToolButton()
-    #     cancel_btn.setDefaultAction(self.cancel_action)
-    #     cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(cancel_btn)
-
-    #     # Edit Menu Button
-    #     edit_button = QToolButton()
-    #     edit_button.setText("Edit")
-    #     edit_button.setToolTip("Edit Query")
-    #     edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-    #     edit_menu = QMenu(edit_button)
-    #     edit_menu.addAction(self.format_sql_action)
-    #     edit_menu.addSeparator()
-    #     edit_menu.addAction(self.clear_query_action)
-    #     edit_button.setMenu(edit_menu)
-    #     toolbar_layout.addWidget(edit_button)
-
-    #     # Limit ComboBox (New instance per tab)
-    #     rows_limit_combo = QComboBox()
-    #     rows_limit_combo.setObjectName("rows_limit_combo") # Important for finding it later
-    #     rows_limit_combo.setToolTip("Rows limit")
-    #     rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
-    #     rows_limit_combo.setCurrentIndex(1) 
-    #     rows_limit_combo.setFixedWidth(100)
-    #     rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query()) 
-    #     toolbar_layout.addWidget(rows_limit_combo)
-
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # --- Group C: Exit (As requested) ---
-    #     # exit_btn = QToolButton()
-    #     # exit_btn.setDefaultAction(self.exit_action)
-    #     # exit_btn.setToolTip("Exit Application")
-    #     # toolbar_layout.addWidget(exit_btn)
-
-    #     toolbar_layout.addStretch() # Push everything to the left
-    #     layout.addWidget(toolbar_widget) # Add the new toolbar to the main tab layout
-
-
-    #     # 3. Main Splitter (Editor vs Results)
-    #     main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-    #     main_vertical_splitter.setObjectName("tab_vertical_splitter")
-    #     layout.addWidget(main_vertical_splitter)
-
-    #     # ----------------- Editor Container -----------------
-    #     editor_container = QWidget()
-    #     editor_layout = QVBoxLayout(editor_container)
-    #     editor_layout.setContentsMargins(0, 0, 0, 0)
-    #     editor_layout.setSpacing(0)
-
-    #     editor_header = QWidget()
-    #     editor_header.setObjectName("editorHeader")
-    #     editor_header_layout = QHBoxLayout(editor_header)
-    #     editor_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     editor_header_layout.setSpacing(2)
-
-    #     query_view_btn = QPushButton("Query")
-    #     history_view_btn = QPushButton("Query History")
-
-    #     query_view_btn.setMinimumWidth(100)
-    #     history_view_btn.setMinimumWidth(150)
-
-    #     query_view_btn.setCheckable(True)
-    #     history_view_btn.setCheckable(True)
-    #     query_view_btn.setChecked(True)
-
-    #     editor_header_layout.addWidget(query_view_btn)
-    #     editor_header_layout.addWidget(history_view_btn)
-    #     editor_header_layout.addStretch()
-    #     editor_layout.addWidget(editor_header)
-
-    #     # --- Editor toggle button group ---
-    #     editor_button_group = QButtonGroup(self)
-    #     editor_button_group.setExclusive(True)
-    #     editor_button_group.addButton(query_view_btn, 0)
-    #     editor_button_group.addButton(history_view_btn, 1)
-
-    #     editor_stack = QStackedWidget()
-    #     editor_stack.setObjectName("editor_stack")
-
-    #     text_edit = CodeEditor()
-    #     text_edit.setPlaceholderText("Write your SQL query here...")
-    #     text_edit.setObjectName("query_editor")
-    #     editor_stack.addWidget(text_edit)
-
-    #     history_widget = QSplitter(Qt.Orientation.Horizontal)
-    #     history_list_view = QTreeView()
-    #     history_list_view.setObjectName("history_list_view")
-    #     history_list_view.setHeaderHidden(True)
-    #     history_list_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
-    #     history_details_group = QGroupBox("Query Details")
-    #     history_details_layout = QVBoxLayout(history_details_group)
-    #     history_details_view = QTextEdit()
-    #     history_details_view.setObjectName("history_details_view")
-    #     history_details_view.setReadOnly(True)
-    #     history_details_layout.addWidget(history_details_view)
-
-    #     history_button_layout = QHBoxLayout()
-    #     copy_history_btn = QPushButton("Copy")
-    #     copy_to_edit_btn = QPushButton("Copy to Edit Query")
-    #     remove_history_btn = QPushButton("Remove")
-    #     remove_all_history_btn = QPushButton("Remove All")
-    
-    #     history_button_layout.addStretch()
-    #     history_button_layout.addWidget(copy_history_btn)
-    #     history_button_layout.addWidget(copy_to_edit_btn)
-    #     history_button_layout.addWidget(remove_history_btn)
-    #     history_button_layout.addWidget(remove_all_history_btn)
-    #     history_details_layout.addLayout(history_button_layout)
-
-    #     history_widget.addWidget(history_list_view)
-    #     history_widget.addWidget(history_details_group)
-    #     history_widget.setSizes([400, 400])
-    #     editor_stack.addWidget(history_widget)
-
-    #     editor_layout.addWidget(editor_stack)
-    #     main_vertical_splitter.addWidget(editor_container)
-
-    #     # --- Editor switching logic ---
-    #     def switch_editor_view(index):
-    #         editor_stack.setCurrentIndex(index)
-    #         if index == 1:
-    #           self.load_connection_history(tab_content)
-
-    #     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
-    #     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
-
-    #     db_combo_box.currentIndexChanged.connect(
-    #       lambda: editor_stack.currentIndex() == 1 and self.load_connection_history(tab_content)
-    #     )
-    #     history_list_view.clicked.connect(lambda index: self.display_history_details(index, tab_content))
-    
-    #     copy_history_btn.clicked.connect(lambda: self.copy_history_query(tab_content))
-    #     copy_to_edit_btn.clicked.connect(lambda: self.copy_history_to_editor(tab_content))
-    #     remove_history_btn.clicked.connect(lambda: self.remove_selected_history(tab_content))
-    #     remove_all_history_btn.clicked.connect(lambda: self.remove_all_history_for_connection(tab_content))
-
-    #     # ----------------- Results Container -----------------
-    #     results_container = QWidget()
-    #     results_layout = QVBoxLayout(results_container)
-    #     results_layout.setContentsMargins(0, 0, 0, 0)
-    #     results_layout.setSpacing(0)
-
-    #     results_header = QWidget()
-    #     results_header.setObjectName("resultsHeader")
-    #     results_header_layout = QHBoxLayout(results_header)
-    #     results_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     results_header_layout.setSpacing(2)
-
-    #     output_btn = QPushButton("Output")
-    #     message_btn = QPushButton("Messages")
-    #     notification_btn = QPushButton("Notifications")
-    #     process_btn = QPushButton("Processes")
-
-    #     output_btn.setMinimumWidth(100)
-    #     message_btn.setMinimumWidth(100)
-    #     notification_btn.setMinimumWidth(120)
-    #     process_btn.setMinimumWidth(100)
-
-    #     output_btn.setCheckable(True)
-    #     message_btn.setCheckable(True)
-    #     notification_btn.setCheckable(True)
-    #     process_btn.setCheckable(True)
-    #     output_btn.setChecked(True)
-
-    #     results_header_layout.addWidget(output_btn)
-    #     results_header_layout.addWidget(message_btn)
-    #     results_header_layout.addWidget(notification_btn)
-    #     results_header_layout.addWidget(process_btn)
-    #     results_header_layout.addStretch()
-        
-    #     # <<< FIX applied here: Adding the header to the layout >>>
-    #     results_layout.addWidget(results_header) 
-
-    #     results_button_group = QButtonGroup(self)
-    #     results_button_group.setExclusive(True)
-    #     results_button_group.addButton(output_btn, 0)
-    #     results_button_group.addButton(message_btn, 1)
-    #     results_button_group.addButton(notification_btn, 2)
-    #     results_button_group.addButton(process_btn, 3)
-
-    #     results_stack = QStackedWidget()
-    #     results_stack.setObjectName("results_stacked_widget")
-
-    #     # Page 0: Table View
-    #     table_view = QTableView()
-    #     table_view.setObjectName("result_table")
-    #     table_view.setAlternatingRowColors(True)
-    #     table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    #     table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-    #     results_stack.addWidget(table_view)
-
-    #     # Page 1: Message View
-    #     message_view = QTextEdit()
-    #     message_view.setObjectName("message_view")
-    #     message_view.setReadOnly(True)
-    #     results_stack.addWidget(message_view)
-
-    #     # Page 2: Notification View
-    #     notification_view = QLabel("Notifications will appear here.")
-    #     notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     results_stack.addWidget(notification_view)
-
-    #     # Page 3: Processes View
-    #     processes_view = QTableView()
-    #     processes_view.setObjectName("processes_view")
-    #     processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-    #     processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    #     processes_view.setAlternatingRowColors(True)
-    #     processes_view.horizontalHeader().setStretchLastSection(True)
-    #     processes_view.setColumnWidth(0, 150)
-    #     processes_view.setColumnWidth(1, 100)
-    #     processes_view.setColumnWidth(2, 100)
-    #     processes_view.setColumnWidth(3, 150)
-    #     processes_view.setColumnWidth(4, 150)
-    #     processes_view.setColumnWidth(5, 120)
-    #     processes_view.setColumnWidth(6, 150)
-    #     processes_view.setColumnWidth(7, 150)
-    #     results_stack.addWidget(processes_view)
-        
-    #     # Page 4: Spinner / Loading
-    #     spinner_overlay_widget = QWidget()
-    #     spinner_layout = QHBoxLayout(spinner_overlay_widget)
-    #     spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     spinner_movie = QMovie("assets/spinner.gif")
-    #     spinner_label = QLabel()
-    #     spinner_label.setObjectName("spinner_label")
-
-    #     if not spinner_movie.isValid():
-    #         spinner_label.setText("Loading...")
-    #     else:
-    #         spinner_label.setMovie(spinner_movie)
-    #         spinner_movie.setScaledSize(QSize(32, 32))
-            
-    #     loading_text_label = QLabel("Waiting for query to complete...")
-    #     font = QFont()
-    #     font.setPointSize(10)
-    #     loading_text_label.setFont(font)
-    #     loading_text_label.setStyleSheet("color: #555;")
-    #     spinner_layout.addWidget(spinner_label)
-    #     spinner_layout.addWidget(loading_text_label)
-    #     results_stack.addWidget(spinner_overlay_widget)
-
-    #     results_layout.addWidget(results_stack)
-
-    #     tab_status_label = QLabel("Ready")
-    #     tab_status_label.setObjectName("tab_status_label")
-    #     results_layout.addWidget(tab_status_label)
-
-    #     def switch_results_view(index):
-    #        results_stack.setCurrentIndex(index)
-
-    #     output_btn.clicked.connect(lambda: switch_results_view(0))
-    #     message_btn.clicked.connect(lambda: switch_results_view(1))
-    #     notification_btn.clicked.connect(lambda: switch_results_view(2))
-    #     process_btn.clicked.connect(lambda: switch_results_view(3))
-
-    #     main_vertical_splitter.addWidget(results_container)
-    #     main_vertical_splitter.setSizes([300, 300])
-
-    #     tab_content.setLayout(layout)
-    #     index = self.tab_widget.addTab(
-    #         tab_content, f"Worksheet {self.tab_widget.count() + 1}"
-    #     )
-    #     self.tab_widget.setCurrentIndex(index)
-    #     self.renumber_tabs()
-    #     self._initialize_processes_model(tab_content)
-    #     return tab_content
-
-    # def add_tab(self):
-    #     tab_content = QWidget(self.tab_widget)
-    #     layout = QVBoxLayout(tab_content)
-    #     layout.setContentsMargins(0, 0, 0, 0)
-    #     layout.setSpacing(0)
-
-    #     # 1. Database Selection Combo Box
-    #     db_combo_box = QComboBox()
-    #     db_combo_box.setObjectName("db_combo_box")
-    #     layout.addWidget(db_combo_box)
-    #     self.load_joined_connections(db_combo_box)
-    #     db_combo_box.currentIndexChanged.connect(lambda: self.refresh_processes_view())
-
-    #     # 2. Tab-specific Toolbar (Between Combobox and Editor)
-    #     toolbar_widget = QWidget()
-    #     toolbar_widget.setObjectName("tab_toolbar")
-    #     toolbar_layout = QHBoxLayout(toolbar_widget)
-    #     toolbar_layout.setContentsMargins(5, 5, 5, 5)
-    #     toolbar_layout.setSpacing(5)
-
-    #     # --- Group A: File Actions ---
-    #     open_btn = QToolButton()
-    #     open_btn.setDefaultAction(self.open_file_action)
-    #     open_btn.setToolTip("Open SQL File")
-    #     toolbar_layout.addWidget(open_btn)
-
-    #     save_btn = QToolButton()
-    #     save_btn.setDefaultAction(self.save_as_action)
-    #     save_btn.setToolTip("Save SQL File")
-    #     toolbar_layout.addWidget(save_btn)
-        
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # --- Group B: Execution & Edit Actions ---
-    #     # Execute
-    #     exec_btn = QToolButton()
-    #     exec_btn.setDefaultAction(self.execute_action)
-    #     exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(exec_btn)
-
-    #     # Cancel
-    #     cancel_btn = QToolButton()
-    #     cancel_btn.setDefaultAction(self.cancel_action)
-    #     cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(cancel_btn)
-
-    #     # Edit Menu Button
-    #     edit_button = QToolButton()
-    #     edit_button.setText("Edit")
-    #     edit_button.setToolTip("Edit Query")
-    #     edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-    #     edit_menu = QMenu(edit_button)
-    #     edit_menu.addAction(self.format_sql_action)
-    #     edit_menu.addSeparator()
-    #     edit_menu.addAction(self.clear_query_action)
-    #     edit_button.setMenu(edit_menu)
-    #     toolbar_layout.addWidget(edit_button)
-
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # ---------------------------------------------------------
-    #     # --- NEW: pgAdmin Style Rows Limit & Offset ---
-    #     # ---------------------------------------------------------
-        
-    #     # --- LIMIT SECTION ---
-    #     rows_label = QLabel("Limit:")
-    #     font = QFont()
-    #     font.setBold(True)
-    #     rows_label.setFont(font)
-    #     toolbar_layout.addWidget(rows_label)
-
-    #     rows_limit_combo = QComboBox()
-    #     rows_limit_combo.setObjectName("rows_limit_combo") 
-    #     rows_limit_combo.setToolTip("Select or type row limit (e.g., 1000)")
-    #     rows_limit_combo.setEditable(True) 
-    #     rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
-    #     rows_limit_combo.setCurrentIndex(1) # Default to 1000
-    #     rows_limit_combo.setFixedWidth(100)
-        
-    #     # Triggers for Limit
-    #     rows_limit_combo.lineEdit().returnPressed.connect(lambda: self.execute_query())
-    #     rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query()) 
-    #     toolbar_layout.addWidget(rows_limit_combo)
-
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # --- OFFSET (START ROW) SECTION ---
-    #     offset_label = QLabel("Start Row:")
-    #     offset_label.setFont(font)
-    #     toolbar_layout.addWidget(offset_label)
-
-    #     offset_input = QSpinBox()
-    #     offset_input.setObjectName("offset_input")
-    #     offset_input.setToolTip("Start from row number (Offset)")
-    #     offset_input.setRange(0, 999999999) # Allow large numbers
-    #     offset_input.setSingleStep(10)      # Step up/down by 10
-    #     offset_input.setValue(0)            # Default 0
-    #     offset_input.setFixedWidth(80)
-        
-    #     # Trigger query on Enter press or value change finish
-    #     offset_input.editingFinished.connect(lambda: self.execute_query())
-        
-    #     toolbar_layout.addWidget(offset_input)
-    #     # ---------------------------------------------------------
-
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-    #     toolbar_layout.addStretch() # Push everything to the left
-    #     layout.addWidget(toolbar_widget)
-
-
-    #     # 3. Main Splitter (Editor vs Results)
-    #     main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-    #     main_vertical_splitter.setObjectName("tab_vertical_splitter")
-    #     layout.addWidget(main_vertical_splitter)
-
-    #     # ----------------- Editor Container -----------------
-    #     editor_container = QWidget()
-    #     editor_layout = QVBoxLayout(editor_container)
-    #     editor_layout.setContentsMargins(0, 0, 0, 0)
-    #     editor_layout.setSpacing(0)
-
-    #     editor_header = QWidget()
-    #     editor_header.setObjectName("editorHeader")
-    #     editor_header_layout = QHBoxLayout(editor_header)
-    #     editor_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     editor_header_layout.setSpacing(2)
-
-    #     query_view_btn = QPushButton("Query")
-    #     history_view_btn = QPushButton("Query History")
-
-    #     query_view_btn.setMinimumWidth(100)
-    #     history_view_btn.setMinimumWidth(150)
-
-    #     query_view_btn.setCheckable(True)
-    #     history_view_btn.setCheckable(True)
-    #     query_view_btn.setChecked(True)
-
-    #     editor_header_layout.addWidget(query_view_btn)
-    #     editor_header_layout.addWidget(history_view_btn)
-    #     editor_header_layout.addStretch()
-    #     editor_layout.addWidget(editor_header)
-
-    #     # --- Editor toggle button group ---
-    #     editor_button_group = QButtonGroup(self)
-    #     editor_button_group.setExclusive(True)
-    #     editor_button_group.addButton(query_view_btn, 0)
-    #     editor_button_group.addButton(history_view_btn, 1)
-
-    #     editor_stack = QStackedWidget()
-    #     editor_stack.setObjectName("editor_stack")
-
-    #     text_edit = CodeEditor()
-    #     text_edit.setPlaceholderText("Write your SQL query here...")
-    #     text_edit.setObjectName("query_editor")
-    #     editor_stack.addWidget(text_edit)
-
-    #     history_widget = QSplitter(Qt.Orientation.Horizontal)
-    #     history_list_view = QTreeView()
-    #     history_list_view.setObjectName("history_list_view")
-    #     history_list_view.setHeaderHidden(True)
-    #     history_list_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
-    #     history_details_group = QGroupBox("Query Details")
-    #     history_details_layout = QVBoxLayout(history_details_group)
-    #     history_details_view = QTextEdit()
-    #     history_details_view.setObjectName("history_details_view")
-    #     history_details_view.setReadOnly(True)
-    #     history_details_layout.addWidget(history_details_view)
-
-    #     history_button_layout = QHBoxLayout()
-    #     copy_history_btn = QPushButton("Copy")
-    #     copy_to_edit_btn = QPushButton("Copy to Edit Query")
-    #     remove_history_btn = QPushButton("Remove")
-    #     remove_all_history_btn = QPushButton("Remove All")
-    
-    #     history_button_layout.addStretch()
-    #     history_button_layout.addWidget(copy_history_btn)
-    #     history_button_layout.addWidget(copy_to_edit_btn)
-    #     history_button_layout.addWidget(remove_history_btn)
-    #     history_button_layout.addWidget(remove_all_history_btn)
-    #     history_details_layout.addLayout(history_button_layout)
-
-    #     history_widget.addWidget(history_list_view)
-    #     history_widget.addWidget(history_details_group)
-    #     history_widget.setSizes([400, 400])
-    #     editor_stack.addWidget(history_widget)
-
-    #     editor_layout.addWidget(editor_stack)
-    #     main_vertical_splitter.addWidget(editor_container)
-
-    #     # --- Editor switching logic ---
-    #     def switch_editor_view(index):
-    #         editor_stack.setCurrentIndex(index)
-    #         if index == 1:
-    #           self.load_connection_history(tab_content)
-
-    #     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
-    #     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
-
-    #     db_combo_box.currentIndexChanged.connect(
-    #       lambda: editor_stack.currentIndex() == 1 and self.load_connection_history(tab_content)
-    #     )
-    #     history_list_view.clicked.connect(lambda index: self.display_history_details(index, tab_content))
-    
-    #     copy_history_btn.clicked.connect(lambda: self.copy_history_query(tab_content))
-    #     copy_to_edit_btn.clicked.connect(lambda: self.copy_history_to_editor(tab_content))
-    #     remove_history_btn.clicked.connect(lambda: self.remove_selected_history(tab_content))
-    #     remove_all_history_btn.clicked.connect(lambda: self.remove_all_history_for_connection(tab_content))
-
-    #     # ----------------- Results Container -----------------
-    #     results_container = QWidget()
-    #     results_layout = QVBoxLayout(results_container)
-    #     results_layout.setContentsMargins(0, 0, 0, 0)
-    #     results_layout.setSpacing(0)
-
-    #     results_header = QWidget()
-    #     results_header.setObjectName("resultsHeader")
-    #     results_header_layout = QHBoxLayout(results_header)
-    #     results_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     results_header_layout.setSpacing(2)
-
-    #     output_btn = QPushButton("Output")
-    #     message_btn = QPushButton("Messages")
-    #     notification_btn = QPushButton("Notifications")
-    #     process_btn = QPushButton("Processes")
-
-    #     output_btn.setMinimumWidth(100)
-    #     message_btn.setMinimumWidth(100)
-    #     notification_btn.setMinimumWidth(120)
-    #     process_btn.setMinimumWidth(100)
-
-    #     output_btn.setCheckable(True)
-    #     message_btn.setCheckable(True)
-    #     notification_btn.setCheckable(True)
-    #     process_btn.setCheckable(True)
-    #     output_btn.setChecked(True)
-
-    #     results_header_layout.addWidget(output_btn)
-    #     results_header_layout.addWidget(message_btn)
-    #     results_header_layout.addWidget(notification_btn)
-    #     results_header_layout.addWidget(process_btn)
-    #     results_header_layout.addStretch()
-        
-    #     results_layout.addWidget(results_header) 
-
-    #     results_button_group = QButtonGroup(self)
-    #     results_button_group.setExclusive(True)
-    #     results_button_group.addButton(output_btn, 0)
-    #     results_button_group.addButton(message_btn, 1)
-    #     results_button_group.addButton(notification_btn, 2)
-    #     results_button_group.addButton(process_btn, 3)
-
-    #     results_stack = QStackedWidget()
-    #     results_stack.setObjectName("results_stacked_widget")
-
-    #     # Page 0: Table View
-    #     table_view = QTableView()
-    #     table_view.setObjectName("result_table")
-    #     table_view.setAlternatingRowColors(True)
-    #     table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    #     table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-    #     results_stack.addWidget(table_view)
-
-    #     # Page 1: Message View
-    #     message_view = QTextEdit()
-    #     message_view.setObjectName("message_view")
-    #     message_view.setReadOnly(True)
-    #     results_stack.addWidget(message_view)
-
-    #     # Page 2: Notification View
-    #     notification_view = QLabel("Notifications will appear here.")
-    #     notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     results_stack.addWidget(notification_view)
-
-    #     # Page 3: Processes View
-    #     processes_view = QTableView()
-    #     processes_view.setObjectName("processes_view")
-    #     processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-    #     processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    #     processes_view.setAlternatingRowColors(True)
-    #     processes_view.horizontalHeader().setStretchLastSection(True)
-    #     results_stack.addWidget(processes_view)
-        
-    #     # Page 4: Spinner / Loading
-    #     spinner_overlay_widget = QWidget()
-    #     spinner_layout = QHBoxLayout(spinner_overlay_widget)
-    #     spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     spinner_movie = QMovie("assets/spinner.gif")
-    #     spinner_label = QLabel()
-    #     spinner_label.setObjectName("spinner_label")
-
-    #     if not spinner_movie.isValid():
-    #         spinner_label.setText("Loading...")
-    #     else:
-    #         spinner_label.setMovie(spinner_movie)
-    #         spinner_movie.setScaledSize(QSize(32, 32))
-            
-    #     loading_text_label = QLabel("Waiting for query to complete...")
-    #     font = QFont()
-    #     font.setPointSize(10)
-    #     loading_text_label.setFont(font)
-    #     loading_text_label.setStyleSheet("color: #555;")
-    #     spinner_layout.addWidget(spinner_label)
-    #     spinner_layout.addWidget(loading_text_label)
-    #     results_stack.addWidget(spinner_overlay_widget)
-
-    #     results_layout.addWidget(results_stack)
-
-    #     tab_status_label = QLabel("Ready")
-    #     tab_status_label.setObjectName("tab_status_label")
-    #     results_layout.addWidget(tab_status_label)
-
-    #     def switch_results_view(index):
-    #        results_stack.setCurrentIndex(index)
-
-    #     output_btn.clicked.connect(lambda: switch_results_view(0))
-    #     message_btn.clicked.connect(lambda: switch_results_view(1))
-    #     notification_btn.clicked.connect(lambda: switch_results_view(2))
-    #     process_btn.clicked.connect(lambda: switch_results_view(3))
-
-    #     main_vertical_splitter.addWidget(results_container)
-    #     main_vertical_splitter.setSizes([300, 300])
-
-    #     tab_content.setLayout(layout)
-    #     index = self.tab_widget.addTab(
-    #         tab_content, f"Worksheet {self.tab_widget.count() + 1}"
-    #     )
-    #     self.tab_widget.setCurrentIndex(index)
-    #     self.renumber_tabs()
-    #     self._initialize_processes_model(tab_content)
-    #     return tab_content
-
-    # def add_tab(self):
-    #     tab_content = QWidget(self.tab_widget)
-    #     layout = QVBoxLayout(tab_content)
-    #     layout.setContentsMargins(0, 0, 0, 0)
-    #     layout.setSpacing(0)
-        
-    #     font = QFont()
-    #     font.setBold(True)
-
-    #     # 1. Database Selection Combo Box
-    #     db_combo_box = QComboBox()
-    #     db_combo_box.setObjectName("db_combo_box")
-    #     layout.addWidget(db_combo_box)
-    #     self.load_joined_connections(db_combo_box)
-    #     db_combo_box.currentIndexChanged.connect(lambda: self.refresh_processes_view())
-
-    #     # 2. Tab-specific Toolbar (Top)
-    #     toolbar_widget = QWidget()
-    #     toolbar_widget.setObjectName("tab_toolbar")
-    #     toolbar_layout = QHBoxLayout(toolbar_widget)
-    #     toolbar_layout.setContentsMargins(5, 5, 5, 5)
-    #     toolbar_layout.setSpacing(5)
-
-    #     # --- Group A: File Actions ---
-    #     open_btn = QToolButton()
-    #     open_btn.setDefaultAction(self.open_file_action)
-    #     open_btn.setToolTip("Open SQL File")
-    #     toolbar_layout.addWidget(open_btn)
-
-    #     save_btn = QToolButton()
-    #     save_btn.setDefaultAction(self.save_as_action)
-    #     save_btn.setToolTip("Save SQL File")
-    #     toolbar_layout.addWidget(save_btn)
-        
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # --- Group B: Execution & Edit Actions ---
-    #     exec_btn = QToolButton()
-    #     exec_btn.setDefaultAction(self.execute_action)
-    #     exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(exec_btn)
-
-    #     cancel_btn = QToolButton()
-    #     cancel_btn.setDefaultAction(self.cancel_action)
-    #     cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(cancel_btn)
-
-    #     edit_button = QToolButton()
-    #     edit_button.setText("Edit")
-    #     edit_button.setToolTip("Edit Query")
-    #     edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-    #     edit_menu = QMenu(edit_button)
-    #     edit_menu.addAction(self.format_sql_action)
-    #     edit_menu.addSeparator()
-    #     edit_menu.addAction(self.clear_query_action)
-    #     edit_button.setMenu(edit_menu)
-    #     toolbar_layout.addWidget(edit_button)
-
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # ---------------------------------------------------------
-    #     # --- ROWS LIMIT (STAYS AT TOP TOOLBAR) ---
-    #     # ---------------------------------------------------------
-    #     rows_label = QLabel("Limit:")
-    #     rows_label.setFont(font)
-    #     toolbar_layout.addWidget(rows_label)
-
-    #     rows_limit_combo = QComboBox()
-    #     rows_limit_combo.setObjectName("rows_limit_combo") 
-    #     rows_limit_combo.setToolTip("Select or type row limit (e.g., 1000)")
-    #     rows_limit_combo.setEditable(True) 
-    #     rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
-    #     rows_limit_combo.setCurrentIndex(1) # Default to 1000
-    #     rows_limit_combo.setFixedWidth(100)
-        
-    #     # Triggers for Limit
-    #     rows_limit_combo.lineEdit().returnPressed.connect(lambda: self.execute_query())
-    #     rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query()) 
-    #     toolbar_layout.addWidget(rows_limit_combo)
-        
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-    #     toolbar_layout.addStretch() # Push everything to the left
-    #     layout.addWidget(toolbar_widget)
-
-    #     # 3. Main Splitter (Editor vs Results)
-    #     main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-    #     main_vertical_splitter.setObjectName("tab_vertical_splitter")
-    #     layout.addWidget(main_vertical_splitter)
-
-    #     # ----------------- Editor Container -----------------
-    #     editor_container = QWidget()
-    #     editor_layout = QVBoxLayout(editor_container)
-    #     editor_layout.setContentsMargins(0, 0, 0, 0)
-    #     editor_layout.setSpacing(0)
-
-    #     editor_header = QWidget()
-    #     editor_header.setObjectName("editorHeader")
-    #     editor_header_layout = QHBoxLayout(editor_header)
-    #     editor_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     editor_header_layout.setSpacing(2)
-
-    #     query_view_btn = QPushButton("Query")
-    #     history_view_btn = QPushButton("Query History")
-    #     query_view_btn.setMinimumWidth(100)
-    #     history_view_btn.setMinimumWidth(150)
-    #     query_view_btn.setCheckable(True)
-    #     history_view_btn.setCheckable(True)
-    #     query_view_btn.setChecked(True)
-
-    #     editor_header_layout.addWidget(query_view_btn)
-    #     editor_header_layout.addWidget(history_view_btn)
-    #     editor_header_layout.addStretch()
-    #     editor_layout.addWidget(editor_header)
-
-    #     # --- Editor toggle button group ---
-    #     editor_button_group = QButtonGroup(self)
-    #     editor_button_group.setExclusive(True)
-    #     editor_button_group.addButton(query_view_btn, 0)
-    #     editor_button_group.addButton(history_view_btn, 1)
-
-    #     editor_stack = QStackedWidget()
-    #     editor_stack.setObjectName("editor_stack")
-
-    #     text_edit = CodeEditor()
-    #     text_edit.setPlaceholderText("Write your SQL query here...")
-    #     text_edit.setObjectName("query_editor")
-    #     editor_stack.addWidget(text_edit)
-
-    #     history_widget = QSplitter(Qt.Orientation.Horizontal)
-    #     history_list_view = QTreeView()
-    #     history_list_view.setObjectName("history_list_view")
-    #     history_list_view.setHeaderHidden(True)
-    #     history_list_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
-    #     history_details_group = QGroupBox("Query Details")
-    #     history_details_layout = QVBoxLayout(history_details_group)
-    #     history_details_view = QTextEdit()
-    #     history_details_view.setObjectName("history_details_view")
-    #     history_details_view.setReadOnly(True)
-    #     history_details_layout.addWidget(history_details_view)
-
-    #     history_button_layout = QHBoxLayout()
-    #     copy_history_btn = QPushButton("Copy")
-    #     copy_to_edit_btn = QPushButton("Copy to Edit Query")
-    #     remove_history_btn = QPushButton("Remove")
-    #     remove_all_history_btn = QPushButton("Remove All")
-    
-    #     history_button_layout.addStretch()
-    #     history_button_layout.addWidget(copy_history_btn)
-    #     history_button_layout.addWidget(copy_to_edit_btn)
-    #     history_button_layout.addWidget(remove_history_btn)
-    #     history_button_layout.addWidget(remove_all_history_btn)
-    #     history_details_layout.addLayout(history_button_layout)
-
-    #     history_widget.addWidget(history_list_view)
-    #     history_widget.addWidget(history_details_group)
-    #     history_widget.setSizes([400, 400])
-    #     editor_stack.addWidget(history_widget)
-
-    #     editor_layout.addWidget(editor_stack)
-    #     main_vertical_splitter.addWidget(editor_container)
-
-    #     # --- Editor switching logic ---
-    #     def switch_editor_view(index):
-    #         editor_stack.setCurrentIndex(index)
-    #         if index == 1:
-    #           self.load_connection_history(tab_content)
-
-    #     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
-    #     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
-
-    #     db_combo_box.currentIndexChanged.connect(
-    #       lambda: editor_stack.currentIndex() == 1 and self.load_connection_history(tab_content)
-    #     )
-    #     history_list_view.clicked.connect(lambda index: self.display_history_details(index, tab_content))
-    
-    #     copy_history_btn.clicked.connect(lambda: self.copy_history_query(tab_content))
-    #     copy_to_edit_btn.clicked.connect(lambda: self.copy_history_to_editor(tab_content))
-    #     remove_history_btn.clicked.connect(lambda: self.remove_selected_history(tab_content))
-    #     remove_all_history_btn.clicked.connect(lambda: self.remove_all_history_for_connection(tab_content))
-
-    #     # ----------------- Results Container -----------------
-    #     results_container = QWidget()
-    #     results_layout = QVBoxLayout(results_container)
-    #     results_layout.setContentsMargins(0, 0, 0, 0)
-    #     results_layout.setSpacing(0)
-
-    #     results_header = QWidget()
-    #     results_header.setObjectName("resultsHeader")
-    #     results_header_layout = QHBoxLayout(results_header)
-    #     results_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     results_header_layout.setSpacing(2)
-
-    #     output_btn = QPushButton("Output")
-    #     message_btn = QPushButton("Messages")
-    #     notification_btn = QPushButton("Notifications")
-    #     process_btn = QPushButton("Processes")
-
-    #     output_btn.setMinimumWidth(100)
-    #     message_btn.setMinimumWidth(100)
-    #     notification_btn.setMinimumWidth(120)
-    #     process_btn.setMinimumWidth(100)
-
-    #     output_btn.setCheckable(True)
-    #     message_btn.setCheckable(True)
-    #     notification_btn.setCheckable(True)
-    #     process_btn.setCheckable(True)
-    #     output_btn.setChecked(True)
-
-    #     results_header_layout.addWidget(output_btn)
-    #     results_header_layout.addWidget(message_btn)
-    #     results_header_layout.addWidget(notification_btn)
-    #     results_header_layout.addWidget(process_btn)
-        
-    #     results_header_layout.addStretch()
-        
-    #     # ---------------------------------------------------------
-    #     # --- START ROW / OFFSET (MOVED TO RESULTS HEADER) ---
-    #     # ---------------------------------------------------------
-    #     line = QFrame()
-    #     line.setFrameShape(QFrame.Shape.VLine)
-    #     line.setFrameShadow(QFrame.Shadow.Sunken)
-    #     results_header_layout.addWidget(line)
-
-    #     offset_label = QLabel("Start Row:")
-    #     offset_label.setFont(font)
-    #     results_header_layout.addWidget(offset_label)
-
-    #     offset_input = QSpinBox()
-    #     offset_input.setObjectName("offset_input")
-    #     offset_input.setToolTip("Start from row number (Offset)")
-    #     offset_input.setRange(0, 999999999) 
-    #     offset_input.setSingleStep(10)      
-    #     offset_input.setValue(0)            
-    #     offset_input.setFixedWidth(80)
-        
-    #     # Trigger query on Enter press or value change finish
-    #     offset_input.editingFinished.connect(lambda: self.execute_query())
-        
-    #     results_header_layout.addWidget(offset_input)
-    #     # ---------------------------------------------------------
-
-
-    #     results_layout.addWidget(results_header) 
-
-    #     results_button_group = QButtonGroup(self)
-    #     results_button_group.setExclusive(True)
-    #     results_button_group.addButton(output_btn, 0)
-    #     results_button_group.addButton(message_btn, 1)
-    #     results_button_group.addButton(notification_btn, 2)
-    #     results_button_group.addButton(process_btn, 3)
-
-    #     results_stack = QStackedWidget()
-    #     results_stack.setObjectName("results_stacked_widget")
-
-    #     # Page 0: Table View
-    #     table_view = QTableView()
-    #     table_view.setObjectName("result_table")
-    #     table_view.setAlternatingRowColors(True)
-    #     table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    #     table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-    #     results_stack.addWidget(table_view)
-
-    #     # Page 1: Message View
-    #     message_view = QTextEdit()
-    #     message_view.setObjectName("message_view")
-    #     message_view.setReadOnly(True)
-    #     results_stack.addWidget(message_view)
-
-    #     # Page 2: Notification View
-    #     notification_view = QLabel("Notifications will appear here.")
-    #     notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     results_stack.addWidget(notification_view)
-
-    #     # Page 3: Processes View
-    #     processes_view = QTableView()
-    #     processes_view.setObjectName("processes_view")
-    #     processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-    #     processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    #     processes_view.setAlternatingRowColors(True)
-    #     processes_view.horizontalHeader().setStretchLastSection(True)
-    #     results_stack.addWidget(processes_view)
-        
-    #     # Page 4: Spinner / Loading
-    #     spinner_overlay_widget = QWidget()
-    #     spinner_layout = QHBoxLayout(spinner_overlay_widget)
-    #     spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     spinner_movie = QMovie("assets/spinner.gif")
-    #     spinner_label = QLabel()
-    #     spinner_label.setObjectName("spinner_label")
-
-    #     if not spinner_movie.isValid():
-    #         spinner_label.setText("Loading...")
-    #     else:
-    #         spinner_label.setMovie(spinner_movie)
-    #         spinner_movie.setScaledSize(QSize(32, 32))
-            
-    #     loading_text_label = QLabel("Waiting for query to complete...")
-    #     font = QFont()
-    #     font.setPointSize(10)
-    #     loading_text_label.setFont(font)
-    #     loading_text_label.setStyleSheet("color: #555;")
-    #     spinner_layout.addWidget(spinner_label)
-    #     spinner_layout.addWidget(loading_text_label)
-    #     results_stack.addWidget(spinner_overlay_widget)
-
-    #     results_layout.addWidget(results_stack)
-
-    #     tab_status_label = QLabel("Ready")
-    #     tab_status_label.setObjectName("tab_status_label")
-    #     results_layout.addWidget(tab_status_label)
-
-    #     def switch_results_view(index):
-    #        results_stack.setCurrentIndex(index)
-
-    #     output_btn.clicked.connect(lambda: switch_results_view(0))
-    #     message_btn.clicked.connect(lambda: switch_results_view(1))
-    #     notification_btn.clicked.connect(lambda: switch_results_view(2))
-    #     process_btn.clicked.connect(lambda: switch_results_view(3))
-
-    #     main_vertical_splitter.addWidget(results_container)
-    #     main_vertical_splitter.setSizes([300, 300])
-
-    #     tab_content.setLayout(layout)
-    #     index = self.tab_widget.addTab(
-    #         tab_content, f"Worksheet {self.tab_widget.count() + 1}"
-    #     )
-    #     self.tab_widget.setCurrentIndex(index)
-    #     self.renumber_tabs()
-    #     self._initialize_processes_model(tab_content)
-    #     return tab_content
-#     def add_tab(self):
-#         tab_content = QWidget(self.tab_widget)
-        
-#         # --- NEW: Initialize tab specific limit and offset settings ---
-#         tab_content.current_limit = 1000  # Default Limit
-#         tab_content.current_offset = 0    # Default Offset
-#         tab_content.current_page = 1
-#         tab_content.has_more_pages = True
-#         # --------------------------------------------------------------
-
-#         layout = QVBoxLayout(tab_content)
-#         layout.setContentsMargins(0, 0, 0, 0)
-#         layout.setSpacing(0)
-        
-#         font = QFont()
-#         font.setBold(True)
-
-#         # 1. Database Selection Combo Box
-#         db_combo_box = QComboBox()
-#         db_combo_box.setObjectName("db_combo_box")
-#         layout.addWidget(db_combo_box)
-#         self.load_joined_connections(db_combo_box)
-#         db_combo_box.currentIndexChanged.connect(lambda: self.refresh_processes_view())
-
-#         # 2. Tab-specific Toolbar (Top)
-#         toolbar_widget = QWidget()
-#         toolbar_widget.setObjectName("tab_toolbar")
-#         toolbar_layout = QHBoxLayout(toolbar_widget)
-#         toolbar_layout.setContentsMargins(5, 5, 5, 5)
-#         toolbar_layout.setSpacing(5)
-
-#         # --- Group A: File Actions ---
-#         open_btn = QToolButton()
-#         open_btn.setDefaultAction(self.open_file_action)
-#         open_btn.setToolTip("Open SQL File")
-#         toolbar_layout.addWidget(open_btn)
-
-#         save_btn = QToolButton()
-#         save_btn.setDefaultAction(self.save_as_action)
-#         save_btn.setToolTip("Save SQL File")
-#         toolbar_layout.addWidget(save_btn)
-        
-#         toolbar_layout.addWidget(self.create_vertical_separator())
-
-#         # --- Group B: Execution & Edit Actions ---
-#         exec_btn = QToolButton()
-#         exec_btn.setDefaultAction(self.execute_action)
-#         exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-#         toolbar_layout.addWidget(exec_btn)
-
-#         cancel_btn = QToolButton()
-#         cancel_btn.setDefaultAction(self.cancel_action)
-#         cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-#         toolbar_layout.addWidget(cancel_btn)
-
-#         edit_button = QToolButton()
-#         edit_button.setText("Edit")
-#         edit_button.setToolTip("Edit Query")
-#         edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-#         edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-#         edit_menu = QMenu(edit_button)
-#         edit_menu.addAction(self.format_sql_action)
-#         edit_menu.addSeparator()
-#         edit_menu.addAction(self.clear_query_action)
-#         edit_button.setMenu(edit_menu)
-#         toolbar_layout.addWidget(edit_button)
-
-#             #     # Limit ComboBox (New instance per tab)
-
-#             # ===== PAGINATION STATE (NEW) =====
-#         # tab_content.current_limit = 1000
-#         # tab_content.current_offset = 0
-        
-
-#         rows_limit_combo = QComboBox()
-#         rows_limit_combo.setObjectName("rows_limit_combo")
-#         rows_limit_combo.setEditable(True)
-#         rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
-#         rows_limit_combo.setCurrentText("1000")
-#         rows_limit_combo.setFixedWidth(90)
-
-#         def on_limit_change():
-#             text = rows_limit_combo.currentText().strip()
-#             if text.lower() == "no limit":
-#                tab_content.current_limit = 0
-#             else:
-#                try:
-#                 tab_content.current_limit = int(text)
-#                except ValueError:
-#                 tab_content.current_limit = 1000
-
-#             tab_content.current_page = 1
-#             tab_content.current_offset = 0
-#             page_label.setText("Page 1")
-#             self.execute_query()
-
-#             rows_limit_combo.currentIndexChanged.connect(on_limit_change)
-#             rows_limit_combo.lineEdit().returnPressed.connect(on_limit_change)
-
-#         toolbar_layout.addWidget(rows_limit_combo)
-
-#         # rows_limit_combo = QComboBox()
-#         # rows_limit_combo.setObjectName("rows_limit_combo") # Important for finding it later
-#         # rows_limit_combo.setToolTip("Rows limit")
-#         # rows_limit_combo.addItems(["No Limit", "1000 rows", "500 rows", "100 rows"])
-#         # rows_limit_combo.setCurrentIndex(1) 
-#         # rows_limit_combo.setFixedWidth(100)
-#         # rows_limit_combo.currentIndexChanged.connect(lambda: self.execute_query()) 
-#         # toolbar_layout.addWidget(rows_limit_combo)
-
-#         toolbar_layout.addWidget(self.create_vertical_separator())
-
-#         # NOTE: I removed the duplicate "Rows Limit" combo from the top toolbar 
-#         # to avoid conflict with the new pgAdmin style result header controls.
-        
-#         toolbar_layout.addWidget(self.create_vertical_separator())
-#         toolbar_layout.addStretch() 
-#         layout.addWidget(toolbar_widget)
-
-#         # 3. Main Splitter (Editor vs Results)
-#         main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-#         main_vertical_splitter.setObjectName("tab_vertical_splitter")
-#         layout.addWidget(main_vertical_splitter)
-
-#         # ----------------- Editor Container -----------------
-#         editor_container = QWidget()
-#         editor_layout = QVBoxLayout(editor_container)
-#         editor_layout.setContentsMargins(0, 0, 0, 0)
-#         editor_layout.setSpacing(0)
-
-#         editor_header = QWidget()
-#         editor_header.setObjectName("editorHeader")
-#         editor_header_layout = QHBoxLayout(editor_header)
-#         editor_header_layout.setContentsMargins(5, 2, 5, 0)
-#         editor_header_layout.setSpacing(2)
-
-#         query_view_btn = QPushButton("Query")
-#         history_view_btn = QPushButton("Query History")
-#         query_view_btn.setMinimumWidth(100)
-#         history_view_btn.setMinimumWidth(150)
-#         query_view_btn.setCheckable(True)
-#         history_view_btn.setCheckable(True)
-#         query_view_btn.setChecked(True)
-
-#         editor_header_layout.addWidget(query_view_btn)
-#         editor_header_layout.addWidget(history_view_btn)
-#         editor_header_layout.addStretch()
-#         editor_layout.addWidget(editor_header)
-
-#         # --- Editor toggle button group ---
-#         editor_button_group = QButtonGroup(self)
-#         editor_button_group.setExclusive(True)
-#         editor_button_group.addButton(query_view_btn, 0)
-#         editor_button_group.addButton(history_view_btn, 1)
-
-#         editor_stack = QStackedWidget()
-#         editor_stack.setObjectName("editor_stack")
-
-#         text_edit = CodeEditor()
-#         text_edit.setPlaceholderText("Write your SQL query here...")
-#         text_edit.setObjectName("query_editor")
-#         editor_stack.addWidget(text_edit)
-
-#         history_widget = QSplitter(Qt.Orientation.Horizontal)
-#         history_list_view = QTreeView()
-#         history_list_view.setObjectName("history_list_view")
-#         history_list_view.setHeaderHidden(True)
-#         history_list_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
-#         history_details_group = QGroupBox("Query Details")
-#         history_details_layout = QVBoxLayout(history_details_group)
-#         history_details_view = QTextEdit()
-#         history_details_view.setObjectName("history_details_view")
-#         history_details_view.setReadOnly(True)
-#         history_details_layout.addWidget(history_details_view)
-
-#         history_button_layout = QHBoxLayout()
-#         copy_history_btn = QPushButton("Copy")
-#         copy_to_edit_btn = QPushButton("Copy to Edit Query")
-#         remove_history_btn = QPushButton("Remove")
-#         remove_all_history_btn = QPushButton("Remove All")
-    
-#         history_button_layout.addStretch()
-#         history_button_layout.addWidget(copy_history_btn)
-#         history_button_layout.addWidget(copy_to_edit_btn)
-#         history_button_layout.addWidget(remove_history_btn)
-#         history_button_layout.addWidget(remove_all_history_btn)
-#         history_details_layout.addLayout(history_button_layout)
-
-#         history_widget.addWidget(history_list_view)
-#         history_widget.addWidget(history_details_group)
-#         history_widget.setSizes([400, 400])
-#         editor_stack.addWidget(history_widget)
-
-#         editor_layout.addWidget(editor_stack)
-#         main_vertical_splitter.addWidget(editor_container)
-
-#         # --- Editor switching logic ---
-#         def switch_editor_view(index):
-#             editor_stack.setCurrentIndex(index)
-#             if index == 1:
-#               self.load_connection_history(tab_content)
-
-#         query_view_btn.clicked.connect(lambda: switch_editor_view(0))
-#         history_view_btn.clicked.connect(lambda: switch_editor_view(1))
-
-#         db_combo_box.currentIndexChanged.connect(
-#           lambda: editor_stack.currentIndex() == 1 and self.load_connection_history(tab_content)
-#         )
-#         history_list_view.clicked.connect(lambda index: self.display_history_details(index, tab_content))
-    
-#         copy_history_btn.clicked.connect(lambda: self.copy_history_query(tab_content))
-#         copy_to_edit_btn.clicked.connect(lambda: self.copy_history_to_editor(tab_content))
-#         remove_history_btn.clicked.connect(lambda: self.remove_selected_history(tab_content))
-#         remove_all_history_btn.clicked.connect(lambda: self.remove_all_history_for_connection(tab_content))
-
-#         # ----------------- Results Container -----------------
-#         results_container = QWidget()
-#         results_layout = QVBoxLayout(results_container)
-#         results_layout.setContentsMargins(0, 0, 0, 0)
-#         results_layout.setSpacing(0)
-
-#         results_header = QWidget()
-#         results_header.setObjectName("resultsHeader")
-#         results_header_layout = QHBoxLayout(results_header)
-#         results_header_layout.setContentsMargins(5, 2, 5, 0)
-#         results_header_layout.setSpacing(2)
-
-#         output_btn = QPushButton("Output")
-#         message_btn = QPushButton("Messages")
-#         notification_btn = QPushButton("Notifications")
-#         process_btn = QPushButton("Processes")
-
-#         output_btn.setMinimumWidth(100)
-#         message_btn.setMinimumWidth(100)
-#         notification_btn.setMinimumWidth(120)
-#         process_btn.setMinimumWidth(100)
-
-#         output_btn.setCheckable(True)
-#         message_btn.setCheckable(True)
-#         notification_btn.setCheckable(True)
-#         process_btn.setCheckable(True)
-#         output_btn.setChecked(True)
-
-#         results_header_layout.addWidget(output_btn)
-#         results_header_layout.addWidget(message_btn)
-#         results_header_layout.addWidget(notification_btn)
-#         results_header_layout.addWidget(process_btn)
-        
-#         results_header_layout.addStretch()
-        
-#         # ---------------------------------------------------------
-#         # --- NEW: pgAdmin Style Result Controls ---
-#         # ---------------------------------------------------------
-#         line = QFrame()
-#         line.setFrameShape(QFrame.Shape.VLine)
-#         line.setFrameShadow(QFrame.Shadow.Sunken)
-#         results_header_layout.addWidget(line)
-
-#         # 1. Info Label (e.g., "Showing rows 1 - 1000")
-#         rows_info_label = QLabel("No rows")
-#         rows_info_label.setObjectName("rows_info_label")
-#         rows_info_label.setFont(font)
-#         results_header_layout.addWidget(rows_info_label)
-
-#         # 2. Edit Button (Pencil Icon)
-#         rows_setting_btn = QToolButton()
-#         # You can replace this with QIcon("assets/edit.png") if available
-#         rows_setting_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
-#         rows_setting_btn.setToolTip("Edit Limit/Offset")
-#         rows_setting_btn.clicked.connect(lambda: self.open_limit_offset_dialog(tab_content))
-#         results_header_layout.addWidget(rows_setting_btn)
-#         # ---------------------------------------------------------
-#         # ===== PAGINATION UI =====
-#         # prev_btn = QPushButton("◀")
-#         # prev_btn.setFixedSize(40, 35)
-
-#         # font = QFont()
-#         # font.setPointSize(50)
-#         # font.setBold(True)
-#         # prev_btn.setFont(font)
-
-#         # next_btn = QPushButton("▶")
-#         # next_btn.setFixedSize(40, 35)
-#         # next_btn.setFont(font)
-#         # prev_btn = QPushButton("◀")
-#         # prev_btn.setFixedSize(30,24)
-#         # prev_btn.setStyleSheet("font-size: 180px;")
-
-#         # pagination_widget = QWidget()
-#         # layout = QHBoxLayout(pagination_widget)
-#         # layout.setContentsMargins(5, 0, 5, 0)
-#         # layout.setSpacing(6)
-
-# # Common font
-#         # font = QFont("Segoe UI")
-#         # font.setPointSize(30)
-#         # font.setBold(True)
-
-# # Prev button
-#         prev_btn = QPushButton("◀")
-#         prev_btn.setFixedSize(38, 28)
-#         prev_btn.setFont(font)
-#         prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-# # Page label
-#         page_label = QLabel("Page 1 of 10")
-#         page_label.setMinimumWidth(80)
-#         page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-#         page_label.setFont(QFont("Segoe UI", 10))
-
-# # Next button
-#         next_btn = QPushButton("▶")
-#         next_btn.setFixedSize(38, 28)
-#         next_btn.setFont(font)
-#         next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-#         # page_label = QLabel("Page")
-#         # page_label.setObjectName("page_label")
-#         # toolbar_layout.addWidget(page_label)
-#         # page_label.setMinimumWidth(50)
-#         # page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-#         # next_btn = QPushButton("▶")
-#         # next_btn.setFixedSize(30,24)
-#         # next_btn.setStyleSheet("font-size: 180px;")
-
-#         results_header_layout.addWidget(prev_btn)
-#         results_header_layout.addWidget(page_label)
-#         results_header_layout.addWidget(next_btn)
-#         # results_header_layout.addStretch()
-#         def update_pagination():
-#             limit = tab_content.current_limit
-#             page = tab_content.current_page
-
-#             if limit > 0:
-#                tab_content.current_offset = (page - 1) * limit
-#             else:
-#                tab_content.current_offset = 0
-
-#             page_label.setText(f"Page {page}")
-#             self.execute_query()
-#         def update_page_label(rows_returned):
-#             limit = tab_content.current_limit
-#             page = tab_content.current_page
-#             offset = tab_content.current_offset
-
-#             start_row = offset + 1
-#             end_row = offset + rows_returned
-
-#             page_label.setText(
-#                  f"Page {page}  (Rows {start_row}–{end_row})"
-#             )
-
-#     # Disable / Enable buttons (pgAdmin behavior)
-#             prev_btn.setEnabled(page > 1)
-
-#             if limit > 0:
-#                 tab_content.has_more_pages = rows_returned == limit
-#                 next_btn.setEnabled(tab_content.has_more_pages)
-#             else:
-#                next_btn.setEnabled(False)
-
-
-
-#         def go_prev():
-#             if not tab_content.has_more_pages:
-#                return
-
-#             tab_content.current_page += 1
-#             tab_content.current_offset = (
-#             (tab_content.current_page - 1) * tab_content.current_limit
-#               )
-
-#             page_label.setText(f"Page {tab_content.current_page}")
-#             self.execute_query()
-#         #    if tab_content.current_page > 1:
-#         #       tab_content.current_page -= 1
-#         #       tab_content.current_offset -= tab_content.current_limit
-
-#             #   update_pagination()
-
-
-#         def go_next():
-#             if tab_content.current_page <= 1:
-#                return
-
-#             tab_content.current_page -= 1
-#             tab_content.current_offset = (
-#             (tab_content.current_page - 1) * tab_content.current_limit
-#              )
-
-#             page_label.setText(f"Page {tab_content.current_page}")
-#             self.execute_query()
-#             # if not tab_content.has_more_pages:
-#             #     return
-
-#             # tab_content.current_page += 1
-#             # tab_content.current_offset += tab_content.current_limit
-#             # self.execute_query()
-#         #    tab_content.current_page += 1
-#         #    update_pagination()
-
-
-#         prev_btn.clicked.connect(go_prev)
-#         next_btn.clicked.connect(go_next)
-
-# # =========================
-
-
-#         results_layout.addWidget(results_header) 
-
-#         results_button_group = QButtonGroup(self)
-#         results_button_group.setExclusive(True)
-#         results_button_group.addButton(output_btn, 0)
-#         results_button_group.addButton(message_btn, 1)
-#         results_button_group.addButton(notification_btn, 2)
-#         results_button_group.addButton(process_btn, 3)
-
-
-#         results_stack = QStackedWidget()
-#         results_stack.setObjectName("results_stacked_widget")
-
-#         # Page 0: Table View
-#         table_view = QTableView()
-#         table_view.setObjectName("result_table")
-#         table_view.setAlternatingRowColors(True)
-#         table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-#         table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-#         results_stack.addWidget(table_view)
-
-#         # Page 1: Message View
-#         message_view = QTextEdit()
-#         message_view.setObjectName("message_view")
-#         message_view.setReadOnly(True)
-#         results_stack.addWidget(message_view)
-
-#         # Page 2: Notification View
-#         notification_view = QLabel("Notifications will appear here.")
-#         notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-#         results_stack.addWidget(notification_view)
-
-#         # Page 3: Processes View
-#         processes_view = QTableView()
-#         processes_view.setObjectName("processes_view")
-#         processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-#         processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-#         processes_view.setAlternatingRowColors(True)
-#         processes_view.horizontalHeader().setStretchLastSection(True)
-#         results_stack.addWidget(processes_view)
-        
-#         # Page 4: Spinner / Loading
-#         spinner_overlay_widget = QWidget()
-#         spinner_layout = QHBoxLayout(spinner_overlay_widget)
-#         spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-#         spinner_movie = QMovie("assets/spinner.gif")
-#         spinner_label = QLabel()
-#         spinner_label.setObjectName("spinner_label")
-
-#         if not spinner_movie.isValid():
-#             spinner_label.setText("Loading...")
-#         else:
-#             spinner_label.setMovie(spinner_movie)
-#             spinner_movie.setScaledSize(QSize(32, 32))
-            
-#         loading_text_label = QLabel("Waiting for query to complete...")
-#         font = QFont()
-#         font.setPointSize(10)
-#         loading_text_label.setFont(font)
-#         loading_text_label.setStyleSheet("color: #555;")
-#         spinner_layout.addWidget(spinner_label)
-#         spinner_layout.addWidget(loading_text_label)
-#         results_stack.addWidget(spinner_overlay_widget)
-
-#         results_layout.addWidget(results_stack)
-
-#         tab_status_label = QLabel("Ready")
-#         tab_status_label.setObjectName("tab_status_label")
-#         results_layout.addWidget(tab_status_label)
-
-#         def switch_results_view(index):
-#            results_stack.setCurrentIndex(index)
-
-#         output_btn.clicked.connect(lambda: switch_results_view(0))
-#         message_btn.clicked.connect(lambda: switch_results_view(1))
-#         notification_btn.clicked.connect(lambda: switch_results_view(2))
-#         process_btn.clicked.connect(lambda: switch_results_view(3))
-
-#         main_vertical_splitter.addWidget(results_container)
-#         main_vertical_splitter.setSizes([300, 300])
-
-#         tab_content.setLayout(layout)
-#         index = self.tab_widget.addTab(
-#             tab_content, f"Worksheet {self.tab_widget.count() + 1}"
-#         )
-#         self.tab_widget.setCurrentIndex(index)
-#         self.renumber_tabs()
-#         self._initialize_processes_model(tab_content)
-#         return tab_content
-
-
-    # def add_tab(self):
-    #     tab_content = QWidget(self.tab_widget)
-        
-    #     # --- Initialize tab specific limit and offset settings ---
-    #     tab_content.current_limit = 1000  # Default Limit
-    #     tab_content.current_offset = 0    # Default Offset
-    #     tab_content.current_page = 1
-    #     tab_content.has_more_pages = True
-    #     # --------------------------------------------------------------
-
-    #     layout = QVBoxLayout(tab_content)
-    #     layout.setContentsMargins(0, 0, 0, 0)
-    #     layout.setSpacing(0)
-        
-    #     font = QFont()
-    #     font.setBold(True)
-
-    #     # 1. Database Selection Combo Box
-    #     db_combo_box = QComboBox()
-    #     db_combo_box.setObjectName("db_combo_box")
-    #     layout.addWidget(db_combo_box)
-    #     self.load_joined_connections(db_combo_box)
-    #     db_combo_box.currentIndexChanged.connect(lambda: self.refresh_processes_view())
-
-    #     # 2. Tab-specific Toolbar (Top)
-    #     toolbar_widget = QWidget()
-    #     toolbar_widget.setObjectName("tab_toolbar")
-    #     toolbar_layout = QHBoxLayout(toolbar_widget)
-    #     toolbar_layout.setContentsMargins(5, 5, 5, 5)
-    #     toolbar_layout.setSpacing(5)
-
-    #     # --- Group A: File Actions ---
-    #     open_btn = QToolButton()
-    #     open_btn.setDefaultAction(self.open_file_action)
-    #     open_btn.setToolTip("Open SQL File")
-    #     toolbar_layout.addWidget(open_btn)
-
-    #     save_btn = QToolButton()
-    #     save_btn.setDefaultAction(self.save_as_action)
-    #     save_btn.setToolTip("Save SQL File")
-    #     toolbar_layout.addWidget(save_btn)
-        
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-
-    #     # --- Group B: Execution & Edit Actions ---
-    #     exec_btn = QToolButton()
-    #     exec_btn.setDefaultAction(self.execute_action)
-    #     exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(exec_btn)
-
-    #     cancel_btn = QToolButton()
-    #     cancel_btn.setDefaultAction(self.cancel_action)
-    #     cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     toolbar_layout.addWidget(cancel_btn)
-
-    #     edit_button = QToolButton()
-    #     edit_button.setText("Edit")
-    #     edit_button.setToolTip("Edit Query")
-    #     edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    #     edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
-    #     edit_menu = QMenu(edit_button)
-    #     edit_menu.addAction(self.format_sql_action)
-    #     edit_menu.addSeparator()
-    #     edit_menu.addAction(self.clear_query_action)
-    #     edit_button.setMenu(edit_menu)
-    #     toolbar_layout.addWidget(edit_button)
-
-    #     # --- Limit ComboBox (Top Toolbar) ---
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-    #     rows_label = QLabel("Limit:")
-    #     toolbar_layout.addWidget(rows_label)
-
-    #     rows_limit_combo = QComboBox()
-    #     rows_limit_combo.setObjectName("rows_limit_combo")
-    #     rows_limit_combo.setEditable(True)
-    #     rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
-    #     rows_limit_combo.setCurrentText("1000")
-    #     rows_limit_combo.setFixedWidth(90)
-
-    #     # When limit changes, reset offset/page and refresh
-    #     def on_limit_change():
-    #         text = rows_limit_combo.currentText().strip()
-    #         if text.lower() == "no limit":
-    #            tab_content.current_limit = 0
-    #         else:
-    #            try:
-    #             tab_content.current_limit = int(text)
-    #            except ValueError:
-    #             tab_content.current_limit = 1000
-
-    #         tab_content.current_page = 1
-    #         tab_content.current_offset = 0
-    #         # Also update the page label in UI
-    #         page_label_widget = tab_content.findChild(QLabel, "page_label")
-    #         if page_label_widget:
-    #             page_label_widget.setText("Page 1")
-            
-    #         # Re-execute query with new limit/offset
-    #         self.execute_query()
-
-    #     # Connect limit change
-    #     rows_limit_combo.currentIndexChanged.connect(on_limit_change)
-    #     rows_limit_combo.lineEdit().returnPressed.connect(on_limit_change)
-
-    #     toolbar_layout.addWidget(rows_limit_combo)
-        
-    #     toolbar_layout.addWidget(self.create_vertical_separator())
-    #     toolbar_layout.addStretch() 
-    #     layout.addWidget(toolbar_widget)
-
-    #     # 3. Main Splitter (Editor vs Results)
-    #     main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-    #     main_vertical_splitter.setObjectName("tab_vertical_splitter")
-    #     layout.addWidget(main_vertical_splitter)
-
-    #     # ----------------- Editor Container -----------------
-    #     editor_container = QWidget()
-    #     editor_layout = QVBoxLayout(editor_container)
-    #     editor_layout.setContentsMargins(0, 0, 0, 0)
-    #     editor_layout.setSpacing(0)
-
-    #     editor_header = QWidget()
-    #     editor_header.setObjectName("editorHeader")
-    #     editor_header_layout = QHBoxLayout(editor_header)
-    #     editor_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     editor_header_layout.setSpacing(2)
-
-    #     query_view_btn = QPushButton("Query")
-    #     history_view_btn = QPushButton("Query History")
-    #     query_view_btn.setMinimumWidth(100)
-    #     history_view_btn.setMinimumWidth(150)
-    #     query_view_btn.setCheckable(True)
-    #     history_view_btn.setCheckable(True)
-    #     query_view_btn.setChecked(True)
-
-    #     editor_header_layout.addWidget(query_view_btn)
-    #     editor_header_layout.addWidget(history_view_btn)
-    #     editor_header_layout.addStretch()
-    #     editor_layout.addWidget(editor_header)
-
-    #     # --- Editor toggle button group ---
-    #     editor_button_group = QButtonGroup(self)
-    #     editor_button_group.setExclusive(True)
-    #     editor_button_group.addButton(query_view_btn, 0)
-    #     editor_button_group.addButton(history_view_btn, 1)
-
-    #     editor_stack = QStackedWidget()
-    #     editor_stack.setObjectName("editor_stack")
-
-    #     text_edit = CodeEditor()
-    #     text_edit.setPlaceholderText("Write your SQL query here...")
-    #     text_edit.setObjectName("query_editor")
-    #     editor_stack.addWidget(text_edit)
-
-    #     history_widget = QSplitter(Qt.Orientation.Horizontal)
-    #     history_list_view = QTreeView()
-    #     history_list_view.setObjectName("history_list_view")
-    #     history_list_view.setHeaderHidden(True)
-    #     history_list_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-
-    #     history_details_group = QGroupBox("Query Details")
-    #     history_details_layout = QVBoxLayout(history_details_group)
-    #     history_details_view = QTextEdit()
-    #     history_details_view.setObjectName("history_details_view")
-    #     history_details_view.setReadOnly(True)
-    #     history_details_layout.addWidget(history_details_view)
-
-    #     history_button_layout = QHBoxLayout()
-    #     copy_history_btn = QPushButton("Copy")
-    #     copy_to_edit_btn = QPushButton("Copy to Edit Query")
-    #     remove_history_btn = QPushButton("Remove")
-    #     remove_all_history_btn = QPushButton("Remove All")
-    
-    #     history_button_layout.addStretch()
-    #     history_button_layout.addWidget(copy_history_btn)
-    #     history_button_layout.addWidget(copy_to_edit_btn)
-    #     history_button_layout.addWidget(remove_history_btn)
-    #     history_button_layout.addWidget(remove_all_history_btn)
-    #     history_details_layout.addLayout(history_button_layout)
-
-    #     history_widget.addWidget(history_list_view)
-    #     history_widget.addWidget(history_details_group)
-    #     history_widget.setSizes([400, 400])
-    #     editor_stack.addWidget(history_widget)
-
-    #     editor_layout.addWidget(editor_stack)
-    #     main_vertical_splitter.addWidget(editor_container)
-
-    #     # --- Editor switching logic ---
-    #     def switch_editor_view(index):
-    #         editor_stack.setCurrentIndex(index)
-    #         if index == 1:
-    #           self.load_connection_history(tab_content)
-
-    #     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
-    #     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
-
-    #     db_combo_box.currentIndexChanged.connect(
-    #       lambda: editor_stack.currentIndex() == 1 and self.load_connection_history(tab_content)
-    #     )
-    #     history_list_view.clicked.connect(lambda index: self.display_history_details(index, tab_content))
-    
-    #     copy_history_btn.clicked.connect(lambda: self.copy_history_query(tab_content))
-    #     copy_to_edit_btn.clicked.connect(lambda: self.copy_history_to_editor(tab_content))
-    #     remove_history_btn.clicked.connect(lambda: self.remove_selected_history(tab_content))
-    #     remove_all_history_btn.clicked.connect(lambda: self.remove_all_history_for_connection(tab_content))
-
-    #     # ----------------- Results Container -----------------
-    #     results_container = QWidget()
-    #     results_layout = QVBoxLayout(results_container)
-    #     results_layout.setContentsMargins(0, 0, 0, 0)
-    #     results_layout.setSpacing(0)
-
-    #     results_header = QWidget()
-    #     results_header.setObjectName("resultsHeader")
-    #     results_header_layout = QHBoxLayout(results_header)
-    #     results_header_layout.setContentsMargins(5, 2, 5, 0)
-    #     results_header_layout.setSpacing(2)
-
-    #     output_btn = QPushButton("Output")
-    #     message_btn = QPushButton("Messages")
-    #     notification_btn = QPushButton("Notifications")
-    #     process_btn = QPushButton("Processes")
-
-    #     output_btn.setMinimumWidth(100)
-    #     message_btn.setMinimumWidth(100)
-    #     notification_btn.setMinimumWidth(120)
-    #     process_btn.setMinimumWidth(100)
-
-    #     output_btn.setCheckable(True)
-    #     message_btn.setCheckable(True)
-    #     notification_btn.setCheckable(True)
-    #     process_btn.setCheckable(True)
-    #     output_btn.setChecked(True)
-
-    #     results_header_layout.addWidget(output_btn)
-    #     results_header_layout.addWidget(message_btn)
-    #     results_header_layout.addWidget(notification_btn)
-    #     results_header_layout.addWidget(process_btn)
-        
-    #     results_header_layout.addStretch()
-        
-    #     # ---------------------------------------------------------
-    #     # --- pgAdmin Style Result Controls ---
-    #     # ---------------------------------------------------------
-    #     line = QFrame()
-    #     line.setFrameShape(QFrame.Shape.VLine)
-    #     line.setFrameShadow(QFrame.Shadow.Sunken)
-    #     results_header_layout.addWidget(line)
-
-    #     # 1. Info Label (e.g., "Showing rows 1 - 1000")
-    #     rows_info_label = QLabel("No rows")
-    #     rows_info_label.setObjectName("rows_info_label")
-    #     rows_info_label.setFont(font)
-    #     results_header_layout.addWidget(rows_info_label)
-
-    #     # 2. Edit Button (Pencil Icon)
-    #     rows_setting_btn = QToolButton()
-    #     rows_setting_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
-    #     rows_setting_btn.setToolTip("Edit Limit/Offset")
-    #     rows_setting_btn.clicked.connect(lambda: self.open_limit_offset_dialog(tab_content))
-    #     results_header_layout.addWidget(rows_setting_btn)
-
-    #     # ===== PAGINATION UI =====
-    #     # Common font for arrows
-    #     arrow_font = QFont("Segoe UI", 12, QFont.Weight.Bold)
-
-    #     # Prev button
-    #     prev_btn = QPushButton("◀")
-    #     prev_btn.setFixedSize(38, 28)
-    #     prev_btn.setFont(arrow_font)
-    #     prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    #     prev_btn.setEnabled(False) # Initially disabled
-    #     prev_btn.setObjectName("prev_btn")
-
-    #     # Page label
-    #     page_label = QLabel("Page 1")
-    #     page_label.setMinimumWidth(60)
-    #     page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     page_label.setFont(QFont("Segoe UI", 9))
-    #     page_label.setObjectName("page_label")
-
-    #     # Next button
-    #     next_btn = QPushButton("▶")
-    #     next_btn.setFixedSize(38, 28)
-    #     next_btn.setFont(arrow_font)
-    #     next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    #     next_btn.setEnabled(False) # Initially disabled until results load
-    #     next_btn.setObjectName("next_btn")
-
-    #     results_header_layout.addWidget(prev_btn)
-    #     results_header_layout.addWidget(page_label)
-    #     results_header_layout.addWidget(next_btn)
-        
-    #     # --- Pagination Logic ---
-    #     def update_page_label():
-    #         page_label.setText(f"Page {tab_content.current_page}")
-    #         prev_btn.setEnabled(tab_content.current_page > 1)
-        
-    #     def go_prev():
-    #         if tab_content.current_page <= 1:
-    #           return
-    #         tab_content.current_page -= 1
-    #         tab_content.current_offset -= tab_content.current_limit
-    #         if tab_content.current_offset < 0:
-    #            tab_content.current_offset = 0
-    #         update_page_label()
-    #         self.execute_query()
-    #         # if tab_content.current_page <= 1:
-    #         #    return
-
-    #         # tab_content.current_page -= 1
-    #         # # Recalculate offset: (Page - 1) * Limit
-    #         # tab_content.current_offset = (tab_content.current_page - 1) * tab_content.current_limit
-            
-    #         # # Update label immediately (visual feedback)
-    #         # page_label.setText(f"Page {tab_content.current_page}")
-            
-    #         # # Execute
-    #         # self.execute_query()
-
-    #     def go_next():
-    #         if not tab_content.has_more_pages:
-    #            return
-    #         tab_content.current_page += 1
-    #         tab_content.current_offset += tab_content.current_limit
-    #         update_page_label()
-    #         # Recalculate offset: (Page - 1) * Limit
-    #         # tab_content.current_offset = (tab_content.current_page - 1) * tab_content.current_limit
-
-    #         # page_label.setText(f"Page {tab_content.current_page}")
-            
-    #         # Execute
-    #         self.execute_query()
-
-    #     prev_btn.clicked.connect(go_prev)
-    #     next_btn.clicked.connect(go_next)
-
-    #     # =========================
-
-    #     results_layout.addWidget(results_header) 
-
-    #     results_button_group = QButtonGroup(self)
-    #     results_button_group.setExclusive(True)
-    #     results_button_group.addButton(output_btn, 0)
-    #     results_button_group.addButton(message_btn, 1)
-    #     results_button_group.addButton(notification_btn, 2)
-    #     results_button_group.addButton(process_btn, 3)
-
-    #     results_stack = QStackedWidget()
-    #     results_stack.setObjectName("results_stacked_widget")
-
-    #     # Page 0: Table View
-    #     table_view = QTableView()
-    #     table_view.setObjectName("result_table")
-    #     table_view.setAlternatingRowColors(True)
-    #     table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    #     table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-    #     results_stack.addWidget(table_view)
-
-    #     # Page 1: Message View
-    #     message_view = QTextEdit()
-    #     message_view.setObjectName("message_view")
-    #     message_view.setReadOnly(True)
-    #     results_stack.addWidget(message_view)
-
-    #     # Page 2: Notification View
-    #     notification_view = QLabel("Notifications will appear here.")
-    #     notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     results_stack.addWidget(notification_view)
-
-    #     # Page 3: Processes View
-    #     processes_view = QTableView()
-    #     processes_view.setObjectName("processes_view")
-    #     processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-    #     processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    #     processes_view.setAlternatingRowColors(True)
-    #     processes_view.horizontalHeader().setStretchLastSection(True)
-    #     results_stack.addWidget(processes_view)
-        
-    #     # Page 4: Spinner / Loading
-    #     spinner_overlay_widget = QWidget()
-    #     spinner_layout = QHBoxLayout(spinner_overlay_widget)
-    #     spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     spinner_movie = QMovie("assets/spinner.gif")
-    #     spinner_label = QLabel()
-    #     spinner_label.setObjectName("spinner_label")
-
-    #     if not spinner_movie.isValid():
-    #         spinner_label.setText("Loading...")
-    #     else:
-    #         spinner_label.setMovie(spinner_movie)
-    #         spinner_movie.setScaledSize(QSize(32, 32))
-            
-    #     loading_text_label = QLabel("Waiting for query to complete...")
-    #     font = QFont()
-    #     font.setPointSize(10)
-    #     loading_text_label.setFont(font)
-    #     loading_text_label.setStyleSheet("color: #555;")
-    #     spinner_layout.addWidget(spinner_label)
-    #     spinner_layout.addWidget(loading_text_label)
-    #     results_stack.addWidget(spinner_overlay_widget)
-
-    #     results_layout.addWidget(results_stack)
-
-    #     tab_status_label = QLabel("Ready")
-    #     tab_status_label.setObjectName("tab_status_label")
-    #     results_layout.addWidget(tab_status_label)
-
-    #     def switch_results_view(index):
-    #        results_stack.setCurrentIndex(index)
-
-    #     output_btn.clicked.connect(lambda: switch_results_view(0))
-    #     message_btn.clicked.connect(lambda: switch_results_view(1))
-    #     notification_btn.clicked.connect(lambda: switch_results_view(2))
-    #     process_btn.clicked.connect(lambda: switch_results_view(3))
-
-    #     main_vertical_splitter.addWidget(results_container)
-    #     main_vertical_splitter.setSizes([300, 300])
-
-    #     tab_content.setLayout(layout)
-    #     index = self.tab_widget.addTab(
-    #         tab_content, f"Worksheet {self.tab_widget.count() + 1}"
-    #     )
-    #     self.tab_widget.setCurrentIndex(index)
-    #     self.renumber_tabs()
-    #     self._initialize_processes_model(tab_content)
-    #     return tab_content
 
     def open_limit_offset_dialog(self, tab_content):
         """Opens a dialog to set Limit and Offset like pgAdmin."""
@@ -2725,6 +795,34 @@ class MainWindow(QMainWindow):
         # footer_layout.addWidget(cancel_row_btn)
         save_row_btn.clicked.connect(self.save_new_row)
 
+        # --- COPY / PASTE BUTTONS (pgAdmin style) ---
+        copy_btn = QToolButton()
+        copy_btn.setText("Copy")
+        copy_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+        copy_btn.setToolTip("Copy selected cells (Ctrl+C)")
+        # # copy_btn.clicked.connect(
+        #  lambda: self.copy_result_selection(table_view)
+        # )
+        copy_btn.clicked.connect(
+         lambda: self.copy_result_with_header(table_view)
+         )
+        copy_btn.clicked.connect(self.copy_current_result_table)
+
+
+
+
+
+        paste_btn = QToolButton()
+        paste_btn.setText("Paste")
+        paste_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder))
+        paste_btn.setToolTip("Paste from clipboard")
+        # paste_btn.clicked.connect(self.paste_to_editor)
+
+
+        results_info_layout.addWidget(copy_btn)
+        results_info_layout.addWidget(paste_btn)
+
+
         download_btn = QPushButton()
         download_btn.setIcon(QIcon("assets/download_icon.png"))  # or .svg
         download_btn.setIconSize(QSize(20, 22))
@@ -2967,6 +1065,167 @@ class MainWindow(QMainWindow):
         self.renumber_tabs()
         self._initialize_processes_model(tab_content)
         return tab_content
+    
+    # def copy_current_result_table(self):
+    #     tab = self.tab_widget.currentWidget()
+    #     if not tab:
+    #        return
+
+    #     table_view = tab.findChild(QTableView, "result_table")
+    #     if not table_view:
+    #        return
+
+    #     self.copy_result_with_header(table_view)
+
+    def copy_current_result_table(self):
+        tab = self.tab_widget.currentWidget()
+        if not tab:
+           return
+
+        table_view = tab.findChild(QTableView, "result_table")
+        if not table_view:
+           return
+
+        self.copy_result_with_header(table_view)
+
+
+    
+    # def copy_result_selection(self, table_view: QTableView):
+    #     selection = table_view.selectionModel().selectedIndexes()
+    #     if not selection:
+    #        return
+
+    #     selection = sorted(selection, key=lambda x: (x.row(), x.column()))
+
+    #     rows = []
+    #     current_row = selection[0].row()
+    #     row_data = []
+
+    #     for index in selection:
+    #         if index.row() != current_row:
+    #            rows.append("\t".join(row_data))
+    #            row_data = []
+    #            current_row = index.row()
+
+    #         value = index.data()
+    #         row_data.append("" if value is None else str(value))
+
+    #         rows.append("\t".join(row_data))
+
+    #         QApplication.clipboard().setText("\n".join(rows))
+
+    # def copy_result_with_header(self, table_view: QTableView):
+    #     model = table_view.model()
+    #     selection = table_view.selectionModel().selectedIndexes()
+
+    #     if not model or not selection:
+    #        return
+
+    #     selection = sorted(selection, key=lambda x: (x.row(), x.column()))
+
+    #     columns = sorted({index.column() for index in selection})
+    #     headers = [
+    #        str(model.headerData(col, Qt.Orientation.Horizontal) or "")
+    #        for col in columns
+    #       ]
+
+    #     rows = ["\t".join(headers)]
+
+    #     current_row = selection[0].row()
+    #     row_data = []
+
+    #     for index in selection:
+    #         if index.row() != current_row:
+    #           rows.append("\t".join(row_data))
+    #           row_data = []
+    #           current_row = index.row()
+
+    #         row_data.append("" if index.data() is None else str(index.data()))
+
+    #         rows.append("\t".join(row_data))
+
+    #         QApplication.clipboard().setText("\n".join(rows))
+
+    def copy_result_with_header(self, table_view: QTableView):
+        model = table_view.model()
+        sel = table_view.selectionModel()
+
+        if not model or not sel:
+           return
+
+        rows = []
+
+        selected_rows = sel.selectedRows()
+        selected_indexes = sel.selectedIndexes()
+
+    # ---------- ROW SELECTION (pgAdmin default) ----------
+        if selected_rows:
+           columns = range(model.columnCount())
+
+        # Header
+           header = [
+               str(model.headerData(col, Qt.Orientation.Horizontal) or "")
+               for col in columns
+            ]
+           rows.append("\t".join(header))
+
+        # Data
+           for r in selected_rows:
+               row = r.row()
+               row_data = [
+                str(model.index(row, col).data() or "")
+                for col in columns
+            ]
+               rows.append("\t".join(row_data))
+
+    # ---------- CELL SELECTION ----------
+        elif selected_indexes:
+            selected_indexes = sorted(
+             selected_indexes, key=lambda x: (x.row(), x.column())
+           )
+
+            columns = sorted({i.column() for i in selected_indexes})
+
+            header = [
+            str(model.headerData(col, Qt.Orientation.Horizontal) or "")
+            for col in columns
+        ]
+            rows.append("\t".join(header))
+
+            current_row = selected_indexes[0].row()
+            row_data = []
+
+            for idx in selected_indexes:
+                if idx.row() != current_row:
+                  rows.append("\t".join(row_data))
+                  row_data = []
+                  current_row = idx.row()
+
+                row_data.append(str(idx.data() or ""))
+
+            rows.append("\t".join(row_data))
+
+        else:
+           return
+
+    # 🔥 THIS LINE IS THE MAGIC
+        QApplication.clipboard().setText("\n".join(rows))
+
+
+
+
+    
+
+
+
+    # def paste_to_editor(self):
+    #     editor = self._get_current_editor()
+    #     if editor:
+        #    editor.paste()
+
+    
+
+
 
 
     def model_to_dataframe(self, model):
@@ -3233,257 +1492,6 @@ class MainWindow(QMainWindow):
             self.status.showMessage("No changes to save.", 3000)
     
 
-
-    # def save_new_row(self):
-    #     tab = self.tab_widget.currentWidget()
-    #     if not tab: return
-        
-    #     if not hasattr(tab, "table_name"):
-    #         QMessageBox.warning(self, "Error", "Could not detect table name from your query.\nPlease execute a simple 'SELECT * FROM table_name' query first.")
-    #         return
-
-    #     if not hasattr(tab, "column_names"):
-    #         QMessageBox.warning(self, "Error", "Column information missing.")
-    #         return
-
-    #     if not hasattr(tab, "new_row_index"):
-    #         QMessageBox.warning(self, "Error", "No new row detected. Click '+' to add a row first.")
-    #         return
-
-    #     table = tab.findChild(QTableView, "result_table")
-    #     model = table.model()
-    #     row_idx = tab.new_row_index
-
-    #     values = []
-    #     for col_idx in range(model.columnCount()):
-    #         item = model.item(row_idx, col_idx)
-    #         val = item.text() if item else None
-    #         if val == '': val = None
-    #         values.append(val)
-
-      
-    #     db_combo_box = tab.findChild(QComboBox, "db_combo_box")
-    #     conn_data = db_combo_box.currentData()
-    #     if not conn_data: return
-
-       
-    #     cols_str = ", ".join([f'"{c}"' for c in tab.column_names])
-        
-    #     db_code = conn_data.get('code') or conn_data.get('db_type', '').upper()
-        
-    #     sql = ""
-    #     conn = None
-
-    #     try:
-    #         if db_code == 'POSTGRES':
-    #             placeholders = ", ".join(["%s"] * len(values))
-    #             sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
-    #             conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ['host', 'port', 'database', 'user', 'password']})
-                
-    #         elif 'SQLITE' in str(db_code): 
-    #             placeholders = ", ".join(["?"] * len(values))
-    #             sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
-    #             conn = db.create_sqlite_connection(conn_data.get('db_path'))
-            
-    #         elif db_code == 'CSV':
-    #             placeholders = ", ".join(["?"] * len(values))
-               
-    #             sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
-               
-    #             import cdata.csv as mod
-    #             conn = mod.connect(f"URI={conn_data.get('db_path')};")
-            
-    #         else:
-    #             QMessageBox.warning(self, "Error", "Save not supported for this DB type yet.")
-    #             return
-
-           
-    #         if conn:
-    #             cursor = conn.cursor()
-    #             cursor.execute(sql, values)
-    #             conn.commit()
-    #             conn.close()
-                
-    #             self.status.showMessage("Row saved successfully!", 3000)
-    #             QMessageBox.information(self, "Success", "Row saved successfully!")
-    #             del tab.new_row_index
-                
-    #     except Exception as e:
-    #         QMessageBox.critical(self, "Save Error", f"Failed to save row:\n{str(e)}\n\nQuery was:\n{sql}")
-    
-    # def save_new_row(self):
-    #     tab = self.tab_widget.currentWidget()
-    #     if not tab: return
-        
-    #     # ১. টেবিল নাম এবং কলাম আছে কিনা চেক করা
-    #     if not hasattr(tab, "table_name") or not hasattr(tab, "column_names"):
-    #         QMessageBox.warning(self, "Error", "Table context missing. Please open table from Object Explorer.")
-    #         return
-
-    #     # ২. নতুন রো অ্যাড করা হয়েছে কিনা চেক করা
-    #     if not hasattr(tab, "new_row_index"):
-    #         QMessageBox.warning(self, "Error", "No new row detected. Click '+' to add a row first.")
-    #         return
-
-    #     table = tab.findChild(QTableView, "result_table")
-    #     model = table.model()
-    #     row_idx = tab.new_row_index
-
-    #     # ৩. UI থেকে ডাটা সংগ্রহ করা
-    #     values = []
-    #     for col_idx in range(model.columnCount()):
-    #         item = model.item(row_idx, col_idx)
-    #         val = item.text() if item else None
-            
-    #         # খালি স্ট্রিংকে NULL হিসেবে ট্রিট করা (অপশনাল)
-    #         if val == '': 
-    #             val = None 
-    #         values.append(val)
-
-    #     # ৪. কানেকশন ডাটা বের করা
-    #     db_combo_box = tab.findChild(QComboBox, "db_combo_box")
-    #     conn_data = db_combo_box.currentData()
-    #     if not conn_data: return
-
-    #     # ৫. কুয়েরি তৈরি করা
-    #     # কলাম নামগুলো ডাবল কোট দিয়ে এসকেপ করা ভালো (Postgres/SQLite এর জন্য)
-    #     cols_str = ", ".join([f'"{c}"' for c in tab.column_names])
-        
-    #     # প্লেসহোল্ডার তৈরি (%s ফর Postgres, ? ফর SQLite)
-    #     db_code = conn_data.get('code') or conn_data.get('db_type', '').upper()
-        
-    #     if db_code == 'POSTGRES':
-    #         placeholders = ", ".join(["%s"] * len(values))
-    #         sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
-    #         conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ['host', 'port', 'database', 'user', 'password']})
-            
-    #     elif 'SQLITE' in str(db_code): # SQLITE or SQLITE_...
-    #         placeholders = ", ".join(["?"] * len(values))
-    #         sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
-    #         conn = db.create_sqlite_connection(conn_data.get('db_path'))
-    #     else:
-    #         QMessageBox.warning(self, "Error", "Save not supported for this DB type yet.")
-    #         return
-
-    #     # ৬. কুয়েরি এক্সিকিউট করা
-    #     try:
-    #         if conn:
-    #             cursor = conn.cursor()
-    #             cursor.execute(sql, values)
-    #             conn.commit()
-    #             conn.close()
-                
-    #             self.status.showMessage("Row saved successfully!", 3000)
-    #             QMessageBox.information(self, "Success", "Row saved successfully!")
-                
-    #             # সেভ হওয়ার পর ফ্ল্যাগ মুছে ফেলা
-    #             del tab.new_row_index
-                
-    #             # টেবিল রিফ্রেশ করা (অপশনাল, অটো রিফ্রেশ চাইলে আনকমেন্ট করুন)
-    #             # self.execute_query() 
-    #     except Exception as e:
-    #         QMessageBox.critical(self, "Save Error", f"Failed to save row:\n{str(e)}")
-    
-    # def save_new_row(self):
-    #     tab = self.tab_widget.currentWidget()
-    #     table = tab.findChild(QTableView, "result_table")
-    #     model = table.model()
-
-    #     if not hasattr(tab, "new_row_index"):
-    #        return
-
-    #     row = tab.new_row_index
-    #     values = self.get_insert_data(model, row)
-
-    #     table_name = tab.table_name      # table name must exist
-    #     columns = tab.column_names       # list of column names
-
-    #     placeholders = ", ".join(["%s"] * len(values))
-    #     col_names = ", ".join(columns)
-
-    #     sql = f"""
-    #          INSERT INTO {table_name} ({col_names})
-    #        VALUES ({placeholders})
-    #      """
-
-    #     cursor = tab.connection.cursor()
-    #     cursor.execute(sql, values)
-    #     tab.connection.commit()
-
-    #     del tab.new_row_index
-
- 
-
-
-
-    # def load_data(self):
-    #     self.model.clear()
-    #     self.model.setHorizontalHeaderLabels(["Object Explorer"])
-    #     hierarchical_data = db.get_hierarchy_data()
-    #     for connection_type_data in hierarchical_data:
-    #         connection_type_item = QStandardItem(connection_type_data['name'])
-    #         connection_type_item.setData(connection_type_data['id'], Qt.ItemDataRole.UserRole + 1)
-    #         for connection_group_data in connection_type_data['usf_connection_groups']:
-    #             connection_group_item = QStandardItem(connection_group_data['name'])
-    #             connection_group_item.setData(connection_group_data['id'], Qt.ItemDataRole.UserRole + 1)
-    #             for connection_data in connection_group_data['usf_connections']:
-    #                 connection_item = QStandardItem(connection_data['name'])
-    #                 connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
-    #                 connection_group_item.appendRow(connection_item)
-    #             connection_type_item.appendRow(connection_group_item)
-    #         self.model.appendRow(connection_type_item)
-
-
-    # def load_data(self):
-    #     self.model.clear()
-    #     self.model.setHorizontalHeaderLabels(["Object Explorer"])
-    #     hierarchical_data = db.get_hierarchy_data()
-    #     for connection_type_data in hierarchical_data:
-    #         # connection_type_item = QStandardItem(connection_type_data['name'])
-    #         # connection_type_item.setData(connection_type_data['id'], Qt.ItemDataRole.UserRole + 1)
-            
-    #         connection_type_item = QStandardItem(connection_type_data['name'])
-    #         connection_type_item.setData(connection_type_data['code'], Qt.ItemDataRole.UserRole)  # store code
-
-
-    #         for connection_group_data in connection_type_data['usf_connection_groups']:
-    #             connection_group_item = QStandardItem(connection_group_data['name'])
-    #             connection_group_item.setData(connection_group_data['id'], Qt.ItemDataRole.UserRole + 1)
-
-    #             for connection_data in connection_group_data['usf_connections']:
-    #                 connection_item = QStandardItem(connection_data['short_name'])
-    #                 connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
-
-    #                 # Set tooltip for hover display
-    #                 if connection_data.get("dsn"):  # Oracle DSN
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"DSN: {connection_data.get('dsn', 'N/A')}\n"
-    #                       f"User: {connection_data.get('user', 'N/A')}"
-    #                   )
-    #                 elif connection_data.get("host"):
-    #                   tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"Database: {connection_data.get('database', 'N/A')}\n"
-    #                       f"Host: {connection_data.get('host', 'N/A')}\n"
-    #                       f"User: {connection_data.get('user', 'N/A')}"
-    #                   )
-    #                 elif connection_data.get("db_path"):
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"Database Path: {connection_data.get('db_path', 'N/A')}"
-    #                   )
-                    
-    #                 else:
-    #                     tooltip_text = connection_data.get('name', 'N/A')
-
-    #                 connection_item.setToolTip(tooltip_text)
-
-    #                 connection_group_item.appendRow(connection_item)
-
-    #             connection_type_item.appendRow(connection_group_item)
-    #         self.model.appendRow(connection_type_item)
-    
     
     def load_data(self):
         self.model.clear()
@@ -3494,20 +1502,20 @@ class MainWindow(QMainWindow):
             # Depth 1: Connection Type
             connection_type_item = QStandardItem(connection_type_data['name'])
             connection_type_item.setData(connection_type_data['code'], Qt.ItemDataRole.UserRole)  # store code
-
             for connection_group_data in connection_type_data['usf_connection_groups']:
                 # Depth 2: Connection Group
                 connection_group_item = QStandardItem(connection_group_data['name'])
                 connection_group_item.setData(connection_group_data['id'], Qt.ItemDataRole.UserRole + 1)
-
                 for connection_data in connection_group_data['usf_connections']:
                    # Depth 3: Individual Connection
                     connection_item = QStandardItem(connection_data['short_name'])
+                    
                     connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
 
                     # Get connection type code from grandparent (depth 1)
                     code = connection_type_item.data(Qt.ItemDataRole.UserRole)
-
+                    self._set_tree_item_icon(connection_type_item, code)
+                        
                     # Set tooltip based on connection type
                     if code in ['ORACLE_FA', 'ORACLE_DB']:
                         tooltip_text = (
@@ -3515,6 +1523,7 @@ class MainWindow(QMainWindow):
                           f"DSN: {connection_data.get('dsn', 'N/A')}\n"
                           f"User: {connection_data.get('user', 'N/A')}"
                       )
+                      
                     elif code == 'POSTGRES':
                         tooltip_text = (
                           f"Name: {connection_data.get('name', 'N/A')}\n"
@@ -3550,6 +1559,26 @@ class MainWindow(QMainWindow):
                 connection_type_item.appendRow(connection_group_item)
             self.model.appendRow(connection_type_item)
 
+    def _set_tree_item_icon(self, item, type_code):
+        """
+         Applies icons based on the connection type code.
+        """
+    # Create a mapping for easy maintenance
+        icon_map = {
+        "POSTGRES": "assets/postgresql.svg",
+        "SQLITE": "assets/sqlite.svg",
+        "ORACLE_DB": "assets/oracle.svg",
+        "ORACLE_FA": "assets/oracle_fusion.svg",
+        "SERVICENOW": "assets/servicenow.svg",
+        "CSV": "assets/csv.svg"
+        }
+
+    # Get the path from the map, or use a default database icon
+        icon_path = icon_map.get(type_code, "assets/database.svg")
+    
+    # Use .setIcon() for QStandardItem
+        item.setIcon(QIcon(icon_path))
+  
 
     def _save_tree_expansion_state(self):
         saved_paths = []
@@ -3722,6 +1751,7 @@ class MainWindow(QMainWindow):
             depth += 1
             parent = parent.parent()
         return depth + 1
+    
 
     # def show_context_menu(self, pos):
     #     index = self.tree.indexAt(pos)
@@ -4179,355 +2209,6 @@ class MainWindow(QMainWindow):
     def show_info(self, message: str):
        QMessageBox.information(self, "Info", message)
 
-    # def execute_query(self):
-    #   current_tab = self.tab_widget.currentWidget()
-    #   if not current_tab:
-    #     return
-
-    #   # Get query editor and DB info
-    #   query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
-    #   db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-    #   index = db_combo_box.currentIndex()
-    #   conn_data = db_combo_box.itemData(index)
-
-    #   # Extract query under cursor
-    #   cursor = query_editor.textCursor()
-    #   cursor_pos = cursor.position()
-    #   full_text = query_editor.toPlainText()
-    #   queries = full_text.split(";")
-
-    #   selected_query = ""
-    #   start = 0
-    #   for q in queries:
-    #       end = start + len(q)
-    #       if start <= cursor_pos <= end:
-    #           selected_query = q.strip()
-    #           break
-    #       start = end + 1  # for semicolon
-
-    #   print("Selected query:", selected_query)
-
-    #   if not selected_query or not selected_query.upper().startswith("SELECT "):
-    #       self.show_info("Please enter a valid SELECT query.")
-    #       return
-      
-    #   # Show results stack page with spinner
-    #   results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-    #   spinner_label = results_stack.findChild(QLabel, "spinner_label")
-    #   results_stack.setCurrentIndex(4)
-    #   if spinner_label and spinner_label.movie():
-    #         spinner_label.movie().start()
-    #         spinner_label.show()
-    #   # Set up timers for elapsed time display
-    #   tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
-    #   progress_timer = QTimer(self)
-    #   start_time = time.time()
-    #   timeout_timer = QTimer(self)
-    #   timeout_timer.setSingleShot(True)
-    #   self.tab_timers[current_tab] = {
-    #       "timer": progress_timer,
-    #       "start_time": start_time,
-    #       "timeout_timer": timeout_timer
-    #   }
-    #   progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
-    #   progress_timer.start(100)
-
-    #   # Run query asynchronously
-    #   signals = QuerySignals()
-    #   runnable = RunnableQuery(conn_data, selected_query, signals)
-    #   signals.finished.connect(partial(self.handle_query_result, current_tab))
-    #   signals.error.connect(partial(self.handle_query_error, current_tab))
-    #   timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
-    #   self.running_queries[current_tab] = runnable
-    #   self.cancel_action.setEnabled(True)
-    #   self.thread_pool.start(runnable)
-    #   timeout_timer.start(self.QUERY_TIMEOUT)
-
-    #   self.status_message_label.setText("Executing query...")
-    
-    
-    # def execute_query(self, conn_data=None, query=None):
-    #     current_tab = self.tab_widget.currentWidget()
-    #     if not current_tab:
-    #         return
-
-    #     # If conn_data or query not provided, try to get from current editor
-    #     if conn_data is None or query is None:
-    #         query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
-    #         db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-    #         index = db_combo_box.currentIndex()
-    #         conn_data = db_combo_box.itemData(index)
-
-    #         # Extract query under cursor
-    #         cursor = query_editor.textCursor()
-    #         cursor_pos = cursor.position()
-    #         full_text = query_editor.toPlainText()
-    #         queries = full_text.split(";")
-
-    #         selected_query = ""
-    #         start = 0
-    #         for q in queries:
-    #             end = start + len(q)
-    #             if start <= cursor_pos <= end:
-    #                 selected_query = q.strip()
-    #                 break
-    #             start = end + 1  # for semicolon
-
-    #         query = selected_query
-
-    #     if not query or not query.strip().upper().startswith("SELECT "):
-    #         self.show_info("Please enter a valid SELECT query.")
-    #         return
-
-    #     # Show spinner and reset results view
-    #     results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-    #     spinner_label = results_stack.findChild(QLabel, "spinner_label")
-    #     results_stack.setCurrentIndex(4)
-    #     if spinner_label and spinner_label.movie():
-    #         spinner_label.movie().start()
-    #         spinner_label.show()
-
-    #     # Set up timers
-    #     tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
-    #     progress_timer = QTimer(self)
-    #     start_time = time.time()
-    #     timeout_timer = QTimer(self)
-    #     timeout_timer.setSingleShot(True)
-    #     self.tab_timers[current_tab] = {
-    #         "timer": progress_timer,
-    #         "start_time": start_time,
-    #         "timeout_timer": timeout_timer
-    #     }
-    #     progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
-    #     progress_timer.start(100)
-
-    #     # Run query asynchronously
-    #     signals = QuerySignals()
-    #     runnable = RunnableQuery(conn_data, query, signals)
-    #     signals.finished.connect(partial(self.handle_query_result, current_tab))
-    #     signals.error.connect(partial(self.handle_query_error, current_tab))
-    #     timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
-    #     self.running_queries[current_tab] = runnable
-    #     self.cancel_action.setEnabled(True)
-    #     self.thread_pool.start(runnable)
-    #     timeout_timer.start(self.QUERY_TIMEOUT)
-    #     self.status_message_label.setText("Executing query...")
-
-    # def execute_query(self, conn_data=None, query=None):
-    #     current_tab = self.tab_widget.currentWidget()
-    #     if not current_tab:
-    #         return
-
-    #     # If conn_data or query not provided, try to get from current editor
-    #     if conn_data is None or query is None:
-    #         query_editor = current_tab.findChild(CodeEditor, "query_editor")
-    #         if not query_editor:
-    #             # Fallback in case class name differs slightly in findChild
-    #             query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
-            
-    #         db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-    #         index = db_combo_box.currentIndex()
-    #         conn_data = db_combo_box.itemData(index)
-
-    #         # Extract query under cursor
-    #         cursor = query_editor.textCursor()
-    #         cursor_pos = cursor.position()
-    #         full_text = query_editor.toPlainText()
-    #         queries = full_text.split(";")
-
-    #         selected_query = ""
-    #         start = 0
-    #         for q in queries:
-    #             end = start + len(q)
-    #             if start <= cursor_pos <= end:
-    #                 selected_query = q.strip()
-    #                 break
-    #             start = end + 1  # for semicolon
-
-    #         query = selected_query
-
-    #     if not query or not query.strip().upper().startswith("SELECT "):
-    #         # For non-SELECT commands, usually we execute directly, 
-    #         # but if empty we prompt
-    #         if not query.strip():
-    #             self.show_info("Please enter a valid query.")
-    #             return
-
-    #     # ---------------------------------------------------------
-    #     # --- NEW: Apply Row Limit AND Offset Logic ---
-    #     # ---------------------------------------------------------
-    #     rows_limit_combo = current_tab.findChild(QComboBox, "rows_limit_combo")
-    #     offset_input = current_tab.findChild(QSpinBox, "offset_input")
-        
-    #     # Only apply limit/offset to SELECT queries to avoid syntax errors
-    #     if query.strip().upper().startswith("SELECT"):
-            
-    #         # 1. Clean existing semicolon for appending
-    #         has_semicolon = query.strip().endswith(";")
-    #         clean_query = query.rstrip().rstrip(';')
-            
-    #         suffix = ""
-
-    #         # 2. Handle Limit
-    #         if rows_limit_combo:
-    #             limit_text = rows_limit_combo.currentText().strip()
-    #             # Check if it's a number and not "No Limit"
-    #             if limit_text.isdigit() and int(limit_text) > 0:
-    #                 # Avoid double LIMIT if user typed it manually
-    #                 if "LIMIT" not in clean_query.upper():
-    #                     suffix += f" LIMIT {limit_text}"
-
-    #         # 3. Handle Offset (Start Row)
-    #         if offset_input:
-    #             offset_val = offset_input.value()
-    #             if offset_val > 0:
-    #                 # Avoid double OFFSET
-    #                 if "OFFSET" not in clean_query.upper():
-    #                     suffix += f" OFFSET {offset_val}"
-            
-    #         # 4. Reconstruct Query
-    #         query = clean_query + suffix
-            
-    #         if has_semicolon:
-    #             query += ";"
-    #     # ---------------------------------------------------------
-
-    #     # Show spinner and reset results view
-    #     results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-    #     spinner_label = results_stack.findChild(QLabel, "spinner_label")
-    #     results_stack.setCurrentIndex(4)
-    #     if spinner_label and spinner_label.movie():
-    #         spinner_label.movie().start()
-    #         spinner_label.show()
-
-    #     # Set up timers
-    #     tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
-    #     progress_timer = QTimer(self)
-    #     start_time = time.time()
-    #     timeout_timer = QTimer(self)
-    #     timeout_timer.setSingleShot(True)
-    #     self.tab_timers[current_tab] = {
-    #         "timer": progress_timer,
-    #         "start_time": start_time,
-    #         "timeout_timer": timeout_timer
-    #     }
-    #     progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
-    #     progress_timer.start(100)
-
-    #     # Run query asynchronously
-    #     signals = QuerySignals()
-    #     runnable = RunnableQuery(conn_data, query, signals)
-    #     signals.finished.connect(partial(self.handle_query_result, current_tab))
-    #     signals.error.connect(partial(self.handle_query_error, current_tab))
-    #     timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
-    #     self.running_queries[current_tab] = runnable
-    #     self.cancel_action.setEnabled(True)
-    #     self.thread_pool.start(runnable)
-    #     timeout_timer.start(self.QUERY_TIMEOUT)
-    #     self.status_message_label.setText("Executing query...")
-
-    # def execute_query(self, conn_data=None, query=None):
-    #     current_tab = self.tab_widget.currentWidget()
-    #     if not current_tab:
-    #         return
-
-    #     # If conn_data or query not provided, try to get from current editor
-    #     if conn_data is None or query is None:
-    #         query_editor = current_tab.findChild(CodeEditor, "query_editor")
-    #         if not query_editor:
-    #             query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
-            
-    #         db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-    #         index = db_combo_box.currentIndex()
-    #         conn_data = db_combo_box.itemData(index)
-
-    #         # Extract query under cursor
-    #         cursor = query_editor.textCursor()
-    #         cursor_pos = cursor.position()
-    #         full_text = query_editor.toPlainText()
-    #         queries = full_text.split(";")
-
-    #         selected_query = ""
-    #         start = 0
-    #         for q in queries:
-    #             end = start + len(q)
-    #             if start <= cursor_pos <= end:
-    #                 selected_query = q.strip()
-    #                 break
-    #             start = end + 1  # for semicolon
-
-    #         query = selected_query
-
-    #     if not query or not query.strip().upper().startswith("SELECT "):
-    #         if not query.strip():
-    #             self.show_info("Please enter a valid query.")
-    #             return
-
-    #     # ---------------------------------------------------------
-    #     # --- NEW: Apply Row Limit AND Offset Logic from Tab Attributes ---
-    #     # ---------------------------------------------------------
-        
-    #     # Get stored values (default to 1000 and 0 if not set)
-    #     limit_val = getattr(current_tab, 'current_limit', 1000)
-    #     offset_val = getattr(current_tab, 'current_offset', 0)
-        
-    #     # Only apply limit/offset to SELECT queries
-    #     if query.strip().upper().startswith("SELECT"):
-    #         has_semicolon = query.strip().endswith(";")
-    #         clean_query = query.rstrip().rstrip(';')
-            
-    #         suffix = ""
-
-    #         # Apply Limit
-    #         if limit_val and limit_val > 0:
-    #             if "LIMIT" not in clean_query.upper():
-    #                 suffix += f" LIMIT {limit_val}"
-
-    #         # Apply Offset
-    #         if offset_val and offset_val > 0:
-    #             if "OFFSET" not in clean_query.upper():
-    #                 suffix += f" OFFSET {offset_val}"
-            
-    #         query = clean_query + suffix
-    #         if has_semicolon:
-    #             query += ";"
-
-    #     # ---------------------------------------------------------
-
-    #     # Show spinner and reset results view
-    #     results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-    #     spinner_label = results_stack.findChild(QLabel, "spinner_label")
-    #     results_stack.setCurrentIndex(4)
-    #     if spinner_label and spinner_label.movie():
-    #         spinner_label.movie().start()
-    #         spinner_label.show()
-
-    #     # Set up timers
-    #     tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
-    #     progress_timer = QTimer(self)
-    #     start_time = time.time()
-    #     timeout_timer = QTimer(self)
-    #     timeout_timer.setSingleShot(True)
-    #     self.tab_timers[current_tab] = {
-    #         "timer": progress_timer,
-    #         "start_time": start_time,
-    #         "timeout_timer": timeout_timer
-    #     }
-    #     progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
-    #     progress_timer.start(100)
-
-    #     # Run query asynchronously
-    #     signals = QuerySignals()
-    #     runnable = RunnableQuery(conn_data, query, signals)
-    #     signals.finished.connect(partial(self.handle_query_result, current_tab))
-    #     signals.error.connect(partial(self.handle_query_error, current_tab))
-    #     timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
-    #     self.running_queries[current_tab] = runnable
-    #     self.cancel_action.setEnabled(True)
-    #     self.thread_pool.start(runnable)
-    #     timeout_timer.start(self.QUERY_TIMEOUT)
-    #     self.status_message_label.setText("Executing query...")
-
 
     def execute_query(self, conn_data=None, query=None):
         current_tab = self.tab_widget.currentWidget()
@@ -4650,184 +2331,6 @@ class MainWindow(QMainWindow):
         elapsed = time.time() - self.tab_timers[tab]["start_time"]
         label.setText(f"Running... {elapsed:.1f} sec")
 
-    # def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
-    #     # Stop timers
-    #     if target_tab in self.tab_timers:
-    #         self.tab_timers[target_tab]["timer"].stop()
-    #         self.tab_timers[target_tab]["timeout_timer"].stop()
-    #         del self.tab_timers[target_tab]
-
-    #     self.save_query_to_history(conn_data, query, "Success", row_count, elapsed_time)
-
-    #     # Get widgets
-    #     table_view = target_tab.findChild(QTableView, "result_table")
-    #     message_view = target_tab.findChild(QTextEdit, "message_view")
-    #     tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
-    #     rows_info_label = target_tab.findChild(QLabel, "rows_info_label")
-        
-    #     # Access Result Stack and Header Buttons
-    #     results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
-    #     header = target_tab.findChild(QWidget, "resultsHeader")
-    #     buttons = header.findChildren(QPushButton)
-
-    #     if message_view:
-    #         message_view.clear()
-
-    #     if is_select_query:
-    #         target_tab.column_names = columns
-            
-    #         # --- Initialize Change Tracking ---
-    #         target_tab.modified_items = set() 
-    #         # ----------------------------------
-
-    #         # --- Table Name Extraction ---
-    #         import re
-    #         match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query, re.IGNORECASE)
-    #         if match:
-    #             extracted_table = match.group(1)
-    #             target_tab.table_name = extracted_table.replace('"', '').replace('[', '').replace(']', '')
-    #             if "." in target_tab.table_name:
-    #                 parts = target_tab.table_name.split('.')
-    #                 target_tab.schema_name = parts[0]
-    #                 target_tab.real_table_name = parts[1]
-    #             else:
-    #                 target_tab.real_table_name = target_tab.table_name
-    #         else:
-    #             if hasattr(target_tab, 'table_name'): del target_tab.table_name
-
-    #         # 1. Update Showing Rows Label
-    #         current_offset = getattr(target_tab, 'current_offset', 0)
-    #         if rows_info_label:
-    #             if row_count > 0:
-    #                 start_row = current_offset + 1
-    #                 end_row = current_offset + row_count
-    #                 rows_info_label.setText(f"Showing rows {start_row} - {end_row}")
-    #             else:
-    #                 rows_info_label.setText("No rows returned")
-            
-    #         page_label = target_tab.findChild(QLabel, "page_label")
-    #         if page_label:
-    #             self.update_page_label(target_tab, row_count)
-
-    #         # 2. Populate Table Model
-    #         model = QStandardItemModel()
-    #         model.setColumnCount(len(columns))
-    #         model.setRowCount(len(results))
-            
-    #         # --- Metadata & PK Detection Logic ---
-    #         meta_columns = None
-    #         pk_indices = [] 
-
-    #         if hasattr(target_tab, 'real_table_name'):
-    #             meta_columns = self.get_table_column_metadata(conn_data, target_tab.real_table_name)
-
-    #         headers = []
-    #         if meta_columns and len(meta_columns) == len(columns):
-    #             for idx, col in enumerate(meta_columns):
-    #                 col_str = str(col)
-    #                 if "[PK]" in col_str:
-    #                     pk_indices.append(idx)
-                    
-    #                 if isinstance(col, str):
-    #                     parts = col.split(maxsplit=1)
-    #                     col_name = parts[0]
-    #                     data_type = parts[1] if len(parts) > 1 else ""
-    #                 else:
-    #                     col_name = str(col)
-    #                     data_type = ""
-    #                 headers.append(f"{col_name}\n{data_type}")
-    #         else:
-    #             headers = [f"{col}\n" for col in columns]
-    #             if columns and 'id' in columns[0].lower():
-    #                 pk_indices.append(0)
-
-    #         for col_idx, header_text in enumerate(headers):
-    #             model.setHeaderData(col_idx, Qt.Orientation.Horizontal, header_text)
-
-    #         header_view = table_view.horizontalHeader()
-    #         header_view.setDefaultAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-
-    #         # --- Fill Data and Attach PK info ---
-    #         for row_idx, row in enumerate(results):
-    #             pk_val = None
-    #             pk_col_name = None
-                
-    #             if pk_indices:
-    #                 pk_idx = pk_indices[0] 
-    #                 pk_val = row[pk_idx]
-    #                 pk_col_name = columns[pk_idx]
-
-    #             for col_idx, cell in enumerate(row):
-    #                 item = QStandardItem(str(cell))
-                    
-    #                 edit_data = {
-    #                     "pk_col": pk_col_name,
-    #                     "pk_val": pk_val,
-    #                     "orig_val": cell, # Original value stored here
-    #                     "col_name": columns[col_idx]
-    #                 }
-    #                 item.setData(edit_data, Qt.ItemDataRole.UserRole)
-    #                 model.setItem(row_idx, col_idx, item)
-
-    #         # --- Connect Item Changed Signal for Tracking ---
-    #         try: model.itemChanged.disconnect() 
-    #         except: pass
-            
-    #         model.itemChanged.connect(lambda item: self.handle_cell_edit(item, target_tab))
-
-    #         table_view.setModel(model)
-            
-    #         msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
-    #         status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
-            
-    #         if results_stack:
-    #             results_stack.setCurrentIndex(0)
-    #             if len(buttons) >= 2:
-    #                 buttons[0].setChecked(True)
-    #                 buttons[1].setChecked(False)
-    #             results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
-    #             if results_info_bar: results_info_bar.show()
-
-    #     else:
-    #         # Non-Select Logic
-    #         table_view.setModel(QStandardItemModel())
-    #         q_upper = query.strip().upper()
-    #         if q_upper.startswith("INSERT"):
-    #             msg = f"INSERT 0 {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
-    #             status = f"INSERT 0 {row_count} | Time: {elapsed_time:.2f} sec"
-    #         elif q_upper.startswith("UPDATE"):
-    #             msg = f"UPDATE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
-    #             status = f"UPDATE {row_count} | Time: {elapsed_time:.2f} sec"
-    #         elif q_upper.startswith("DELETE"):
-    #             msg = f"DELETE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
-    #             status = f"DELETE {row_count} | Time: {elapsed_time:.2f} sec"
-    #         else:
-    #             msg = f"Query executed successfully.\n\nRows affected: {row_count}\nTime: {elapsed_time:.2f} sec"
-    #             status = f"Rows affected: {row_count} | Time: {elapsed_time:.2f} sec"
-
-    #         if results_stack:
-    #             results_stack.setCurrentIndex(1)
-    #             if len(buttons) >= 2:
-    #                 buttons[0].setChecked(False)
-    #                 buttons[1].setChecked(True)
-    #             results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
-    #             if results_info_bar: results_info_bar.hide()
-
-    #     if message_view:
-    #         message_view.append(msg)
-    #         sb = message_view.verticalScrollBar()
-    #         sb.setValue(sb.maximum())
-
-    #     if tab_status_label:
-    #         tab_status_label.setText(status)
-
-    #     self.status_message_label.setText("Ready")
-    #     self.stop_spinner(target_tab, success=True) 
-
-    #     if target_tab in self.running_queries:
-    #         del self.running_queries[target_tab]
-    #     if not self.running_queries:
-    #         self.cancel_action.setEnabled(False)
 
     def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
        
@@ -5801,18 +3304,18 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
         self.schema_tree.setStyleSheet("""
-    QHeaderView {
-        background-color: #a9a9a9;
+            QHeaderView {
+             background-color: #a9a9a9;
                                        
-    }
-    QHeaderView::section {
-        border-right: 1px solid #d3d3d3;
-        padding: 4px;
-        background-color: #a9a9a9;   
-    }
-    QTreeView {
-        gridline-color: #a9a9a9;
-    }
+            }
+            QHeaderView::section {
+            border-right: 1px solid #d3d3d3;
+            padding: 4px;
+            background-color: #a9a9a9;   
+            }
+           QTreeView {
+           gridline-color: #a9a9a9;
+           }
 """)
 
         db_path = conn_data.get("db_path")
@@ -7294,66 +4797,7 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Error loading CSV folder: {e}", 5000)
 
 
-    # def load_servicenow_schema(self, conn_data):
-    #     try:
-    #         conn = db.create_servicenow_connection(conn_data)
-    #         if not conn:
-    #             self.status.showMessage("Unable to connect to ServiceNow", 5000)
-    #             return
-
-    #         cursor = conn.cursor()
-        
-    #         # --- Fetch tables ---
-    #         # sys_tables may be restricted, so using a known list as fallback
-    #         try:
-    #             cursor.execute("SELECT TableName FROM sys_tables")
-    #             tables = [row[0] for row in cursor.fetchall()]
-    #         except Exception:
-    #             # fallback to common ServiceNow tables
-    #             tables = ['incident', 'task', 'change_request', 'problem', 'change_request']
-
-    #         if not tables:
-    #             self.status.showMessage("No tables found or access restricted.", 5000)
-    #             return
-
-    #         self.schema_model.clear()
-    #         self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-    #         for table_name in tables:
-    #             table_item = QStandardItem(QIcon("assets/table_icon.png"), table_name)
-    #             table_item.setEditable(False)
-    #             table_item.setData({
-    #                 'db_type': 'servicenow',
-    #                 'table_name': table_name,
-    #                 'conn_data': conn_data
-    #             }, Qt.ItemDataRole.UserRole)
-    #             table_item.appendRow(QStandardItem("Loading..."))  # expandable placeholder
-
-    #             type_item = QStandardItem("Table")
-    #             type_item.setEditable(False)
-    #             self.schema_model.appendRow([table_item, type_item])
-
-    #         conn.close()
-    #     except Exception as e:
-    #         self.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
-
     def load_servicenow_schema(self, conn_data):
-        self.schema_model.clear()
-        self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-        
-        # --- UI Styling (Consistent with SQLite/PG) ---
-        self.schema_tree.setColumnWidth(0, 200)
-        self.schema_tree.setColumnWidth(1, 100)
-        header = self.schema_tree.header()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.schema_tree.setStyleSheet("""
-            QHeaderView { background-color: #a9a9a9; }
-            QHeaderView::section { border-right: 1px solid #d3d3d3; padding: 4px; background-color: #a9a9a9; }
-            QTreeView { gridline-color: #a9a9a9; }
-        """)
-        # -----------------------------------------------
-
         try:
             conn = db.create_servicenow_connection(conn_data)
             if not conn:
@@ -7361,45 +4805,104 @@ class MainWindow(QMainWindow):
                 return
 
             cursor = conn.cursor()
-            
-            
-            tables = []
+        
+            # --- Fetch tables ---
+            # sys_tables may be restricted, so using a known list as fallback
             try:
-                
-                cursor.execute("SELECT TableName FROM sys_tables") 
+                cursor.execute("SELECT TableName FROM sys_tables")
                 tables = [row[0] for row in cursor.fetchall()]
-            except:
-                tables = ['incident', 'problem', 'change_request', 'sys_user', 'cmdb_ci']
+            except Exception:
+                # fallback to common ServiceNow tables
+                tables = ['incident', 'task', 'change_request', 'problem', 'change_request']
 
             if not tables:
                 self.status.showMessage("No tables found or access restricted.", 5000)
                 return
 
+            self.schema_model.clear()
+            self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
             for table_name in tables:
                 table_item = QStandardItem(QIcon("assets/table_icon.png"), table_name)
                 table_item.setEditable(False)
-                
-                
                 table_item.setData({
                     'db_type': 'servicenow',
                     'table_name': table_name,
                     'conn_data': conn_data
                 }, Qt.ItemDataRole.UserRole)
-                
-               
-                table_item.appendRow(QStandardItem("Loading..."))
+                table_item.appendRow(QStandardItem("Loading..."))  # expandable placeholder
 
                 type_item = QStandardItem("Table")
                 type_item.setEditable(False)
                 self.schema_model.appendRow([table_item, type_item])
-                
-            if hasattr(self, '_expanded_connection'):
-                try: self.schema_tree.expanded.disconnect(self._expanded_connection)
-                except: pass
-            
-          
-            self._expanded_connection = self.schema_tree.expanded.connect(self.load_tables_on_expand)
 
             conn.close()
         except Exception as e:
             self.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
+
+    # def load_servicenow_schema(self, conn_data):
+    #     self.schema_model.clear()
+    #     self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+        
+    #     # --- UI Styling (Consistent with SQLite/PG) ---
+    #     self.schema_tree.setColumnWidth(0, 200)
+    #     self.schema_tree.setColumnWidth(1, 100)
+    #     header = self.schema_tree.header()
+    #     header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+    #     header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+    #     header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
+    #     self.schema_tree.setStyleSheet("""
+    #         QHeaderView { background-color: #a9a9a9; }
+    #         QHeaderView::section { border-right: 1px solid #d3d3d3; padding: 4px; background-color: #a9a9a9; }
+    #         QTreeView { gridline-color: #a9a9a9; }
+    #     """)
+    #     # -----------------------------------------------
+
+    #     try:
+    #         conn = db.create_servicenow_connection(conn_data)
+    #         if not conn:
+    #             self.status.showMessage("Unable to connect to ServiceNow", 5000)
+    #             return
+
+    #         cursor = conn.cursor()
+            
+            
+    #         tables = []
+    #         try:
+                
+    #             cursor.execute("SELECT TableName FROM sys_tables") 
+    #             tables = [row[0] for row in cursor.fetchall()]
+    #         except:
+    #             tables = ['incident', 'problem', 'change_request', 'sys_user', 'cmdb_ci']
+
+    #         if not tables:
+    #             self.status.showMessage("No tables found or access restricted.", 5000)
+    #             return
+
+    #         for table_name in tables:
+    #             table_item = QStandardItem(QIcon("assets/table_icon.png"), table_name)
+    #             table_item.setEditable(False)
+                
+                
+    #             table_item.setData({
+    #                 'db_type': 'servicenow',
+    #                 'table_name': table_name,
+    #                 'conn_data': conn_data
+    #             }, Qt.ItemDataRole.UserRole)
+                
+               
+    #             table_item.appendRow(QStandardItem("Loading..."))
+
+    #             type_item = QStandardItem("Table")
+    #             type_item.setEditable(False)
+    #             self.schema_model.appendRow([table_item, type_item])
+                
+    #         if hasattr(self, '_expanded_connection'):
+    #             try: self.schema_tree.expanded.disconnect(self._expanded_connection)
+    #             except: pass
+            
+          
+    #         self._expanded_connection = self.schema_tree.expanded.connect(self.load_tables_on_expand)
+
+    #         conn.close()
+    #     except Exception as e:
+    #         self.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
