@@ -10,27 +10,148 @@ def add_connection_group(name, parent_id):
         conn.commit()
 
 
+# def add_connection(data, connection_group_id):
+#     with sqlite.connect(DB_FILE) as conn:
+#         c = conn.cursor()
+#         if "db_path" in data:  # SQLite
+#             c.execute("INSERT INTO usf_connections (name, short_name, connection_group_id, db_path) VALUES (?, ?,?,?)",
+#                       (data["name"], data["short_name"], connection_group_id, data["db_path"]))
+#         else:  # Postgres/Oracle
+#             c.execute("INSERT INTO usf_connections (name, short_name, connection_group_id, host, \"database\", \"user\", password, port) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+#                       (data["name"], data["short_name"], connection_group_id, data["host"], data["database"], data["user"], data["password"], data["port"]))
+#         conn.commit()
+
+
 def add_connection(data, connection_group_id):
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
-        if "db_path" in data:  # SQLite
-            c.execute("INSERT INTO usf_connections (name, short_name, connection_group_id, db_path) VALUES (?, ?,?,?)",
-                      (data["name"], data["short_name"], connection_group_id, data["db_path"]))
-        else:  # Postgres/Oracle
-            c.execute("INSERT INTO usf_connections (name, short_name, connection_group_id, host, \"database\", \"user\", password, port) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                      (data["name"], data["short_name"], connection_group_id, data["host"], data["database"], data["user"], data["password"], data["port"]))
+
+        # -------- SQLite / CSV --------
+        if data.get("db_path"):
+            c.execute(
+                """
+                INSERT INTO usf_connections
+                (name, short_name, connection_group_id, db_path)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    data.get("name"),
+                    data.get("short_name"),
+                    connection_group_id,
+                    data.get("db_path"),
+                )
+            )
+
+        # -------- ServiceNow --------
+        elif data.get("instance_url"):
+            c.execute(
+                """
+                INSERT INTO usf_connections
+                (name, short_name, connection_group_id, instance_url, "user", password)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data.get("name"),
+                    data.get("short_name"),
+                    connection_group_id,
+                    data.get("instance_url"),
+                    data.get("user"),
+                    data.get("password"),
+                )
+            )
+
+        # -------- Postgres / Oracle --------
+        else:
+            c.execute(
+                """
+                INSERT INTO usf_connections
+                (name, short_name, connection_group_id, host, "database", "user", password, port)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data.get("name"),
+                    data.get("short_name"),
+                    connection_group_id,
+                    data.get("host"),
+                    data.get("database"),
+                    data.get("user"),
+                    data.get("password"),
+                    data.get("port"),
+                )
+            )
+
         conn.commit()
 
+
+# def update_connection(data):
+#     with sqlite.connect(DB_FILE) as conn:
+#         c = conn.cursor()
+#         if "db_path" in data:  # SQLite
+#             c.execute("UPDATE usf_connections SET name = ?, short_name = ?, db_path = ? WHERE id = ?",
+#                       (data["name"], data["short_name"], data["db_path"], data["id"]))
+#         else:  # Postgres/Oracle
+#             c.execute("UPDATE usf_connections SET name = ?, short_name = ?, host = ?, database = ?, user = ?, password = ?, port = ? WHERE id = ?",
+#                       (data["name"], data["short_name"], data["host"], data["database"], data["user"], data["password"], data["port"], data["id"]))
+#         conn.commit()
 
 def update_connection(data):
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
-        if "db_path" in data:  # SQLite
-            c.execute("UPDATE usf_connections SET name = ?, short_name = ?, db_path = ? WHERE id = ?",
-                      (data["name"], data["short_name"], data["db_path"], data["id"]))
-        else:  # Postgres/Oracle
-            c.execute("UPDATE usf_connections SET name = ?, short_name = ?, host = ?, database = ?, user = ?, password = ?, port = ? WHERE id = ?",
-                      (data["name"], data["short_name"], data["host"], data["database"], data["user"], data["password"], data["port"], data["id"]))
+
+        # -------- SQLite / CSV --------
+        if data.get("db_path"):
+            c.execute(
+                """
+                UPDATE usf_connections
+                SET name = ?, short_name = ?, db_path = ?
+                WHERE id = ?
+                """,
+                (
+                    data.get("name"),
+                    data.get("short_name"),
+                    data.get("db_path"),
+                    data.get("id")
+                )
+            )
+
+        # -------- ServiceNow --------
+        elif data.get("instance_url"):
+            c.execute(
+                """
+                UPDATE usf_connections
+                SET name = ?, short_name = ?, instance_url = ?, "user" = ?, password = ?
+                WHERE id = ?
+                """,
+                (
+                    data.get("name"),
+                    data.get("short_name"),
+                    data.get("instance_url"),
+                    data.get("user"),
+                    data.get("password"),
+                    data.get("id")
+                )
+            )
+
+        # -------- Postgres / Oracle --------
+        else:
+            c.execute(
+                """
+                UPDATE usf_connections
+                SET name = ?, short_name = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?
+                WHERE id = ?
+                """,
+                (
+                    data.get("name"),
+                    data.get("short_name"),
+                    data.get("host"),
+                    data.get("database"),
+                    data.get("user"),
+                    data.get("password"),
+                    data.get("port"),
+                    data.get("id")
+                )
+            )
+
         conn.commit()
 
 

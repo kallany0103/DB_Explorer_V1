@@ -1,0 +1,9 @@
+#python.exe -m pip install --upgrade pip
+psycopg2-binary
+sqlparse
+oracledb
+pandas
+PyQt6
+openpyxl
+cdata_servicenow_connector-25.0.9440-cp311-cp311-win_amd64.whl
+cdata_csv_connector-25.0.9440-cp311-cp311-win_amd64.whl
