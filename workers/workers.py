@@ -231,39 +231,19 @@ class RunnableQuery(QRunnable):
 
             code = (self.conn_data.get("code") or "").upper()
             if not code:
-                # Fallback check
                 if "host" in self.conn_data:
                     code = "POSTGRES"
                 elif "db_path" in self.conn_data:
-                    code = "SQLITE" 
+                    code = "SQLITE"
 
-            elif code == "SERVICENOW":
+            # --- DB Execution ---
+            if code == "SERVICENOW":
                 conn = db.create_servicenow_connection(self.conn_data)
                 if not conn:
                     raise ConnectionError("Failed to connect to ServiceNow")
-
                 cursor = conn.cursor()
-
-                # ServiceNow works best with SELECT
                 cursor.execute(self.query)
-
-                columns = [d[0] for d in cursor.description] if cursor.description else []
-                results = cursor.fetchall() if cursor.description else []
-                row_count = len(results)
-
-            # elif code == 'SERVICENOW':
-            #     conn = db.create_servicenow_connection(self.conn_data)
-            #     cursor = conn.cursor()
-            #     cursor.execute(self.query)
-                
-            #     # SELECT কুয়েরির ফলাফল ফেচ করা
-            #     if cursor.description:
-            #         columns = [desc[0] for desc in cursor.description]
-            #         results = cursor.fetchall()
-            #         row_count = len(results)
-
-            # --- CSV via CData ---
-            if code == "CSV":
+            elif code == "CSV":
                 folder_path = self.conn_data.get("db_path")
                 if not folder_path:
                     raise ValueError("CSV folder path missing.")
@@ -271,11 +251,6 @@ class RunnableQuery(QRunnable):
                 conn = mod.connect(f"URI={folder_path};")
                 cursor = conn.cursor()
                 cursor.execute(self.query)
-                columns = [d[0] for d in cursor.description] if cursor.description else []
-                results = cursor.fetchall() if cursor.description else []
-                row_count = len(results)
-                
-            # --- SQLite ---
             elif code == "SQLITE":
                 db_path = self.conn_data.get("db_path")
                 if not db_path:
@@ -283,12 +258,6 @@ class RunnableQuery(QRunnable):
                 conn = db.create_sqlite_connection(db_path)
                 cursor = conn.cursor()
                 cursor.execute(self.query)
-                if self._is_cancelled: return
-                columns = [desc[0] for desc in cursor.description] if cursor.description else []
-                results = cursor.fetchall() if cursor.description else []
-                row_count = len(results) if cursor.description else cursor.rowcount
-
-            # --- Postgres ---
             elif code == "POSTGRES":
                 conn = db.create_postgres_connection(
                     host=self.conn_data["host"],
@@ -299,55 +268,43 @@ class RunnableQuery(QRunnable):
                 )
                 cursor = conn.cursor()
                 cursor.execute(self.query)
-                if self._is_cancelled: return
-                columns = [desc[0] for desc in cursor.description] if cursor.description else []
-                results = cursor.fetchall() if cursor.description else []
-                row_count = len(results) if cursor.description else cursor.rowcount
-                
-            elif code == "SERVICENOW":
-                conn = db.create_servicenow_connection(self.conn_data)
-                if not conn:
-                    raise ConnectionError("Failed to connect to ServiceNow")
-
-                cursor = conn.cursor()
-
-                # ServiceNow works best with SELECT
-                cursor.execute(self.query)
-
-                columns = [d[0] for d in cursor.description] if cursor.description else []
-                results = cursor.fetchall() if cursor.description else []
-                row_count = len(results)
-
             else:
-                # Final Fallback
                 if self.conn_data.get("db_path"):
-                     conn = db.create_sqlite_connection(self.conn_data["db_path"])
-                     cursor = conn.cursor()
-                     cursor.execute(self.query)
-                     columns = [desc[0] for desc in cursor.description] if cursor.description else []
-                     results = cursor.fetchall() if cursor.description else []
-                     row_count = len(results)
+                    conn = db.create_sqlite_connection(self.conn_data["db_path"])
+                    cursor = conn.cursor()
+                    cursor.execute(self.query)
                 else:
                     raise ValueError(f"Unsupported database type: {code}")
 
             if self._is_cancelled:
                 return
 
-            elapsed_time = time.time() - start_time
-            is_select_query = self.query.lower().strip().startswith("select")
+            # --- Handle Results ---
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            results = cursor.fetchall() if cursor.description else []
+            row_count = len(results) if cursor.description else (cursor.rowcount if hasattr(cursor, 'rowcount') else 0)
             
-            if not is_select_query and conn:
-                # INSERT, UPDATE, DELETE 
+            elapsed_time = time.time() - start_time
+            
+            # Treat as "select-like" if it returns data columns
+            is_returning_results = bool(columns)
+            
+            # Commit only for mutation queries that didn't automatically commit
+            q_lower = self.query.lower().strip()
+            is_mutation = any(q_lower.startswith(x) for x in ["insert", "update", "delete", "create", "drop", "alter", "truncate"])
+            if is_mutation and conn:
                 conn.commit()
+
             self.signals.finished.emit(
-                self.conn_data, self.query, results, columns, row_count, elapsed_time, is_select_query
+                self.conn_data, self.query, results, columns, row_count, elapsed_time, is_returning_results
             )
         except Exception as e:
-             if not self._is_cancelled:
+            if not self._is_cancelled:
                 if conn:
-                    conn.rollback()
+                    try: conn.rollback()
+                    except: pass
                 elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
-                self.signals.error.emit(self.conn_data, self.query, 0, elapsed_time, str(e) )
+                self.signals.error.emit(self.conn_data, self.query, 0, elapsed_time, str(e))
 
         finally:
             if cursor:
