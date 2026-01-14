@@ -10,7 +10,7 @@ import cdata.servicenow
 import sqlite3 as sqlite # This can be removed if not used elsewhere directly
 from functools import partial
 import uuid
-import pandas as pd, time, os
+import pandas as pd, time, os, re
 from table_properties import TablePropertiesDialog
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QTabWidget,
@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush
-from PyQt6.QtCore import Qt, QDir, QModelIndex, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
+from PyQt6.QtCore import Qt, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
 from dialogs.postgres_dialog import PostgresConnectionDialog
 from dialogs.sqlite_dialog import SQLiteConnectionDialog
 from dialogs.oracle_dialog import OracleConnectionDialog
@@ -33,6 +33,7 @@ from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, Proc
 from notification_manager import NotificationManager
 from code_editor import CodeEditor
 import db
+
 
 class CreateTableDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
@@ -954,9 +955,6 @@ class MainWindow(QMainWindow):
         results_info_layout.addWidget(delete_row_btn)
 
 
-    
-
-
         results_info_layout.addWidget(copy_btn)
         results_info_layout.addWidget(paste_btn)
 
@@ -967,7 +965,33 @@ class MainWindow(QMainWindow):
         download_btn.setToolTip("Download query result")
         download_btn.clicked.connect(lambda: self.download_result(tab_content))
         results_info_layout.addWidget(download_btn)
+
+        search_box = QLineEdit()
+        search_box.setPlaceholderText("Search / Filter results...")
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "search.svg") 
         
+        if os.path.exists(icon_path):
+            search_icon = QIcon(icon_path)
+            
+            search_box.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
+        search_box.setFixedWidth(200)
+        search_box.setObjectName("table_search_box")
+        
+        
+        def on_search_text_changed(text):
+            
+            current_table = tab_content.findChild(QTableView, "results_table")
+            if current_table:
+                current_model = current_table.model()
+               
+                if isinstance(current_model, QSortFilterProxyModel):
+                    current_model.setFilterFixedString(text)
+
+        search_box.textChanged.connect(on_search_text_changed)
+        results_info_layout.addWidget(search_box)
+
+
+
         results_info_layout.addStretch()
     
 
@@ -1214,13 +1238,14 @@ class MainWindow(QMainWindow):
     #        return
 
     #     self.copy_result_with_header(table_view)
+    
 
     def copy_current_result_table(self):
         tab = self.tab_widget.currentWidget()
         if not tab:
            return
 
-        table_view = tab.findChild(QTableView, "result_table")
+        table_view = tab.findChild(QTableView, "results_table")
         if not table_view:
            return
 
@@ -1370,6 +1395,23 @@ class MainWindow(QMainWindow):
         table_view = current_tab.findChild(QTableView, "results_table")
         if not table_view:
             return
+        model = table_view.model()
+        selection_model = table_view.selectionModel()
+        proxy_rows = selection_model.selectedRows()
+
+        selected_rows = []
+        
+        # যদি Proxy Model হয়, তাহলে ইনডেক্স কনভার্ট করতে হবে
+        if isinstance(model, QSortFilterProxyModel):
+            source_model = model.sourceModel()
+            for proxy_index in proxy_rows:
+                # Proxy Index কে Source Index এ কনভার্ট করা
+                source_index = model.mapToSource(proxy_index)
+                selected_rows.append(source_index)
+            # নিচের লজিকের জন্য model ভেরিয়েবলকে source_model দিয়ে রিপ্লেস করুন
+            model = source_model 
+        else:
+            selected_rows = proxy_rows
 
         selection_model = table_view.selectionModel()
         selected_rows = selection_model.selectedRows()
@@ -1492,7 +1534,7 @@ class MainWindow(QMainWindow):
         return pd.DataFrame(data, columns=headers)
 
     def download_result(self, tab_content):
-        table = tab_content.findChild(QTableView, "result_table")
+        table = tab_content.findChild(QTableView, "results_table")
         if not table or not table.model():
            QMessageBox.warning(self, "No Data", "No result data to download")
            return
@@ -1539,12 +1581,7 @@ class MainWindow(QMainWindow):
         line.setFrameShadow(QFrame.Shadow.Sunken)
         return line
 
-    # Helper function for separator
-    def create_vertical_separator(self):
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.VLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        return line
+
 
 
     def close_tab(self, index):
@@ -1573,8 +1610,11 @@ class MainWindow(QMainWindow):
         tab = self.tab_widget.currentWidget()
         if not tab: return
 
-        table = tab.findChild(QTableView, "result_table")
+        table = tab.findChild(QTableView, "results_table")
         model = table.model()
+        if isinstance(model, QSortFilterProxyModel):
+            model = model.sourceModel()
+        
 
         if not model:
            return
@@ -1609,8 +1649,10 @@ class MainWindow(QMainWindow):
         conn_data = db_combo_box.currentData()
         if not conn_data: return
         
-        table = tab.findChild(QTableView, "result_table")
+        table = tab.findChild(QTableView, "results_table")
         model = table.model()
+        if isinstance(model, QSortFilterProxyModel):
+            model = model.sourceModel()
 
         # ---------------------------------------------------------
         # PART 1: Handle INSERT (New Rows)
@@ -2638,23 +2680,14 @@ class MainWindow(QMainWindow):
         #    query += ";"
 
         
-        # Only apply limit/offset to SELECT queries
-        if query.strip().upper().startswith("SELECT"):
-            has_semicolon = query.strip().endswith(";")
-            clean_query = query.rstrip().rstrip(';')
-            
-            suffix = ""
-
-
-        # ---------------------------------------------------------
-
         # Show spinner and reset results view
         results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-        spinner_label = results_stack.findChild(QLabel, "spinner_label")
-        results_stack.setCurrentIndex(4)
-        if spinner_label and spinner_label.movie():
-            spinner_label.movie().start()
-            spinner_label.show()
+        if results_stack:
+            results_stack.setCurrentIndex(4)
+            spinner_label = results_stack.findChild(QLabel, "spinner_label")
+            if spinner_label and spinner_label.movie():
+                spinner_label.movie().start()
+                spinner_label.show()
 
         # Set up timers
         tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
@@ -2687,6 +2720,7 @@ class MainWindow(QMainWindow):
         elapsed = time.time() - self.tab_timers[tab]["start_time"]
         label.setText(f"Running... {elapsed:.1f} sec")
 
+    
 
     def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
        
@@ -2711,15 +2745,36 @@ class MainWindow(QMainWindow):
         if message_view:
             message_view.clear()
 
-        if is_select_query:
+        # --- Robust Query Type Detection ---
+        # Strip comments and whitespace to accurately identify the starting keyword
+        match_query = re.sub(r'--.*?\n|/\*.*?\*/', '', query, flags=re.DOTALL).strip().upper()
+        first_word = match_query.split()[0] if match_query.split() else ""
+        
+        # Use sqlparse as a secondary method for type detection
+        q_type_parsed = ""
+        parsed = sqlparse.parse(query)
+        if parsed:
+            for statement in parsed:
+                t = statement.get_type().upper()
+                if t != 'UNKNOWN':
+                    q_type_parsed = t
+                    break
+        
+        # Final query type for logic and messaging
+        q_type = q_type_parsed if q_type_parsed and q_type_parsed != 'UNKNOWN' else first_word
+        
+        # Structural (DDL) commands should always focus the "Messages" tab
+        is_structural = q_type in ["CREATE", "DROP", "ALTER", "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "RENAME"]
+        
+        # Determine if it's a SELECT query
+        is_select = q_type == "SELECT" or first_word == "SELECT"
+        
+        # Switch to the Output tab ONLY if it is not a structural command AND (it is a SELECT or returned columns)
+        if not is_structural and (is_select or (columns and len(columns) > 0)):
             target_tab.column_names = columns
-            
-            # --- CHANGE 1: Use a set for coordinates instead of items ---
             target_tab.modified_coords = set() 
-            # --------------------------------------------------------
 
-            # ... (Table name extraction logic same as before) ...
-            import re
+            # Extract table name from query for editing purposes
             match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query, re.IGNORECASE)
             if match:
                 extracted_table = match.group(1)
@@ -2733,7 +2788,6 @@ class MainWindow(QMainWindow):
             else:
                 if hasattr(target_tab, 'table_name'): del target_tab.table_name
 
-            # ... (Label updating logic same as before) ...
             current_offset = getattr(target_tab, 'current_offset', 0)
             if rows_info_label:
                 if row_count > 0:
@@ -2747,12 +2801,11 @@ class MainWindow(QMainWindow):
             if page_label:
                 self.update_page_label(target_tab, row_count)
 
-            # Populate Model
-            model = QStandardItemModel()
+            # Populate Model (Set parent to table_view to prevent GC)
+            model = QStandardItemModel(table_view)
             model.setColumnCount(len(columns))
             model.setRowCount(len(results))
             
-            # ... (Metadata logic same as before) ...
             meta_columns = None
             pk_indices = [] 
             if hasattr(target_tab, 'real_table_name'):
@@ -2774,7 +2827,7 @@ class MainWindow(QMainWindow):
                     headers.append(f"{col_name}\n{data_type}")
             else:
                 headers = [f"{col}\n" for col in columns]
-                if columns and 'id' in columns[0].lower():
+                if columns and any(x in columns[0].lower() for x in ['id', 'uuid', 'pk']):
                     pk_indices.append(0)
 
             for col_idx, header_text in enumerate(headers):
@@ -2800,60 +2853,79 @@ class MainWindow(QMainWindow):
                     item.setData(edit_data, Qt.ItemDataRole.UserRole)
                     model.setItem(row_idx, col_idx, item)
 
-            # --- CHANGE 2: Connect Signal ---
+            # --- Use Proxy Model for Sorting/Filtering ---
             try: model.itemChanged.disconnect() 
             except: pass
             
-            # Pass ONLY the item and tab
             model.itemChanged.connect(lambda item: self.handle_cell_edit(item, target_tab))
 
-            table_view.setModel(model)
+            proxy_model = QSortFilterProxyModel(table_view)
+            proxy_model.setSourceModel(model)
+            proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            proxy_model.setFilterKeyColumn(-1)
             
-            # ... (UI update logic same as before) ...
+            table_view.setModel(proxy_model)
+            search_box = target_tab.findChild(QLineEdit, "table_search_box")
+            if search_box and search_box.text():
+                proxy_model.setFilterFixedString(search_box.text())
+            
             msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
             status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
             
             if results_stack:
-                results_stack.setCurrentIndex(0)
-                if len(buttons) >= 2:
-                    buttons[0].setChecked(True)
-                    buttons[1].setChecked(False)
+                results_stack.setCurrentIndex(0) # Open Output Tab
+                if header:
+                    buttons = header.findChildren(QPushButton)
+                    if len(buttons) >= 2:
+                        buttons[0].setChecked(True)
+                        buttons[1].setChecked(False)
                 results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
                 if results_info_bar: results_info_bar.show()
 
         else:
-            # ... (Non-select logic same as before) ...
-            table_view.setModel(QStandardItemModel())
-            q_upper = query.strip().upper()
-            if q_upper.startswith("INSERT"):
+            # --- Non-result-set query handling (DDL/DML) ---
+            table_view.setModel(QStandardItemModel(table_view))
+            
+            should_refresh_tree = False
+
+            if q_type.startswith("INSERT"):
                 msg = f"INSERT 0 {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
                 status = f"INSERT 0 {row_count} | Time: {elapsed_time:.2f} sec"
-            elif q_upper.startswith("UPDATE"):
+            elif q_type.startswith("UPDATE"):
                 msg = f"UPDATE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
                 status = f"UPDATE {row_count} | Time: {elapsed_time:.2f} sec"
-            elif q_upper.startswith("DELETE"):
+            elif q_type.startswith("DELETE"):
                 msg = f"DELETE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
                 status = f"DELETE {row_count} | Time: {elapsed_time:.2f} sec"
-            
-            elif q_upper.startswith("CREATE"):
+            elif q_type.startswith("CREATE"):
                 msg = f"CREATE COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
                 status = f"CREATE success | Time: {elapsed_time:.2f} sec"
                 should_refresh_tree = True
-            
-           
-            elif q_upper.startswith("DROP"):
+            elif q_type.startswith("DROP"):
                 msg = f"DROP COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
                 status = f"DROP success | Time: {elapsed_time:.2f} sec"
                 should_refresh_tree = True
+            elif q_type.startswith("ALTER"):
+                msg = f"ALTER COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+                status = f"ALTER success | Time: {elapsed_time:.2f} sec"
+                should_refresh_tree = True
+            elif q_type.startswith("TRUNCATE"):
+                msg = f"TRUNCATE COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+                status = f"TRUNCATE success | Time: {elapsed_time:.2f} sec"
             else:
                 msg = f"Query executed successfully.\n\nRows affected: {row_count}\nTime: {elapsed_time:.2f} sec"
                 status = f"Rows affected: {row_count} | Time: {elapsed_time:.2f} sec"
 
+            if should_refresh_tree:
+                self.refresh_object_explorer()
+
             if results_stack:
-                results_stack.setCurrentIndex(1)
-                if len(buttons) >= 2:
-                    buttons[0].setChecked(False)
-                    buttons[1].setChecked(True)
+                results_stack.setCurrentIndex(1) # Open Messages Tab
+                if header:
+                    buttons = header.findChildren(QPushButton)
+                    if len(buttons) >= 2:
+                        buttons[0].setChecked(False)
+                        buttons[1].setChecked(True)
                 results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
                 if results_info_bar: results_info_bar.hide()
 
@@ -2872,9 +2944,6 @@ class MainWindow(QMainWindow):
             del self.running_queries[target_tab]
         if not self.running_queries:
             self.cancel_action.setEnabled(False)
-
-
-
 
     def handle_cell_edit(self, item, tab):
         """
@@ -2991,6 +3060,20 @@ class MainWindow(QMainWindow):
             message_view.append(f"Error:\n\n{error_message}")
             message_view.verticalScrollBar().setValue(message_view.verticalScrollBar().maximum())
 
+        # --- Switch to Messages Tab on Error ---
+        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+        if results_stack:
+            results_stack.setCurrentIndex(1) # Index 1 is Messages
+            header = current_tab.findChild(QWidget, "resultsHeader")
+            if header:
+                buttons = header.findChildren(QPushButton)
+                if len(buttons) >= 2:
+                    buttons[0].setChecked(False) # Output
+                    buttons[1].setChecked(True)  # Messages
+            
+            results_info_bar = current_tab.findChild(QWidget, "resultsInfoBar")
+            if results_info_bar:
+                results_info_bar.hide()
 
         #tab_status_label.setText(f"Error: {error_message}")
         self.status_message_label.setText("Error occurred")
@@ -4787,7 +4870,6 @@ class MainWindow(QMainWindow):
                 # Loop through the *filtered* list
                 for name, definition in user_indexes:
                      # Clean up definition
-                    import re
                     match = re.search(r'USING \w+ \((.*)\)', definition)
                     cols_str = match.group(1) if match else "..."
                     
