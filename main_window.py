@@ -934,10 +934,6 @@ class MainWindow(QMainWindow):
          )
         copy_btn.clicked.connect(self.copy_current_result_table)
 
-
-
-
-
         paste_btn = QToolButton()
         paste_btn.setText("Paste")
         paste_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder))
@@ -1228,18 +1224,6 @@ class MainWindow(QMainWindow):
         self._initialize_processes_model(tab_content)
         return tab_content
     
-    # def copy_current_result_table(self):
-    #     tab = self.tab_widget.currentWidget()
-    #     if not tab:
-    #        return
-
-    #     table_view = tab.findChild(QTableView, "result_table")
-    #     if not table_view:
-    #        return
-
-    #     self.copy_result_with_header(table_view)
-    
-
     def copy_current_result_table(self):
         tab = self.tab_widget.currentWidget()
         if not tab:
@@ -1251,63 +1235,6 @@ class MainWindow(QMainWindow):
 
         self.copy_result_with_header(table_view)
 
-
-    
-    # def copy_result_selection(self, table_view: QTableView):
-    #     selection = table_view.selectionModel().selectedIndexes()
-    #     if not selection:
-    #        return
-
-    #     selection = sorted(selection, key=lambda x: (x.row(), x.column()))
-
-    #     rows = []
-    #     current_row = selection[0].row()
-    #     row_data = []
-
-    #     for index in selection:
-    #         if index.row() != current_row:
-    #            rows.append("\t".join(row_data))
-    #            row_data = []
-    #            current_row = index.row()
-
-    #         value = index.data()
-    #         row_data.append("" if value is None else str(value))
-
-    #         rows.append("\t".join(row_data))
-
-    #         QApplication.clipboard().setText("\n".join(rows))
-
-    # def copy_result_with_header(self, table_view: QTableView):
-    #     model = table_view.model()
-    #     selection = table_view.selectionModel().selectedIndexes()
-
-    #     if not model or not selection:
-    #        return
-
-    #     selection = sorted(selection, key=lambda x: (x.row(), x.column()))
-
-    #     columns = sorted({index.column() for index in selection})
-    #     headers = [
-    #        str(model.headerData(col, Qt.Orientation.Horizontal) or "")
-    #        for col in columns
-    #       ]
-
-    #     rows = ["\t".join(headers)]
-
-    #     current_row = selection[0].row()
-    #     row_data = []
-
-    #     for index in selection:
-    #         if index.row() != current_row:
-    #           rows.append("\t".join(row_data))
-    #           row_data = []
-    #           current_row = index.row()
-
-    #         row_data.append("" if index.data() is None else str(index.data()))
-
-    #         rows.append("\t".join(row_data))
-
-    #         QApplication.clipboard().setText("\n".join(rows))
 
     def copy_result_with_header(self, table_view: QTableView):
         model = table_view.model()
@@ -1401,14 +1328,14 @@ class MainWindow(QMainWindow):
 
         selected_rows = []
         
-        # যদি Proxy Model হয়, তাহলে ইনডেক্স কনভার্ট করতে হবে
+        
         if isinstance(model, QSortFilterProxyModel):
             source_model = model.sourceModel()
             for proxy_index in proxy_rows:
-                # Proxy Index কে Source Index এ কনভার্ট করা
+               
                 source_index = model.mapToSource(proxy_index)
                 selected_rows.append(source_index)
-            # নিচের লজিকের জন্য model ভেরিয়েবলকে source_model দিয়ে রিপ্লেস করুন
+           
             model = source_model 
         else:
             selected_rows = proxy_rows
@@ -1580,8 +1507,6 @@ class MainWindow(QMainWindow):
         line.setFrameShape(QFrame.Shape.VLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
         return line
-
-
 
 
     def close_tab(self, index):
@@ -1868,114 +1793,6 @@ class MainWindow(QMainWindow):
         
        
         item.setIcon(QIcon(icon_path))
-    
-
-    
-    # def load_data(self):
-    #     self.model.clear()
-    #     self.model.setHorizontalHeaderLabels(["Object Explorer"])
-    #     hierarchical_data = db.get_hierarchy_data()
-
-    #     for connection_type_data in hierarchical_data:
-    #         # Depth 1: Connection Type
-    #         connection_type_item = QStandardItem(connection_type_data['name'])
-    #         connection_type_item.setData(connection_type_data['code'], Qt.ItemDataRole.UserRole)  # store code
-    #         for connection_group_data in connection_type_data['usf_connection_groups']:
-    #             # Depth 2: Connection Group
-    #             connection_group_item = QStandardItem(connection_group_data['name'])
-    #             connection_group_item.setData(connection_group_data['id'], Qt.ItemDataRole.UserRole + 1)
-    #             for connection_data in connection_group_data['usf_connections']:
-    #                # Depth 3: Individual Connection
-    #                 connection_item = QStandardItem(connection_data['short_name'])
-                    
-    #                 connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
-
-    #                 # Get connection type code from grandparent (depth 1)
-    #                 code = connection_type_item.data(Qt.ItemDataRole.UserRole)
-    #                 self._set_tree_item_icon(connection_type_item, code)
-                        
-    #                 # Set tooltip based on connection type
-    #                 if code in ['ORACLE_FA', 'ORACLE_DB']:
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"DSN: {connection_data.get('dsn', 'N/A')}\n"
-    #                       f"User: {connection_data.get('user', 'N/A')}"
-    #                   )
-                      
-    #                 elif code == 'POSTGRES':
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"Database: {connection_data.get('database', 'N/A')}\n"
-    #                       f"Host: {connection_data.get('host', 'N/A')}\n"
-    #                       f"User: {connection_data.get('user', 'N/A')}"
-    #                   )
-    #                 elif code == 'SQLITE':
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"Database Path: {connection_data.get('db_path', 'N/A')}"
-    #                   )
-                        
-    #                 elif code == 'CSV':
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"Folder Path: {connection_data.get('db_path', 'N/A')}\n"
-    #                       f"Files will appear as tables"
-    #                   )
-                    
-    #                 elif code == 'SERVICENOW':
-    #                     tooltip_text = (
-    #                       f"Name: {connection_data.get('name', 'N/A')}\n"
-    #                       f"Instance URL: {connection_data.get('instance_url', 'N/A')}\n"
-    #                       f"User: {connection_data.get('user', 'N/A')}"
-    #                  )
-    #                 else:
-    #                     tooltip_text = connection_data.get('name', 'N/A')
-
-    #                 connection_item.setToolTip(tooltip_text)
-    #                 connection_group_item.appendRow(connection_item)
-
-    #             connection_type_item.appendRow(connection_group_item)
-    #         self.model.appendRow(connection_type_item)
-
-    # def _set_tree_item_icon(self, item, type_code):
-    #     """
-    #      Applies icons based on the connection type code.
-    #     """
-    # # Create a mapping for easy maintenance
-    #     icon_map = {
-    #     "POSTGRES": "assets/postgresql.svg",
-    #     "SQLITE": "assets/sqlite.svg",
-    #     "ORACLE_DB": "assets/oracle.svg",
-    #     "ORACLE_FA": "assets/oracle_fusion.svg",
-    #     "SERVICENOW": "assets/servicenow.svg",
-    #     "CSV": "assets/csv.svg"
-    #     }
-
-    # # Get the path from the map, or use a default database icon
-    #     icon_path = icon_map.get(type_code, "assets/database.svg")
-    
-    # # Use .setIcon() for QStandardItem
-    #     item.setIcon(QIcon(icon_path))
-
-    # def _set_tree_item_icon(self, item, type_code):
-    #    """
-    #    Applies icons based on the connection type code.
-    #    """
-    # # Create a mapping for easy maintenance
-    #    icon_map = {
-    #        "POSTGRES": "assets/postgresql.svg",
-    #        "SQLITE": "assets/sqlite.svg",
-    #        "ORACLE_DB": "assets/oracle.svg",
-    #        "ORACLE_FA": "assets/oracle_fusion.svg",
-    #        "SERVICENOW": "assets/servicenow.svg",
-    #        "CSV": "assets/csv.svg"
-    #       }
-
-    # # Get the path from the map, or use a default database icon
-    #    icon_path = icon_map.get(type_code, "assets/database.svg")
-    
-    # # Use .setIcon() for QStandardItem
-    #    item.setIcon(QIcon(icon_path))
   
 
     def _save_tree_expansion_state(self):
@@ -2042,46 +1859,6 @@ class MainWindow(QMainWindow):
                 self.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{e}")
-
-    
-    # def item_clicked(self, index):
-    #     item = self.model.itemFromIndex(index)
-    #     depth = self.get_item_depth(item)
-    #     self.schema_model.clear()
-    #     self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
-    #     if depth == 3:
-    #         conn_data = item.data(Qt.ItemDataRole.UserRole)
-    #         if not conn_data:
-    #             return
-    #         parent_group = item.parent()
-    #         if not parent_group:
-    #             return
-    #         connection_type = parent_group.parent()
-    #         if not connection_type:
-    #             return
-    #         connection_type_name = connection_type.text().lower()
-    #         if "postgres" in connection_type_name and conn_data.get("host"):
-    #             self.status.showMessage(
-    #                 f"Loading schema for {conn_data.get('name')}...", 3000)
-    #             self.load_postgres_schema(conn_data)
-    #         elif "sqlite" in connection_type_name and conn_data.get("db_path"):
-    #             self.status.showMessage(
-    #                 f"Loading schema for {conn_data.get('name')}...", 3000)
-    #             self.load_sqlite_schema(conn_data)
-                
-    #         elif "csv" in connection_type_name and conn_data.get("db_path"):
-    #             # ← NEW: CSV support using CData
-    #             self.status.showMessage(
-    #                f"Loading CSV folder for {conn_data.get('name')}...", 3000)
-    #             self.load_csv_schema(conn_data)
-            
-    #         elif "oracle" in connection_type_name:
-    #             self.status.showMessage(
-    #                 "Oracle connections are not currently supported.", 5000)
-    #             QMessageBox.information(
-    #                 self, "Not Supported", "Connecting to Oracle databases is not supported in this version.")
-    #         else:
-    #             self.status.showMessage("Unknown connection type.", 3000)
 
 
     def item_clicked(self, index):
@@ -2150,51 +1927,6 @@ class MainWindow(QMainWindow):
             parent = parent.parent()
         return depth + 1
     
-
-    # def show_context_menu(self, pos):
-    #     index = self.tree.indexAt(pos)
-    #     if not index.isValid(): return
-    #     item = self.model.itemFromIndex(index)
-    #     depth = self.get_item_depth(item)
-    #     menu = QMenu()
-    #     if depth == 1:
-    #         add_connection_group = QAction("Add Group", self)
-    #         add_connection_group.triggered.connect(lambda: self.add_connection_group(item))
-    #         menu.addAction(add_connection_group)
-    #     elif depth == 2:
-    #         parent_connection_type = item.parent()
-    #         if parent_connection_type:
-    #             connection_type_name = parent_connection_type.text()
-    #             if "postgres" in connection_type_name.lower():
-    #                 add_pg_action = QAction("Add New PostgreSQL Connection", self)
-    #                 add_pg_action.triggered.connect(lambda: self.add_postgres_connection(item))
-    #                 menu.addAction(add_pg_action)
-    #             elif "sqlite" in connection_type_name.lower():
-    #                 add_sqlite_action = QAction("Add New SQLite Connection", self)
-    #                 add_sqlite_action.triggered.connect(lambda: self.add_sqlite_connection(item))
-    #                 menu.addAction(add_sqlite_action)
-    #     elif depth == 3:
-    #         conn_data = item.data(Qt.ItemDataRole.UserRole)
-    #         if conn_data:
-    #             view_details_action = QAction("View details", self)
-    #             view_details_action.triggered.connect(
-    #                 lambda: self.show_connection_details(item))
-    #             menu.addAction(view_details_action)
-    #             menu.addSeparator()
-    #             if conn_data.get("db_path"):
-    #                 edit_action = QAction("Edit Connection", self)
-    #                 edit_action.triggered.connect(lambda: self.edit_connection(item))
-    #                 menu.addAction(edit_action)
-    #             elif conn_data.get("host"):
-    #                 edit_action = QAction("Edit Connection", self)
-    #                 edit_action.triggered.connect(lambda: self.edit_pg_connection(item))
-    #                 menu.addAction(edit_action)
-    #             delete_action = QAction("Delete Connection", self)
-    #             delete_action.triggered.connect(lambda: self.delete_connection(item))
-    #             menu.addAction(delete_action)
-    #     menu.exec(self.tree.viewport().mapToGlobal(pos))
-    
-    
     
     def show_context_menu(self, pos):
         index = self.tree.indexAt(pos)
@@ -2206,18 +1938,6 @@ class MainWindow(QMainWindow):
             add_connection_group = QAction("Add Group", self)
             add_connection_group.triggered.connect(lambda: self.add_connection_group(item))
             menu.addAction(add_connection_group)
-        # elif depth == 2:
-        #     parent_connection_type = item.parent()
-        #     if parent_connection_type:
-        #         connection_type_name = parent_connection_type.text()
-        #         if "postgres" in connection_type_name.lower():
-        #             add_pg_action = QAction("Add New PostgreSQL Connection", self)
-        #             add_pg_action.triggered.connect(lambda: self.add_postgres_connection(item))
-        #             menu.addAction(add_pg_action)
-        #         elif "sqlite" in connection_type_name.lower():
-        #             add_sqlite_action = QAction("Add New SQLite Connection", self)
-        #             add_sqlite_action.triggered.connect(lambda: self.add_sqlite_connection(item))
-        #             menu.addAction(add_sqlite_action)
         
         elif depth == 2:  # Subcategory level
             parent_item = item.parent()
@@ -2255,19 +1975,7 @@ class MainWindow(QMainWindow):
                     lambda: self.show_connection_details(item))
                 menu.addAction(view_details_action)
                 menu.addSeparator()
-                # if conn_data.get("db_path"):
-                #     edit_action = QAction("Edit Connection", self)
-                #     edit_action.triggered.connect(lambda: self.edit_connection(item))
-                #     menu.addAction(edit_action)
-                # elif conn_data.get("host"):
-                #     edit_action = QAction("Edit Connection", self)
-                #     edit_action.triggered.connect(lambda: self.edit_pg_connection(item))
-                #     menu.addAction(edit_action)
-                    
-                # elif conn_data.get("dsn"):
-                #     edit_action = QAction("Edit Connection", self)
-                #     edit_action.triggered.connect(lambda: self.edit_oracle_connection(item))
-                #     menu.addAction(edit_action)
+            
                 
             # Get the connection type code from grandparent
             parent_item = item.parent()
@@ -2720,10 +2428,10 @@ class MainWindow(QMainWindow):
         elapsed = time.time() - self.tab_timers[tab]["start_time"]
         label.setText(f"Running... {elapsed:.1f} sec")
 
-    
 
     def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
-       
+        
+        # Stop timers
         if target_tab in self.tab_timers:
             self.tab_timers[target_tab]["timer"].stop()
             self.tab_timers[target_tab]["timeout_timer"].stop()
@@ -2739,18 +2447,15 @@ class MainWindow(QMainWindow):
         
         # Access Result Stack
         results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
-        header = target_tab.findChild(QWidget, "resultsHeader")
-        buttons = header.findChildren(QPushButton)
+        results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
 
         if message_view:
             message_view.clear()
 
         # --- Robust Query Type Detection ---
-        # Strip comments and whitespace to accurately identify the starting keyword
         match_query = re.sub(r'--.*?\n|/\*.*?\*/', '', query, flags=re.DOTALL).strip().upper()
         first_word = match_query.split()[0] if match_query.split() else ""
         
-        # Use sqlparse as a secondary method for type detection
         q_type_parsed = ""
         parsed = sqlparse.parse(query)
         if parsed:
@@ -2760,21 +2465,25 @@ class MainWindow(QMainWindow):
                     q_type_parsed = t
                     break
         
-        # Final query type for logic and messaging
         q_type = q_type_parsed if q_type_parsed and q_type_parsed != 'UNKNOWN' else first_word
         
-        # Structural (DDL) commands should always focus the "Messages" tab
+        # Structural commands (DDL)
         is_structural = q_type in ["CREATE", "DROP", "ALTER", "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "RENAME"]
         
-        # Determine if it's a SELECT query
+        # SELECT check
         is_select = q_type == "SELECT" or first_word == "SELECT"
         
-        # Switch to the Output tab ONLY if it is not a structural command AND (it is a SELECT or returned columns)
+        # --- DECIDE WHICH TAB TO OPEN ---
+        final_tab_index = 0 # Default to Output
+
+        # Condition: If it is NOT structural AND (it is Select OR has columns) -> Show Output Tab (0)
         if not is_structural and (is_select or (columns and len(columns) > 0)):
+            final_tab_index = 0
+            
             target_tab.column_names = columns
             target_tab.modified_coords = set() 
 
-            # Extract table name from query for editing purposes
+            # Extract table name logic
             match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query, re.IGNORECASE)
             if match:
                 extracted_table = match.group(1)
@@ -2788,6 +2497,7 @@ class MainWindow(QMainWindow):
             else:
                 if hasattr(target_tab, 'table_name'): del target_tab.table_name
 
+            # Row count logic
             current_offset = getattr(target_tab, 'current_offset', 0)
             if rows_info_label:
                 if row_count > 0:
@@ -2801,7 +2511,7 @@ class MainWindow(QMainWindow):
             if page_label:
                 self.update_page_label(target_tab, row_count)
 
-            # Populate Model (Set parent to table_view to prevent GC)
+            # Populate Model
             model = QStandardItemModel(table_view)
             model.setColumnCount(len(columns))
             model.setRowCount(len(results))
@@ -2853,10 +2563,9 @@ class MainWindow(QMainWindow):
                     item.setData(edit_data, Qt.ItemDataRole.UserRole)
                     model.setItem(row_idx, col_idx, item)
 
-            # --- Use Proxy Model for Sorting/Filtering ---
+            # Proxy Model
             try: model.itemChanged.disconnect() 
             except: pass
-            
             model.itemChanged.connect(lambda item: self.handle_cell_edit(item, target_tab))
 
             proxy_model = QSortFilterProxyModel(table_view)
@@ -2872,20 +2581,13 @@ class MainWindow(QMainWindow):
             msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
             status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
             
-            if results_stack:
-                results_stack.setCurrentIndex(0) # Open Output Tab
-                if header:
-                    buttons = header.findChildren(QPushButton)
-                    if len(buttons) >= 2:
-                        buttons[0].setChecked(True)
-                        buttons[1].setChecked(False)
-                results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
-                if results_info_bar: results_info_bar.show()
+            if results_info_bar: results_info_bar.show()
 
         else:
-            # --- Non-result-set query handling (DDL/DML) ---
-            table_view.setModel(QStandardItemModel(table_view))
+            # --- Non-result-set query (DDL/DML) -> Show Messages Tab (1) ---
+            final_tab_index = 1
             
+            table_view.setModel(QStandardItemModel(table_view))
             should_refresh_tree = False
 
             if q_type.startswith("INSERT"):
@@ -2898,20 +2600,20 @@ class MainWindow(QMainWindow):
                 msg = f"DELETE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
                 status = f"DELETE {row_count} | Time: {elapsed_time:.2f} sec"
             elif q_type.startswith("CREATE"):
-                msg = f"CREATE COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
-                status = f"CREATE success | Time: {elapsed_time:.2f} sec"
+                msg = f"CREATE TABLE executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+                status = f"Table Created | Time: {elapsed_time:.2f} sec"
                 should_refresh_tree = True
             elif q_type.startswith("DROP"):
-                msg = f"DROP COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+                msg = f"DROP TABLE executed successfully.\n\nTime: {elapsed_time:.2f} sec"
                 status = f"DROP success | Time: {elapsed_time:.2f} sec"
                 should_refresh_tree = True
-            elif q_type.startswith("ALTER"):
-                msg = f"ALTER COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
-                status = f"ALTER success | Time: {elapsed_time:.2f} sec"
-                should_refresh_tree = True
-            elif q_type.startswith("TRUNCATE"):
-                msg = f"TRUNCATE COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
-                status = f"TRUNCATE success | Time: {elapsed_time:.2f} sec"
+            # elif q_type.startswith("ALTER"):
+            #     msg = f"ALTER COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+            #     status = f"ALTER success | Time: {elapsed_time:.2f} sec"
+            #     should_refresh_tree = True
+            # elif q_type.startswith("TRUNCATE"):
+            #     msg = f"TRUNCATE COMMAND executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+            #     status = f"TRUNCATE success | Time: {elapsed_time:.2f} sec"
             else:
                 msg = f"Query executed successfully.\n\nRows affected: {row_count}\nTime: {elapsed_time:.2f} sec"
                 status = f"Rows affected: {row_count} | Time: {elapsed_time:.2f} sec"
@@ -2919,15 +2621,7 @@ class MainWindow(QMainWindow):
             if should_refresh_tree:
                 self.refresh_object_explorer()
 
-            if results_stack:
-                results_stack.setCurrentIndex(1) # Open Messages Tab
-                if header:
-                    buttons = header.findChildren(QPushButton)
-                    if len(buttons) >= 2:
-                        buttons[0].setChecked(False)
-                        buttons[1].setChecked(True)
-                results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
-                if results_info_bar: results_info_bar.hide()
+            if results_info_bar: results_info_bar.hide()
 
         if message_view:
             message_view.append(msg)
@@ -2938,7 +2632,9 @@ class MainWindow(QMainWindow):
             tab_status_label.setText(status)
 
         self.status_message_label.setText("Ready")
-        self.stop_spinner(target_tab, success=True) 
+        
+        # --- CRITICAL FIX: Pass the calculated final_tab_index ---
+        self.stop_spinner(target_tab, success=True, target_index=final_tab_index) 
 
         if target_tab in self.running_queries:
             del self.running_queries[target_tab]
@@ -3087,7 +2783,7 @@ class MainWindow(QMainWindow):
         if not self.running_queries:
             self.cancel_action.setEnabled(False)
 
-    def stop_spinner(self, target_tab, success=True):
+    def stop_spinner(self, target_tab, success=True, target_index=0):
         if not target_tab: return
         stacked_widget = target_tab.findChild(QStackedWidget, "results_stacked_widget")
         if stacked_widget:
@@ -3097,12 +2793,12 @@ class MainWindow(QMainWindow):
             header = target_tab.findChild(QWidget, "resultsHeader")
             buttons = header.findChildren(QPushButton)
             if success:
-                stacked_widget.setCurrentIndex(0)
+                stacked_widget.setCurrentIndex(target_index)
                 if buttons: 
-                    buttons[0].setChecked(True) 
-                    buttons[1].setChecked(False) 
-                    buttons[2].setChecked(False)
-                    buttons[3].setChecked(False)
+                    buttons[0].setChecked(target_index == 0) 
+                    buttons[1].setChecked(target_index == 1) 
+                    buttons[2].setChecked(target_index == 2)
+                    buttons[3].setChecked(target_index == 3)
             else:
                 stacked_widget.setCurrentIndex(1)
                 if buttons: 
@@ -3487,6 +3183,15 @@ class MainWindow(QMainWindow):
         create_script_action = QAction("CREATE script", self)
         create_script_action.triggered.connect(lambda: self.script_table_as_create(item_data, table_name))
         scripts_menu.addAction(create_script_action)
+
+        menu.addSeparator()
+        table_type = item_data.get('table_type', 'TABLE').upper()
+        object_type = "View" if "VIEW" in table_type else "Table"
+        delete_table_action = QAction(f"Delete {object_type}", self)
+        delete_table_action.triggered.connect(
+            lambda: self.delete_table(item_data, table_name))
+        menu.addAction(delete_table_action)
+
         menu.exec(self.schema_tree.viewport().mapToGlobal(position))
 
     def script_table_as_create(self, item_data, table_name):
@@ -3589,6 +3294,119 @@ class MainWindow(QMainWindow):
                 query_editor.setPlainText(sql_script)
                 self.tab_widget.setCurrentWidget(new_tab)
 
+    def delete_table(self, item_data, table_name):
+        if not item_data: return
+        
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_type = item_data.get('table_type', 'TABLE').upper()
+        # Use table_name from item_data if it exists (e.g. for CSV with extension)
+        real_table_name = item_data.get('table_name', table_name)
+        
+        is_view = "VIEW" in table_type
+        object_type = "View" if is_view else "Table"
+        
+        reply = QMessageBox.question(
+            self, f'Confirm Delete {object_type}',
+            f"Are you sure you want to delete {object_type.lower()} '{table_name}'? This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            conn = None
+            sql = ""
+            if db_type == 'postgres':
+                conn = psycopg2.connect(
+                    host=conn_data.get("host"),
+                    port=conn_data.get("port"),
+                    database=conn_data.get("database"),
+                    user=conn_data.get("user"),
+                    password=conn_data.get("password")
+                )
+                full_name = f'"{schema_name}"."{real_table_name}"' if schema_name else f'"{real_table_name}"'
+                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
+                sql = f"{drop_cmd} {full_name};"
+            elif db_type == 'sqlite':
+                conn = db.create_sqlite_connection(conn_data.get('db_path'))
+                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
+                sql = f'{drop_cmd} "{real_table_name}";'
+            elif db_type == 'csv':
+                folder_path = conn_data.get("db_path")
+                file_path = os.path.join(folder_path, real_table_name)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    success_msg = f"CSV file '{table_name}' deleted successfully."
+                    self.status.showMessage(success_msg, 5000)
+                    QMessageBox.information(self, "Success", success_msg)
+                    
+                    # Also log to Messages tab if a query tab is open
+                    current_tab = self.tab_widget.currentWidget()
+                    if current_tab:
+                        message_view = current_tab.findChild(QTextEdit, "message_view")
+                        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                        if message_view and results_stack:
+                            results_stack.setCurrentIndex(1) # Switch to Messages
+                            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            message_view.append(f"[{timestamp}]  OS.REMOVE(\"{file_path}\")")
+                            message_view.append(f"  {success_msg}")
+                            
+                            header = current_tab.findChild(QWidget, "resultsHeader")
+                            if header:
+                                buttons = header.findChildren(QPushButton)
+                                if len(buttons) >= 2:
+                                    buttons[0].setChecked(False)
+                                    buttons[1].setChecked(True)
+
+                    self.load_csv_schema(conn_data)
+                    return
+                else:
+                    raise Exception(f"File not found: {file_path}")
+            
+            if conn and sql:
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+                
+                success_msg = f"{object_type} '{table_name}' deleted successfully."
+                self.status.showMessage(success_msg, 5000)
+                QMessageBox.information(self, "Success", success_msg)
+                
+                # Also log to Messages tab if a query tab is open
+                current_tab = self.tab_widget.currentWidget()
+                if current_tab:
+                    message_view = current_tab.findChild(QTextEdit, "message_view")
+                    results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                    if message_view and results_stack:
+                        results_stack.setCurrentIndex(1) # Switch to Messages
+                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        message_view.append(f"[{timestamp}]  {sql}")
+                        message_view.append(f"  {success_msg}")
+                        
+                        # Set button state in header
+                        header = current_tab.findChild(QWidget, "resultsHeader")
+                        if header:
+                            buttons = header.findChildren(QPushButton)
+                            if len(buttons) >= 2:
+                                buttons[0].setChecked(False) # Results
+                                buttons[1].setChecked(True)  # Messages
+
+                # Refresh schema
+                if db_type == 'postgres':
+                    self.load_postgres_schema(conn_data)
+                elif db_type == 'sqlite':
+                    self.load_sqlite_schema(conn_data)
+                elif db_type == 'servicenow':
+                    self.load_servicenow_schema(conn_data)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete {object_type.lower()}:\n{e}")
+
+    
     def open_create_table_template(self, item_data, table_name=None):
         if not item_data: return
 
@@ -3602,35 +3420,43 @@ class MainWindow(QMainWindow):
         # --- Helper Function to Log Message to View ---
         def log_success_to_view(table_name):
             current_tab = self.tab_widget.currentWidget()
+           
+            if not current_tab:
+                self.add_tab()
+                current_tab = self.tab_widget.currentWidget()
+            
             if current_tab:
-                
                 message_view = current_tab.findChild(QTextEdit, "message_view")
-                if message_view:
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+            
+            if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    
                     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     message_view.append(f"[{timestamp}]  CREATE TABLE \"{table_name}\"")
                     message_view.append(f"  Table created successfully.")
-                  
+                    
                     sb = message_view.verticalScrollBar()
                     sb.setValue(sb.maximum())
 
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                if results_stack:
-                    results_stack.setCurrentIndex(1)
+                    message_view.repaint() 
+                    QApplication.processEvents() 
                 
-               
-                header = current_tab.findChild(QWidget, "resultsHeader")
-                if header:
-                    buttons = header.findChildren(QPushButton)
-                    # buttons[0] = Output, buttons[1] = Messages
-                    if len(buttons) >= 2:
-                        buttons[0].setChecked(False)
-                        buttons[1].setChecked(True)
+                    header = current_tab.findChild(QWidget, "resultsHeader")
+                    if header:
+                       buttons = header.findChildren(QPushButton)
+                       if len(buttons) >= 2:
+                          buttons[0].setChecked(False)
+                          buttons[1].setChecked(True)
                 
+                    results_info_bar = current_tab.findChild(QWidget, "resultsInfoBar")
+                    if results_info_bar:
+                        results_info_bar.hide()
                
-                self.status_message_label.setText(f"Table '{table_name}' created successfully.")
-            else:
-               
-                QMessageBox.information(self, "Success", f"Table '{table_name}' created successfully!")
+                        self.status_message_label.setText(f"Table '{table_name}' created successfully.")
+                    else:
+                       QMessageBox.information(self, "Success", f"Table '{table_name}' created successfully!")
+        
 
         # --- POSTGRES LOGIC ---
         if db_type == 'postgres':
@@ -3673,17 +3499,19 @@ class MainWindow(QMainWindow):
                     conn.commit()
                     conn.close()
                     
-                    # QMessageBox.information(self, "Success", "Table created successfully!")
                     log_success_to_view(data["name"])
-                    self.refresh_object_explorer() # Refresh tree to show new table
+                    
+                    # --- NEW: Refresh Schema Tree explicitly for Postgres ---
+                    self.status.showMessage("Refreshing schema...", 2000)
+                    self.load_postgres_schema(conn_data)
+                    # --------------------------------------------------------
 
             except Exception as e:
                 QMessageBox.critical(self, "Connection Error", f"Invalid Connection or SQL: {e}")
         
-        # --- SQLITE LOGIC (NEW) ---
+        # --- SQLITE LOGIC ---
         elif db_type == 'sqlite':
             try:
-                # No schema or user needed for SQLite dialog initialization
                 dialog = CreateTableDialog(self, schemas=None, current_user="", db_type="sqlite")
                 
                 if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -3692,14 +3520,10 @@ class MainWindow(QMainWindow):
                     cols_sql = []
                     for col in data['columns']:
                         pk = "PRIMARY KEY" if col['pk'] else ""
-                        # Note: In SQLite, "INTEGER PRIMARY KEY" automatically implies AUTOINCREMENT behavior
-                        # if the user specifically requested it via the default ID column.
                         cols_sql.append(f'"{col["name"]}" {col["type"]} {pk}')
                     
-                    # SQLite does not use schema in the CREATE statement usually (defaults to main)
                     sql = f'CREATE TABLE "{data["name"]}" (\n    {", ".join(cols_sql)}\n);'
 
-                    # Execute using your db helper or sqlite3 directly
                     conn = db.create_sqlite_connection(conn_data.get('db_path'))
                     if not conn:
                          raise Exception("Could not open SQLite database file.")
@@ -3709,9 +3533,12 @@ class MainWindow(QMainWindow):
                     conn.commit()
                     conn.close()
 
-                    # QMessageBox.information(self, "Success", f"Table '{data['name']}' created successfully!")
                     log_success_to_view(data["name"])
-                    self.refresh_object_explorer() # Refresh tree
+
+                    # --- NEW: Refresh Schema Tree explicitly for SQLite ---
+                    self.status.showMessage("Refreshing schema...", 2000)
+                    self.load_sqlite_schema(conn_data)
+                    # ----------------------------------------------------
 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to create SQLite table:\n{e}")
@@ -3719,7 +3546,6 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "Not Supported", f"Interactive table creation is not supported for {db_type} yet.")
 
-   
     def export_schema_table_rows(self, item_data, table_name):
         if not item_data:
             return
@@ -4116,25 +3942,6 @@ class MainWindow(QMainWindow):
         processes_view.resizeColumnsToContents()
         processes_view.horizontalHeader().setStretchLastSection(True)
 
-    
-    # def count_table_rows(self, item_data, table_name):
-    #     if not item_data:
-    #         return
-    #     conn_data = item_data.get('conn_data')
-        
-    #     # --- MODIFICATION: Handle SQLite query (no schema) ---
-    #     if item_data.get('db_type') == 'postgres':
-    #          query = f'SELECT COUNT(*) FROM "{item_data.get("schema_name")}"."{table_name}";'
-    #     else: # SQLite
-    #          query = f'SELECT COUNT(*) FROM "{table_name}";'
-    #     # --- END MODIFICATION ---
-
-    #     self.status_message_label.setText(f"Counting rows for {table_name}...")
-    #     signals = QuerySignals()
-    #     runnable = RunnableQuery(conn_data, query, signals)
-    #     signals.finished.connect(self.handle_count_result)
-    #     signals.error.connect(self.handle_count_error)
-    #     self.thread_pool.start(runnable)
 
     def count_table_rows(self, item_data, table_name):
         if not item_data:
@@ -4207,157 +4014,6 @@ class MainWindow(QMainWindow):
 
       # Make sure the new tab becomes the active one
       self.tab_widget.setCurrentWidget(new_tab)
-
-
-    # def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
-    #     if not item_data: return
-    #     conn_data = item_data.get('conn_data')
-    #     new_tab = self.add_tab()
-    #     query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
-    #     db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
-    #     for i in range(db_combo_box.count()):
-    #         data = db_combo_box.itemData(i)
-    #         if data and data.get('id') == conn_data.get('id'):
-    #             db_combo_box.setCurrentIndex(i)
-    #             break
-        
-    #     # --- MODIFICATION: Handle SQLite query (no schema) ---
-    #     if item_data.get('db_type') == 'postgres':
-    #         query = f'SELECT * FROM "{item_data.get("schema_name")}"."{table_name}"'
-            
-    #     elif item_data.get('db_type') == "csv":
-    #         # CSV logic via CData
-    #         try:
-    #             conn_info = item_data.get("conn_data", {})
-    #             folder_path = conn_info.get("db_path", "")
-    #             table_name = item_data.get("table_name")  # must include .csv
-
-    #             if not folder_path or not table_name:
-    #                print("Folder path or table name missing")
-    #                return [], []
-
-    #             conn = mod.connect(f"URI={folder_path};")
-    #             cursor = conn.cursor()
-    #             query = f'SELECT * FROM [{table_name}]'
-    #             cursor.execute(query)
-    #             rows = cursor.fetchall()
-    #             columns = [desc[0] for desc in cursor.description]
-
-    #             cursor.close()
-    #             conn.close()
-
-    #             return columns, rows
-
-    #         except Exception as e:
-    #             print(f"Error querying CSV table: {e}")
-    #             return [], []
-            
-    #     else: # SQLite
-    #         query = f'SELECT * FROM "{table_name}"'
-    #     # --- END MODIFICATION ---
-
-    #     # This part for order is simplified; assumes a primary key exists for reliable ordering
-    #     if order:
-    #          query += f" ORDER BY 1 {order.upper()}"
-
-    #     if limit:
-    #         query += f" LIMIT {limit}"
-    #     query_editor.setPlainText(query)
-    #     if execute_now:
-    #         # Must set current tab to the new tab before executing
-    #         self.tab_widget.setCurrentWidget(new_tab)
-    #         self.execute_query()
-    
-    
-    # def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
-    #     if not item_data:
-    #        return
-    #     conn_data = item_data.get('conn_data')
-    #     new_tab = self.add_tab()
-    #     query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
-    #     db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
-    
-    #     # Set correct connection in combo box
-    #     for i in range(db_combo_box.count()):
-    #         data = db_combo_box.itemData(i)
-    #         if data and data.get('id') == conn_data.get('id'):
-    #             db_combo_box.setCurrentIndex(i)
-    #             break
-    
-    #     # Build query depending on db_type
-    #     db_type = item_data.get('db_type')
-    #     if db_type == 'postgres':
-    #         query = f'SELECT * FROM "{item_data.get("schema_name")}"."{table_name}"'
-    #     elif db_type == 'csv':
-    #         folder_path = conn_data.get("db_path", "")
-    #         table_file = item_data.get("table_name")  # includes .csv
-    #         if not folder_path or not table_file:
-    #             self.status.showMessage("CSV folder or table missing", 5000)
-    #             return
-    #         query = f'SELECT * FROM [{table_file}]'  # CData CSV requires brackets
-    #     else:  # SQLite
-    #         query = f'SELECT * FROM "{table_name}"'
-
-    #     # Add ORDER BY / LIMIT if provided
-    #     if order:
-    #         query += f" ORDER BY 1 {order.upper()}"
-    #     if limit:
-    #         query += f" LIMIT {limit}"
-    
-    #     # Set the query in the editor
-    #     query_editor.setPlainText(query)
-
-    #     if execute_now:
-    #         # Set current tab and execute query
-    #         self.tab_widget.setCurrentWidget(new_tab)
-    #         self.execute_query()  # <-- pass query & item_data
-   
-   
-    # def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
-    #     if not item_data:
-    #        return
-
-    #     # Add new tab and get query editor
-    #     new_tab = self.add_tab()
-    #     query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
-    #     db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
-
-    #     # Set the combo box to the right connection
-    #     conn_data = item_data.get('conn_data', {})
-    #     for i in range(db_combo_box.count()):
-    #         data = db_combo_box.itemData(i)
-    #         if data and data.get('id') == conn_data.get('id'):
-    #             db_combo_box.setCurrentIndex(i)
-    #             break
-
-    #     # Ensure db_type exists in conn_data for RunnableQuery
-    #     conn_data = dict(conn_data)  # copy to avoid modifying original
-    #     conn_data['db_type'] = item_data.get('db_type')
-    #     if item_data.get('db_type') == 'csv':
-    #         conn_data['table_name'] = item_data.get('table_name')
-
-    #     # Construct query
-    #     if item_data.get('db_type') == 'postgres':
-    #         query = f'SELECT * FROM "{item_data.get("schema_name")}"."{table_name}"'
-    #     elif item_data.get('db_type') == 'sqlite':
-    #         query = f'SELECT * FROM "{table_name}"'
-    #     elif item_data.get('db_type') == 'csv':
-    #         query = f'SELECT * FROM [{item_data.get("table_name")}]'
-    #     else:
-    #         self.show_info(f"Unsupported db_type: {item_data.get('db_type')}")
-    #         return
-
-    #     if order:
-    #         query += f" ORDER BY 1 {order.upper()}"
-    #     if limit:
-    #         query += f" LIMIT {limit}"
-
-    #     query_editor.setPlainText(query)
-
-    #     if execute_now:
-    #         self.tab_widget.setCurrentWidget(new_tab)
-    #         # Pass conn_data and query to execute_query
-    #         self.execute_query(conn_data, query)
     
     
     def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
