@@ -4,5 +4,3 @@ build/
 dist/
 DbExplorer.spec
 *.pyc
-__pycache__
-
