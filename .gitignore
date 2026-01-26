@@ -4,3 +4,6 @@ build/
 dist/
 DbExplorer.spec
 *.pyc
+*.xls
+*.xlsx
+*.csv
