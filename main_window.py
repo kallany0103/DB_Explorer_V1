@@ -32,6 +32,7 @@ from dialogs.servicenow_dialog import ServiceNowConnectionDialog
 from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
 from notification_manager import NotificationManager
 from code_editor import CodeEditor
+from widgets.explain_visualizer import ExplainVisualizer
 import db
 
 
@@ -274,6 +275,8 @@ class MainWindow(QMainWindow):
         self.exit_action.triggered.connect(self.close)
         self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
         self.execute_action.triggered.connect(self.execute_query)
+        self.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", self)
+        self.explain_action.triggered.connect(self.explain_query)
         self.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", self)
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
@@ -337,6 +340,7 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.delete_action)
         actions_menu = menubar.addMenu("&Actions")
         actions_menu.addAction(self.execute_action)
+        actions_menu.addAction(self.explain_action)
         actions_menu.addAction(self.cancel_action)
         tools_menu = menubar.addMenu("&Tools")
         tools_menu.addAction(self.query_tool_action)
@@ -889,10 +893,15 @@ class MainWindow(QMainWindow):
         process_btn.setCheckable(True)
         output_btn.setChecked(True)
 
+        explain_btn = QPushButton("Explain")
+        explain_btn.setMinimumWidth(100)
+        explain_btn.setCheckable(True)
+
         results_header_layout.addWidget(output_btn)
         results_header_layout.addWidget(message_btn)
         results_header_layout.addWidget(notification_btn)
         results_header_layout.addWidget(process_btn)
+        results_header_layout.addWidget(explain_btn)
         results_header_layout.addStretch()
         
         results_layout.addWidget(results_header)
@@ -1134,6 +1143,7 @@ class MainWindow(QMainWindow):
         results_button_group.addButton(message_btn, 1)
         results_button_group.addButton(notification_btn, 2)
         results_button_group.addButton(process_btn, 3)
+        results_button_group.addButton(explain_btn, 5)
 
         results_stack = QStackedWidget()
         results_stack.setObjectName("results_stacked_widget")
@@ -1193,6 +1203,9 @@ class MainWindow(QMainWindow):
         spinner_layout.addWidget(loading_text_label)
         results_stack.addWidget(spinner_overlay_widget)
 
+        explain_visualizer = ExplainVisualizer()
+        results_stack.addWidget(explain_visualizer)      # Index 5
+
         results_layout.addWidget(results_stack)
 
         tab_status_label = QLabel("Ready")
@@ -1211,6 +1224,7 @@ class MainWindow(QMainWindow):
         message_btn.clicked.connect(lambda: switch_results_view(1))
         notification_btn.clicked.connect(lambda: switch_results_view(2))
         process_btn.clicked.connect(lambda: switch_results_view(3))
+        explain_btn.clicked.connect(lambda: switch_results_view(5))
 
         main_vertical_splitter.addWidget(results_container)
         main_vertical_splitter.setSizes([300, 300])
@@ -2316,6 +2330,89 @@ class MainWindow(QMainWindow):
        QMessageBox.information(self, "Info", message)
 
 
+    def explain_query(self):
+      current_tab = self.tab_widget.currentWidget()
+      if not current_tab:
+        return
+
+      # Get query editor and DB info
+      query_editor = current_tab.findChild(CodeEditor, "query_editor")
+      if not query_editor:
+         query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
+      
+      db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
+      index = db_combo_box.currentIndex()
+      conn_data = db_combo_box.itemData(index)
+
+      if not conn_data.get("host"): # Simple check for Postgres
+           self.show_info("Explain Analyze is only supported for PostgreSQL connections.")
+           return
+
+      # Extract query under cursor
+      cursor = query_editor.textCursor()
+      cursor_pos = cursor.position()
+      full_text = query_editor.toPlainText()
+      queries = full_text.split(";")
+
+      selected_query = ""
+      start = 0
+      for q in queries:
+          end = start + len(q)
+          if start <= cursor_pos <= end:
+              selected_query = q.strip()
+              break
+          start = end + 1  # for semicolon
+
+      if not selected_query:
+          self.show_info("Please select a query to explain.")
+          return
+      
+      # If query already starts with EXPLAIN, use it as-is
+      # Otherwise, wrap SELECT queries with EXPLAIN
+      query_upper = selected_query.upper().strip()
+      if query_upper.startswith("EXPLAIN"):
+          explain_query = selected_query
+      elif query_upper.startswith("SELECT"):
+          explain_query = f"EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON) {selected_query}"
+      else:
+          self.show_info("Please select a SELECT query to explain.")
+          return
+
+      # Show results stack page with spinner
+      results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+      spinner_label = results_stack.findChild(QLabel, "spinner_label")
+      results_stack.setCurrentIndex(4) # Spinner index
+      if spinner_label and spinner_label.movie():
+            spinner_label.movie().start()
+            spinner_label.show()
+      
+      # Set up timers
+      tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
+      progress_timer = QTimer(self)
+      start_time = time.time()
+      timeout_timer = QTimer(self)
+      timeout_timer.setSingleShot(True)
+      self.tab_timers[current_tab] = {
+          "timer": progress_timer,
+          "start_time": start_time,
+          "timeout_timer": timeout_timer
+      }
+      progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
+      progress_timer.start(100)
+
+      # Run query asynchronously
+      signals = QuerySignals()
+      runnable = RunnableQuery(conn_data, explain_query, signals)
+      signals.finished.connect(partial(self.handle_query_result, current_tab))
+      signals.error.connect(partial(self.handle_query_error, current_tab))
+      timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
+      self.running_queries[current_tab] = runnable
+      self.cancel_action.setEnabled(True)
+      self.thread_pool.start(runnable)
+      timeout_timer.start(self.QUERY_TIMEOUT)
+
+      self.status_message_label.setText("Executing Explain Analyze...")
+
     def execute_query(self, conn_data=None, query=None):
         current_tab = self.tab_widget.currentWidget()
         if not current_tab:
@@ -2451,6 +2548,41 @@ class MainWindow(QMainWindow):
 
         if message_view:
             message_view.clear()
+
+        if is_select_query:
+             # Check for Explain Analyze Result
+            if query.upper().strip().startswith("EXPLAIN (ANALYZE,"):
+                try:
+                    # Result is usually [[json_data]]
+                    if results and len(results) > 0 and len(results[0]) > 0:
+                        json_data = results[0][0]
+                        # Get visualizer
+                        results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
+                        explain_visualizer = results_stack.findChild(ExplainVisualizer)
+                        if explain_visualizer:
+                            explain_visualizer.load_plan(json_data)
+                        
+                        self.stop_spinner(target_tab, success=True, target_index=5) # Explain tab
+                        
+                        msg = f"Explain Analyze executed successfully.\nTime: {elapsed_time:.2f} sec"
+                        status = f"Explain Analyze executed | Time: {elapsed_time:.2f} sec"
+                        
+                        # Update message view and status
+                        if message_view:
+                            previous_text = message_view.toPlainText()
+                            if previous_text: message_view.append("\n" + "-"*50 + "\n")
+                            message_view.append(msg)
+                        if tab_status_label: tab_status_label.setText(status)
+                        self.status_message_label.setText("Ready")
+
+                        # Cleanup
+                        if target_tab in self.running_queries: del self.running_queries[target_tab]
+                        if not self.running_queries: self.cancel_action.setEnabled(False)
+                        return
+                except Exception as e:
+                    print(f"Error parsing explain result: {e}")
+                    # Fall through to normal display if parsing fails
+
 
         # --- Robust Query Type Detection ---
         match_query = re.sub(r'--.*?\n|/\*.*?\*/', '', query, flags=re.DOTALL).strip().upper()
