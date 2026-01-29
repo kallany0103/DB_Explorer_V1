@@ -159,6 +159,73 @@ class CreateTableDialog(QDialog):
             "columns": columns
         }
 
+class CreateViewDialog(QDialog):
+    def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
+        super().__init__(parent)
+        self.setWindowTitle(f"Create View ({db_type})")
+        self.resize(600, 500)
+        self.db_type = db_type
+        
+        layout = QVBoxLayout(self)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+
+        # --- Tab 1: General (Name, Schema) ---
+        self.general_tab = QWidget()
+        gen_layout = QFormLayout(self.general_tab)
+        
+        self.name_input = QLineEdit()
+        self.schema_combo = QComboBox()
+        
+        if schemas:
+            self.schema_combo.addItems(schemas)
+        else:
+            self.schema_combo.addItem("public" if db_type == 'postgres' else "main")
+            
+        gen_layout.addRow("Name:", self.name_input)
+        if self.db_type == 'postgres':
+            gen_layout.addRow("Schema:", self.schema_combo)
+        
+        self.tabs.addTab(self.general_tab, "General")
+
+        # --- Tab 2: Definition (SQL query) ---
+        self.definition_tab = QWidget()
+        def_layout = QVBoxLayout(self.definition_tab)
+        
+        def_layout.addWidget(QLabel("View Definition (SQL SELECT statement):"))
+        self.sql_editor = QPlainTextEdit()
+        self.sql_editor.setPlaceholderText("SELECT * FROM some_table ...")
+        # Set a monospace font for the editor
+        font = QFont("Consolas", 10)
+        if not font.fixedPitch():
+            font = QFont("Courier New", 10)
+        self.sql_editor.setFont(font)
+        
+        def_layout.addWidget(self.sql_editor)
+        self.tabs.addTab(self.definition_tab, "Definition")
+
+        # --- Dialog Buttons ---
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.accepted.connect(self.validate_and_accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+
+    def validate_and_accept(self):
+        if not self.name_input.text().strip():
+            QMessageBox.warning(self, "Error", "View Name is required!")
+            return
+        if not self.sql_editor.toPlainText().strip():
+            QMessageBox.warning(self, "Error", "SQL Definition is required!")
+            return
+        self.accept()
+
+    def get_data(self):
+        return {
+            "name": self.name_input.text().strip(),
+            "schema": self.schema_combo.currentText(),
+            "sql": self.sql_editor.toPlainText().strip()
+        }
+
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
     def __init__(self):
@@ -1740,6 +1807,7 @@ class MainWindow(QMainWindow):
             code = connection_type_data['code']
             connection_type_item = QStandardItem(connection_type_data['name'])
             connection_type_item.setData(code, Qt.ItemDataRole.UserRole)
+            connection_type_item.setData(connection_type_data['id'], Qt.ItemDataRole.UserRole + 1)
             
             # Icon set for root type
             self._set_tree_item_icon(connection_type_item, level="TYPE", code=code)
@@ -2097,8 +2165,11 @@ class MainWindow(QMainWindow):
         name, ok = QInputDialog.getText(self, "New Group", "Group name:")
         if ok and name:
             parent_id = parent_item.data(Qt.ItemDataRole.UserRole+1)
-            db.add_connection_group(name, parent_id)
-            self.load_data()
+            try:
+                db.add_connection_group(name, parent_id)
+                self.load_data()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to add group:\n{e}")
 
     def add_postgres_connection(self, parent_item):
         connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
@@ -3157,8 +3228,8 @@ class MainWindow(QMainWindow):
                 type_item = QStandardItem(type_str.capitalize())
                 type_item.setEditable(False)
                 
-                # 2. Add "Loading..." child to tables to make them expandable
-                if type_str == 'table':
+                # 2. Add "Loading..." child to tables/views to make them expandable
+                if type_str in ['table', 'view']:
                     name_item.appendRow(QStandardItem("Loading..."))
 
                 # --- END MODIFICATION ---
@@ -3245,84 +3316,96 @@ class MainWindow(QMainWindow):
         item = self.schema_model.itemFromIndex(index)
         item_data = item.data(Qt.ItemDataRole.UserRole)
         
-        # --- MODIFICATION ---
-        # Context menu should only show on tables (Postgres or SQLite)
-        # Postgres: parent is a schema
-        # SQLite: parent is root (no parent in model terms) or item has 'table_name'
-        is_pg_table = (item.parent() and item_data and item_data.get('db_type') == 'postgres')
-        is_sqlite_table = (item_data and item_data.get('db_type') == 'sqlite' and item_data.get('table_name'))
-        # ✅ Check CSV table
-        is_csv_table = ( item_data and item_data.get('db_type') == 'csv'and item_data.get('table_name')
-        )
+        if not item_data:
+            return
 
-        is_servicenow_table = (item_data and item_data.get('db_type') == 'servicenow' and item_data.get('table_name'))
+        db_type = item_data.get('db_type')
+        table_name = item_data.get('table_name')
+        schema_name = item_data.get('schema_name')
+        
+        is_table_or_view = table_name is not None
+        is_schema = schema_name is not None and not is_table_or_view
 
-        # Allow PG + SQLite + CSV
-        if not (is_pg_table or is_sqlite_table or is_csv_table or is_servicenow_table):
-           return
-        # if not (is_pg_table or is_sqlite_table):
-        #     return
-        # --- END MODIFICATION ---
-
-        table_name = item.text()
         menu = QMenu()
-        view_menu = menu.addMenu("View/Edit Data")
-        query_all_action = QAction("All Rows", self)
-        query_all_action.triggered.connect(lambda: self.query_table_rows(
-            item_data, table_name, limit=None, execute_now=True))
-        view_menu.addAction(query_all_action)
         
-        preview_100_action = QAction("First 100 Rows", self)
-        preview_100_action.triggered.connect(lambda: self.query_table_rows(
-            item_data, table_name, limit=100, execute_now=True));
-        view_menu.addAction(preview_100_action)
+        if is_table_or_view:
+            # --- Table/View Actions ---
+            display_name = item.text()
+            view_menu = menu.addMenu("View/Edit Data")
+            
+            query_all_action = QAction("All Rows", self)
+            query_all_action.triggered.connect(lambda: self.query_table_rows(
+                item_data, display_name, limit=None, execute_now=True))
+            view_menu.addAction(query_all_action)
+            
+            preview_100_action = QAction("First 100 Rows", self)
+            preview_100_action.triggered.connect(lambda: self.query_table_rows(
+                item_data, display_name, limit=100, execute_now=True))
+            view_menu.addAction(preview_100_action)
 
-        last_100_action = QAction("Last 100 Rows", self)
-        last_100_action.triggered.connect(lambda: self.query_table_rows(
-            item_data, table_name, limit=100, order='desc', execute_now=True));
-        view_menu.addAction(last_100_action)
+            last_100_action = QAction("Last 100 Rows", self)
+            last_100_action.triggered.connect(lambda: self.query_table_rows(
+                item_data, display_name, limit=100, order='desc', execute_now=True))
+            view_menu.addAction(last_100_action)
 
-        count_rows_action = QAction("Count Rows", self)
-        count_rows_action.triggered.connect(
-            lambda: self.count_table_rows(item_data, table_name))
-        view_menu.addAction(count_rows_action)
-        menu.addSeparator()
+            count_rows_action = QAction("Count Rows", self)
+            count_rows_action.triggered.connect(
+                lambda: self.count_table_rows(item_data, display_name))
+            view_menu.addAction(count_rows_action)
+            
+            menu.addSeparator()
+            query_tool_action = QAction("Query Tool", self)
+            query_tool_action.triggered.connect(
+                lambda: self.open_query_tool_for_table(item_data, display_name))
+            menu.addAction(query_tool_action)
+            
+            menu.addSeparator()
+            export_rows_action = QAction("Export Rows", self)
+            export_rows_action.triggered.connect(
+                lambda: self.export_schema_table_rows(item_data, display_name))
+            menu.addAction(export_rows_action)
 
-        query_tool_action = QAction("Query Tool", self)
-        query_tool_action.triggered.connect(
-            lambda: self.open_query_tool_for_table(item_data, table_name))
-        menu.addAction(query_tool_action)
-        menu.addSeparator()
+            properties_action = QAction("Properties", self)
+            properties_action.triggered.connect(
+                lambda: self.show_table_properties(item_data, display_name))
+            menu.addAction(properties_action)
+            
+            menu.addSeparator()
+            scripts_menu = menu.addMenu("Scripts")
+            create_script_action = QAction("CREATE script", self)
+            create_script_action.triggered.connect(lambda: self.script_table_as_create(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
+            
+            menu.addSeparator()
 
-        export_rows_action = QAction("Export Rows", self)
-        export_rows_action.triggered.connect(
-            lambda: self.export_schema_table_rows(item_data, table_name))
-        menu.addAction(export_rows_action)
+            # --- Create Table (Restricted to Table/View nodes as requested) ---
+            if db_type in ['postgres', 'sqlite']:
+                create_table_action = QAction("Create Table", self)
+                create_table_action.triggered.connect(
+                    lambda: self.open_create_table_template(item_data))
+                menu.addAction(create_table_action)
 
-        properties_action = QAction("Properties", self)
-        properties_action.triggered.connect(
-            lambda: self.show_table_properties(item_data, table_name))
-        menu.addAction(properties_action)
-        # menu.exec(self.schema_tree.viewport().mapToGlobal(position))
-        
-        
-        create_action = QAction("Create Table", self)
-        create_action.triggered.connect(
-            lambda: self.open_create_table_template(item_data, table_name))
-        menu.addAction(create_action)
+            # --- Create View (Restricted to Table/View nodes as requested) ---
+            if db_type in ['postgres', 'sqlite']:
+                create_view_action = QAction("Create View", self)
+                create_view_action.triggered.connect(
+                    lambda: self.open_create_view_template(item_data))
+                menu.addAction(create_view_action)
 
-        scripts_menu = menu.addMenu("Scripts")
-        create_script_action = QAction("CREATE script", self)
-        create_script_action.triggered.connect(lambda: self.script_table_as_create(item_data, table_name))
-        scripts_menu.addAction(create_script_action)
+            menu.addSeparator()
+            table_type = item_data.get('table_type', 'TABLE').upper()
+            object_type = "View" if "VIEW" in table_type else "Table"
+            delete_table_action = QAction(f"Delete {object_type}", self)
+            delete_table_action.triggered.connect(
+                lambda: self.delete_table(item_data, display_name))
+            menu.addAction(delete_table_action)
+            
+        elif is_schema:
+            # --- No creation actions here as requested ---
+            pass
 
-        menu.addSeparator()
-        table_type = item_data.get('table_type', 'TABLE').upper()
-        object_type = "View" if "VIEW" in table_type else "Table"
-        delete_table_action = QAction(f"Delete {object_type}", self)
-        delete_table_action.triggered.connect(
-            lambda: self.delete_table(item_data, table_name))
-        menu.addAction(delete_table_action)
+        if menu.isEmpty():
+            return
 
         menu.exec(self.schema_tree.viewport().mapToGlobal(position))
 
@@ -3677,6 +3760,96 @@ class MainWindow(QMainWindow):
 
         else:
             QMessageBox.warning(self, "Not Supported", f"Interactive table creation is not supported for {db_type} yet.")
+
+    def open_create_view_template(self, item_data):
+        if not item_data: return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        
+        if not conn_data:
+            QMessageBox.critical(self, "Error", "Connection data is missing!")
+            return
+
+        def log_success_to_view(view_name, sql):
+            current_tab = self.tab_widget.currentWidget()
+            if not current_tab:
+                self.add_tab()
+                current_tab = self.tab_widget.currentWidget()
+            
+            if current_tab:
+                message_view = current_tab.findChild(QTextEdit, "message_view")
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+            
+                if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    message_view.append(f"[{timestamp}]  {sql}")
+                    message_view.append(f"  View '{view_name}' created successfully.")
+                    
+                    sb = message_view.verticalScrollBar()
+                    sb.setValue(sb.maximum())
+                    
+                    header = current_tab.findChild(QWidget, "resultsHeader")
+                    if header:
+                       buttons = header.findChildren(QPushButton)
+                       if len(buttons) >= 2:
+                          buttons[0].setChecked(False)
+                          buttons[1].setChecked(True)
+                
+                self.status_message_label.setText(f"View '{view_name}' created successfully.")
+
+        # POSTGRES
+        if db_type == 'postgres':
+            valid_keys = ['host', 'port', 'database', 'user', 'password']
+            pg_conn_info = {k: v for k, v in conn_data.items() if k in valid_keys}
+            if 'database' in pg_conn_info:
+                pg_conn_info['dbname'] = pg_conn_info.pop('database')
+
+            try:
+                conn = psycopg2.connect(**pg_conn_info)
+                cursor = conn.cursor()
+                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
+                schemas = [row[0] for row in cursor.fetchall()]
+                conn.close()
+
+                dialog = CreateViewDialog(self, schemas, db_type="postgres")
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_data()
+                    sql = f'CREATE VIEW "{data["schema"]}"."{data["name"]}" AS\n{data["sql"]};'
+                    
+                    conn = psycopg2.connect(**pg_conn_info)
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
+                    
+                    log_success_to_view(data["name"], sql)
+                    self.load_postgres_schema(conn_data)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create Postgres view:\n{e}")
+
+        # SQLITE
+        elif db_type == 'sqlite':
+            try:
+                dialog = CreateViewDialog(self, schemas=None, db_type="sqlite")
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_data()
+                    sql = f'CREATE VIEW "{data["name"]}" AS\n{data["sql"]};'
+
+                    conn = db.create_sqlite_connection(conn_data.get('db_path'))
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
+
+                    log_success_to_view(data["name"], sql)
+                    self.load_sqlite_schema(conn_data)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create SQLite view:\n{e}")
+
+        else:
+            QMessageBox.warning(self, "Not Supported", f"Interactive view creation is not supported for {db_type} yet.")
 
     def export_schema_table_rows(self, item_data, table_name):
         if not item_data:
@@ -4266,8 +4439,8 @@ class MainWindow(QMainWindow):
                         table_data['table_type'] = table_type
                         table_item.setData(table_data, Qt.ItemDataRole.UserRole)
                         
-                        # Add placeholder to tables to make them expandable
-                        if "TABLE" in table_type:
+                        # Add placeholder to tables/views to make them expandable
+                        if "TABLE" in table_type or "VIEW" in table_type:
                            table_item.appendRow(QStandardItem("Loading..."))
 
                         if "TABLE" in table_type:
