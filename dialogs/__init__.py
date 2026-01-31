@@ -3,3 +3,6 @@ from .sqlite_dialog import SQLiteConnectionDialog
 from .oracle_dialog import OracleConnectionDialog
 from .csv_dialog import CSVConnectionDialog
 from .servicenow_dialog import ServiceNowConnectionDialog
+from .create_table_dialog import CreateTableDialog
+from .create_view_dialog import CreateViewDialog
+from .export_dialog import ExportDialog

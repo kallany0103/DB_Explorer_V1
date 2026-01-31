@@ -23,209 +23,22 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush
-from PyQt6.QtCore import Qt, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl, QByteArray
-from dialogs.postgres_dialog import PostgresConnectionDialog
-from dialogs.sqlite_dialog import SQLiteConnectionDialog
-from dialogs.oracle_dialog import OracleConnectionDialog
-from dialogs.export_dialog import ExportDialog
-from dialogs.csv_dialog import CSVConnectionDialog
-from dialogs.servicenow_dialog import ServiceNowConnectionDialog
+from PyQt6.QtCore import Qt, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
+from dialogs import (
+    PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
+    ExportDialog, CSVConnectionDialog, ServiceNowConnectionDialog,
+    CreateTableDialog, CreateViewDialog
+)
+
 from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
 from notification_manager import NotificationManager
+from table_properties import TablePropertiesDialog
 from code_editor import CodeEditor
 from widgets.explain_visualizer import ExplainVisualizer
 import db
 
 
-class CreateTableDialog(QDialog):
-    def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
-        super().__init__(parent)
-        self.setWindowTitle(f"Create Table ({db_type})")
-        self.resize(600, 450)
-        self.db_type = db_type
-        
-        # Layouts
-        layout = QVBoxLayout(self)
-        self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
 
-        # --- Tab 1: General (Name, Owner, Schema) ---
-        self.general_tab = QWidget()
-        gen_layout = QFormLayout(self.general_tab)
-        
-        self.name_input = QLineEdit()
-        self.owner_input = QLineEdit(current_user) # Default to current user
-        self.schema_combo = QComboBox()
-        
-        if schemas:
-            self.schema_combo.addItems(schemas)
-        else:
-            self.schema_combo.addItem("public" if db_type == 'postgres' else "main")
-            
-        self.comment_input = QTextEdit()
-        self.comment_input.setMaximumHeight(60)
-
-        gen_layout.addRow("Name:", self.name_input)
-        
-        # Hide Owner and Schema for SQLite as they aren't typically used/needed for simple creation
-        if self.db_type == 'postgres':
-            gen_layout.addRow("Owner:", self.owner_input)
-            gen_layout.addRow("Schema:", self.schema_combo)
-        
-        gen_layout.addRow("Comment:", self.comment_input)
-        
-        self.tabs.addTab(self.general_tab, "General")
-
-        # --- Tab 2: Columns (Simple Column Editor) ---
-        self.columns_tab = QWidget()
-        col_layout = QVBoxLayout(self.columns_tab)
-        
-        self.col_table = QTableWidget(0, 3) # Rows, Cols
-        self.col_table.setHorizontalHeaderLabels(["Name", "Data Type", "Primary Key?"])
-        self.col_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.col_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        
-        # Buttons for columns
-        btn_layout = QHBoxLayout()
-        add_col_btn = QPushButton("Add Column")
-        add_col_btn.clicked.connect(lambda: self.add_column_row())
-        remove_col_btn = QPushButton("Remove Column")
-        remove_col_btn.clicked.connect(self.remove_column_row)
-        
-        btn_layout.addWidget(add_col_btn)
-        btn_layout.addWidget(remove_col_btn)
-        btn_layout.addStretch()
-
-        col_layout.addLayout(btn_layout)
-        col_layout.addWidget(self.col_table)
-        
-        # Add a default 'id' column
-        # Postgres uses SERIAL, SQLite usually uses INTEGER (which becomes auto-increment if PK)
-        default_id_type = "SERIAL" if self.db_type == 'postgres' else "INTEGER"
-        self.add_column_row("id", default_id_type, True)
-        
-        self.tabs.addTab(self.columns_tab, "Columns")
-
-        # --- Dialog Buttons (OK/Cancel) ---
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.button_box.accepted.connect(self.validate_and_accept)
-        self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box)
-
-    def add_column_row(self, name="", type="", is_pk=False):
-        row = self.col_table.rowCount()
-        self.col_table.insertRow(row)
-        
-        # Default type if empty
-        if not type:
-            type = "VARCHAR" if self.db_type == 'postgres' else "TEXT"
-
-        # Name Item
-        self.col_table.setItem(row, 0, QTableWidgetItem(name))
-        
-        # Type Item (editable)
-        self.col_table.setItem(row, 1, QTableWidgetItem(type))
-        
-        # PK Checkbox
-        pk_item = QTableWidgetItem()
-        pk_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-        pk_item.setCheckState(Qt.CheckState.Checked if is_pk else Qt.CheckState.Unchecked)
-        self.col_table.setItem(row, 2, pk_item)
-
-    def remove_column_row(self):
-        current_row = self.col_table.currentRow()
-        if current_row >= 0:
-            self.col_table.removeRow(current_row)
-
-    def validate_and_accept(self):
-        if not self.name_input.text().strip():
-            QMessageBox.warning(self, "Error", "Table Name is required!")
-            return
-        self.accept()
-
-    def get_sql_data(self):
-        """Returns a dictionary with the table definition data"""
-        columns = []
-        for r in range(self.col_table.rowCount()):
-            name = self.col_table.item(r, 0).text()
-            dtype = self.col_table.item(r, 1).text()
-            is_pk = self.col_table.item(r, 2).checkState() == Qt.CheckState.Checked
-            if name:
-                columns.append({"name": name, "type": dtype, "pk": is_pk})
-                
-        return {
-            "name": self.name_input.text().strip(),
-            "owner": self.owner_input.text().strip(),
-            "schema": self.schema_combo.currentText(),
-            "columns": columns
-        }
-
-class CreateViewDialog(QDialog):
-    def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
-        super().__init__(parent)
-        self.setWindowTitle(f"Create View ({db_type})")
-        self.resize(600, 500)
-        self.db_type = db_type
-        
-        layout = QVBoxLayout(self)
-        self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
-
-        # --- Tab 1: General (Name, Schema) ---
-        self.general_tab = QWidget()
-        gen_layout = QFormLayout(self.general_tab)
-        
-        self.name_input = QLineEdit()
-        self.schema_combo = QComboBox()
-        
-        if schemas:
-            self.schema_combo.addItems(schemas)
-        else:
-            self.schema_combo.addItem("public" if db_type == 'postgres' else "main")
-            
-        gen_layout.addRow("Name:", self.name_input)
-        if self.db_type == 'postgres':
-            gen_layout.addRow("Schema:", self.schema_combo)
-        
-        self.tabs.addTab(self.general_tab, "General")
-
-        # --- Tab 2: Definition (SQL query) ---
-        self.definition_tab = QWidget()
-        def_layout = QVBoxLayout(self.definition_tab)
-        
-        def_layout.addWidget(QLabel("View Definition (SQL SELECT statement):"))
-        self.sql_editor = QPlainTextEdit()
-        self.sql_editor.setPlaceholderText("SELECT * FROM some_table ...")
-        # Set a monospace font for the editor
-        font = QFont("Consolas", 10)
-        if not font.fixedPitch():
-            font = QFont("Courier New", 10)
-        self.sql_editor.setFont(font)
-        
-        def_layout.addWidget(self.sql_editor)
-        self.tabs.addTab(self.definition_tab, "Definition")
-
-        # --- Dialog Buttons ---
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.button_box.accepted.connect(self.validate_and_accept)
-        self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box)
-
-    def validate_and_accept(self):
-        if not self.name_input.text().strip():
-            QMessageBox.warning(self, "Error", "View Name is required!")
-            return
-        if not self.sql_editor.toPlainText().strip():
-            QMessageBox.warning(self, "Error", "SQL Definition is required!")
-            return
-        self.accept()
-
-    def get_data(self):
-        return {
-            "name": self.name_input.text().strip(),
-            "schema": self.schema_combo.currentText(),
-            "sql": self.sql_editor.toPlainText().strip()
-        }
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -288,7 +101,7 @@ class MainWindow(QMainWindow):
         self.explorer_query_tool_btn.setDefaultAction(self.query_tool_action) 
         self.explorer_query_tool_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.explorer_query_tool_btn.setToolTip("Open new query tool")
-        self.explorer_query_tool_btn.setIconSize(QSize(20, 20))
+        self.explorer_query_tool_btn.setIconSize(QSize(16, 16))
         
         object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
         
@@ -314,9 +127,23 @@ class MainWindow(QMainWindow):
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
 
         add_tab_btn = QPushButton("New")
-        add_tab_btn.setIcon(QIcon("assets/sheet-plus.svg"))  # or .svg
-        add_tab_btn.setIconSize(QSize(20, 22))
+        add_tab_btn.setObjectName("add_tab_btn")
+        add_tab_btn.setIcon(QIcon("assets/sheet-plus.svg")) 
+        add_tab_btn.setIconSize(QSize(18, 18))
         add_tab_btn.clicked.connect(self.add_tab)
+        # Style for a larger button with balanced spacing
+        add_tab_btn.setStyleSheet("""
+            QPushButton#add_tab_btn { 
+                padding: 4px 10px; 
+                border: 1px solid #A9A9A9; 
+                background-color: #ffffff; 
+                border-radius: 4px; 
+                text-align: center;
+            }
+            QPushButton#add_tab_btn:hover {
+                background-color: #f0f0f0;
+            }
+        """)
         self.tab_widget.setCornerWidget(add_tab_btn)
         self.main_splitter.addWidget(self.tab_widget)
 
@@ -331,14 +158,10 @@ class MainWindow(QMainWindow):
         self._apply_styles()
 
     def _create_actions(self):
-        style = QApplication.style()
-        open_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)
-        save_icon = style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)
-        
-        self.open_file_action = QAction(open_icon, "Open File", self)
+        self.open_file_action = QAction(QIcon("assets/bright_folder_icon.svg"), "Open File", self)
         self.open_file_action.triggered.connect(self.open_sql_file)
         
-        self.save_as_action = QAction(save_icon, "Save As...", self)
+        self.save_as_action = QAction(QIcon("assets/bright_save_icon.svg"), "Save As...", self)
         self.save_as_action.triggered.connect(self.save_sql_file_as)
         
         self.exit_action = QAction(QIcon("assets/exit.svg"), "Exit", self)
@@ -690,7 +513,43 @@ class MainWindow(QMainWindow):
     def _apply_styles(self):
         primary_color, header_color, selection_color = "#D3D3D3", "#A9A9A9", "#A9A9A9"
         text_color_on_primary, alternate_row_color, border_color = "#000000", "#f0f0f0", "#A9A9A9"
-        self.setStyleSheet(f"""QMainWindow, QToolBar, QStatusBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }} QTreeView {{ background-color: white; alternate-background-color: {alternate_row_color}; border: 1px solid {border_color}; }} QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}} QTableView::item {{ padding: 4px; }} QTableView::item:selected {{ background-color: {selection_color}; color: white; }} QHeaderView::section {{ background-color: {header_color}; color: white; padding: 4px; border: none; border-right: 1px solid #d3d3d3; border-bottom: 1px solid {border_color}; font-weight: bold; font-size: 9pt;  }} QTableView QTableCornerButton::section {{ background-color: {header_color}; border: 1px solid {border_color}; }} #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }} #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }} #resultsHeader QPushButton:checked, #editorHeader QPushButton:checked {{ background-color: {selection_color}; border-bottom: 1px solid {selection_color}; font-weight: bold; color: white; }} #resultsHeader, #editorHeader {{ background-color: {alternate_row_color}; padding-bottom: -1px; }} #messageView, #history_details_view, QTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }} #tab_status_label {{ padding: 3px 5px; background-color: {alternate_row_color}; border-top: 1px solid {border_color}; }} QGroupBox {{ font-size: 9pt; font-weight: bold; color: {text_color_on_primary}; }} QTabWidget::pane {{ border-top: 1px solid {border_color}; }} QTabBar::tab {{ background: #E0E0E0; border: 1px solid {border_color}; padding: 5px 10px; border-bottom: none; }} QTabBar::tab:selected {{ background: {selection_color}; color: white; }} QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; }}""")
+        self.setStyleSheet(f"""
+        QMainWindow, QToolBar, QStatusBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }}
+        QTreeView {{ background-color: white; alternate-background-color: {alternate_row_color}; border: 1px solid {border_color}; }}
+        QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}}
+        QTableView::item {{ padding: 4px; }}
+        QTableView::item:selected {{ background-color: {selection_color}; color: white; }}
+        QHeaderView::section {{ background-color: {header_color}; color: white; padding: 4px; border: none; border-right: 1px solid #d3d3d3; border-bottom: 1px solid {border_color}; font-weight: bold; font-size: 9pt;  }}
+        QTableView QTableCornerButton::section {{ background-color: {header_color}; border: 1px solid {border_color}; }}
+        #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }}
+        #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }}
+        #resultsHeader QPushButton:checked, #editorHeader QPushButton:checked {{ background-color: {selection_color}; border-bottom: 1px solid {selection_color}; font-weight: bold; color: white; }}
+        #resultsHeader, #editorHeader {{ background-color: {alternate_row_color}; padding-bottom: -1px; }}
+        #messageView, #history_details_view, QTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }}
+        #tab_status_label {{ padding: 3px 5px; background-color: {alternate_row_color}; border-top: 1px solid {border_color}; }}
+        QGroupBox {{ font-size: 9pt; font-weight: bold; color: {text_color_on_primary}; }}
+        QTabWidget::pane {{ border-top: 1px solid {border_color}; }}
+        QTabBar::tab {{ background: #E0E0E0; border: 1px solid {border_color}; padding: 5px 10px; border-bottom: none; }}
+        QTabBar::tab:selected {{ background: {selection_color}; color: white; }}
+        QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; }}
+        
+        /* Premium Search Bar Styling */
+        QLineEdit#table_search_box {{
+            background-color: #ffffff;
+            border: 1px solid #cccccc;
+            border-radius: 14px;
+            padding: 2px 10px 2px 30px;
+            font-size: 9pt;
+            color: #333333;
+        }}
+        QLineEdit#table_search_box:hover {{
+            border: 1px solid #adb5bd;
+        }}
+        QLineEdit#table_search_box:focus {{
+            border: 1px solid #2196F3;
+            background-color: #ffffff;
+        }}
+    """)
 
     def open_limit_offset_dialog(self, tab_content):
         """Opens a dialog to set Limit and Offset like pgAdmin."""
@@ -759,18 +618,45 @@ class MainWindow(QMainWindow):
         toolbar_widget = QWidget()
         toolbar_widget.setObjectName("tab_toolbar")
         toolbar_layout = QHBoxLayout(toolbar_widget)
-        toolbar_layout.setContentsMargins(5, 5, 5, 5)
+        toolbar_layout.setContentsMargins(5, 2, 5, 2)
         toolbar_layout.setSpacing(5)
 
         # --- Group A: File Actions ---
+        btn_style = (
+            "QToolButton, QPushButton, QComboBox { "
+            "padding: 1px 4px; border: 1px solid #cccccc; "
+            "background-color: #f8f9fa; border-radius: 4px; "
+            "} "
+            "QToolButton:hover, QPushButton:hover, QComboBox:hover { "
+            "background-color: #e9ecef; border-color: #adb5bd; "
+            "} "
+            "QComboBox::drop-down { border: none; width: 18px; } "
+            "QComboBox::down-arrow { image: url(assets/chevron-down.svg); width: 10px; height: 10px; } "
+            "QToolButton::menu-indicator { "
+            "image: url(assets/chevron-down.svg); "
+            "subcontrol-origin: padding; "
+            "subcontrol-position: center right; "
+            "width: 10px; height: 10px; "
+            "right: 4px; "
+            "}"
+        )
+        
         open_btn = QToolButton()
         open_btn.setDefaultAction(self.open_file_action)
+        open_btn.setIconSize(QSize(16, 16))
+        open_btn.setFixedHeight(26)
+        open_btn.setMinimumWidth(26)
         open_btn.setToolTip("Open SQL File")
+        open_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(open_btn)
 
         save_btn = QToolButton()
         save_btn.setDefaultAction(self.save_as_action)
+        save_btn.setIconSize(QSize(16, 16))
+        save_btn.setFixedHeight(26)
+        save_btn.setMinimumWidth(26)
         save_btn.setToolTip("Save SQL File")
+        save_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(save_btn)
         
         toolbar_layout.addWidget(self.create_vertical_separator())
@@ -778,7 +664,10 @@ class MainWindow(QMainWindow):
         # --- Group B: Execution & Edit Actions ---
         exec_btn = QToolButton()
         exec_btn.setDefaultAction(self.execute_action)
+        exec_btn.setIconSize(QSize(16, 16))
         exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        exec_btn.setFixedHeight(26)
+        exec_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(exec_btn)
 # {siam}
         # --- Explain Split Button ---
@@ -794,14 +683,19 @@ class MainWindow(QMainWindow):
 # {siam}
         cancel_btn = QToolButton()
         cancel_btn.setDefaultAction(self.cancel_action)
+        cancel_btn.setIconSize(QSize(16, 16))
         cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        cancel_btn.setFixedHeight(26)
+        cancel_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(cancel_btn)
 
         edit_button = QToolButton()
         edit_button.setText("Edit")
         edit_button.setToolTip("Edit Query")
         edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup) 
+        edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        edit_button.setFixedHeight(26)
+        edit_button.setStyleSheet(btn_style + "QToolButton { padding-right: 32px; }")
         edit_menu = QMenu(edit_button)
         edit_menu.addAction(self.format_sql_action)
         edit_menu.addSeparator()
@@ -817,21 +711,23 @@ class MainWindow(QMainWindow):
 
         rows_limit_combo = QComboBox()
         rows_limit_combo.setObjectName("rows_limit_combo")
-        rows_limit_combo.setEditable(True)
+        rows_limit_combo.setEditable(False)
         rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
         rows_limit_combo.setCurrentText("No Limit")
         rows_limit_combo.setFixedWidth(90)
+        rows_limit_combo.setFixedHeight(26)
+        rows_limit_combo.setStyleSheet(btn_style)
 
         # When limit changes, reset offset/page and refresh
         def on_limit_change():
             text = rows_limit_combo.currentText().strip()
-            if text.lower() == 1000:
-               tab_content.current_limit = 0
+            if text.lower() == "no limit":
+                tab_content.current_limit = 0
             else:
-               try:
-                tab_content.current_limit = int(text)
-               except ValueError:
-                tab_content.current_limit ="No Limit"
+                try:
+                    tab_content.current_limit = int(text)
+                except ValueError:
+                    tab_content.current_limit = 0 # Default to no limit on invalid input
 
             tab_content.current_page = 1
             tab_content.current_offset = 0
@@ -845,7 +741,6 @@ class MainWindow(QMainWindow):
 
         # Connect limit change
         rows_limit_combo.currentIndexChanged.connect(on_limit_change)
-        rows_limit_combo.lineEdit().returnPressed.connect(on_limit_change)
 
         toolbar_layout.addWidget(rows_limit_combo)
         
@@ -1008,12 +903,17 @@ class MainWindow(QMainWindow):
         # results_info_layout.addStretch()
 
         
-        add_row_btn = QPushButton("≡+")
-        add_row_btn.setFixedSize(30, 30)
+        add_row_btn = QPushButton()
+        add_row_btn.setIcon(QIcon("assets/row-plus.svg"))
+        add_row_btn.setIconSize(QSize(16, 16))
+        add_row_btn.setFixedSize(32, 32)
         add_row_btn.setToolTip("Add new row")
         add_row_btn.clicked.connect(self.add_empty_row)
-        save_row_btn = QPushButton("💾")
-        save_row_btn.setFixedSize(30, 30)
+
+        save_row_btn = QPushButton()
+        save_row_btn.setIcon(QIcon("assets/save.svg"))
+        save_row_btn.setIconSize(QSize(16, 16))
+        save_row_btn.setFixedSize(32, 32)
         save_row_btn.setToolTip("Save new row")
         results_info_layout.addWidget(add_row_btn)
         results_info_layout.addWidget(save_row_btn)
@@ -1022,26 +922,27 @@ class MainWindow(QMainWindow):
 
         # --- COPY / PASTE BUTTONS (pgAdmin style) ---
         copy_btn = QToolButton()
-        copy_btn.setText("Copy")
-        copy_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+        copy_btn.setIcon(QIcon("assets/copy.svg")) 
+        copy_btn.setIconSize(QSize(16, 16))
+        copy_btn.setFixedSize(32, 32)
         copy_btn.setToolTip("Copy selected cells (Ctrl+C)")
-        # # copy_btn.clicked.connect(
-        #  lambda: self.copy_result_selection(table_view)
-        # )
         copy_btn.clicked.connect(
          lambda: self.copy_result_with_header(table_view)
          )
         copy_btn.clicked.connect(self.copy_current_result_table)
 
         paste_btn = QToolButton()
-        paste_btn.setText("Paste")
-        paste_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder))
-        paste_btn.setToolTip("")
+        paste_btn.setIcon(QIcon("assets/paste.svg")) 
+        paste_btn.setIconSize(QSize(16, 16))
+        paste_btn.setFixedSize(32, 32)
+        paste_btn.setToolTip("Paste to editor")
         paste_btn.clicked.connect(self.paste_to_editor)
 
         # --- New: Delete Row Button 
-        delete_row_btn = QPushButton("🗑️") 
-        delete_row_btn.setFixedSize(30, 30)
+        delete_row_btn = QPushButton()
+        delete_row_btn.setIcon(QIcon("assets/trash.svg")) 
+        delete_row_btn.setIconSize(QSize(16, 16))
+        delete_row_btn.setFixedSize(32, 32)
         delete_row_btn.setToolTip("Delete selected row(s)")
         delete_row_btn.setObjectName("delete_row_btn") 
 
@@ -1055,21 +956,23 @@ class MainWindow(QMainWindow):
 
 
         download_btn = QPushButton()
-        download_btn.setIcon(QIcon("assets/download_icon.png"))  # or .svg
-        download_btn.setIconSize(QSize(20, 22))
+        download_btn.setIcon(QIcon("assets/export.svg"))
+        download_btn.setIconSize(QSize(16, 16))
+        download_btn.setFixedSize(32, 32)
         download_btn.setToolTip("Download query result")
         download_btn.clicked.connect(lambda: self.download_result(tab_content))
         results_info_layout.addWidget(download_btn)
 
         search_box = QLineEdit()
-        search_box.setPlaceholderText("Search / Filter results...")
+        search_box.setPlaceholderText("Search...")
         icon_path = os.path.join(os.path.dirname(__file__), "assets", "search.svg") 
         
         if os.path.exists(icon_path):
             search_icon = QIcon(icon_path)
             
             search_box.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
-        search_box.setFixedWidth(200)
+        search_box.setFixedHeight(28)
+        search_box.setFixedWidth(180)
         search_box.setObjectName("table_search_box")
         
         
@@ -1098,7 +1001,9 @@ class MainWindow(QMainWindow):
 
         # Edit Button (Pencil Icon)
         rows_setting_btn = QToolButton()
-        rows_setting_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+        rows_setting_btn.setIcon(QIcon("assets/list-details.svg"))
+        rows_setting_btn.setIconSize(QSize(16, 16))
+        rows_setting_btn.setFixedSize(32, 32)
         rows_setting_btn.setToolTip("Edit Limit/Offset")
         rows_setting_btn.clicked.connect(lambda: self.open_limit_offset_dialog(tab_content))
         results_info_layout.addWidget(rows_setting_btn)
@@ -3288,19 +3193,12 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
         self.schema_tree.setStyleSheet("""
-            QHeaderView {
-             background-color: #a9a9a9;
-                                       
-            }
             QHeaderView::section {
-            border-right: 1px solid #d3d3d3;
-            padding: 4px;
-            background-color: #a9a9a9;   
+                border-right: 1px solid #d3d3d3;
+                padding: 4px;
+                background-color: #a9a9a9;   
             }
-           QTreeView {
-           gridline-color: #a9a9a9;
-           }
-""")
+        """)
 
         db_path = conn_data.get("db_path")
         if not db_path or not os.path.exists(db_path):
@@ -3400,19 +3298,12 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
         self.schema_tree.setStyleSheet("""
-    QHeaderView {
-        background-color: #a9a9a9;
-                                       
-    }
-    QHeaderView::section {
-        border-right: 1px solid #d3d3d3;
-        padding: 4px;
-        background-color: #a9a9a9;   
-    }
-    QTreeView {
-        gridline-color: #a9a9a9;
-    }
-""")
+            QHeaderView::section {
+                border-right: 1px solid #d3d3d3;
+                padding: 4px;
+                background-color: #a9a9a9;   
+            }
+        """)
         
         
 
@@ -3515,6 +3406,13 @@ class MainWindow(QMainWindow):
             return
 
         menu.exec(self.schema_tree.viewport().mapToGlobal(position))
+
+    def show_table_properties(self, item_data, table_name):
+        if not item_data:
+            return
+        
+        dialog = TablePropertiesDialog(item_data, table_name, self)
+        dialog.show()
 
     def script_table_as_create(self, item_data, table_name):
         if not item_data: return
@@ -5005,18 +4903,11 @@ class MainWindow(QMainWindow):
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
             self.schema_tree.setStyleSheet("""
-            QHeaderView {
-               background-color: #a9a9a9;
-                                       
-            }
-            QHeaderView::section {
-               border-right: 1px solid #d3d3d3;
-               padding: 4px;
-               background-color: #a9a9a9;   
-            }
-            QTreeView {
-               gridline-color: #a9a9a9;
-            }
+                QHeaderView::section {
+                    border-right: 1px solid #d3d3d3;
+                    padding: 4px;
+                    background-color: #a9a9a9;   
+                }
             """)
             # List all CSV files in the folder
             csv_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.csv')]

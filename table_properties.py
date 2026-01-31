@@ -400,7 +400,7 @@ class TablePropertiesDialog(QDialog):
         table_view.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch)  # Name
         table_view.horizontalHeader().setStyleSheet(
-            "QHeaderView::section { background-color: ##e0e0e0; padding: 4px; }")
+            "QHeaderView::section { background-color: #e0e0e0; padding: 4px; }")
 
         # Header center + padding
         table_view.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
