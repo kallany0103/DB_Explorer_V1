@@ -7,3 +7,5 @@ DbExplorer.spec
 *.xls
 *.xlsx
 *.csv
+databases/hierarchy.db
+*.json
