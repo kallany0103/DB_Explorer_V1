@@ -1,6 +1,7 @@
 # main_window.py
 import sys
 import os
+import json
 import time
 import datetime
 import psycopg2
@@ -22,7 +23,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush
-from PyQt6.QtCore import Qt, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
+from PyQt6.QtCore import Qt, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl, QByteArray
 from dialogs.postgres_dialog import PostgresConnectionDialog
 from dialogs.sqlite_dialog import SQLiteConnectionDialog
 from dialogs.oracle_dialog import OracleConnectionDialog
@@ -230,6 +231,8 @@ class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
     def __init__(self):
         super().__init__()
+        self.SESSION_FILE = "session_state.json"
+        
         self.setWindowTitle("Universal SQL Client")
         self.setGeometry(100, 100, 1200, 800)
 
@@ -322,7 +325,7 @@ class MainWindow(QMainWindow):
         self.thread_monitor_timer.start(1000)
 
         self.load_data()
-        self.add_tab()
+        self.restore_session_state()
         self.main_splitter.setSizes([280, 920])
         self.notification_manager = NotificationManager(self)
         self._apply_styles()
@@ -344,6 +347,15 @@ class MainWindow(QMainWindow):
         self.execute_action.triggered.connect(self.execute_query)
         self.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", self)
         self.explain_action.triggered.connect(self.explain_query)
+        
+        # New actions for Explain/Analyze button{siam}
+        self.explain_analyze_action = QAction(QIcon("assets/explain_icon.png"), "Explain Analyze", self)
+        self.explain_analyze_action.triggered.connect(self.explain_query) # Reuse existing logic       
+        self.explain_plan_action = QAction(QIcon("assets/explain_icon.png"), "Explain (Plan)", self)
+        self.explain_plan_action.triggered.connect(self.explain_plan_query)
+
+
+
         self.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", self)
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
@@ -768,7 +780,18 @@ class MainWindow(QMainWindow):
         exec_btn.setDefaultAction(self.execute_action)
         exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         toolbar_layout.addWidget(exec_btn)
-
+# {siam}
+        # --- Explain Split Button ---
+        explain_btn = QToolButton()
+        explain_btn.setDefaultAction(self.explain_analyze_action) # Analyze by default
+        explain_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        explain_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        explain_menu = QMenu(explain_btn)
+        explain_menu.addAction(self.explain_analyze_action)
+        explain_menu.addAction(self.explain_plan_action)
+        explain_btn.setMenu(explain_menu)
+        toolbar_layout.addWidget(explain_btn)
+# {siam}
         cancel_btn = QToolButton()
         cancel_btn.setDefaultAction(self.cancel_action)
         cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -2399,6 +2422,90 @@ class MainWindow(QMainWindow):
 
     def show_info(self, message: str):
        QMessageBox.information(self, "Info", message)
+
+# {siam}
+    def explain_plan_query(self):
+        current_tab = self.tab_widget.currentWidget()
+        if not current_tab:
+            return
+
+        # Get query editor and DB info
+        query_editor = current_tab.findChild(CodeEditor, "query_editor")
+        if not query_editor:
+             query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
+        
+        db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
+        index = db_combo_box.currentIndex()
+        conn_data = db_combo_box.itemData(index)
+
+        if not conn_data.get("host"): # Simple check for Postgres
+             self.show_info("Explain is only supported for PostgreSQL connections.")
+             return
+
+        # Extract query under cursor
+        cursor = query_editor.textCursor()
+        cursor_pos = cursor.position()
+        full_text = query_editor.toPlainText()
+        queries = full_text.split(";")
+
+        selected_query = ""
+        start = 0
+        for q in queries:
+            end = start + len(q)
+            if start <= cursor_pos <= end:
+                selected_query = q.strip()
+                break
+            start = end + 1  # for semicolon
+
+        if not selected_query:
+            self.show_info("Please select a query to explain.")
+            return
+        
+        # Explain Only (No Analyze)
+        query_upper = selected_query.upper().strip()
+        if query_upper.startswith("EXPLAIN"):
+            explain_query = selected_query
+        elif query_upper.startswith("SELECT") or query_upper.startswith("INSERT") or query_upper.startswith("UPDATE") or query_upper.startswith("DELETE"):
+            explain_query = f"EXPLAIN (FORMAT JSON, COSTS, VERBOSE) {selected_query}"
+        else:
+            self.show_info("Please select a valid query to explain.")
+            return
+
+        # Show results stack page with spinner
+        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+        spinner_label = results_stack.findChild(QLabel, "spinner_label")
+        results_stack.setCurrentIndex(4) # Spinner index
+        if spinner_label and spinner_label.movie():
+              spinner_label.movie().start()
+              spinner_label.show()
+        
+        # Set up timers
+        tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
+        progress_timer = QTimer(self)
+        start_time = time.time()
+        timeout_timer = QTimer(self)
+        timeout_timer.setSingleShot(True)
+        self.tab_timers[current_tab] = {
+            "timer": progress_timer,
+            "start_time": start_time,
+            "timeout_timer": timeout_timer
+        }
+        progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
+        progress_timer.start(100)
+
+        # Run query asynchronously
+        signals = QuerySignals()
+        runnable = RunnableQuery(conn_data, explain_query, signals)
+        signals.finished.connect(partial(self.handle_query_result, current_tab))
+        signals.error.connect(partial(self.handle_query_error, current_tab))
+        timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
+        self.running_queries[current_tab] = runnable
+        self.cancel_action.setEnabled(True)
+        self.thread_pool.start(runnable)
+        timeout_timer.start(self.QUERY_TIMEOUT)
+
+        self.status_message_label.setText("Executing Explain Plan...")
+# {siam}
 
 
     def explain_query(self):
@@ -4977,3 +5084,86 @@ class MainWindow(QMainWindow):
             conn.close()
         except Exception as e:
             self.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
+# {siam}
+    def closeEvent(self, event):
+        """Save session state on close."""
+        session_data = {
+            "window_geometry": self.saveGeometry().toBase64().data().decode(),
+            "window_state": self.saveState().toBase64().data().decode(),
+            "tabs": []
+        }
+
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            editor = tab.findChild(CodeEditor, "query_editor")
+            db_combo = tab.findChild(QComboBox, "db_combo_box")
+            
+            # Find file path (if any was opened/saved) - This is tricky as we don't currently store it on the tab strictly
+            # But let's check for 'current_file' attribute if we were to add it, or just content.
+            # For now, saving distinct content is the priority. 
+            
+            tab_data = {
+                "title": self.tab_widget.tabText(i),
+                "sql_content": editor.toPlainText() if editor else "",
+                "selected_connection_index": db_combo.currentIndex() if db_combo else 0,
+                 # We might want to store more property if needed
+                "current_limit": getattr(tab, 'current_limit', 1000),
+                "current_offset": getattr(tab, 'current_offset', 0)
+            }
+            session_data["tabs"].append(tab_data)
+
+        try:
+            with open(self.SESSION_FILE, 'w') as f:
+                json.dump(session_data, f, indent=4)
+        except Exception as e:
+            print(f"Error saving session: {e}")
+
+        event.accept()
+
+    def restore_session_state(self):
+        """Restore tabs and connections from saved session."""
+        if not os.path.exists(self.SESSION_FILE):
+             self.add_tab() # Default behavior
+             return
+
+        try:
+            with open(self.SESSION_FILE, 'r') as f:
+                session_data = json.load(f)
+
+            if "window_geometry" in session_data:
+                self.restoreGeometry(QByteArray.fromBase64(session_data["window_geometry"].encode()))
+            if "window_state" in session_data:
+                self.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
+
+            tabs = session_data.get("tabs", [])
+            if not tabs:
+                self.add_tab()
+                return
+
+            for tab_data in tabs:
+                self.add_tab()
+                current_tab_index = self.tab_widget.count() - 1
+                current_tab = self.tab_widget.widget(current_tab_index)
+                
+                # Restore SQL Content
+                editor = current_tab.findChild(CodeEditor, "query_editor")
+                if editor:
+                    editor.setPlainText(tab_data.get("sql_content", ""))
+                
+                # Restore Connection
+                db_combo = current_tab.findChild(QComboBox, "db_combo_box")
+                if db_combo:
+                    db_combo.setCurrentIndex(tab_data.get("selected_connection_index", 0))
+
+                # Restore Limits
+                current_tab.current_limit = tab_data.get("current_limit", 1000)
+                current_tab.current_offset = tab_data.get("current_offset", 0)
+                
+                # Restore Title (Initial add_tab sets default, we override if meaningful)
+                # self.tab_widget.setTabText(current_tab_index, tab_data.get("title", "Query"))
+
+        except Exception as e:
+            print(f"Error restoring session: {e}")
+            self.add_tab() # Fallback
+# {siam}
+            
