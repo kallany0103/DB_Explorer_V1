@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush
-from PyQt6.QtCore import Qt, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
+from PyQt6.QtCore import Qt, QByteArray, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
 from dialogs import (
     PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
     ExportDialog, CSVConnectionDialog, ServiceNowConnectionDialog,
@@ -59,6 +59,8 @@ class MainWindow(QMainWindow):
         self._create_centered_toolbar()
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setHandleWidth(2)
+        self.main_splitter.setChildrenCollapsible(False)
         self.setCentralWidget(self.main_splitter)
 
         self.status = QStatusBar()
@@ -67,6 +69,7 @@ class MainWindow(QMainWindow):
         self.status.addWidget(self.status_message_label)
 
         left_panel = QWidget()
+        left_panel.setMinimumWidth(150)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
@@ -106,6 +109,7 @@ class MainWindow(QMainWindow):
         object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
         
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.left_vertical_splitter.setHandleWidth(0)
         self.left_vertical_splitter.addWidget(self.tree)
 
         self.schema_tree = QTreeView()
@@ -123,6 +127,7 @@ class MainWindow(QMainWindow):
         self.main_splitter.addWidget(left_panel)
 
         self.tab_widget = QTabWidget()
+        self.tab_widget.setMinimumWidth(200)
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
 
@@ -172,9 +177,9 @@ class MainWindow(QMainWindow):
         self.explain_action.triggered.connect(self.explain_query)
         
         # New actions for Explain/Analyze button{siam}
-        self.explain_analyze_action = QAction(QIcon("assets/explain_icon.png"), "Explain Analyze", self)
+        self.explain_analyze_action = QAction("Explain Analyze", self)
         self.explain_analyze_action.triggered.connect(self.explain_query) # Reuse existing logic       
-        self.explain_plan_action = QAction(QIcon("assets/explain_icon.png"), "Explain (Plan)", self)
+        self.explain_plan_action = QAction("Explain (Plan)", self)
         self.explain_plan_action.triggered.connect(self.explain_plan_query)
 
 
@@ -264,6 +269,7 @@ class MainWindow(QMainWindow):
 
     def _create_centered_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
+        toolbar.setObjectName("main_toolbar")
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon) 
         toolbar.setIconSize(QSize(16, 16)) 
         left_spacer = QWidget()
@@ -514,6 +520,7 @@ class MainWindow(QMainWindow):
         primary_color, header_color, selection_color = "#D3D3D3", "#A9A9A9", "#A9A9A9"
         text_color_on_primary, alternate_row_color, border_color = "#000000", "#f0f0f0", "#A9A9A9"
         self.setStyleSheet(f"""
+        QSplitter::handle {{ background: #e0e0e0; border: none; }}
         QMainWindow, QToolBar, QStatusBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }}
         QTreeView {{ background-color: white; alternate-background-color: {alternate_row_color}; border: 1px solid {border_color}; }}
         QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}}
@@ -630,13 +637,19 @@ class MainWindow(QMainWindow):
             "QToolButton:hover, QPushButton:hover, QComboBox:hover { "
             "background-color: #e9ecef; border-color: #adb5bd; "
             "} "
-            "QComboBox::drop-down { border: none; width: 18px; } "
+            "QComboBox::drop-down { "
+            "border: none; border-left: 1px solid #cccccc; "
+            "width: 20px; subcontrol-origin: padding; "
+            "subcontrol-position: top right; "
+            "} "
             "QComboBox::down-arrow { image: url(assets/chevron-down.svg); width: 10px; height: 10px; } "
             "QToolButton::menu-indicator { "
             "image: url(assets/chevron-down.svg); "
             "subcontrol-origin: padding; "
             "subcontrol-position: center right; "
-            "width: 10px; height: 10px; "
+            "width: 10px; height: 16px; "
+            "border-left: 1px solid #cccccc; "
+            "padding-left: 4px; "
             "right: 4px; "
             "}"
         )
@@ -669,18 +682,6 @@ class MainWindow(QMainWindow):
         exec_btn.setFixedHeight(26)
         exec_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(exec_btn)
-# {siam}
-        # --- Explain Split Button ---
-        explain_btn = QToolButton()
-        explain_btn.setDefaultAction(self.explain_analyze_action) # Analyze by default
-        explain_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        explain_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        explain_menu = QMenu(explain_btn)
-        explain_menu.addAction(self.explain_analyze_action)
-        explain_menu.addAction(self.explain_plan_action)
-        explain_btn.setMenu(explain_menu)
-        toolbar_layout.addWidget(explain_btn)
-# {siam}
         cancel_btn = QToolButton()
         cancel_btn.setDefaultAction(self.cancel_action)
         cancel_btn.setIconSize(QSize(16, 16))
@@ -688,6 +689,22 @@ class MainWindow(QMainWindow):
         cancel_btn.setFixedHeight(26)
         cancel_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(cancel_btn)
+
+# {siam}
+        # --- Explain Split Button ---
+        explain_btn = QToolButton()
+        explain_btn.setDefaultAction(self.explain_analyze_action) # Analyze by default
+        explain_btn.setIconSize(QSize(16, 16))
+        explain_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        explain_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        explain_btn.setFixedHeight(26)
+        explain_btn.setStyleSheet(btn_style + "QToolButton { padding-right: 20px; padding-left: 8px; }")
+        explain_menu = QMenu(explain_btn)
+        explain_menu.addAction(self.explain_analyze_action)
+        explain_menu.addAction(self.explain_plan_action)
+        explain_btn.setMenu(explain_menu)
+        toolbar_layout.addWidget(explain_btn)
+# {siam}
 
         edit_button = QToolButton()
         edit_button.setText("Edit")
@@ -747,14 +764,18 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(self.create_vertical_separator())
         toolbar_layout.addStretch() 
         layout.addWidget(toolbar_widget)
+        layout.setStretchFactor(toolbar_widget, 0)
 
         # 3. Main Splitter (Editor vs Results)
         main_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         main_vertical_splitter.setObjectName("tab_vertical_splitter")
+        main_vertical_splitter.setHandleWidth(0) 
         layout.addWidget(main_vertical_splitter)
+        layout.setStretchFactor(main_vertical_splitter, 1)
 
         # ----------------- Editor Container -----------------
         editor_container = QWidget()
+        editor_container.setMinimumHeight(30)
         editor_layout = QVBoxLayout(editor_container)
         editor_layout.setContentsMargins(0, 0, 0, 0)
         editor_layout.setSpacing(0)
@@ -795,6 +816,7 @@ class MainWindow(QMainWindow):
         editor_stack.addWidget(text_edit)
 
         history_widget = QSplitter(Qt.Orientation.Horizontal)
+        history_widget.setHandleWidth(0)
         history_list_view = QTreeView()
         history_list_view.setObjectName("history_list_view")
         history_list_view.setHeaderHidden(True)
@@ -826,6 +848,7 @@ class MainWindow(QMainWindow):
         editor_stack.addWidget(history_widget)
 
         editor_layout.addWidget(editor_stack)
+        editor_layout.setStretchFactor(editor_stack, 1)
         main_vertical_splitter.addWidget(editor_container)
 
         # --- Editor switching logic ---
@@ -849,6 +872,7 @@ class MainWindow(QMainWindow):
 
         # ----------------- Results Container -----------------
         results_container = QWidget()
+        results_container.setMinimumHeight(30)
         results_layout = QVBoxLayout(results_container)
         results_layout.setContentsMargins(0, 0, 0, 0)
         results_layout.setSpacing(0)
@@ -1202,10 +1226,12 @@ class MainWindow(QMainWindow):
         results_stack.addWidget(explain_visualizer)      # Index 5
 
         results_layout.addWidget(results_stack)
+        results_layout.setStretchFactor(results_stack, 1)
 
         tab_status_label = QLabel("Ready")
         tab_status_label.setObjectName("tab_status_label")
         results_layout.addWidget(tab_status_label)
+        results_layout.setStretchFactor(tab_status_label, 0)
 
         def switch_results_view(index):
            results_stack.setCurrentIndex(index)
@@ -1222,7 +1248,11 @@ class MainWindow(QMainWindow):
         explain_btn.clicked.connect(lambda: switch_results_view(5))
 
         main_vertical_splitter.addWidget(results_container)
-        main_vertical_splitter.setSizes([300, 300])
+        
+        # --- Configure splitter behavior AFTER adding widgets ---
+        main_vertical_splitter.setSizes([400, 400])
+        main_vertical_splitter.setStretchFactor(0, 1)
+        main_vertical_splitter.setStretchFactor(1, 1)
 
         tab_content.setLayout(layout)
         index = self.tab_widget.addTab(
