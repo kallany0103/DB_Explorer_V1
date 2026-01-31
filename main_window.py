@@ -631,27 +631,29 @@ class MainWindow(QMainWindow):
         # --- Group A: File Actions ---
         btn_style = (
             "QToolButton, QPushButton, QComboBox { "
-            "padding: 1px 4px; border: 1px solid #cccccc; "
-            "background-color: #f8f9fa; border-radius: 4px; "
+            "padding: 1px 8px; border: 1px solid #cccccc; "
+            "background-color: #ffffff; border-radius: 4px; "
+            "font-size: 9pt; color: #333333; "
             "} "
             "QToolButton:hover, QPushButton:hover, QComboBox:hover { "
-            "background-color: #e9ecef; border-color: #adb5bd; "
+            "background-color: #f0f2f5; border-color: #adb5bd; "
+            "} "
+            "QToolButton:pressed, QPushButton:pressed, QComboBox:on { "
+            "background-color: #e8eaed; "
             "} "
             "QComboBox::drop-down { "
-            "border: none; border-left: 1px solid #cccccc; "
-            "width: 20px; subcontrol-origin: padding; "
-            "subcontrol-position: top right; "
+            "border: none; border-left: 1px solid #dddfe2; "
+            "width: 24px; "
+            "border-top-right-radius: 4px; "
+            "border-bottom-right-radius: 4px; "
             "} "
-            "QComboBox::down-arrow { image: url(assets/chevron-down.svg); width: 10px; height: 10px; } "
-            "QToolButton::menu-indicator { "
+            "QComboBox::drop-down:hover { "
+            "background-color: #e4e6e9; "
+            "} "
+            "QComboBox::down-arrow { "
             "image: url(assets/chevron-down.svg); "
-            "subcontrol-origin: padding; "
-            "subcontrol-position: center right; "
-            "width: 10px; height: 16px; "
-            "border-left: 1px solid #cccccc; "
-            "padding-left: 4px; "
-            "right: 4px; "
-            "}"
+            "width: 10px; height: 10px; "
+            "} "
         )
         
         open_btn = QToolButton()
@@ -691,34 +693,51 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(cancel_btn)
 
 # {siam}
-        # --- Explain Split Button ---
-        explain_btn = QToolButton()
-        explain_btn.setDefaultAction(self.explain_analyze_action) # Analyze by default
-        explain_btn.setIconSize(QSize(16, 16))
-        explain_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        explain_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        explain_btn.setFixedHeight(26)
-        explain_btn.setStyleSheet(btn_style + "QToolButton { padding-right: 20px; padding-left: 8px; }")
-        explain_menu = QMenu(explain_btn)
-        explain_menu.addAction(self.explain_analyze_action)
-        explain_menu.addAction(self.explain_plan_action)
-        explain_btn.setMenu(explain_menu)
-        toolbar_layout.addWidget(explain_btn)
+        # --- Explain Combo (Replaces Split Button) ---
+        explain_combo = QComboBox()
+        explain_combo.setFixedHeight(26)
+        explain_combo.setFixedWidth(135)
+        explain_combo.setStyleSheet(btn_style)
+        
+        # Items
+        explain_combo.addItem(QIcon("assets/explain_icon.png"), "Explain Analyze")
+        explain_combo.addItem(QIcon("assets/explain_icon.png"), "Explain (Plan)")
+        
+        def on_explain_activated(index):
+            if index == 0:
+                self.explain_query()
+            else:
+                self.explain_plan_query()
+        
+        explain_combo.activated.connect(on_explain_activated)
+        toolbar_layout.addWidget(explain_combo)
 # {siam}
 
-        edit_button = QToolButton()
-        edit_button.setText("Edit")
-        edit_button.setToolTip("Edit Query")
-        edit_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        edit_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        edit_button.setFixedHeight(26)
-        edit_button.setStyleSheet(btn_style + "QToolButton { padding-right: 32px; }")
-        edit_menu = QMenu(edit_button)
-        edit_menu.addAction(self.format_sql_action)
-        edit_menu.addSeparator()
-        edit_menu.addAction(self.clear_query_action)
-        edit_button.setMenu(edit_menu)
-        toolbar_layout.addWidget(edit_button)
+        # --- Edit Combo (Replaces ToolButton) ---
+        edit_combo = QComboBox()
+        edit_combo.setFixedHeight(26)
+        edit_combo.setFixedWidth(75)
+        edit_combo.setStyleSheet(btn_style)
+        
+        # Items
+        edit_combo.addItem(QIcon("assets/format_icon.png"), "Edit") # Default item
+        edit_combo.addItem(QIcon("assets/format_icon.png"), "Format SQL")
+        edit_combo.addItem(QIcon("assets/delete_icon.png"), "Clear Query")
+        
+        # Hide "Edit" from the dropdown list and make it wide enough for actions
+        edit_combo.view().setRowHidden(0, True)
+        edit_combo.view().setMinimumWidth(80)
+        
+        def on_edit_activated(index):
+            if index == 1:
+                self.format_sql_text()
+            elif index == 2:
+                self.clear_query_text()
+            # Reset to "Edit" title/index after action
+            edit_combo.setCurrentIndex(0)
+            
+        edit_combo.activated.connect(on_edit_activated)
+        toolbar_layout.addWidget(edit_combo)
        
         
         # --- Limit ComboBox (Top Toolbar) ---
