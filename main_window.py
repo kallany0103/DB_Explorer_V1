@@ -3422,6 +3422,17 @@ class MainWindow(QMainWindow):
             create_script_action = QAction("CREATE script", self)
             create_script_action.triggered.connect(lambda: self.script_table_as_create(item_data, display_name))
             scripts_menu.addAction(create_script_action)
+
+            create_script_action = QAction("insert script", self)
+            create_script_action.triggered.connect(lambda: self.script_table_as_insert(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
+
+            create_script_action = QAction("delete script", self)
+            create_script_action.triggered.connect(lambda: self.script_table_as_delete(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
+            create_script_action = QAction("update script", self)
+            create_script_action.triggered.connect(lambda: self.script_table_as_update(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
             
             menu.addSeparator()
 
@@ -3547,21 +3558,60 @@ class MainWindow(QMainWindow):
 
         
         if sql_script:
-            new_tab = self.add_tab() 
-            
-            
-            db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
+            self._open_script_in_editor(item_data, sql_script)
+
+    def script_table_as_select(self, item_data, table_name):
+        schema_name = item_data.get('schema_name', 'public')
+        db_type = item_data.get('db_type')
+        if db_type == 'postgres':
+            sql = f'SELECT * FROM "{schema_name}"."{table_name}";'
+        else:
+            sql = f'SELECT * FROM "{table_name}";'
+        self._open_script_in_editor(item_data, sql)
+
+    def script_table_as_insert(self, item_data, table_name):
+        schema_name = item_data.get('schema_name', 'public')
+        db_type = item_data.get('db_type')
+        if db_type == 'postgres':
+             sql = f'INSERT INTO "{schema_name}"."{table_name}" (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
+        else:
+             sql = f'INSERT INTO "{table_name}" (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
+        self._open_script_in_editor(item_data, sql)
+
+    def script_table_as_update(self, item_data, table_name):
+        schema_name = item_data.get('schema_name', 'public')
+        db_type = item_data.get('db_type')
+        if db_type == 'postgres':
+             sql = f'UPDATE "{schema_name}"."{table_name}"\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
+        else:
+             sql = f'UPDATE "{table_name}"\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
+        self._open_script_in_editor(item_data, sql)
+
+    def script_table_as_delete(self, item_data, table_name):
+        schema_name = item_data.get('schema_name', 'public')
+        db_type = item_data.get('db_type')
+        if db_type == 'postgres':
+            sql = f'DELETE FROM "{schema_name}"."{table_name}"\nWHERE <condition>;'
+        else:
+            sql = f'DELETE FROM "{table_name}"\nWHERE <condition>;'
+        self._open_script_in_editor(item_data, sql)
+
+    def _open_script_in_editor(self, item_data, sql):
+        new_tab = self.add_tab()
+        conn_data = item_data.get('conn_data')
+        
+        db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
+        if db_combo_box and conn_data:
             for i in range(db_combo_box.count()):
                 data = db_combo_box.itemData(i)
                 if data and data.get('id') == conn_data.get('id'):
                     db_combo_box.setCurrentIndex(i)
                     break
-            
-            
-            query_editor = new_tab.findChild(CodeEditor, "query_editor")
-            if query_editor:
-                query_editor.setPlainText(sql_script)
-                self.tab_widget.setCurrentWidget(new_tab)
+        
+        query_editor = new_tab.findChild(CodeEditor, "query_editor")
+        if query_editor:
+            query_editor.setPlainText(sql)
+            self.tab_widget.setCurrentWidget(new_tab)
 
     def delete_table(self, item_data, table_name):
         if not item_data: return

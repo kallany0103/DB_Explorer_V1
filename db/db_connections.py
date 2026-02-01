@@ -5,6 +5,7 @@ import oracledb
 import sys
 import os
 import datetime
+import cdata.servicenow as sn
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and PyInstaller."""
@@ -58,8 +59,6 @@ def create_oracle_connection(host, port, service_name, user, password):
     
 def create_servicenow_connection(conn_data):
     try:
-        import cdata.servicenow as sn
-
         if not conn_data.get("instance_url"):
             raise ValueError("Missing instance_url in conn_data")
 
@@ -68,7 +67,7 @@ def create_servicenow_connection(conn_data):
             f"Password={conn_data['password']};"
             f"Url={conn_data['instance_url']};"
             f"AuthScheme=Basic;"
-            f"ReadOnly=True"
+            # f"ReadOnly=True"
         )
 
         conn = sn.connect(conn_str)
