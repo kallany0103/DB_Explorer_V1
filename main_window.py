@@ -22,8 +22,10 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
-from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush
+from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush, QKeySequence, QShortcut
+
 from PyQt6.QtCore import Qt, QByteArray, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
+from widgets.find_replace_dialog import FindReplaceDialog
 from dialogs import (
     PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
     ExportDialog, CSVConnectionDialog, ServiceNowConnectionDialog,
@@ -419,9 +421,61 @@ class MainWindow(QMainWindow):
             
             editor.clear()
             editor.setFocus()
+            editor.setFocus()
             self.status.showMessage("Editor cleared.", 3000)
+# {siam}
+    def open_find_dialog(self, replace=False):
+        editor = self._get_current_editor()
+        if not editor:
+            return
+            
+        if not hasattr(self, 'find_replace_dialog'):
+            self.find_replace_dialog = FindReplaceDialog(self)
+            self.find_replace_dialog.find_next.connect(lambda t, c, w: self._on_find_next(t, c, w))
+            self.find_replace_dialog.find_previous.connect(lambda t, c, w: self._on_find_prev(t, c, w))
+            self.find_replace_dialog.replace.connect(lambda t, r, c, w: self._on_replace(t, r, c, w))
+            self.find_replace_dialog.replace_all.connect(lambda t, r, c, w: self._on_replace_all(t, r, c, w))
+            
+        cursor = editor.textCursor()
+        if cursor.hasSelection():
+            self.find_replace_dialog.set_find_text(cursor.selectedText())
+            
+        self.find_replace_dialog.show()
+        self.find_replace_dialog.raise_()
+        self.find_replace_dialog.activateWindow()
+        
+        if replace:
+            self.find_replace_dialog.replace_input.setFocus()
+        else:
+            self.find_replace_dialog.find_input.setFocus()
 
-#
+    def _on_find_next(self, text, case, whole):
+        editor = self._get_current_editor()
+        if editor:
+            found = editor.find(text, case, whole, True)
+            if not found:
+                self.status.showMessage(f"Text '{text}' not found.", 2000)
+
+    def _on_find_prev(self, text, case, whole):
+        editor = self._get_current_editor()
+        if editor:
+            found = editor.find(text, case, whole, False)
+            if not found:
+                self.status.showMessage(f"Text '{text}' not found.", 2000)
+
+    def _on_replace(self, target, replacement, case, whole):
+        editor = self._get_current_editor()
+        if editor:
+            editor.replace_curr(target, replacement, case, whole)
+
+    def _on_replace_all(self, target, replacement, case, whole):
+        editor = self._get_current_editor()
+        if editor:
+            count = editor.replace_all(target, replacement, case, whole)
+            self.status.showMessage(f"Replaced {count} occurrences.", 3000)
+
+
+# {siam}
     # --- New Handler Methods for Menu Actions ---km
 
     def show_about_dialog(self):
@@ -722,28 +776,76 @@ class MainWindow(QMainWindow):
         # --- Edit Combo (Replaces ToolButton) ---
         edit_combo = QComboBox()
         edit_combo.setFixedHeight(26)
-        edit_combo.setFixedWidth(75)
+        edit_combo.setFixedWidth(50) # Compact width for icon only
         edit_combo.setStyleSheet(btn_style)
+        edit_combo.setToolTip("Edit Operations")
         
-        # Items
-        edit_combo.addItem(QIcon("assets/format_icon.png"), "Edit") # Default item
-        edit_combo.addItem(QIcon("assets/format_icon.png"), "Format SQL")
-        edit_combo.addItem(QIcon("assets/delete_icon.png"), "Clear Query")
+        # --- Edit Button with Menu (Replaces ComboBox) ---
+        edit_btn = QToolButton()
+        edit_btn.setIcon(QIcon("assets/format.svg"))
+        edit_btn.setIconSize(QSize(18, 18))
+        edit_btn.setFixedSize(30, 26) # Compact size
+        edit_btn.setStyleSheet(btn_style)
+        edit_btn.setToolTip("Edit Operations")
+        edit_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         
-        # Hide "Edit" from the dropdown list and make it wide enough for actions
-        edit_combo.view().setRowHidden(0, True)
-        edit_combo.view().setMinimumWidth(80)
+        edit_menu = QMenu(self)
+        edit_menu.setStyleSheet("""
+            QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
+            QMenu::item { padding: 5px 20px 5px 10px; min-width: 250px; }
+            QMenu::item:selected { background-color: #f0f2f5; color: #333333; }
+            QMenu::separator { height: 1px; background: #eeeeee; margin: 2px 0px; }
+        """)
+
+        # Helper to add actions
+        def add_menu_action(text, shortcut=None, icon=None, func=None):
+            action = QAction(text, self)
+            if icon: action.setIcon(QIcon(icon))
+            if shortcut: action.setShortcut(QKeySequence(shortcut))
+            if func: action.triggered.connect(func)
+            edit_menu.addAction(action)
+            return action
+
+        # Actions matching pgAdmin style
+        add_menu_action("Find", "Ctrl+F", "assets/search.svg", lambda: self.open_find_dialog(False))
+        add_menu_action("Replace", "Ctrl+Alt+F", "assets/refresh.svg", lambda: self.open_find_dialog(True))
         
-        def on_edit_activated(index):
-            if index == 1:
-                self.format_sql_text()
-            elif index == 2:
-                self.clear_query_text()
-            # Reset to "Edit" title/index after action
-            edit_combo.setCurrentIndex(0)
-            
-        edit_combo.activated.connect(on_edit_activated)
-        toolbar_layout.addWidget(edit_combo)
+        def go_to_line():
+            editor = self._get_current_editor()
+            if editor:
+                line, ok = QInputDialog.getInt(self, "Go to Line", "Line Number:", 1, 1, editor.blockCount())
+                if ok:
+                    cursor = editor.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.Start)
+                    cursor.movePosition(QTextCursor.MoveOperation.Down, QTextCursor.MoveMode.MoveAnchor, line - 1)
+                    editor.setTextCursor(cursor)
+                    editor.centerCursor()
+
+        add_menu_action("Go to Line/Column", "Ctrl+L", None, go_to_line)
+        edit_menu.addSeparator() # Re-adding separators for clarity in real menu
+        add_menu_action("Indent Selection", "Tab", None, lambda: self._get_current_editor() and self._get_current_editor().indent_selection())
+        add_menu_action("Unindent Selection", "Shift+Tab", None, lambda: self._get_current_editor() and self._get_current_editor().unindent_selection())
+        add_menu_action("Toggle Comment", "Ctrl+/", None, lambda: self._get_current_editor() and self._get_current_editor().toggle_comment())
+        add_menu_action("Toggle Case of Selected Text", "Ctrl+Shift+U", None, lambda: self._get_current_editor() and self._get_current_editor().toggle_case())
+        edit_menu.addSeparator()
+        add_menu_action("Clear Query", "Ctrl+Alt+L", "assets/delete_icon.png", self.clear_query_text)
+        add_menu_action("Format SQL", "Ctrl+K", "assets/format_icon.png", self.format_sql_text)
+
+        edit_btn.setMenu(edit_menu)
+        toolbar_layout.addWidget(edit_btn)
+        
+        # Shortcuts are already handled by the QActions in the menu if properly set, 
+        # but adding QShortcuts for current tab to ensure they work even when menu is closed.
+        # Actually QActions in a menu on a QMainWindow/Widget usually work as global shortcuts.
+        
+        # Ensure shortcuts work globally for this tab/window
+        QShortcut(QKeySequence("Ctrl+F"), tab_content, lambda: self.open_find_dialog(False))
+        QShortcut(QKeySequence("Ctrl+Alt+F"), tab_content, lambda: self.open_find_dialog(True))
+        QShortcut(QKeySequence("Ctrl+L"), tab_content, go_to_line)
+        QShortcut(QKeySequence("Ctrl+/"), tab_content, lambda: self._get_current_editor() and self._get_current_editor().toggle_comment())
+        QShortcut(QKeySequence("Ctrl+Shift+U"), tab_content, lambda: self._get_current_editor() and self._get_current_editor().toggle_case())
+        QShortcut(QKeySequence("Ctrl+Alt+L"), tab_content, self.clear_query_text)
+        QShortcut(QKeySequence("Ctrl+K"), tab_content, self.format_sql_text)
        
         
         # --- Limit ComboBox (Top Toolbar) ---

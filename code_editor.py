@@ -317,3 +317,160 @@ class CodeEditor(QPlainTextEdit):
             extraSelections.append(selection)
 
         self.setExtraSelections(extraSelections)
+# {siam}
+
+    # --- New Edit Methods ---
+
+    def indent_selection(self):
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            
+            cursor.setPosition(start)
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            start_block = cursor.blockNumber()
+            
+            cursor.setPosition(end)
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            end_block = cursor.blockNumber()
+            
+            cursor.beginEditBlock()
+            for i in range(start_block, end_block + 1):
+                block = self.document().findBlockByNumber(i)
+                file_cursor = QTextCursor(block)
+                file_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                file_cursor.insertText("    ") 
+            cursor.endEditBlock()
+        else:
+            self.insertPlainText("    ") 
+
+    def unindent_selection(self):
+        cursor = self.textCursor()
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+        
+        cursor.setPosition(start)
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        start_block = cursor.blockNumber()
+        
+        cursor.setPosition(end)
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        end_block = cursor.blockNumber()
+        
+        cursor.beginEditBlock()
+        for i in range(start_block, end_block + 1):
+            block = self.document().findBlockByNumber(i)
+            file_cursor = QTextCursor(block)
+            file_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            text = block.text()
+            if text.startswith("    "):
+                file_cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 4)
+                file_cursor.removeSelectedText()
+            elif text.startswith("\t"):
+                file_cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 1)
+                file_cursor.removeSelectedText()
+        cursor.endEditBlock()
+
+    def toggle_comment(self):
+        cursor = self.textCursor()
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+        
+        cursor.setPosition(start)
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        start_block = cursor.blockNumber()
+        
+        cursor.setPosition(end)
+        # If selection ends at start of block (and spans multiple blocks), don't include that last block
+        if cursor.atBlockStart() and end > start:
+             cursor.movePosition(QTextCursor.MoveOperation.PreviousBlock)
+        
+        end_block = cursor.blockNumber()
+
+        cursor.beginEditBlock()
+        for i in range(start_block, end_block + 1):
+            block = self.document().findBlockByNumber(i)
+            file_cursor = QTextCursor(block)
+            file_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            text = block.text()
+            if text.strip().startswith("--"):
+                # Uncomment: Find first instance of -- and remove it
+                # We need to be careful to remove the specific '-- ' or '--' we added
+                # Simple approach: remove first occurrence of '--' and optional following space
+                pos = text.find("--")
+                if pos != -1:
+                    file_cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.MoveAnchor, pos)
+                    file_cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 2)
+                    if file_cursor.block().text()[pos+2:].startswith(" "):
+                         file_cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 1)
+                    file_cursor.removeSelectedText()
+            else:
+                # Comment
+                file_cursor.insertText("-- ")
+        cursor.endEditBlock()
+
+    def toggle_case(self):
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            return
+        
+        text = cursor.selectedText()
+        if text.isupper():
+            new_text = text.lower()
+        else:
+            new_text = text.upper()
+            
+        cursor.insertText(new_text)
+
+    def find(self, text, case_sensitive=False, whole_word=False, forward=True):
+        if not text:
+            return False
+            
+        options = QTextDocument.FindFlag(0)
+        if case_sensitive:
+            options |= QTextDocument.FindFlag.FindCaseSensitively
+        if whole_word:
+            options |= QTextDocument.FindFlag.FindWholeWords
+        if not forward:
+            options |= QTextDocument.FindFlag.FindBackward
+            
+        found = self.find(text, options) # This calls QPlainTextEdit.find
+        
+        if not found:
+            # Wrap around
+            cursor = self.textCursor()
+            if forward:
+                cursor.movePosition(QTextCursor.MoveOperation.Start)
+            else:
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.setTextCursor(cursor)
+            found = self.find(text, options)
+            
+        return found
+        
+    def replace_curr(self, target, replacement, case_sensitive=False, whole_word=False):
+        cursor = self.textCursor()
+        if cursor.hasSelection() and cursor.selectedText() == target:
+             cursor.insertText(replacement)
+             self.find(target, case_sensitive, whole_word, True) # Find next
+             return True
+        return self.find(target, case_sensitive, whole_word, True)
+
+    def replace_all(self, target, replacement, case_sensitive=False, whole_word=False):
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        
+        # Start from beginning
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self.setTextCursor(cursor)
+        
+        count = 0
+        while self.find(target, case_sensitive, whole_word, True):
+            cursor = self.textCursor()
+            cursor.insertText(replacement)
+            count += 1
+            
+        cursor.endEditBlock()
+        return count
+# {siam}
