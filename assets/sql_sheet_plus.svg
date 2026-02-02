@@ -1,0 +1,14 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Document Body with Folded Corner -->
+  <path d="M40 10H130L175 55V175C175 183.284 168.284 190 160 190H40C31.7157 190 25 183.284 25 175V25C25 16.7157 31.7157 10 40 10Z" fill="white" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M130 10V55H175" fill="none" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+  
+  <!-- Content Lines (Grey) -->
+  <line x1="55" y1="90" x2="115" y2="90" stroke="#666666" stroke-width="12" stroke-linecap="round"/>
+  <line x1="55" y1="125" x2="140" y2="125" stroke="#666666" stroke-width="12" stroke-linecap="round"/>
+  <line x1="55" y1="160" x2="105" y2="160" stroke="#666666" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- The Plus Badge (High-Contrast Black Circle) -->
+  <circle cx="155" cy="155" r="45" fill="black" stroke="white" stroke-width="5"/>
+  <path d="M155 130V180M130 155H180" stroke="white" stroke-width="15" stroke-linecap="round"/>
+</svg>

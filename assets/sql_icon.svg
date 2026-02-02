@@ -1,0 +1,21 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Document Body -->
+  <path d="M40 10C34.4772 10 30 14.4772 30 20V180C30 185.523 34.4772 190 40 190H160C165.523 190 170 185.523 170 180V60L120 10H40Z" fill="white" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+  
+  <!-- Corner Fold -->
+  <path d="M120 10V60H170" stroke="black" stroke-width="12" stroke-linejoin="round"/>
+  
+  <!-- SQL Badge -->
+  <rect x="10" y="80" width="180" height="60" rx="4" fill="black"/>
+  
+  <!-- SQL Typography (Vectorized) -->
+  <g transform="translate(35, 95) scale(0.9)">
+    <!-- S -->
+    <path d="M40 5C40 2 36 0 30 0C24 0 20 2 20 6C20 10 24 11 30 13C36 15 40 16 40 21C40 27 34 30 28 30C22 30 18 28 18 24" stroke="white" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <!-- Q -->
+    <circle cx="68" cy="15" r="14" stroke="white" stroke-width="8" fill="none"/>
+    <path d="M78 25L88 35" stroke="white" stroke-width="8" stroke-linecap="round"/>
+    <!-- L -->
+    <path d="M105 0V30H130" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>
