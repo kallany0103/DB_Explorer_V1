@@ -12,6 +12,11 @@ from .db_retrieval import (
     get_hierarchy_data,
 )
 
+from .schema_retrieval import (
+    get_sqlite_schema,
+    get_postgres_schema,
+)
+
 from .db_modifications import (
     add_connection_group,
     add_connection,
@@ -40,4 +45,6 @@ __all__ = [
     "get_query_history",
     "delete_history",
     "delete_all_history",
+    "get_sqlite_schema",
+    "get_postgres_schema",
 ]

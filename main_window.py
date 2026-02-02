@@ -35,6 +35,7 @@ from notification_manager import NotificationManager
 from table_properties import TablePropertiesDialog
 from code_editor import CodeEditor
 from widgets.explain_visualizer import ExplainVisualizer
+from widgets.erd_diagram import ERDWidget
 import db
 
 
@@ -56,7 +57,7 @@ class MainWindow(QMainWindow):
 
         self._create_actions()
         self._create_menu()
-        self._create_centered_toolbar()
+
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
@@ -103,8 +104,25 @@ class MainWindow(QMainWindow):
         self.explorer_query_tool_btn = QToolButton()
         self.explorer_query_tool_btn.setDefaultAction(self.query_tool_action) 
         self.explorer_query_tool_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.explorer_query_tool_btn.setToolTip("Open new query tool")
-        self.explorer_query_tool_btn.setIconSize(QSize(16, 16))
+        self.explorer_query_tool_btn.setToolTip("New Query (Alt+Ctrl+S)")
+        self.explorer_query_tool_btn.setIconSize(QSize(22, 22))
+        self.explorer_query_tool_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.explorer_query_tool_btn.setStyleSheet("""
+            QToolButton {
+                border: 1px solid #A9A9A9;
+                border-radius: 4px;
+                background-color: #f5f5f5;
+                padding: 2px;
+                color: #333333;
+            }
+            QToolButton:hover {
+                background-color: #e8e8e8;
+                border: 1px solid #777777;
+            }
+            QToolButton:pressed {
+                background-color: #dcdcdc;
+            }
+        """)
         
         object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
         
@@ -131,22 +149,32 @@ class MainWindow(QMainWindow):
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
 
-        add_tab_btn = QPushButton("New")
+        add_tab_btn = QPushButton(" New")
         add_tab_btn.setObjectName("add_tab_btn")
-        add_tab_btn.setIcon(QIcon("assets/sheet-plus.svg")) 
-        add_tab_btn.setIconSize(QSize(18, 18))
+        add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_tab_btn.setIcon(QIcon("assets/sql_sheet_plus.svg")) 
+        add_tab_btn.setIconSize(QSize(22, 22))
+        add_tab_btn.setToolTip("New Worksheet (Alt+Ctrl+S)")
         add_tab_btn.clicked.connect(self.add_tab)
-        # Style for a larger button with balanced spacing
+        
+        # Integrated Silver/Gray Enterprise Style
         add_tab_btn.setStyleSheet("""
             QPushButton#add_tab_btn { 
-                padding: 4px 10px; 
+                padding: 8px 6px; 
                 border: 1px solid #A9A9A9; 
-                background-color: #ffffff; 
+                background-color: #f5f5f5; 
                 border-radius: 4px; 
+                color: #333333;
+                font-weight: bold;
+                font-size: 9pt;
                 text-align: center;
             }
             QPushButton#add_tab_btn:hover {
-                background-color: #f0f0f0;
+                background-color: #e8e8e8;
+                border: 1px solid #777777;
+            }
+            QPushButton#add_tab_btn:pressed {
+                background-color: #dcdcdc;
             }
         """)
         self.tab_widget.setCornerWidget(add_tab_btn)
@@ -200,7 +228,7 @@ class MainWindow(QMainWindow):
         self.delete_action = QAction("Delete", self)
         self.delete_action.triggered.connect(self.delete_text)
         
-        self.query_tool_action = QAction(QIcon("assets/sql_icon.png"), "Query Tool", self)
+        self.query_tool_action = QAction(QIcon("assets/sql_sheet_plus.svg"), "Query Tool", self)
         self.query_tool_action.triggered.connect(self.add_tab)
         
         self.restore_action = QAction("Restore Layout", self)
@@ -267,29 +295,7 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
         help_menu.addAction(self.about_action)
 
-    def _create_centered_toolbar(self):
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setObjectName("main_toolbar")
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon) 
-        toolbar.setIconSize(QSize(16, 16)) 
-        left_spacer = QWidget()
-        left_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        right_spacer = QWidget()
-        right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        toolbar.addWidget(left_spacer)
-        
-        # --- Existing Actions ---
-        # toolbar.addAction(self.open_file_action)
-        # toolbar.addAction(self.save_as_action)
-        toolbar.addAction(self.exit_action)
-        toolbar.addSeparator() # Separator for clearer UI
-       # toolbar.addAction(self.execute_action)
-        # toolbar.addAction(self.cancel_action)
-        toolbar.addSeparator()
 
-
-        toolbar.addWidget(right_spacer)
-        self.addToolBar(toolbar)
 
     def open_sql_file(self):
         editor = self._get_current_editor()
@@ -2067,6 +2073,11 @@ class MainWindow(QMainWindow):
             delete_action = QAction("Delete Connection", self)
             delete_action.triggered.connect(lambda: self.delete_connection(item))
             menu.addAction(delete_action)
+
+            menu.addSeparator()
+            erd_action = QAction("Generate ERD", self)
+            erd_action.triggered.connect(lambda: self.generate_erd(item))
+            menu.addAction(erd_action)
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     def show_connection_details(self, item):
@@ -2136,6 +2147,35 @@ class MainWindow(QMainWindow):
         msg.layout().addWidget(label, 0, 1)
 
         msg.exec()
+
+    def generate_erd(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+        if not conn_data:
+            return
+            
+        parent_group = item.parent()
+        if not parent_group: return
+        connection_type = parent_group.parent()
+        if not connection_type: return
+        connection_type_name = connection_type.text().lower()
+        
+        schema_data = {}
+        if "postgres" in connection_type_name:
+            schema_data = db.get_postgres_schema(conn_data)
+        elif "sqlite" in connection_type_name:
+            schema_data = db.get_sqlite_schema(conn_data.get('db_path'))
+        else:
+            QMessageBox.information(self, "Not Supported", "ERD generation is only supported for SQLite and PostgreSQL.")
+            return
+            
+        if not schema_data:
+            QMessageBox.warning(self, "No Data", "Could not retrieve schema data or database is empty.")
+            return
+            
+        erd_widget = ERDWidget(schema_data)
+        tab_name = f"Worksheet {self.tab_widget.count() + 1}"
+        index = self.tab_widget.addTab(erd_widget, tab_name)
+        self.tab_widget.setCurrentIndex(index)
 
 
     def add_connection_group(self, parent_item):
