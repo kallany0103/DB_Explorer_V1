@@ -9,3 +9,4 @@ DbExplorer.spec
 *.csv
 databases/hierarchy.db
 *.json
+.gitignore
