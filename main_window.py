@@ -194,16 +194,21 @@ class MainWindow(QMainWindow):
 
     def _create_actions(self):
         self.open_file_action = QAction(QIcon("assets/bright_folder_icon.svg"), "Open File", self)
+        self.open_file_action.setShortcut("Ctrl+O")
         self.open_file_action.triggered.connect(self.open_sql_file)
         
         self.save_as_action = QAction(QIcon("assets/bright_save_icon.svg"), "Save As...", self)
+        self.save_as_action.setShortcut("Ctrl+S")
         self.save_as_action.triggered.connect(self.save_sql_file_as)
         
         self.exit_action = QAction(QIcon("assets/exit.svg"), "Exit", self)
+        self.exit_action.setShortcut("Ctrl+Q")
         self.exit_action.triggered.connect(self.close)
         self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
+        self.execute_action.setShortcuts(["Ctrl+Enter","Ctrl+RETURN"])
         self.execute_action.triggered.connect(self.execute_query)
         self.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", self)
+        self.explain_action.setShortcut("Ctrl+E")
         self.explain_action.triggered.connect(self.explain_query)
         
         # New actions for Explain/Analyze button{siam}
@@ -218,19 +223,26 @@ class MainWindow(QMainWindow):
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
         self.undo_action = QAction("Undo", self)
+        self.undo_action.setShortcut("Ctrl+Z")
         self.undo_action.triggered.connect(self.undo_text)
         self.redo_action = QAction("Redo", self)
+        self.redo_action.setShortcuts(["Ctrl+Y", "Ctrl+Shift+Z"])
         self.redo_action.triggered.connect(self.redo_text)
         self.cut_action = QAction("Cut", self)
+        self.cut_action.setShortcut("Ctrl+X")
         self.cut_action.triggered.connect(self.cut_text)
         self.copy_action = QAction("Copy", self)
+        self.copy_action.setShortcut("Ctrl+C")
         self.copy_action.triggered.connect(self.copy_text)
         self.paste_action = QAction("Paste", self)
+        self.paste_action.setShortcut("Ctrl+V")
         self.paste_action.triggered.connect(self.paste_text)
         self.delete_action = QAction("Delete", self)
+        # self.delete_action.setShortcut("Del")
         self.delete_action.triggered.connect(self.delete_text)
         
         self.query_tool_action = QAction(QIcon("assets/sql_sheet_plus.svg"), "Query Tool", self)
+        self.query_tool_action.setShortcut("Ctrl+T")
         self.query_tool_action.triggered.connect(self.add_tab)
         
         self.restore_action = QAction("Restore Layout", self)
@@ -3561,18 +3573,18 @@ class MainWindow(QMainWindow):
             
             menu.addSeparator()
             scripts_menu = menu.addMenu("Scripts")
-            create_script_action = QAction("CREATE script", self)
+            create_script_action = QAction("CREATE Script", self)
             create_script_action.triggered.connect(lambda: self.script_table_as_create(item_data, display_name))
             scripts_menu.addAction(create_script_action)
 
-            create_script_action = QAction("insert script", self)
+            create_script_action = QAction("INSERT Script", self)
             create_script_action.triggered.connect(lambda: self.script_table_as_insert(item_data, display_name))
             scripts_menu.addAction(create_script_action)
 
-            create_script_action = QAction("delete script", self)
+            create_script_action = QAction("DELETE Script", self)
             create_script_action.triggered.connect(lambda: self.script_table_as_delete(item_data, display_name))
             scripts_menu.addAction(create_script_action)
-            create_script_action = QAction("update script", self)
+            create_script_action = QAction("UPDATE Script", self)
             create_script_action.triggered.connect(lambda: self.script_table_as_update(item_data, display_name))
             scripts_menu.addAction(create_script_action)
             
