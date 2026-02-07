@@ -366,6 +366,7 @@ class MainWindow(QMainWindow):
 
     def _create_menu(self):
         menubar = self.menuBar()
+        menubar.setNativeMenuBar(False)
         file_menu = menubar.addMenu("&File")
         file_menu.addAction(self.open_file_action)
         file_menu.addAction(self.save_as_action)
@@ -782,6 +783,28 @@ class MainWindow(QMainWindow):
             background-color: #A9A9A9;
             border-bottom: 1px solid #777777;
         }}
+
+        QMenuBar {{
+        background-color: {primary_color};
+        border: none;
+        }}
+
+        QMenuBar::item {{
+        background: transparent;
+        padding: 4px 12px;
+        margin: 0px;
+        }}
+
+        QMenuBar::item:selected {{
+        background-color: {selection_color};
+        color: white;
+        }}
+
+        QMenuBar::separator {{
+        width: 0px;
+        background: transparent;
+        }}
+
         
         QTableView QTableCornerButton::section {{ background-color: {header_color}; border: 1px solid {border_color}; }}
         #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }}
@@ -813,6 +836,7 @@ class MainWindow(QMainWindow):
             background-color: #ffffff;
         }}
     """)
+        
 
     def open_limit_offset_dialog(self, tab_content):
         """Opens a dialog to set Limit and Offset like pgAdmin."""
