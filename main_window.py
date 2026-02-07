@@ -217,8 +217,6 @@ class MainWindow(QMainWindow):
         self.explain_plan_action = QAction("Explain (Plan)", self)
         self.explain_plan_action.triggered.connect(self.explain_plan_query)
 
-
-
         self.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", self)
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
@@ -272,17 +270,45 @@ class MainWindow(QMainWindow):
         self.clear_query_action.setShortcut("Ctrl+Shift+c")
         self.clear_query_action.triggered.connect(self.clear_query_text)
 
+        # Object Menu Actions
+        self.create_table_action = QAction(QIcon("assets/table.svg"), "Table...", self)
+        self.create_table_action.triggered.connect(self._create_table_from_menu)
+        
+        self.create_view_action = QAction(QIcon("assets/eye.svg"), "View...", self)
+        self.create_view_action.triggered.connect(self._create_view_from_menu)
+
+        self.delete_object_action = QAction(QIcon("assets/trash.svg"), "Delete/Drop...", self)
+       
+        
+        self.properties_object_action = QAction(QIcon("assets/settings.svg"), "Properties...", self)
+        self.properties_object_action.triggered.connect(self._properties_object_from_menu)
+
+        self.query_tool_obj_action = QAction(QIcon("assets/sql_sheet_plus.svg"), "Query Tool", self)
+        self.query_tool_obj_action.triggered.connect(self._query_tool_from_menu)
+
+
     def _create_menu(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("&File")
         file_menu.addAction(self.open_file_action)
         file_menu.addAction(self.save_as_action)
         file_menu.addSeparator()
+    
         file_menu.addAction(self.exit_action)
+        
+        object_menu = menubar.addMenu("&Object")
+        create_menu = object_menu.addMenu("Create")
+        create_menu.addAction(self.create_table_action)
+        create_menu.addAction(self.create_view_action)
+        object_menu.addAction(self.query_tool_obj_action)
+        object_menu.addAction(self.refresh_action)
+        # object_menu.addSeparator()
+        object_menu.addAction(self.delete_object_action)
+
+
         edit_menu = menubar.addMenu("&Edit")
         edit_menu.addAction(self.undo_action)
         edit_menu.addAction(self.redo_action)
-        edit_menu.addSeparator()
         edit_menu.addAction(self.cut_action)
         edit_menu.addAction(self.copy_action)
         edit_menu.addAction(self.paste_action)
@@ -291,6 +317,7 @@ class MainWindow(QMainWindow):
         actions_menu.addAction(self.execute_action)
         actions_menu.addAction(self.explain_action)
         actions_menu.addAction(self.cancel_action)
+        
         tools_menu = menubar.addMenu("&Tools")
         tools_menu.addAction(self.query_tool_action)
         tools_menu.addAction(self.refresh_action)
@@ -319,7 +346,6 @@ class MainWindow(QMainWindow):
             if not current_tab:
                 self.add_tab()
                 current_tab = self.tab_widget.currentWidget()
-           
             editor_stack = current_tab.findChild(QStackedWidget, "editor_stack")
             if editor_stack and editor_stack.currentIndex() != 0:
                 editor_stack.setCurrentIndex(0)
@@ -531,6 +557,50 @@ class MainWindow(QMainWindow):
         editor = self._get_current_editor()
         if editor:
             editor.textCursor().removeSelectedText()
+
+    # --- Object Menu Handlers ---
+    def _get_current_schema_item_data(self):
+        index = self.schema_tree.currentIndex()
+        if not index.isValid():
+            return None, None, None
+        item = self.schema_model.itemFromIndex(index)
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        return item, item_data, item.text() if item else None
+
+    def _create_table_from_menu(self):
+        item, item_data, name = self._get_current_schema_item_data()
+        if item_data:
+            self.open_create_table_template(item_data)
+        else:
+            QMessageBox.warning(self, "Warning", "Please select a schema or table in the Database Schema tree first.")
+
+    def _create_view_from_menu(self):
+        item, item_data, name = self._get_current_schema_item_data()
+        if item_data:
+            self.open_create_view_template(item_data)
+        else:
+            QMessageBox.warning(self, "Warning", "Please select a schema or table in the Database Schema tree first.")
+
+    def _query_tool_from_menu(self):
+        item, item_data, name = self._get_current_schema_item_data()
+        if item_data:
+            self.open_query_tool_for_table(item_data, name)
+        else:
+            self.add_tab()
+
+    def _delete_object_from_menu(self):
+        item, item_data, name = self._get_current_schema_item_data()
+        if item_data and item_data.get('table_name'):
+             self.delete_table(item_data, name)
+        else:
+            QMessageBox.warning(self, "Warning", "Please select a table or view to delete.")
+
+    def _properties_object_from_menu(self):
+        item, item_data, name = self._get_current_schema_item_data()
+        if item_data and item_data.get('table_name'):
+             self.show_table_properties(item_data, name)
+        else:
+            QMessageBox.warning(self, "Warning", "Please select a table or view to view properties.")
 
     def restore_tool(self):
         self.main_splitter.setSizes([280, 920])
@@ -950,8 +1020,12 @@ class MainWindow(QMainWindow):
         text_edit = CodeEditor()
         text_edit.setPlaceholderText("Write your SQL query here...")
         text_edit.setObjectName("query_editor")
-        text_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        # text_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
+        text_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        text_edit.customContextMenuRequested.connect(
+            lambda pos, editor=text_edit: self.show_editor_context_menu(pos, editor)
+        )
         editor_stack.addWidget(text_edit)
 
         history_widget = QSplitter(Qt.Orientation.Horizontal)
@@ -2105,6 +2179,80 @@ class MainWindow(QMainWindow):
             depth += 1
             parent = parent.parent()
         return depth + 1
+
+    def show_editor_context_menu(self, pos, editor):
+        """
+        Displays a pgAdmin-style context menu for the Query Editor
+        with Cut, Copy, Paste, and Select All.
+        """
+        menu = QMenu(self)
+        
+        # Style the menu to match your application theme
+        menu.setStyleSheet("""
+            QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
+            QMenu::item { padding: 5px 25px 5px 25px; font-size: 10pt; color: #333333; }
+            QMenu::item:selected { background-color: #e8eaed; color: #000000; }
+            QMenu::icon { padding-left: 5px; }
+            QMenu::separator { height: 1px; background: #eeeeee; margin: 4px 0px; }
+        """)
+
+        # --- Undo / Redo ---
+        undo_action = QAction(QIcon("assets/undo.svg"), "Undo", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.triggered.connect(editor.undo)
+        undo_action.setEnabled(editor.document().isUndoAvailable())
+        menu.addAction(undo_action)
+
+        redo_action = QAction(QIcon("assets/redo.svg"), "Redo", self)
+        redo_action.setShortcut("Ctrl+Y")
+        redo_action.triggered.connect(editor.redo)
+        redo_action.setEnabled(editor.document().isRedoAvailable())
+        menu.addAction(redo_action)
+
+        menu.addSeparator()
+
+        # --- Cut ---
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut("Ctrl+X")
+        cut_action.triggered.connect(editor.cut)
+        # Disable Cut if no text is selected
+        cut_action.setEnabled(editor.textCursor().hasSelection())
+        menu.addAction(cut_action)
+
+        # --- Copy ---
+        copy_action = QAction( "Copy", self)
+        copy_action.setShortcut("Ctrl+C")
+        copy_action.triggered.connect(editor.copy)
+        # Disable Copy if no text is selected
+        copy_action.setEnabled(editor.textCursor().hasSelection())
+        menu.addAction(copy_action)
+
+        # --- Paste ---
+        paste_action = QAction(QIcon("assets/paste.svg"), "Paste", self)
+        paste_action.setShortcut("Ctrl+V")
+        paste_action.triggered.connect(editor.paste)
+        # Disable Paste if clipboard is empty
+        clipboard = QApplication.clipboard()
+        paste_action.setEnabled(clipboard.mimeData().hasText())
+        menu.addAction(paste_action)
+
+        menu.addSeparator()
+
+        # --- Select All ---
+        select_all_action = QAction("Select All", self)
+        select_all_action.setShortcut("Ctrl+A")
+        select_all_action.triggered.connect(editor.selectAll)
+        menu.addAction(select_all_action)
+        
+        # --- Format SQL (Optional, since you have the function) ---
+        menu.addSeparator()
+        format_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", self)
+        format_action.setShortcut("Ctrl+Shift+F")
+        format_action.triggered.connect(self.format_sql_text)
+        menu.addAction(format_action)
+
+        # Show the menu
+        menu.exec(editor.mapToGlobal(pos))
     
     
     def show_context_menu(self, pos):
