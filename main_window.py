@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import QAbstractItemView
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush, QKeySequence, QShortcut
 
-from PyQt6.QtCore import Qt, QByteArray, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl
+from PyQt6.QtCore import Qt, QByteArray, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl, QEvent
 from widgets.find_replace_dialog import FindReplaceDialog
 from dialogs import (
     PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
         self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCentralWidget(self.main_splitter)
 
         self.status = QStatusBar()
@@ -72,7 +73,10 @@ class MainWindow(QMainWindow):
         self.status.addWidget(self.status_message_label)
 
         left_panel = QWidget()
+        left_panel.setObjectName("leftPanel")
         left_panel.setMinimumWidth(150)
+        left_panel.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        left_panel.setStyleSheet("#leftPanel { background-color: #D3D3D3; border: none; }")
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
@@ -87,46 +91,94 @@ class MainWindow(QMainWindow):
         self.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['Object Explorer'])
-        self.tree.setModel(self.model)
+        
+        # --- Search Filter Proxy Model ---
+        self.proxy_model = QSortFilterProxyModel()
+        self.proxy_model.setSourceModel(self.model)
+        self.proxy_model.setRecursiveFilteringEnabled(True)
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        
+        self.tree.setModel(self.proxy_model)
         
         self.tree.setHeaderHidden(True)
+        self.tree.setIndentation(15)  # Reduced from default to close gap
+        self.tree.setStyleSheet("QTreeView { background-color: white; border: 1px solid #A9A9A9; color: black; }")
+        self.tree.viewport().setStyleSheet("background-color: white;")
 
-        # --- Create Object Explorer Header (Query Tool Button) ---
+        # --- Create Object Explorer Header (Toolbar Group) ---
         object_explorer_header = QWidget()
         object_explorer_header.setObjectName("objectExplorerHeader")
+        object_explorer_header.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        object_explorer_header.setStyleSheet("""
+            #objectExplorerHeader { 
+                background-color: #A9A9A9; 
+                border-bottom: 1px solid #777777; 
+            }
+        """)
         object_explorer_header_layout = QHBoxLayout(object_explorer_header)
-        object_explorer_header_layout.setContentsMargins(5, 0, 2, 0)
-        object_explorer_header_layout.setSpacing(4)
+        object_explorer_header_layout.setContentsMargins(8, 4, 8, 4)
+        object_explorer_header_layout.setSpacing(10)
 
         object_explorer_label = QLabel("Object Explorer")
-        
+        object_explorer_label.setObjectName("objectExplorerLabel")
+        object_explorer_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         object_explorer_header_layout.addWidget(object_explorer_label)
-        object_explorer_header_layout.addStretch()
+        # --- Expandable Search Filter ---
+        self.explorer_search_container = QWidget()
+        self.explorer_search_layout = QHBoxLayout(self.explorer_search_container)
+        self.explorer_search_layout.setContentsMargins(0, 0, 0, 0)
+        self.explorer_search_layout.setSpacing(0)
 
-        self.explorer_query_tool_btn = QToolButton()
-        self.explorer_query_tool_btn.setDefaultAction(self.query_tool_action) 
-        self.explorer_query_tool_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.explorer_query_tool_btn.setToolTip("New Query (Alt+Ctrl+S)")
-        self.explorer_query_tool_btn.setIconSize(QSize(22, 22))
-        self.explorer_query_tool_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.explorer_query_tool_btn.setStyleSheet("""
+        # 1. The Search Box (Initially Hidden)
+        self.explorer_search_box = QLineEdit()
+        self.explorer_search_box.setPlaceholderText("Filter...")
+        self.explorer_search_box.setFixedHeight(24)
+        self.explorer_search_box.setMinimumWidth(120)
+        self.explorer_search_box.hide()
+        
+        search_icon_path = os.path.join(os.path.dirname(__file__), "assets", "search.svg")
+        if os.path.exists(search_icon_path):
+             self.explorer_search_box.addAction(QIcon(search_icon_path), QLineEdit.ActionPosition.LeadingPosition)
+             
+        self.explorer_search_box.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #A9A9A9;
+                border-radius: 4px;
+                padding-left: 2px;
+                background-color: #ffffff;
+                font-size: 9pt;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0078d4;
+                background-color: #ffffff;
+            }
+        """)
+        self.explorer_search_box.textChanged.connect(self.filter_object_explorer)
+        self.explorer_search_box.installEventFilter(self)
+
+        # 2. The Search Button (Compact/Small)
+        self.explorer_search_btn = QToolButton()
+        self.explorer_search_btn.setIcon(QIcon(search_icon_path if os.path.exists(search_icon_path) else ""))
+        self.explorer_search_btn.setFixedSize(24, 24)
+        self.explorer_search_btn.setToolTip("Search Connections")
+        self.explorer_search_btn.setStyleSheet("""
             QToolButton {
                 border: 1px solid #A9A9A9;
                 border-radius: 4px;
-                background-color: #f5f5f5;
-                padding: 2px;
-                color: #333333;
+                background-color: #D3D3D3;
             }
             QToolButton:hover {
-                background-color: #e8e8e8;
+                background-color: #A9A9A9;
                 border: 1px solid #777777;
             }
-            QToolButton:pressed {
-                background-color: #dcdcdc;
-            }
         """)
+        self.explorer_search_btn.clicked.connect(self.toggle_explorer_search)
+
+        self.explorer_search_layout.addWidget(self.explorer_search_box)
+        self.explorer_search_layout.addWidget(self.explorer_search_btn)
         
-        object_explorer_header_layout.addWidget(self.explorer_query_tool_btn)
+        object_explorer_header_layout.addStretch()
+        object_explorer_header_layout.addWidget(self.explorer_search_container)
         
         self.left_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.left_vertical_splitter.setHandleWidth(0)
@@ -138,6 +190,10 @@ class MainWindow(QMainWindow):
         self.schema_tree.setModel(self.schema_model)
         self.schema_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.schema_tree.customContextMenuRequested.connect(self.show_schema_context_menu)
+        self.schema_tree.setIndentation(15) 
+        self.schema_tree.setAlternatingRowColors(False)
+        self.schema_tree.setStyleSheet("QTreeView { background-color: white; border: 1px solid #A9A9A9; color: black; }")
+        self.schema_tree.viewport().setStyleSheet("background-color: white;")
         self.left_vertical_splitter.addWidget(self.schema_tree)
 
         self.left_vertical_splitter.setSizes([240, 360])
@@ -151,18 +207,16 @@ class MainWindow(QMainWindow):
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
 
-        add_tab_btn = QPushButton(" New")
+        add_tab_btn = QPushButton("New")
         add_tab_btn.setObjectName("add_tab_btn")
         add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_tab_btn.setIcon(QIcon("assets/sql_sheet_plus.svg")) 
-        add_tab_btn.setIconSize(QSize(22, 22))
         add_tab_btn.setToolTip("New Worksheet (Alt+Ctrl+S)")
         add_tab_btn.clicked.connect(self.add_tab)
         
         # Integrated Silver/Gray Enterprise Style
         add_tab_btn.setStyleSheet("""
             QPushButton#add_tab_btn { 
-                padding: 8px 6px; 
+                padding: 2px 10px; 
                 border: 1px solid #A9A9A9; 
                 background-color: #f5f5f5; 
                 border-radius: 4px; 
@@ -191,23 +245,32 @@ class MainWindow(QMainWindow):
         self.main_splitter.setSizes([280, 920])
         self.notification_manager = NotificationManager(self)
         self._apply_styles()
+        self.raise_()
+        self.activateWindow()
 
     def _create_actions(self):
         self.open_file_action = QAction(QIcon("assets/bright_folder_icon.svg"), "Open File", self)
+        self.open_file_action.setIconVisibleInMenu(False)
         self.open_file_action.setShortcut("Ctrl+O")
         self.open_file_action.triggered.connect(self.open_sql_file)
         
         self.save_as_action = QAction(QIcon("assets/bright_save_icon.svg"), "Save As...", self)
+        self.save_as_action.setIconVisibleInMenu(False)
         self.save_as_action.setShortcut("Ctrl+S")
         self.save_as_action.triggered.connect(self.save_sql_file_as)
         
         self.exit_action = QAction(QIcon("assets/exit.svg"), "Exit", self)
+        self.exit_action.setIconVisibleInMenu(False)
         self.exit_action.setShortcut("Ctrl+Q")
         self.exit_action.triggered.connect(self.close)
+        
         self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
+        self.execute_action.setIconVisibleInMenu(False)
         self.execute_action.setShortcuts(["Ctrl+Enter","Ctrl+RETURN"])
         self.execute_action.triggered.connect(self.execute_query)
+        
         self.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", self)
+        self.explain_action.setIconVisibleInMenu(False)
         self.explain_action.setShortcut("Ctrl+E")
         self.explain_action.triggered.connect(self.explain_query)
         
@@ -218,28 +281,35 @@ class MainWindow(QMainWindow):
         self.explain_plan_action.triggered.connect(self.explain_plan_query)
 
         self.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", self)
+        self.cancel_action.setIconVisibleInMenu(False)
         self.cancel_action.triggered.connect(self.cancel_current_query)
         self.cancel_action.setEnabled(False)
+        
         self.undo_action = QAction("Undo", self)
         self.undo_action.setShortcut("Ctrl+Z")
         self.undo_action.triggered.connect(self.undo_text)
+        
         self.redo_action = QAction("Redo", self)
         self.redo_action.setShortcuts(["Ctrl+Y", "Ctrl+Shift+Z"])
         self.redo_action.triggered.connect(self.redo_text)
+        
         self.cut_action = QAction("Cut", self)
         self.cut_action.setShortcut("Ctrl+X")
         self.cut_action.triggered.connect(self.cut_text)
+        
         self.copy_action = QAction("Copy", self)
         self.copy_action.setShortcut("Ctrl+C")
         self.copy_action.triggered.connect(self.copy_text)
+        
         self.paste_action = QAction("Paste", self)
         self.paste_action.setShortcut("Ctrl+V")
         self.paste_action.triggered.connect(self.paste_text)
+        
         self.delete_action = QAction("Delete", self)
-        # self.delete_action.setShortcut("Del")
         self.delete_action.triggered.connect(self.delete_text)
         
         self.query_tool_action = QAction(QIcon("assets/sql_sheet_plus.svg"), "Query Tool", self)
+        self.query_tool_action.setIconVisibleInMenu(False)
         self.query_tool_action.setShortcut("Ctrl+T")
         self.query_tool_action.triggered.connect(self.add_tab)
         
@@ -262,28 +332,35 @@ class MainWindow(QMainWindow):
             lambda: self.open_help_url("https://www.oracle.com/database/"))
         self.about_action = QAction("About", self)
         self.about_action.triggered.connect(self.show_about_dialog)
+        
         self.format_sql_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", self)
+        self.format_sql_action.setIconVisibleInMenu(False)
         self.format_sql_action.setShortcut("Ctrl+Shift+F")
         self.format_sql_action.triggered.connect(self.format_sql_text)
 
         self.clear_query_action = QAction(QIcon("assets/delete_icon.png"), "Clear Query", self)
+        self.clear_query_action.setIconVisibleInMenu(False)
         self.clear_query_action.setShortcut("Ctrl+Shift+c")
         self.clear_query_action.triggered.connect(self.clear_query_text)
 
         # Object Menu Actions
         self.create_table_action = QAction(QIcon("assets/table.svg"), "Table...", self)
+        self.create_table_action.setIconVisibleInMenu(False)
         self.create_table_action.triggered.connect(self._create_table_from_menu)
         
         self.create_view_action = QAction(QIcon("assets/eye.svg"), "View...", self)
+        self.create_view_action.setIconVisibleInMenu(False)
         self.create_view_action.triggered.connect(self._create_view_from_menu)
 
         self.delete_object_action = QAction(QIcon("assets/trash.svg"), "Delete/Drop...", self)
-       
+        self.delete_object_action.setIconVisibleInMenu(False)
         
         self.properties_object_action = QAction(QIcon("assets/settings.svg"), "Properties...", self)
+        self.properties_object_action.setIconVisibleInMenu(False)
         self.properties_object_action.triggered.connect(self._properties_object_from_menu)
 
         self.query_tool_obj_action = QAction(QIcon("assets/sql_sheet_plus.svg"), "Query Tool", self)
+        self.query_tool_obj_action.setIconVisibleInMenu(False)
         self.query_tool_obj_action.triggered.connect(self._query_tool_from_menu)
 
 
@@ -668,7 +745,44 @@ class MainWindow(QMainWindow):
         QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}}
         QTableView::item {{ padding: 4px; }}
         QTableView::item:selected {{ background-color: {selection_color}; color: white; }}
-        QHeaderView::section {{ background-color: {header_color}; color: white; padding: 4px; border: none; border-right: 1px solid #d3d3d3; border-bottom: 1px solid {border_color}; font-weight: bold; font-size: 9pt;  }}
+        QHeaderView::section {{
+            background-color: #A9A9A9;
+            color: #ffffff;
+            padding: 4px;
+            border: none;
+            border-right: 1px solid #d3d3d3;
+            border-bottom: 1px solid #A9A9A9;
+            font-weight: bold;
+            font-size: 10pt;
+        }}
+        QHeaderView::section:disabled {{
+            color: #ffffff;
+        }}
+        
+        QTreeView QHeaderView::section {{
+            background-color: #A9A9A9;
+            color: #ffffff;
+            font-weight: bold;
+        }}
+        
+        #objectExplorerLabel {{
+            font-size: 10pt;
+            font-weight: bold;
+            color: #ffffff;
+            background-color: #A9A9A9;
+            border: none;
+            padding: 0;
+        }}
+        
+        #objectExplorerLabel:disabled {{
+            color: #ffffff;
+        }}
+        
+        #objectExplorerHeader {{
+            background-color: #A9A9A9;
+            border-bottom: 1px solid #777777;
+        }}
+        
         QTableView QTableCornerButton::section {{ background-color: {header_color}; border: 1px solid {border_color}; }}
         #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }}
         #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }}
@@ -882,7 +996,9 @@ class MainWindow(QMainWindow):
         # Helper to add actions
         def add_menu_action(text, shortcut=None, icon=None, func=None):
             action = QAction(text, self)
-            if icon: action.setIcon(QIcon(icon))
+            if icon: 
+                action.setIcon(QIcon(icon))
+                action.setIconVisibleInMenu(False)
             if shortcut: action.setShortcut(QKeySequence(shortcut))
             if func: action.triggered.connect(func)
             edit_menu.addAction(action)
@@ -1206,24 +1322,42 @@ class MainWindow(QMainWindow):
         
         if os.path.exists(icon_path):
             search_icon = QIcon(icon_path)
-            
             search_box.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
         search_box.setFixedHeight(28)
         search_box.setFixedWidth(180)
         search_box.setObjectName("table_search_box")
+        search_box.hide()  # Initially Hidden
+        search_box.installEventFilter(self)
         
+        # Search Button (Compact/Small)
+        table_search_btn = QToolButton()
+        table_search_btn.setObjectName("table_search_btn")
+        table_search_btn.setIcon(QIcon(icon_path if os.path.exists(icon_path) else ""))
+        table_search_btn.setFixedSize(32, 32)
+        table_search_btn.setToolTip("Search in Results")
+        table_search_btn.setStyleSheet("""
+            QToolButton {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                background-color: #ffffff;
+            }
+            QToolButton:hover {
+                background-color: #f0f2f5;
+                border: 1px solid #adb5bd;
+            }
+        """)
+        table_search_btn.clicked.connect(self.toggle_table_search)
         
         def on_search_text_changed(text):
-            
             current_table = tab_content.findChild(QTableView, "results_table")
             if current_table:
                 current_model = current_table.model()
-               
                 if isinstance(current_model, QSortFilterProxyModel):
                     current_model.setFilterFixedString(text)
 
         search_box.textChanged.connect(on_search_text_changed)
         results_info_layout.addWidget(search_box)
+        results_info_layout.addWidget(table_search_btn)
 
 
 
@@ -1965,6 +2099,60 @@ class MainWindow(QMainWindow):
         elif not hasattr(tab, "new_row_index") and (not hasattr(tab, "modified_coords") or not tab.modified_coords):
             self.status.showMessage("No changes to save.", 3000)
 
+    def toggle_table_search(self):
+        """Show/expand the table search box and hide the button."""
+        tab = self.tab_widget.currentWidget()
+        if not tab: return
+        
+        search_box = tab.findChild(QLineEdit, "table_search_box")
+        search_btn = tab.findChild(QToolButton, "table_search_btn")
+        
+        if search_box and search_btn:
+            search_btn.hide()
+            search_box.show()
+            search_box.setFocus()
+
+    def toggle_explorer_search(self):
+        """Show/expand the search box and hide the button."""
+        self.explorer_search_btn.hide()
+        self.explorer_search_box.show()
+        self.explorer_search_box.setFocus()
+
+    def eventFilter(self, obj, event):
+        """Collapse the search box if it loses focus or Escape is pressed."""
+        if obj == self.explorer_search_box:
+            if event.type() == QEvent.Type.FocusOut:
+                if not self.explorer_search_box.text().strip():
+                    self.explorer_search_box.hide()
+                    self.explorer_search_btn.show()
+                    return True
+        elif obj.objectName() == "table_search_box":
+            if event.type() == QEvent.Type.FocusOut:
+                if not obj.text().strip():
+                    obj.hide()
+                    tab = self.tab_widget.currentWidget()
+                    if tab:
+                        search_btn = tab.findChild(QToolButton, "table_search_btn")
+                        if search_btn:
+                            search_btn.show()
+            elif event.type() == QEvent.Type.KeyPress:
+                if event.key() == Qt.Key.Key_Escape:
+                    obj.clear()
+                    obj.hide()
+                    tab = self.tab_widget.currentWidget()
+                    if tab:
+                        search_btn = tab.findChild(QToolButton, "table_search_btn")
+                        if search_btn:
+                            search_btn.show()
+                    return True
+        return super().eventFilter(obj, event)
+
+    def filter_object_explorer(self, text):
+        self.proxy_model.setFilterFixedString(text)
+        if text:
+            self.tree.expandAll()
+        else:
+            self.tree.collapseAll()
 
     def load_data(self):
         self.model.clear()
@@ -2114,8 +2302,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{e}")
 
 
-    def item_clicked(self, index):
-        item = self.model.itemFromIndex(index)
+    def item_clicked(self, proxy_index):
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        item = self.model.itemFromIndex(source_index)
         if not item:
             return
             
@@ -2163,9 +2352,10 @@ class MainWindow(QMainWindow):
                 self.status.showMessage("Unknown connection type.", 3000)
 
 
-    def item_double_clicked(self, index: QModelIndex):
+    def item_double_clicked(self, proxy_index: QModelIndex):
         #item_text = index.data(Qt.ItemDataRole.DisplayRole)
-        item = self.model.itemFromIndex(index)
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        item = self.model.itemFromIndex(source_index)
         depth = self.get_item_depth(item)
         
         if depth == 3:
@@ -2198,19 +2388,21 @@ class MainWindow(QMainWindow):
 
         # --- Undo / Redo ---
         undo_action = QAction(QIcon("assets/undo.svg"), "Undo", self)
+        undo_action.setIconVisibleInMenu(False)
         undo_action.setShortcut("Ctrl+Z")
         undo_action.triggered.connect(editor.undo)
         undo_action.setEnabled(editor.document().isUndoAvailable())
         menu.addAction(undo_action)
-
+        
         redo_action = QAction(QIcon("assets/redo.svg"), "Redo", self)
+        redo_action.setIconVisibleInMenu(False)
         redo_action.setShortcut("Ctrl+Y")
         redo_action.triggered.connect(editor.redo)
         redo_action.setEnabled(editor.document().isRedoAvailable())
         menu.addAction(redo_action)
-
+        
         menu.addSeparator()
-
+        
         # --- Cut ---
         cut_action = QAction("Cut", self)
         cut_action.setShortcut("Ctrl+X")
@@ -2218,26 +2410,27 @@ class MainWindow(QMainWindow):
         # Disable Cut if no text is selected
         cut_action.setEnabled(editor.textCursor().hasSelection())
         menu.addAction(cut_action)
-
+        
         # --- Copy ---
-        copy_action = QAction( "Copy", self)
+        copy_action = QAction("Copy", self)
         copy_action.setShortcut("Ctrl+C")
         copy_action.triggered.connect(editor.copy)
         # Disable Copy if no text is selected
         copy_action.setEnabled(editor.textCursor().hasSelection())
         menu.addAction(copy_action)
-
+        
         # --- Paste ---
         paste_action = QAction(QIcon("assets/paste.svg"), "Paste", self)
+        paste_action.setIconVisibleInMenu(False)
         paste_action.setShortcut("Ctrl+V")
         paste_action.triggered.connect(editor.paste)
         # Disable Paste if clipboard is empty
         clipboard = QApplication.clipboard()
         paste_action.setEnabled(clipboard.mimeData().hasText())
         menu.addAction(paste_action)
-
+        
         menu.addSeparator()
-
+        
         # --- Select All ---
         select_all_action = QAction("Select All", self)
         select_all_action.setShortcut("Ctrl+A")
@@ -2247,6 +2440,7 @@ class MainWindow(QMainWindow):
         # --- Format SQL (Optional, since you have the function) ---
         menu.addSeparator()
         format_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", self)
+        format_action.setIconVisibleInMenu(False)
         format_action.setShortcut("Ctrl+Shift+F")
         format_action.triggered.connect(self.format_sql_text)
         menu.addAction(format_action)
@@ -2256,9 +2450,10 @@ class MainWindow(QMainWindow):
     
     
     def show_context_menu(self, pos):
-        index = self.tree.indexAt(pos)
-        if not index.isValid(): return
-        item = self.model.itemFromIndex(index)
+        proxy_index = self.tree.indexAt(pos)
+        if not proxy_index.isValid(): return
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        item = self.model.itemFromIndex(source_index)
         depth = self.get_item_depth(item)
         menu = QMenu()
         if depth == 1:
