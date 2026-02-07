@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsRectItem,
     QGraphicsPathItem, QGraphicsTextItem, QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QStyle, QMenu, QFileDialog, QFrame, QMessageBox, QDialog,
-    QTextEdit, QDialogButtonBox, QPushButton, QToolButton
+    QTextEdit, QDialogButtonBox, QPushButton, QToolButton, QLineEdit
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QAction,
@@ -37,6 +37,17 @@ class ERDTableItem(QGraphicsRectItem):
         self.is_highlighted = False
         
         self.setAcceptHoverEvents(True) 
+        
+        # Sort columns: PK -> FK -> Name
+        def col_sort_key(c):
+            # Priority: PK (0), FK (1), Other (2)
+            p = 2
+            if c.get('pk'): p = 0
+            elif c.get('fk'): p = 1
+            return (p, c['name'])
+            
+        self.columns.sort(key=col_sort_key)
+        
         self.update_geometry()
         
     def boundingRect(self):
@@ -209,6 +220,12 @@ class ERDTableItem(QGraphicsRectItem):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(self.rect(), 4, 4)
 
+        # 5. Dimming Overlay (Search Focus)
+        if self.is_dimmed and not is_selected and not self.is_highlighted:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 200)) # Semi-transparent white
+            painter.drawRoundedRect(self.rect(), 4, 4)
+
     def hoverEnterEvent(self, event):
         if hasattr(self.scene(), "highlight_related"):
             self.scene().highlight_related(self)
@@ -220,6 +237,14 @@ class ERDTableItem(QGraphicsRectItem):
         super().hoverLeaveEvent(event)
 
     def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+            # Snap to grid (20px)
+            # This makes it easy for the user to align tables perfectly "middle-to-middle"
+            new_pos = value
+            x = round(new_pos.x() / 20.0) * 20.0
+            y = round(new_pos.y() / 20.0) * 20.0
+            return QPointF(x, y)
+            
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             for conn in self.connections:
                 conn.updatePath()
@@ -330,68 +355,178 @@ class ERDConnectionItem(QGraphicsPathItem):
         super().hoverLeaveEvent(event)
         
     def updatePath(self):
-        # 1. Handle Self-Reference (Loop)
-        if self.source_item == self.target_item:
-            self.updateSelfLoopPath()
+        # 0. Safeguard: Prevent recursive updates
+        if getattr(self, "_updating", False):
             return
+        self._updating = True
+        
+        try:
+            # 1. Handle Self-Reference (Loop)
+            if self.source_item == self.target_item:
+                self.updateSelfLoopPath()
+                return
 
-        # 2. Determine sides
-        s_rect = self.source_item.sceneBoundingRect()
-        t_rect = self.target_item.sceneBoundingRect()
-        
-        # Decide sides based on horizontal relationship
-        if s_rect.right() + 40 < t_rect.left(): s_side, t_side = "right", "left"
-        elif s_rect.left() - 40 > t_rect.right(): s_side, t_side = "left", "right"
-        else:
-            # Tables are vertically stacked or close; use logic to prevent lines going through tables
-            if s_rect.center().x() < t_rect.center().x(): s_side, t_side = "right", "left"
-            else: s_side, t_side = "left", "right"
-
-        # 3. Get anchor points
-        a1 = self.source_item.get_column_anchor_pos(self.source_col, s_side)
-        a2 = self.target_item.get_column_anchor_pos(self.target_col, t_side)
-        
-        path = QPainterPath()
-        path.moveTo(a1)
-        
-        # 4. Mandatory STUBS (30px) for pixel-perfect marker alignment
-        stub_len = 30
-        s_stub = self.calculate_stub(a1, s_side, stub_len)
-        t_stub = self.calculate_stub(a2, t_side, stub_len)
-        
-        path.lineTo(s_stub)
-        
-        # 5. S-Curve between stubs
-        # Higher offset separation for multiple connections
-        offset = (hash(self.source_col + self.target_col) % 51 - 25) # Spread -25 to 25
-        
-        dx = abs(s_stub.x() - t_stub.x())
-        dy = abs(s_stub.y() - t_stub.y())
-        curvature = max(50, dx * 0.4)
-        
-        # Entry points for the curve must stay flat at the stub
-        if s_side in ["left", "right"]:
-            cp1 = QPointF(s_stub.x() + (curvature if s_side == "right" else -curvature), s_stub.y())
-        else:
-            cp1 = QPointF(s_stub.x(), s_stub.y() + (curvature if s_side == "bottom" else -curvature))
+            # 2. Dynamic Table Anchoring
+            # We ignore specific column rows for the main line to prevent Z-shapes.
+            # Instead, we find the optimal connection points on the table perimeters.
             
-        if t_side in ["left", "right"]:
-            cp2 = QPointF(t_stub.x() + (curvature if t_side == "right" else -curvature), t_stub.y())
-        else:
-            cp2 = QPointF(t_stub.x(), t_stub.y() + (curvature if t_side == "bottom" else -curvature))
+            s_rect = self.source_item.sceneBoundingRect()
+            t_rect = self.target_item.sceneBoundingRect()
             
-        # Apply the vertical/horizontal offset at the control points to separate lines
-        if s_side in ["left", "right"]:
-            cp1.setY(cp1.y() + offset)
-            cp2.setY(cp2.y() - offset)
-        else:
-            cp1.setX(cp1.x() + offset)
-            cp2.setX(cp2.x() - offset)
+            # Candidates now include Top/Bottom since we are allowed to connect anywhere
+            candidates = [
+                ("right", "left"), 
+                ("left", "right"), 
+                ("bottom", "top"),
+                ("top", "bottom"),
+                ("right", "right"), 
+                ("left", "left")
+            ]
+            
+            best_points = []
+            min_cost = float('inf')
+            
+            for s_side, t_side in candidates:
+                # Dynamic Anchor Calculation:
+                # Instead of getting the column pos, get the "Best Fit" pos on the table side
+                start = self.get_dynamic_anchor(self.source_item, s_side, t_rect)
+                end = self.get_dynamic_anchor(self.target_item, t_side, s_rect)
+                
+                points = self.calculate_route_points(start, s_side, end, t_side, s_rect, t_rect)
+                cost = self.calculate_path_cost(points, s_rect, t_rect)
+                
+                if cost < min_cost:
+                    min_cost = cost
+                    best_points = points
+            
+            # 3. Draw Best Path
+            path = QPainterPath()
+            if best_points:
+                path.moveTo(best_points[0])
+                for i in range(1, len(best_points)):
+                    path.lineTo(best_points[i])
+            
+            self.setPath(path)
+            
+        finally:
+             self._updating = False
 
-        path.cubicTo(cp1, cp2, t_stub)
-        path.lineTo(a2) # Final stub to anchor
+    def get_dynamic_anchor(self, item, side, other_rect):
+        # Calculates the best anchor point on 'side' of 'item'.
+        # STRICTLY CENTERED logic as requested.
+        rect = item.sceneBoundingRect()
         
-        self.setPath(path)
+        if side == "left":
+            return QPointF(rect.left(), rect.center().y())
+        elif side == "right":
+            return QPointF(rect.right(), rect.center().y())
+        elif side == "top":
+            return QPointF(rect.center().x(), rect.top())
+        elif side == "bottom":
+            return QPointF(rect.center().x(), rect.bottom())
+            
+        return rect.center()
+
+    def calculate_route_points(self, start, s_side, end, t_side, s_rect, t_rect):
+        points = [start]
+        x1, y1 = start.x(), start.y()
+        x2, y2 = end.x(), end.y()
+        
+        # 0. Micro-Alignment Snap (Visual Polish)
+        # We cheat slightly to force straight lines if connection points are close.
+        # This handles small center-misalignments due to different table widths or manual positioning.
+        
+        # Horizontal Snap (Side-by-Side)
+        if abs(y1 - y2) < 20: # Generous 20px threshold
+            avg_y = (y1 + y2) / 2
+            y1 = avg_y
+            y2 = avg_y
+            start.setY(avg_y)
+            end.setY(avg_y)
+            points = [start]
+
+        # Vertical Snap (Top-to-Bottom) - FIX FOR Z-SHAPE
+        if abs(x1 - x2) < 20: # Generous 20px threshold
+            avg_x = (x1 + x2) / 2
+            x1 = avg_x
+            x2 = avg_x
+            start.setX(avg_x)
+            end.setX(avg_x)
+            points = [start]
+
+        # 1. Direct Straight Line Check
+        s_horiz = s_side in ["left", "right"]
+        t_horiz = t_side in ["left", "right"]
+        
+        if s_horiz and t_horiz:
+            if abs(y1 - y2) < 2: return [start, end]
+        if not s_horiz and not t_horiz:
+            if abs(x1 - x2) < 2: return [start, end]
+
+        # 2. Orthogonal Routing
+        stub = 40
+        
+        if s_horiz and t_horiz:
+             # Horizontal sides
+             mid_x = (x1 + x2) / 2
+             
+             # C-Shape handling
+             if s_side == t_side:
+                 if s_side == "right": mid_x = max(s_rect.right(), t_rect.right()) + stub
+                 else:                 mid_x = min(s_rect.left(), t_rect.left()) - stub
+             
+             points.append(QPointF(mid_x, y1))
+             points.append(QPointF(mid_x, y2))
+             
+        elif not s_horiz and not t_horiz:
+             # Vertical sides
+             mid_y = (y1 + y2) / 2
+             
+             if s_side == t_side:
+                 if s_side == "bottom": mid_y = max(s_rect.bottom(), t_rect.bottom()) + stub
+                 else:                  mid_y = min(s_rect.top(), t_rect.top()) - stub
+                 
+             points.append(QPointF(x1, mid_y))
+             points.append(QPointF(x2, mid_y))
+             
+        else:
+             # L-Shape (Perpendicular)
+             if s_horiz:
+                 points.append(QPointF(x2, y1))
+             else:
+                 points.append(QPointF(x1, y2))
+            
+        points.append(end)
+        return points
+
+    def calculate_path_cost(self, points, s_rect, t_rect):
+        if not points: return float('inf')
+        
+        total_len = 0
+        bends = 0
+        collision_penalty = 0
+        
+        for i in range(len(points) - 1):
+            p_a = points[i]
+            p_b = points[i+1]
+            total_len += abs(p_a.x() - p_b.x()) + abs(p_a.y() - p_b.y())
+            
+            if self.segment_intersects_rect(p_a, p_b, s_rect) or \
+               self.segment_intersects_rect(p_a, p_b, t_rect):
+                collision_penalty += 1000
+                
+        bends = max(0, len(points) - 2)
+        return total_len + (bends * 50) + collision_penalty
+
+    def segment_intersects_rect(self, p1, p2, rect):
+        r_x, r_y, r_w, r_h = rect.x() + 5, rect.y() + 5, rect.width() - 10, rect.height() - 10
+        min_x, max_x = min(p1.x(), p2.x()), max(p1.x(), p2.x())
+        min_y, max_y = min(p1.y(), p2.y()), max(p1.y(), p2.y())
+        if max_x < r_x or min_x > r_x + r_w: return False
+        if max_y < r_y or min_y > r_y + r_h: return False
+        return True             
+    def calculate_connection_cost(self, s_side, t_side):
+        return 0 # Unused now
 
     def calculate_stub(self, anchor, side, length):
         if side == "right": return QPointF(anchor.x() + length, anchor.y())
@@ -463,8 +598,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         self.draw_one_marker(painter, QPointF(a2.x, a2.y), QPointF(p2.x, p2.y))
 
     def draw_one_marker(self, painter, anchor, point):
-        # Draw ONE-AND-ONLY-ONE (||)
-        # Orientation: Bars are always perpendicular to the stub direction
+        # Mandatory ONE (||) - Professional Implementation
         dist_outer = 8
         dist_inner = 14
         size = 10
@@ -475,8 +609,28 @@ class ERDConnectionItem(QGraphicsPathItem):
         if length == 0: return
         
         ux, uy = dx/length, dy/length
-        px, py = -uy, ux # Constant perpendicular vector
+        px, py = -uy, ux
+
+        # 1. SOLID STUB CONNECTIVITY
+        # We draw solid stubs to ensure markers look attached even for dashed lines.
+        # Stub 1: Anchor to first bar
+        painter.drawLine(anchor, QPointF(anchor.x() + ux * 8, anchor.y() + uy * 8))
+        # Stub 2: Beyond second bar (ensures connectivity to the rest of the line)
+        painter.drawLine(QPointF(anchor.x() + ux * 14, anchor.y() + uy * 14), 
+                         QPointF(anchor.x() + ux * 25, anchor.y() + uy * 25))
+
+        # 2. SURGICAL MASKING (Breaks the "H" artifact)
+        # We only mask the tiny gap between the bars.
+        if self.scene() and self.scene().backgroundBrush().color().isValid():
+            mask_pen = QPen(self.scene().backgroundBrush().color(), 4)
+            painter.save()
+            painter.setPen(mask_pen)
+            # Mask exactly between bars (9 to 13)
+            painter.drawLine(QPointF(anchor.x() + ux * 13.5, anchor.y() + uy * 13.5),
+                             QPointF(anchor.x() + ux * 8.5, anchor.y() + uy * 8.5))
+            painter.restore()
         
+        # 3. VERTICAL BARS
         for d in [dist_outer, dist_inner]:
             base = QPointF(anchor.x() + ux * d, anchor.y() + uy * d)
             painter.drawLine(
@@ -485,7 +639,7 @@ class ERDConnectionItem(QGraphicsPathItem):
             )
 
     def draw_many_marker(self, painter, anchor, point):
-        # Draw TRUE CROW'S FOOT: Fork opens TOWARDS the table
+        # Mandatory MANY (|<) - Professional Implementation
         dist_bar = 20
         fork_depth = 12
         fork_width = 12
@@ -497,6 +651,9 @@ class ERDConnectionItem(QGraphicsPathItem):
         
         ux, uy = dx/length, dy/length
         px, py = -uy, ux
+
+        # Ensure a solid stub under the markers
+        painter.drawLine(anchor, QPointF(anchor.x() + ux * 25, anchor.y() + uy * 25))
         
         # 1. Mandatory Vertical Bar
         base_bar = QPointF(anchor.x() + ux * dist_bar, anchor.y() + uy * dist_bar)
@@ -506,15 +663,11 @@ class ERDConnectionItem(QGraphicsPathItem):
         )
         
         # 2. The Fork Toes
-        # The fork "meets" at a point on the line (base_fork) and spreads out to the table edge
         base_fork = QPointF(anchor.x() + ux * fork_depth, anchor.y() + uy * fork_depth)
         
         # Three lines meeting at base_fork:
-        # Center line (to anchor point)
         painter.drawLine(base_fork, anchor)
-        # Top toe (to anchor + perpendicular shift)
         painter.drawLine(base_fork, QPointF(anchor.x() + px * fork_width/2, anchor.y() + py * fork_width/2))
-        # Bottom toe (to anchor - perpendicular shift)
         painter.drawLine(base_fork, QPointF(anchor.x() - px * fork_width/2, anchor.y() - py * fork_width/2))
 
 class ERDScene(QGraphicsScene):
@@ -544,6 +697,38 @@ class ERDScene(QGraphicsScene):
                 item.is_highlighted = False
                 item.update()
         self.update()
+
+    def apply_search_filter(self, text):
+        text = text.strip().lower()
+        
+        for item in self.items():
+            if isinstance(item, ERDTableItem):
+                if not text:
+                    item.is_dimmed = False
+                else:
+                    # Match against table name or schema name
+                    match_name = text in item.table_name.lower()
+                    match_schema = item.schema_name and text in item.schema_name.lower()
+                    item.is_dimmed = not (match_name or match_schema)
+                item.update()
+
+    def find_table_item(self, text):
+        text = text.strip().lower()
+        if not text: return None
+        
+        # Return the first best match
+        # defined as: starts with text -> contains text
+        candidates = []
+        for item in self.items():
+            if isinstance(item, ERDTableItem):
+                name = item.table_name.lower()
+                if name == text: return item # Exact match
+                if name.startswith(text):
+                    candidates.insert(0, item) # Priority to prefix match
+                elif text in name:
+                    candidates.append(item)
+        
+        return candidates[0] if candidates else None
         
     def drawBackground(self, painter, rect):
         # Fill with background color
@@ -590,6 +775,11 @@ class ERDView(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
+        
+    def mousePressEvent(self, event):
+        # Claim focus when user clicks on the view (clears focus from search bar)
+        self.setFocus()
+        super().mousePressEvent(event)
         
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
@@ -848,6 +1038,37 @@ class ERDWidget(QWidget):
         container_layout.addWidget(self.toolbar)
         container_layout.addStretch()
         
+        # Search Bar (Right Aligned)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search tables... (Ctrl+F)")
+        self.search_input.setFixedWidth(200)
+        
+        # Add Search Icon
+        self.search_input.addAction(QIcon("assets/search.svg"), QLineEdit.ActionPosition.LeadingPosition)
+        
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #ffffff;
+                border: 1px solid #cccccc;
+                border-radius: 14px;
+                padding: 4px 12px; /* Qt adds space for the action icon automatically */
+                font-size: 9pt;
+                color: #333333;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1A73E8;
+            }
+        """)
+        self.search_input.textChanged.connect(self.on_search_text_changed)
+        self.search_input.returnPressed.connect(self.on_search_return_pressed)
+        
+        search_action = QAction(self)
+        search_action.setShortcut("Ctrl+F")
+        search_action.triggered.connect(self.search_input.setFocus)
+        self.addAction(search_action)
+
+        container_layout.addWidget(self.search_input)
+
         layout.addWidget(toolbar_container)
         
         # Scene and View
@@ -1269,3 +1490,18 @@ class ERDWidget(QWidget):
             QMessageBox.information(self, "Success", f"ERD exported successfully to {file_path}")
         else:
             QMessageBox.critical(self, "Error", "Failed to save image.")
+
+    def on_search_text_changed(self, text):
+        if hasattr(self, 'scene') and self.scene:
+            self.scene.apply_search_filter(text)
+
+    def on_search_return_pressed(self):
+        text = self.search_input.text()
+        if hasattr(self, 'scene') and self.scene:
+            item = self.scene.find_table_item(text)
+            if item:
+                self.view.centerOn(item)
+                # Optional: Select it too
+                self.scene.clearSelection()
+                item.setSelected(True)
+
