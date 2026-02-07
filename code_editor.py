@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
 # QTextCursor 
-from PyQt6.QtGui import QColor, QTextFormat, QFont, QPainter, QPolygon, QBrush, QTextCursor
+from PyQt6.QtGui import QColor, QTextFormat, QFont, QPainter, QPolygon, QBrush, QTextCursor, QTextDocument
 from PyQt6.QtCore import QRect, QSize, Qt, QPoint
 
 class LineNumberArea(QWidget):
@@ -435,8 +435,8 @@ class CodeEditor(QPlainTextEdit):
         if not forward:
             options |= QTextDocument.FindFlag.FindBackward
             
-        found = self.find(text, options) # This calls QPlainTextEdit.find
-        
+        found = super().find(text, options) # This calls QPlainTextEdit.find
+
         if not found:
             # Wrap around
             cursor = self.textCursor()
@@ -445,10 +445,10 @@ class CodeEditor(QPlainTextEdit):
             else:
                 cursor.movePosition(QTextCursor.MoveOperation.End)
             self.setTextCursor(cursor)
-            found = self.find(text, options)
-            
+            found = super().find(text, options)
+
         return found
-        
+
     def replace_curr(self, target, replacement, case_sensitive=False, whole_word=False):
         cursor = self.textCursor()
         if cursor.hasSelection() and cursor.selectedText() == target:
@@ -460,17 +460,17 @@ class CodeEditor(QPlainTextEdit):
     def replace_all(self, target, replacement, case_sensitive=False, whole_word=False):
         cursor = self.textCursor()
         cursor.beginEditBlock()
-        
+
         # Start from beginning
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.setTextCursor(cursor)
-        
+
         count = 0
         while self.find(target, case_sensitive, whole_word, True):
             cursor = self.textCursor()
             cursor.insertText(replacement)
             count += 1
-            
+
         cursor.endEditBlock()
         return count
 # {siam}

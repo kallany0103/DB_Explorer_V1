@@ -969,19 +969,22 @@ class MainWindow(QMainWindow):
         toolbar_layout.addWidget(explain_combo)
 # {siam}
 
-        # --- Edit Combo (Replaces ToolButton) ---
-        edit_combo = QComboBox()
-        edit_combo.setFixedHeight(26)
-        edit_combo.setFixedWidth(50) # Compact width for icon only
-        edit_combo.setStyleSheet(btn_style)
-        edit_combo.setToolTip("Edit Operations")
-        
-        # --- Edit Button with Menu (Replaces ComboBox) ---
+        # --- Edit Button (Replaces ComboBox) ---
         edit_btn = QToolButton()
-        edit_btn.setIcon(QIcon("assets/format.svg"))
-        edit_btn.setIconSize(QSize(18, 18))
-        edit_btn.setFixedSize(30, 26) # Compact size
-        edit_btn.setStyleSheet(btn_style)
+        edit_btn.setText("Edit")
+        edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        edit_btn.setFixedHeight(26)
+        edit_btn.setFixedWidth(85)
+        edit_btn.setStyleSheet(btn_style + """
+            QToolButton::menu-indicator {
+                border-left: 1px solid #dddfe2;
+                width: 20px;
+                image: url(assets/chevron-down.svg);
+                subcontrol-origin: padding;
+                subcontrol-position: right center;
+                margin-left: 4px;
+            }
+        """)
         edit_btn.setToolTip("Edit Operations")
         edit_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         
@@ -1004,10 +1007,6 @@ class MainWindow(QMainWindow):
             edit_menu.addAction(action)
             return action
 
-        # Actions matching pgAdmin style
-        add_menu_action("Find", "Ctrl+F", "assets/search.svg", lambda: self.open_find_dialog(False))
-        add_menu_action("Replace", "Ctrl+Alt+F", "assets/refresh.svg", lambda: self.open_find_dialog(True))
-        
         def go_to_line():
             editor = self._get_current_editor()
             if editor:
@@ -1019,8 +1018,11 @@ class MainWindow(QMainWindow):
                     editor.setTextCursor(cursor)
                     editor.centerCursor()
 
+        # Actions matching original functionality
+        add_menu_action("Find", "Ctrl+F", "assets/search.svg", lambda: self.open_find_dialog(False))
+        add_menu_action("Replace", "Ctrl+Alt+F", "assets/refresh.svg", lambda: self.open_find_dialog(True))
         add_menu_action("Go to Line/Column", "Ctrl+L", None, go_to_line)
-        edit_menu.addSeparator() # Re-adding separators for clarity in real menu
+        edit_menu.addSeparator() 
         add_menu_action("Indent Selection", "Tab", None, lambda: self._get_current_editor() and self._get_current_editor().indent_selection())
         add_menu_action("Unindent Selection", "Shift+Tab", None, lambda: self._get_current_editor() and self._get_current_editor().unindent_selection())
         add_menu_action("Toggle Comment", "Ctrl+/", None, lambda: self._get_current_editor() and self._get_current_editor().toggle_comment())
@@ -2219,6 +2221,20 @@ class MainWindow(QMainWindow):
     
         if level == "COLUMN":
             item.setIcon(QIcon("assets/column_icon.png"))
+            return
+        
+        if level == "FDW_ROOT" or level == "FDW" or level == "SERVER" or level == "FOREIGN_TABLE":
+            # Using existing icons or falling back to folder/table
+            if level == "FDW_ROOT":
+                item.setIcon(QIcon("assets/server.svg"))
+            elif level == "FDW":
+                item.setIcon(QIcon("assets/plug.svg"))
+            elif level == "SERVER":
+                item.setIcon(QIcon("assets/database.svg"))
+            elif level == "FOREIGN_TABLE":
+                item.setIcon(QIcon("assets/table.svg")) # Maybe find a better one later
+            elif level == "USER":
+                item.setIcon(QIcon("assets/plus.svg"))
             return
 
         icon_map = {
@@ -3825,6 +3841,17 @@ class MainWindow(QMainWindow):
                 type_item = QStandardItem("Schema")
                 type_item.setEditable(False)
                 self.schema_model.appendRow([schema_item, type_item])
+
+            # --- ADD FDW NODE ---
+            fdw_root = QStandardItem("Foreign Data Wrappers")
+            fdw_root.setEditable(False)
+            self._set_tree_item_icon(fdw_root, level="FDW_ROOT")
+            fdw_root.setData({'db_type': 'postgres', 'type': 'fdw_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+            fdw_root.appendRow(QStandardItem("Loading..."))
+            
+            fdw_type_item = QStandardItem("Group")
+            fdw_type_item.setEditable(False)
+            self.schema_model.appendRow([fdw_root, fdw_type_item])
             if hasattr(self, '_expanded_connection'):
                 try:
                     self.schema_tree.expanded.disconnect(
@@ -3956,8 +3983,46 @@ class MainWindow(QMainWindow):
             menu.addAction(delete_table_action)
             
         elif is_schema:
-            # --- No creation actions here as requested ---
-            pass
+            # --- Schema Actions ---
+            if db_type == 'postgres':
+                import_fdw_action = QAction("Import Foreign Schema...", self)
+                import_fdw_action.triggered.connect(lambda: self.import_foreign_schema_dialog(item_data))
+                menu.addAction(import_fdw_action)
+                menu.addSeparator()
+
+        elif item_data.get('type') == 'fdw_root':
+            # --- Foreign Data Wrappers Root ---
+            create_fdw_action = QAction("Create Foreign Data Wrapper...", self)
+            create_fdw_action.triggered.connect(lambda: self.create_fdw_template(item_data))
+            menu.addAction(create_fdw_action)
+
+        elif item_data.get('type') == 'fdw':
+            # --- Individual FDW ---
+            create_srv_action = QAction("Create Foreign Server...", self)
+            create_srv_action.triggered.connect(lambda: self.create_foreign_server_template(item_data))
+            menu.addAction(create_srv_action)
+            
+            menu.addSeparator()
+            drop_fdw_action = QAction("Drop Foreign Data Wrapper", self)
+            drop_fdw_action.triggered.connect(lambda: self.drop_fdw(item_data))
+            menu.addAction(drop_fdw_action)
+
+        elif item_data.get('type') == 'foreign_server':
+            # --- Foreign Server ---
+            create_um_action = QAction("Create User Mapping...", self)
+            create_um_action.triggered.connect(lambda: self.create_user_mapping_template(item_data))
+            menu.addAction(create_um_action)
+            
+            menu.addSeparator()
+            drop_srv_action = QAction("Drop Foreign Server", self)
+            drop_srv_action.triggered.connect(lambda: self.drop_foreign_server(item_data))
+            menu.addAction(drop_srv_action)
+
+        elif item_data.get('type') == 'user_mapping':
+            # --- User Mapping ---
+            drop_um_action = QAction("Drop User Mapping", self)
+            drop_um_action.triggered.connect(lambda: self.drop_user_mapping(item_data))
+            menu.addAction(drop_um_action)
 
         if menu.isEmpty():
             return
@@ -5044,14 +5109,16 @@ class MainWindow(QMainWindow):
                         if "TABLE" in table_type or "VIEW" in table_type:
                            table_item.appendRow(QStandardItem("Loading..."))
 
-                        if "TABLE" in table_type:
+                        if "TABLE" in table_type and "FOREIGN" not in table_type:
                             self._set_tree_item_icon(table_item, level="TABLE")
                             type_text = "Table"
                         elif "VIEW" in table_type:
                             self._set_tree_item_icon(table_item, level="VIEW")
                             type_text = "View"
+                        elif "FOREIGN" in table_type:
+                            self._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
+                            type_text = "Foreign Table"
                         else:
-                        
                             type_text = table_type.title() 
                         
                         type_item = QStandardItem(type_text)
@@ -5062,6 +5129,86 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     self.status.showMessage(f"Error expanding schema: {e}", 5000)
                     item.appendRow(QStandardItem(f"Error: {e}"))
+            
+            elif item_data.get('type') == 'fdw_root':
+                # --- CASE 2.1: Expanding FDW ROOT ---
+                item.removeRows(0, item.rowCount())
+                try:
+                    cursor = self.pg_conn.cursor()
+                    cursor.execute("SELECT fdwname FROM pg_foreign_data_wrapper ORDER BY fdwname;")
+                    for (fdw_name,) in cursor.fetchall():
+                        fdw_item = QStandardItem(fdw_name)
+                        fdw_item.setEditable(False)
+                        self._set_tree_item_icon(fdw_item, level="FDW")
+                        
+                        fdw_data = item_data.copy()
+                        fdw_data['type'] = 'fdw'
+                        fdw_data['fdw_name'] = fdw_name
+                        fdw_item.setData(fdw_data, Qt.ItemDataRole.UserRole)
+                        fdw_item.appendRow(QStandardItem("Loading..."))
+                        
+                        type_item = QStandardItem("Foreign Data Wrapper")
+                        type_item.setEditable(False)
+                        item.appendRow([fdw_item, type_item])
+                except Exception as e:
+                    self.status.showMessage(f"Error loading FDWs: {e}", 5000)
+
+            elif item_data.get('type') == 'fdw':
+                # --- CASE 2.2: Expanding FDW -> show Foreign Servers ---
+                item.removeRows(0, item.rowCount())
+                fdw_name = item_data.get('fdw_name')
+                try:
+                    cursor = self.pg_conn.cursor()
+                    cursor.execute("""
+                        SELECT srvname 
+                        FROM pg_foreign_server 
+                        WHERE srvfdw = (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname = %s)
+                        ORDER BY srvname;
+                    """, (fdw_name,))
+                    for (srv_name,) in cursor.fetchall():
+                        srv_item = QStandardItem(srv_name)
+                        srv_item.setEditable(False)
+                        self._set_tree_item_icon(srv_item, level="SERVER")
+                        
+                        srv_data = item_data.copy()
+                        srv_data['type'] = 'foreign_server'
+                        srv_data['server_name'] = srv_name
+                        srv_item.setData(srv_data, Qt.ItemDataRole.UserRole)
+                        srv_item.appendRow(QStandardItem("Loading..."))
+                        
+                        type_item = QStandardItem("Foreign Server")
+                        type_item.setEditable(False)
+                        item.appendRow([srv_item, type_item])
+                except Exception as e:
+                    self.status.showMessage(f"Error loading Foreign Servers: {e}", 5000)
+
+            elif item_data.get('type') == 'foreign_server':
+                # --- CASE 2.3: Expanding Foreign Server -> show User Mappings ---
+                item.removeRows(0, item.rowCount())
+                srv_name = item_data.get('server_name')
+                try:
+                    cursor = self.pg_conn.cursor()
+                    cursor.execute("""
+                        SELECT umuser::regrole::text 
+                        FROM pg_user_mapping 
+                        WHERE umserver = (SELECT oid FROM pg_foreign_server WHERE srvname = %s)
+                        ORDER BY 1;
+                    """, (srv_name,))
+                    for (user_name,) in cursor.fetchall():
+                        um_item = QStandardItem(user_name)
+                        um_item.setEditable(False)
+                        self._set_tree_item_icon(um_item, level="USER") # Need to add USER icon maybe
+                        
+                        um_data = item_data.copy()
+                        um_data['type'] = 'user_mapping'
+                        um_data['user_name'] = user_name
+                        um_item.setData(um_data, Qt.ItemDataRole.UserRole)
+                        
+                        type_item = QStandardItem("User Mapping")
+                        type_item.setEditable(False)
+                        item.appendRow([um_item, type_item])
+                except Exception as e:
+                    self.status.showMessage(f"Error loading User Mappings: {e}", 5000)
             # --------------------------------------------------------
         elif db_type == 'sqlite':
             # --- CASE 3: Expanding an SQLITE TABLE ---
@@ -5572,6 +5719,65 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
 # {siam}
+    # --- Postgres FDW Management Helpers ---
+
+    def create_fdw_template(self, item_data):
+        sql = "CREATE FOREIGN DATA WRAPPER fdw_name\n    HANDLER handler_function\n    VALIDATOR validator_function;"
+        self._open_script_in_editor(item_data, sql)
+
+    def create_foreign_server_template(self, item_data):
+        fdw_name = item_data.get('fdw_name', 'fdw_name')
+        sql = f"CREATE SERVER server_name\n    FOREIGN DATA WRAPPER {fdw_name}\n    OPTIONS (host '127.0.0.1', port '5432', dbname 'remote_db');"
+        self._open_script_in_editor(item_data, sql)
+
+    def create_user_mapping_template(self, item_data):
+        srv_name = item_data.get('server_name', 'server_name')
+        sql = f"CREATE USER MAPPING FOR current_user\n    SERVER {srv_name}\n    OPTIONS (user 'remote_user', password 'password');"
+        self._open_script_in_editor(item_data, sql)
+
+    def import_foreign_schema_dialog(self, item_data):
+        schema_name = item_data.get('schema_name', 'public')
+        sql = f"IMPORT FOREIGN SCHEMA remote_schema\n    FROM SERVER foreign_server\n    INTO {schema_name};"
+        self._open_script_in_editor(item_data, sql)
+
+    def drop_fdw(self, item_data):
+        fdw_name = item_data.get('fdw_name')
+        if QMessageBox.question(self, "Drop FDW", f"Are you sure you want to drop Foreign Data Wrapper '{fdw_name}'?", 
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self._execute_simple_sql(item_data, f"DROP FOREIGN DATA WRAPPER {fdw_name} CASCADE;")
+
+    def drop_foreign_server(self, item_data):
+        srv_name = item_data.get('server_name')
+        if QMessageBox.question(self, "Drop Server", f"Are you sure you want to drop Foreign Server '{srv_name}'?", 
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self._execute_simple_sql(item_data, f"DROP SERVER {srv_name} CASCADE;")
+
+    def drop_user_mapping(self, item_data):
+        user_name = item_data.get('user_name')
+        srv_name = item_data.get('server_name')
+        if QMessageBox.question(self, "Drop User Mapping", f"Are you sure you want to drop User Mapping for '{user_name}' on server '{srv_name}'?", 
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self._execute_simple_sql(item_data, f"DROP USER MAPPING FOR \"{user_name}\" SERVER {srv_name};")
+
+    def _execute_simple_sql(self, item_data, sql):
+        conn_data = item_data.get('conn_data')
+        try:
+            conn = psycopg2.connect(
+                host=conn_data.get("host"),
+                port=conn_data.get("port"),
+                database=conn_data.get("database"),
+                user=conn_data.get("user"),
+                password=conn_data.get("password")
+            )
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            self.status.showMessage("Operation successful.", 3000)
+            self.refresh_object_explorer()
+            conn.close()
+        except Exception as e:
+            QMessageBox.critical(self, "SQL Error", str(e))
+
     def closeEvent(self, event):
         """Save session state on close."""
         session_data = {
@@ -5588,7 +5794,7 @@ class MainWindow(QMainWindow):
             # Find file path (if any was opened/saved) - This is tricky as we don't currently store it on the tab strictly
             # But let's check for 'current_file' attribute if we were to add it, or just content.
             # For now, saving distinct content is the priority. 
-            
+
             tab_data = {
                 "title": self.tab_widget.tabText(i),
                 "sql_content": editor.toPlainText() if editor else "",
