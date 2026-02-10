@@ -11,7 +11,7 @@ from PyQt6.QtGui import (
     QIcon, QTransform, QPixmap, QFontMetrics, QPolygonF
 )
 from PyQt6.QtCore import (
-    Qt, QRectF, QPointF, pyqtSignal, QSize, QLineF, QEvent
+    Qt, QRectF, QPointF, pyqtSignal, QSize, QLineF, QEvent, QTimer
 )
 
 class ERDTableItem(QGraphicsRectItem):
@@ -85,13 +85,19 @@ class ERDTableItem(QGraphicsRectItem):
         
         # Calculate height
         content_height = (len(self.columns) * self.row_height) if self.show_columns else 0
-        self.height = self.header_height + content_height + 5
+        total_height = self.header_height + content_height
+        # Pad up to the nearest multiple of 20 (Grid Size) for perfect alignment
+        self.height = math.ceil(total_height / 20.0) * 20.0
         
         self.setRect(0, 0, self.width, self.height)
         for conn in self.connections:
             conn.updatePath()
         
     def paint(self, painter, option, widget):
+        # Safeguard: Skip if painter is not active
+        if not painter.isActive():
+            return
+            
         # Selection highlight
         is_selected = option.state & QStyle.StateFlag.State_Selected
         
@@ -288,6 +294,12 @@ class ERDTableItem(QGraphicsRectItem):
         return "left"  # Default 
 
 class ERDConnectionItem(QGraphicsPathItem):
+    def boundingRect(self):
+        # IMPORTANT: Connection markers (crow's feet) draw outside the path.
+        # If we don't include them in the bounding rect, SmartViewportUpdate
+        # or other optimizations will corrupt the painter state during redraws.
+        return super().boundingRect().adjusted(-40, -40, 40, 40)
+
     def __init__(self, source_item, target_item, source_col, target_col, is_identifying=False, is_unique=False, relation_name=None):
         super().__init__()
         self.source_item = source_item
@@ -387,19 +399,68 @@ class ERDConnectionItem(QGraphicsPathItem):
             min_cost = float('inf')
             
             for s_side, t_side in candidates:
-                # Dynamic Anchor Calculation:
-                # Instead of getting the column pos, get the "Best Fit" pos on the table side
+                # 1. Start with exact centers (Best for grouped trunk exit)
                 start = self.get_dynamic_anchor(self.source_item, s_side, t_rect)
                 end = self.get_dynamic_anchor(self.target_item, t_side, s_rect)
                 
+                # 2. Straight-Line Snapping (The "Z-Shape Killer")
+                # If they are almost aligned (within grid tolerance), force a straight line.
+                # We snap the TARGET to match the SOURCE to maintain a uniform exit point.
+                tolerance = 25 
+                if s_side in ["left", "right"]:
+                    if abs(start.y() - end.y()) < tolerance:
+                        # Ensure the snapped point is still within child's vertical bounds
+                        if t_rect.top() + 10 < start.y() < t_rect.bottom() - 10:
+                            end.setY(start.y())
+                elif s_side in ["top", "bottom"]:
+                    if abs(start.x() - end.x()) < tolerance:
+                        if t_rect.left() + 10 < start.x() < t_rect.right() - 10:
+                            end.setX(start.x())
+
                 points = self.calculate_route_points(start, s_side, end, t_side, s_rect, t_rect)
-                cost = self.calculate_path_cost(points, s_rect, t_rect)
+                
+                # Identify obstacles: All other tables in the scene
+                obstacles = []
+                if self.scene():
+                    for item in self.scene().items():
+                        if isinstance(item, ERDTableItem) and item != self.source_item and item != self.target_item:
+                            obstacles.append(item.sceneBoundingRect())
+
+                cost = self.calculate_path_cost(points, s_rect, t_rect, obstacles)
+                
+                # If it's a direct straight line, add a small bonus to prefer it, 
+                # but ONLY if it doesn't collide.
+                if len(points) == 2 and cost < 100000:
+                    cost -= 100 # Strategy: prefer straight if clear
                 
                 if cost < min_cost:
                     min_cost = cost
                     best_points = points
             
-            # 3. Draw Best Path
+            # 3. CLAMP PATH POINTS to prevent lines extending too far
+            # Limit: Intermediate points should NOT extend beyond the connection points
+            if best_points and len(best_points) > 2:
+                MARGIN = 15  # Small margin for visual breathing room
+                
+                # Get actual connection point positions (start and end of path)
+                start_pt = best_points[0]
+                end_pt = best_points[-1]
+                
+                # Calculate bounds based on CONNECTION POINTS, not table bounds
+                # This ensures the line only goes between where it actually connects
+                min_x = min(start_pt.x(), end_pt.x()) - MARGIN
+                max_x = max(start_pt.x(), end_pt.x()) + MARGIN
+                min_y = min(start_pt.y(), end_pt.y()) - MARGIN
+                max_y = max(start_pt.y(), end_pt.y()) + MARGIN
+                
+                # Clamp intermediate points (corners) to stay within connection bounds
+                for i in range(1, len(best_points) - 1):
+                    pt = best_points[i]
+                    clamped_x = max(min_x, min(max_x, pt.x()))
+                    clamped_y = max(min_y, min(max_y, pt.y()))
+                    best_points[i] = QPointF(clamped_x, clamped_y)
+            
+            # 4. Draw Best Path
             path = QPainterPath()
             if best_points:
                 path.moveTo(best_points[0])
@@ -412,116 +473,158 @@ class ERDConnectionItem(QGraphicsPathItem):
              self._updating = False
 
     def get_dynamic_anchor(self, item, side, other_rect):
-        # Calculates the best anchor point on 'side' of 'item'.
-        # STRICTLY CENTERED logic as requested.
+        # Implementation of "Fixed Center" logic for cleaner hierarchy.
+        # This ensures multiple connections from/to the same table share a 
+        # common entry/exit point, creating a 'trunk and branch' visual style.
         rect = item.sceneBoundingRect()
         
-        if side == "left":
-            return QPointF(rect.left(), rect.center().y())
-        elif side == "right":
-            return QPointF(rect.right(), rect.center().y())
-        elif side == "top":
-            return QPointF(rect.center().x(), rect.top())
-        elif side == "bottom":
-            return QPointF(rect.center().x(), rect.bottom())
+        if side == "left" or side == "right":
+            x = rect.left() if side == "left" else rect.right()
+            # Return the vertical center of the table side
+            return QPointF(x, rect.top() + rect.height() / 2)
+                    
+        elif side == "top" or side == "bottom":
+             y = rect.top() if side == "top" else rect.bottom()
+             # Return the horizontal center of the table side
+             return QPointF(rect.left() + rect.width() / 2, y)
             
         return rect.center()
 
+    def get_scene_bounds(self, margin=100):
+        """Calculate reasonable bounds for routing based on all tables in the scene.
+        
+        Returns a QRectF that encompasses all tables with a margin.
+        Lines should not extend beyond these bounds.
+        """
+        if not self.scene():
+            return QRectF(-1000, -1000, 3000, 3000)  # Default fallback
+        
+        # Get all table items
+        tables = [item for item in self.scene().items() if isinstance(item, ERDTableItem)]
+        if not tables:
+            return QRectF(-1000, -1000, 3000, 3000)
+        
+        # Calculate bounding box of all tables
+        min_x = min(t.sceneBoundingRect().left() for t in tables)
+        max_x = max(t.sceneBoundingRect().right() for t in tables)
+        min_y = min(t.sceneBoundingRect().top() for t in tables)
+        max_y = max(t.sceneBoundingRect().bottom() for t in tables)
+        
+        # Add margin
+        return QRectF(min_x - margin, min_y - margin, 
+                      (max_x - min_x) + 2 * margin, 
+                      (max_y - min_y) + 2 * margin)
+
     def calculate_route_points(self, start, s_side, end, t_side, s_rect, t_rect):
-        points = [start]
-        x1, y1 = start.x(), start.y()
-        x2, y2 = end.x(), end.y()
+        """
+        Minimal Orthogonal Routing - Guaranteed No-Overshoot.
+        """
+        # 1. Constants (Synchronized with paint TRIM)
+        stub_len = 40 
         
-        # 0. Micro-Alignment Snap (Visual Polish)
-        # We cheat slightly to force straight lines if connection points are close.
-        # This handles small center-misalignments due to different table widths or manual positioning.
+        def get_stub(pt, side, length):
+            if side == "left": return QPointF(pt.x() - length, pt.y())
+            if side == "right": return QPointF(pt.x() + length, pt.y())
+            if side == "top": return QPointF(pt.x(), pt.y() - length)
+            return QPointF(pt.x(), pt.y() + length)
+
+        s_stub = get_stub(start, s_side, stub_len)
+        t_stub = get_stub(end, t_side, stub_len)
         
-        # Horizontal Snap (Side-by-Side)
-        if abs(y1 - y2) < 20: # Generous 20px threshold
-            avg_y = (y1 + y2) / 2
-            y1 = avg_y
-            y2 = avg_y
-            start.setY(avg_y)
-            end.setY(avg_y)
-            points = [start]
-
-        # Vertical Snap (Top-to-Bottom) - FIX FOR Z-SHAPE
-        if abs(x1 - x2) < 20: # Generous 20px threshold
-            avg_x = (x1 + x2) / 2
-            x1 = avg_x
-            x2 = avg_x
-            start.setX(avg_x)
-            end.setX(avg_x)
-            points = [start]
-
-        # 1. Direct Straight Line Check
+        x1, y1 = s_stub.x(), s_stub.y()
+        x2, y2 = t_stub.x(), t_stub.y()
+        
         s_horiz = s_side in ["left", "right"]
         t_horiz = t_side in ["left", "right"]
         
-        if s_horiz and t_horiz:
-            if abs(y1 - y2) < 2: return [start, end]
-        if not s_horiz and not t_horiz:
-            if abs(x1 - x2) < 2: return [start, end]
-
-        # 2. Orthogonal Routing
-        stub = 40
+        # Start points
+        pts = [start, s_stub]
         
-        if s_horiz and t_horiz:
-             # Horizontal sides
-             mid_x = (x1 + x2) / 2
-             
-             # C-Shape handling
-             if s_side == t_side:
-                 if s_side == "right": mid_x = max(s_rect.right(), t_rect.right()) + stub
-                 else:                 mid_x = min(s_rect.left(), t_rect.left()) - stub
-             
-             points.append(QPointF(mid_x, y1))
-             points.append(QPointF(mid_x, y2))
-             
-        elif not s_horiz and not t_horiz:
-             # Vertical sides
-             mid_y = (y1 + y2) / 2
-             
-             if s_side == t_side:
-                 if s_side == "bottom": mid_y = max(s_rect.bottom(), t_rect.bottom()) + stub
-                 else:                  mid_y = min(s_rect.top(), t_rect.top()) - stub
-                 
-             points.append(QPointF(x1, mid_y))
-             points.append(QPointF(x2, mid_y))
-             
-        else:
-             # L-Shape (Perpendicular)
-             if s_horiz:
-                 points.append(QPointF(x2, y1))
-             else:
-                 points.append(QPointF(x1, y2))
+        # 2. Logic: Minimal segments ONLY
+        if s_horiz == t_horiz:
+            if s_side != t_side: # Facing (Z-Shape)
+                # Midpoint X for horizontal, Y for vertical
+                m_x = (x1 + x2) / 2 if s_horiz else x1
+                m_y = y1 if s_horiz else (y1 + y2) / 2
+                pts.append(QPointF(m_x, m_y))
+                
+                # Turn point
+                m_x2 = m_x if s_horiz else x2
+                m_y2 = y2 if s_horiz else m_y
+                pts.append(QPointF(m_x2, m_y2))
+            else: # U-Shape (Around)
+                if s_horiz:
+                    ext = max(x1, x2) + 20 if s_side == "right" else min(x1, x2) - 20
+                    pts.append(QPointF(ext, y1))
+                    pts.append(QPointF(ext, y2))
+                else:
+                    ext = max(y1, y2) + 20 if s_side == "bottom" else min(y1, y2) - 20
+                    pts.append(QPointF(x1, ext))
+                    pts.append(QPointF(x2, ext))
+        else: # L-Shape
+             if s_horiz: pts.append(QPointF(x2, y1))
+             else:       pts.append(QPointF(x1, y2))
             
-        points.append(end)
-        return points
+        pts.extend([t_stub, end])
+        
+        # 3. Final Normalization (Deduplication and Collinear check)
+        final = [pts[0]]
+        for i in range(1, len(pts)):
+            p = pts[i]
+            prev = final[-1]
+            if (p - prev).manhattanLength() < 0.5: continue
+            
+            if len(final) >= 2:
+                p_prev = final[-2]
+                # If segments A-B and B-C are both horizontal or both vertical, merge to A-C
+                is_h = abs(p_prev.y() - prev.y()) < 0.1 and abs(prev.y() - p.y()) < 0.1
+                is_v = abs(p_prev.x() - prev.x()) < 0.1 and abs(prev.x() - p.x()) < 0.1
+                if is_h or is_v:
+                    final[-1] = p
+                    continue
+            final.append(p)
+            
+        return final
 
-    def calculate_path_cost(self, points, s_rect, t_rect):
+    def calculate_path_cost(self, points, s_rect, t_rect, obstacles):
         if not points: return float('inf')
         
         total_len = 0
-        bends = 0
         collision_penalty = 0
         
+        # Helper to check if a point is inside a rect
+        def is_inside(pt, rect, pad=2):
+            return rect.adjusted(-pad, -pad, pad, pad).contains(pt)
+
         for i in range(len(points) - 1):
             p_a = points[i]
             p_b = points[i+1]
-            total_len += abs(p_a.x() - p_b.x()) + abs(p_a.y() - p_b.y())
+            total_len += (p_a - p_b).manhattanLength()
             
-            if self.segment_intersects_rect(p_a, p_b, s_rect) or \
-               self.segment_intersects_rect(p_a, p_b, t_rect):
-                collision_penalty += 1000
+            # HUGE penalty for segments that cross through the start or end tables
+            # (Excluding the very first and last segments which are stubs)
+            if i > 0 and i < len(points) - 2:
+                if self.segment_intersects_rect(p_a, p_b, s_rect, padding=-2) or \
+                   self.segment_intersects_rect(p_a, p_b, t_rect, padding=-2):
+                    collision_penalty += 2000000
+
+            # Obstacle Collisions
+            for obs_rect in obstacles:
+                if self.segment_intersects_rect(p_a, p_b, obs_rect, padding=-5):
+                    collision_penalty += 1000000 
                 
         bends = max(0, len(points) - 2)
-        return total_len + (bends * 50) + collision_penalty
+        return total_len + (bends * 100) + collision_penalty
 
-    def segment_intersects_rect(self, p1, p2, rect):
-        r_x, r_y, r_w, r_h = rect.x() + 5, rect.y() + 5, rect.width() - 10, rect.height() - 10
+    def segment_intersects_rect(self, p1, p2, rect, padding=0):
+        # Padding > 0 shrinks the rect (more permissive), < 0 expands it (stricter)
+        r_x, r_y = rect.x() + padding, rect.y() + padding
+        r_w, r_h = rect.width() - 2*padding, rect.height() - 2*padding
+        
         min_x, max_x = min(p1.x(), p2.x()), max(p1.x(), p2.x())
         min_y, max_y = min(p1.y(), p2.y()), max(p1.y(), p2.y())
+        
+        # AABB Intersection
         if max_x < r_x or min_x > r_x + r_w: return False
         if max_y < r_y or min_y > r_y + r_h: return False
         return True             
@@ -565,17 +668,57 @@ class ERDConnectionItem(QGraphicsPathItem):
         self.setPath(path)
 
     def paint(self, painter, option, widget):
-        # Draw the main line
-        pen = QPen(self.pen()) # Copy existing pen (maintenance dash pattern)
+        # Safeguard: Skip if painter is not active
+        if not painter.isActive():
+            return
+        
+        path = self.path()
+        if path.elementCount() < 2:
+            return
+            
+        # Draw Crow's Foot Symbols FIRST (they handle connection to table edge)
+        self.draw_markers(painter)
+
+        # Draw the main line, but TRIMmed to avoid overlapping markers
+        # Markers cover roughly 36px from the anchor.
+        TRIM = 36
+        
+        trimmed_path = QPainterPath()
+        
+        # We need to find the points on the path at TRIM distance from ends
+        # Simplified: We'll adjust the first and last points of our visual path
+        points = []
+        for i in range(path.elementCount()):
+            points.append(QPointF(path.elementAt(i).x, path.elementAt(i).y))
+            
+        if len(points) >= 2:
+            # Adjust start
+            p0, p1 = points[0], points[1]
+            vec = p1 - p0
+            dist = math.sqrt(vec.x()**2 + vec.y()**2)
+            if dist > TRIM:
+                points[0] = p0 + (vec / dist) * TRIM
+            
+            # Adjust end
+            pn, pn_1 = points[-1], points[-2]
+            vec = pn_1 - pn
+            dist = math.sqrt(vec.x()**2 + vec.y()**2)
+            if dist > TRIM:
+                points[-1] = pn + (vec / dist) * TRIM
+                
+        # Build the visual path
+        trimmed_path.moveTo(points[0])
+        for i in range(1, len(points)):
+            trimmed_path.lineTo(points[i])
+            
+        pen = QPen(self.pen())
         if option.state & QStyle.StateFlag.State_MouseOver:
             pen.setColor(QColor("#1A73E8"))
             pen.setWidthF(2.5)
-            pen.setStyle(Qt.PenStyle.SolidLine) # Make solid on hover for clarity
-        painter.setPen(pen)
-        painter.drawPath(self.path())
+            pen.setStyle(Qt.PenStyle.SolidLine)
         
-        # Draw Crow's Foot Symbols
-        self.draw_markers(painter)
+        painter.setPen(pen)
+        painter.drawPath(trimmed_path)
 
     def draw_markers(self, painter):
         # We'll use the path's first and last segments to orient the markers
@@ -615,13 +758,13 @@ class ERDConnectionItem(QGraphicsPathItem):
         # We draw solid stubs to ensure markers look attached even for dashed lines.
         # Stub 1: Anchor to first bar
         painter.drawLine(anchor, QPointF(anchor.x() + ux * 8, anchor.y() + uy * 8))
-        # Stub 2: Beyond second bar (ensures connectivity to the rest of the line)
+        # Stub 2: Beyond second bar (extends to meet the trimmed path at MARKER_ZONE=28+)
         painter.drawLine(QPointF(anchor.x() + ux * 14, anchor.y() + uy * 14), 
-                         QPointF(anchor.x() + ux * 25, anchor.y() + uy * 25))
+                         QPointF(anchor.x() + ux * 30, anchor.y() + uy * 30))
 
         # 2. SURGICAL MASKING (Breaks the "H" artifact)
         # We only mask the tiny gap between the bars.
-        if self.scene() and self.scene().backgroundBrush().color().isValid():
+        if self.scene() and self.scene().backgroundBrush().color().isValid() and painter.isActive():
             mask_pen = QPen(self.scene().backgroundBrush().color(), 4)
             painter.save()
             painter.setPen(mask_pen)
@@ -652,8 +795,8 @@ class ERDConnectionItem(QGraphicsPathItem):
         ux, uy = dx/length, dy/length
         px, py = -uy, ux
 
-        # Ensure a solid stub under the markers
-        painter.drawLine(anchor, QPointF(anchor.x() + ux * 25, anchor.y() + uy * 25))
+        # Ensure a solid stub under the markers (extends to meet trimmed path at MARKER_ZONE=28+)
+        painter.drawLine(anchor, QPointF(anchor.x() + ux * 30, anchor.y() + uy * 30))
         
         # 1. Mandatory Vertical Bar
         base_bar = QPointF(anchor.x() + ux * dist_bar, anchor.y() + uy * dist_bar)
@@ -731,9 +874,16 @@ class ERDScene(QGraphicsScene):
         return candidates[0] if candidates else None
         
     def drawBackground(self, painter, rect):
+        if not painter.isActive():
+            return
         # Fill with background color
         painter.fillRect(rect, QBrush(QColor("#F8F9FA")))
         
+        # Optimization: Do not draw grid for very small views (like MiniMap)
+        # to prevent thousands of lines causing QPainter session failures.
+        if rect.width() < 500: 
+            return
+
         # Draw grid
         grid_size = 20
         
@@ -814,12 +964,23 @@ class ERDMiniMap(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QFrame.Shape.Box)
         
+        # Use NoViewportUpdate to prevent QPainter engine failures from frequent repaints.
+        # We manually trigger viewport updates in drawForeground when needed.
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.NoViewportUpdate)
+        
+        # Cache the rendered scene to avoid constant QPainter repaints
+        self._cache_pixmap = None
+        self._cache_valid = False
+        self._last_items_rect = QRectF()
+        
         # Style the minimap
+        self.setBackgroundBrush(QBrush(QColor(255, 255, 255, 220)))
+        
+        # Style the border only via stylesheet
         self.setStyleSheet("""
             QGraphicsView {
-                background-color: rgba(255, 255, 255, 220);
                 border: 2px solid #1A73E8;
-                border-radius: 8px;
+                background-color: #FFFFFF;
             }
         """)
         
@@ -841,7 +1002,8 @@ class ERDMiniMap(QGraphicsView):
             }
         """)
         self.btn_toggle.clicked.connect(self.toggle_minimized)
-        self.btn_toggle.move(5, 5) # Top Left
+        self.btn_toggle.raise_()
+        # The button will be positioned by resizeEvent when setFixedSize is called in initUI
 
         # Handle viewport changes from main view
         self.main_view.viewport_changed.connect(self.update_view_rect)
@@ -852,33 +1014,110 @@ class ERDMiniMap(QGraphicsView):
         if self.is_minimized:
             self.setFixedSize(34, 34)
             self.btn_toggle.setText("+")
+            # Stop the viewport from updating visually
+            self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.NoViewportUpdate)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setStyleSheet("ERDMiniMap { background: transparent; border: none; }")
         else:
             self.setFixedSize(220, 160)
             self.btn_toggle.setText("−")
+            self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.NoViewportUpdate)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+            self.setStyleSheet("""
+                ERDMiniMap {
+                    border: 2px solid #1A73E8;
+                    background-color: #FFFFFF;
+                }
+            """)
         
+        self.reposition_button()
+        self.btn_toggle.raise_()
+        
+        # Emit signal so parent moves us
         self.minimized_changed.emit(self.is_minimized)
+        
+        # USE A TIMER: Give the OS/Qt event loop 50ms to finish moving/resizing the widget
+        # before we force a refresh of the parent area. This prevents 'ghosting'.
+        QTimer.singleShot(50, self.force_refresh)
+
+    def force_refresh(self):
+        self.update()
+        if self.parentWidget():
+            self.parentWidget().update()
+        if self.main_view and self.main_view.viewport():
+            self.main_view.viewport().update()
+
+    def reposition_button(self):
+        # Always keep the button in the bottom-right corner of the minimap
+        # so it stays near the corner of the screen during toggle
+        margin = 5
+        btn_x = self.width() - self.btn_toggle.width() - margin
+        btn_y = self.height() - self.btn_toggle.height() - margin
+        # Ensure coordinates are at least margin
+        self.btn_toggle.move(max(margin, btn_x), max(margin, btn_y))
 
     def update_view_rect(self):
-        if self.is_minimized: return
-        self.fitInView(self.scene().itemsBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        self.update()
+        if self.is_minimized or not self.isVisible() or not self.scene() or self.width() <= 20: 
+            return
+        items_rect = self.scene().itemsBoundingRect()
+        if items_rect.isNull():
+            return
+            
+        # Only refitView if items rect changed significantly
+        # This avoids constant fitInView calls that cause QPainter churn
+        if self._last_items_rect != items_rect:
+            self._last_items_rect = items_rect
+            self._cache_valid = False
+            self.fitInView(items_rect, Qt.AspectRatioMode.KeepAspectRatio)
+        
+        # Request a repaint of the viewport widget (not the scene)
+        if self.viewport() and self.isVisible():
+            self.viewport().update()
+
+    def drawBackground(self, painter, rect):
+        if self.is_minimized:
+            return
+        if not painter.isActive():
+            return
+        painter.fillRect(rect, QColor("#F8F9FA"))
 
     def drawForeground(self, painter, rect):
-        if self.is_minimized: return
-        # Draw the visible area of the main view
-        painter.setPen(QPen(QColor(26, 115, 232, 180), 2))
-        painter.setBrush(QColor(26, 115, 232, 30))
+        if self.is_minimized or not self.main_view or not self.main_view.isVisible(): 
+            return
         
-        # Get visible area in scene coordinates
-        visible_rect = self.main_view.mapToScene(self.main_view.viewport().rect()).boundingRect()
-        painter.drawRect(visible_rect)
+        # Ensure painter is active before drawing
+        if not painter.isActive():
+            return
+        
+        try:
+            # Draw the visible area of the main view
+            painter.setPen(QPen(QColor(26, 115, 232, 180), 2))
+            painter.setBrush(QColor(26, 115, 232, 30))
+            
+            # SAFEGUARD: check if main_view viewport is valid
+            if not self.main_view.viewport() or not self.main_view.viewport().isVisible():
+                return
+                
+            # Get visible area in scene coordinates
+            visible_rect = self.main_view.mapToScene(self.main_view.viewport().rect()).boundingRect()
+            painter.drawRect(visible_rect)
+        except Exception:
+            pass  # Gracefully ignore any paint errors
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.reposition_button()
 
     def mousePressEvent(self, event):
+        # Let child widgets (like the toggle button) handle events first
+        super().mousePressEvent(event)
+        if event.isAccepted():
+            return
+
         if self.is_minimized: return
         # Click to jump main view
         scene_pos = self.mapToScene(event.pos())
         self.main_view.centerOn(scene_pos)
-        super().mousePressEvent(event)
 
 class SQLPreviewDialog(QDialog):
     def __init__(self, sql_text, parent=None):
@@ -1014,7 +1253,6 @@ class ERDWidget(QWidget):
         self.show_types_action.setCheckable(True)
         self.show_types_action.setChecked(True)
         self.show_types_action.triggered.connect(self.toggle_types)
-        self.show_types_action.triggered.connect(self.toggle_types)
         self.toolbar.addAction(self.show_types_action)
         
         self.toolbar.addSeparator()
@@ -1115,6 +1353,10 @@ class ERDWidget(QWidget):
                 self.view_container.height() - m_height - 20
             )
             self.minimap.raise_()
+            
+            # Refresh the area under the minimap to prevent ghosting
+            if hasattr(self, "view") and self.view.viewport():
+                self.view.viewport().update()
 
     def generate_forward_sql(self):
         # 1. Topological Sort for Table Creation (Parents first)
@@ -1321,70 +1563,118 @@ class ERDWidget(QWidget):
         items = [item for item in self.scene.items() if isinstance(item, ERDTableItem)]
         if not items: return
         
-        # 1. Build Adjacency List for Dependency Sorting
-        # We want to show Parents -> Children
-        graph = {name: [] for name in self.schema_data.keys()}
-        in_degree = {name: 0 for name in self.schema_data.keys()}
+    def auto_layout(self):
+        items = [item for item in self.scene.items() if isinstance(item, ERDTableItem)]
+        if not items: return
         
+        # 1. Component Detection (Disjoint Subgraphs)
+        adj_bi = {name: [] for name in self.schema_data.keys()}
         for full_name, table_info in self.schema_data.items():
             for fk in table_info.get('foreign_keys', []):
                 target = fk['table']
-                # Child points to Parent in SQL, but for Flow we want Parent -> Child
-                if target in graph and target != full_name:
-                    graph[target].append(full_name)
-                    in_degree[full_name] += 1
+                if target in self.schema_data:
+                    adj_bi[full_name].append(target)
+                    adj_bi[target].append(full_name)
         
-        # 2. Topological Sort (Kahn's Algorithm)
-        queue = [n for n in self.schema_data.keys() if in_degree[n] == 0]
-        sorted_names = []
-        
-        while queue:
-            # Sort queue for deterministic layout
-            queue.sort()
-            u = queue.pop(0)
-            sorted_names.append(u)
-            
-            for v in graph[u]:
-                in_degree[v] -= 1
-                if in_degree[v] == 0:
-                    queue.append(v)
-                    
-        # Add any tables that were part of a cycle (if any)
+        visited = set()
+        components = []
         for name in self.schema_data.keys():
-            if name not in sorted_names:
-                sorted_names.append(name)
+            if name not in visited:
+                comp = []
+                stack = [name]
+                while stack:
+                    u = stack.pop()
+                    if u not in visited:
+                        visited.add(u)
+                        comp.append(u)
+                        stack.extend([v for v in adj_bi[u] if v not in visited])
+                if comp: components.append(comp)
 
-        # 3. Create Grid based on Sorted Order
-        num_items = len(sorted_names)
-        cols = math.ceil(math.sqrt(num_items))
-        rows = math.ceil(num_items / cols)
+        components.sort(key=len, reverse=True)
         
-        padding_x = 100 # Increased padding for relational flow
-        padding_y = 60
-        
-        # Maps sorted names to actual QGraphicsItems
         item_map = self.scene.tables
+        current_y_offset = 100
         
-        # Organize into rows and columns
-        current_y = 0
-        for r in range(rows):
-            max_row_height = 0
-            current_x = 0
-            for c in range(cols):
-                idx = r * cols + c
-                if idx >= num_items: break
-                
-                table_name = sorted_names[idx]
-                item = item_map.get(table_name)
-                if not item: continue
-                
-                item.setPos(current_x, current_y)
-                
-                rect = item.rect()
-                current_x += rect.width() + padding_x
-                max_row_height = max(max_row_height, rect.height())
+        # 2. Layout each component independently (Left-to-Right Flow)
+        for comp_nodes in components:
+            sub_adj = {n: [] for n in comp_nodes}
+            sub_in_degree = {n: 0 for n in comp_nodes}
+            sub_total_degree = {n: 0 for n in comp_nodes}
             
-            current_y += max_row_height + padding_y
+            for u in comp_nodes:
+                info = self.schema_data[u]
+                for fk in info.get('foreign_keys', []):
+                    target = fk['table']
+                    if target in sub_adj and target != u:
+                        sub_adj[target].append(u)
+                        sub_in_degree[u] += 1
+                        sub_total_degree[u] += 1
+                        sub_total_degree[target] += 1
+
+            # Sugiyama Layering (Ranks)
+            ranks = {n: 0 for n in comp_nodes}
+            queue = [n for n in comp_nodes if sub_in_degree[n] == 0]
+            
+            while queue:
+                u = queue.pop(0)
+                for v in sub_adj[u]:
+                    sub_in_degree[v] -= 1
+                    ranks[v] = max(ranks[v], ranks[u] + 1)
+                    if sub_in_degree[v] == 0:
+                        queue.append(v)
+            
+            layers = {}
+            for n in comp_nodes:
+                r = ranks[n]
+                if r not in layers: layers[r] = []
+                layers[r].append(n)
+                
+            sorted_ranks = sorted(layers.keys())
+            
+            # Sub-Sort using Centrality within Layer
+            for r in sorted_ranks:
+                nodes = layers[r]
+                nodes.sort(key=lambda n: sub_total_degree[n], reverse=True)
+                central = []
+                left = True
+                for node in nodes:
+                    if left: central.insert(0, node)
+                    else:    central.append(node)
+                    left = not left
+                layers[r] = central
+            
+            # Position this component with Left-to-Right flow
+            padding_x = 180  # More horizontal space for relationship symbols
+            padding_y = 60
+            
+            # Calculate total component height to center it vertically
+            layer_heights = []
+            max_comp_height = 0
+            for r in sorted_ranks:
+                h = sum(item_map[n].rect().height() + padding_y for n in layers[r]) - padding_y
+                layer_heights.append(h)
+                max_comp_height = max(max_comp_height, h)
+            
+            current_x = 100
+            for i, r in enumerate(sorted_ranks):
+                nodes = layers[r]
+                max_w = max(item_map[n].rect().width() for n in nodes)
+                
+                # Starting Y to center this layer relative to the component
+                layer_h = layer_heights[i]
+                start_y = current_y_offset + (max_comp_height - layer_h) / 2
+                
+                local_y = start_y
+                for name in nodes:
+                    item = item_map[name]
+                    item.setPos(current_x, local_y)
+                    local_y += item.rect().height() + padding_y
+                
+                current_x += max_w + padding_x
+                
+            current_y_offset += max_comp_height + 150 # Gap between subgraphs
+
+        self.scene.update_scene_rect()
             
         self.scene.update_scene_rect()
 
@@ -1465,17 +1755,42 @@ class ERDWidget(QWidget):
         if not file_path:
             return
             
+        # Adjust scene rect to bounding rect of all items
+        local_rect = self.scene.itemsBoundingRect()
+        if local_rect.isNull() or local_rect.width() <= 0 or local_rect.height() <= 0:
+            QMessageBox.warning(self, "Empty Diagram", "The diagram is empty or invalid.")
+            return
+
+        items_rect = local_rect.adjusted(-50, -50, 50, 50)
+        
         # High quality export logic
         scale_factor = 2.0  # 2x scale for higher resolution
         
-        # Adjust scene rect to bounding rect of all items
-        items_rect = self.scene.itemsBoundingRect().adjusted(-50, -50, 50, 50)
+        w = int(items_rect.width() * scale_factor)
+        h = int(items_rect.height() * scale_factor)
         
+        # Limit max size to avoid OOM or Paint Engine failure (Approx 20k x 20k limit)
+        MAX_DIM = 20000
+        if w > MAX_DIM or h > MAX_DIM:
+             scale_factor = min(MAX_DIM / items_rect.width(), MAX_DIM / items_rect.height())
+             w = int(items_rect.width() * scale_factor)
+             h = int(items_rect.height() * scale_factor)
+             print(f"Warning: Diagram too large, downscaling to {scale_factor:.2f}x")
+
         # Create high-res pixmap
-        img = QPixmap(int(items_rect.width() * scale_factor), int(items_rect.height() * scale_factor))
+        img = QPixmap(w, h)
+        
+        if img.isNull():
+             QMessageBox.critical(self, "Error", "Failed to create image buffer (Out of Memory?).")
+             return
+
         img.fill(Qt.GlobalColor.white)
         
         painter = QPainter(img)
+        if not painter.isActive():
+             QMessageBox.critical(self, "Error", "Painter failed to activate.")
+             return
+             
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         
@@ -1483,6 +1798,7 @@ class ERDWidget(QWidget):
         painter.scale(scale_factor, scale_factor)
         
         # Render the scene rect to the high-res pixmap
+        # QGraphicsScene.render maps the 'source' rect to the 'target' rect automatically
         self.scene.render(painter, QRectF(0, 0, items_rect.width(), items_rect.height()), items_rect)
         painter.end()
         
