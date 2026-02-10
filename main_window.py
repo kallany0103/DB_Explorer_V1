@@ -785,14 +785,14 @@ class MainWindow(QMainWindow):
         }}
 
         QMenuBar {{
-        background-color: {primary_color};
-        border: none;
+            background-color: {primary_color};
+            border: none;
         }}
 
         QMenuBar::item {{
-        background: transparent;
-        padding: 4px 12px;
-        margin: 0px;
+            background: transparent;
+            padding: 4px 12px;
+            margin: 0px;
         }}
 
         QMenuBar::item:selected {{
@@ -2674,6 +2674,94 @@ class MainWindow(QMainWindow):
         index = self.tab_widget.addTab(erd_widget, tab_name)
         self.tab_widget.setCurrentIndex(index)
 
+    def generate_erd_for_item(self, item_data, display_name):
+        db_type = item_data.get('db_type')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+        conn_data = item_data.get('conn_data')
+
+        if not db_type or not conn_data:
+            QMessageBox.warning(self, "Error", "Connection data missing for ERD generation.")
+            return
+
+        self.status.showMessage("Retrieving schema data for ERD...", 3000)
+        
+        full_schema_data = {}
+        if db_type == 'postgres':
+            # For table-level, we might still need the full schema to find connections
+            # but we can optimize by only fetching the schema we care about.
+            full_schema_data = db.get_postgres_schema(conn_data, schema_name if not table_name else None)
+        elif db_type == 'sqlite':
+            full_schema_data = db.get_sqlite_schema(conn_data.get('db_path'))
+        else:
+            QMessageBox.information(self, "Not Supported", f"ERD generation is not supported for {db_type}.")
+            return
+
+        if not full_schema_data:
+            QMessageBox.warning(self, "No Data", "Could not retrieve schema data.")
+            return
+
+        target_schema_data = {}
+        
+        if table_name:
+            # Handle Table-level ERD (Connected Tables)
+            # Find the full key (could be schema.table or just table)
+            target_key = None
+            if db_type == 'postgres':
+                target_key = f"{schema_name}.{table_name}"
+            else:
+                target_key = table_name
+
+            if target_key not in full_schema_data:
+                # Fallback: search by table name only if full key not found
+                for k in full_schema_data.keys():
+                    if k.endswith(f".{table_name}") or k == table_name:
+                        target_key = k
+                        break
+            
+            if not target_key or target_key not in full_schema_data:
+                QMessageBox.warning(self, "Error", f"Table {table_name} not found in schema metadata.")
+                return
+
+            # Discover connected tables
+            connected_tables = {target_key}
+            
+            # 1. Tables this table refers to
+            for fk in full_schema_data[target_key].get('foreign_keys', []):
+                connected_tables.add(fk['table'])
+            
+            # 2. Tables that refer to this table
+            for other_table, info in full_schema_data.items():
+                for fk in info.get('foreign_keys', []):
+                    if fk['table'] == target_key:
+                        connected_tables.add(other_table)
+            
+            # Construct filtered schema data
+            for table in connected_tables:
+                if table in full_schema_data:
+                    target_schema_data[table] = full_schema_data[table]
+            
+            tab_name = f"Worksheet {self.tab_widget.count() + 1}"
+        else:
+            # Handle Schema-level ERD
+            if db_type == 'postgres' and schema_name:
+                for full_name, info in full_schema_data.items():
+                    if info.get('schema') == schema_name:
+                        target_schema_data[full_name] = info
+                tab_name = f"Worksheet {self.tab_widget.count() + 1}"
+            else:
+                target_schema_data = full_schema_data
+                tab_name = f"Worksheet {self.tab_widget.count() + 1}"
+
+        if not target_schema_data:
+            QMessageBox.warning(self, "No Data", "No tables found to generate ERD.")
+            return
+
+        erd_widget = ERDWidget(target_schema_data)
+        index = self.tab_widget.addTab(erd_widget, tab_name)
+        self.tab_widget.setCurrentIndex(index)
+        self.status.showMessage(f"ERD generated for {display_name}.", 3000)
+
 
     def add_connection_group(self, parent_item):
         name, ok = QInputDialog.getText(self, "New Group", "Group name:")
@@ -3964,6 +4052,12 @@ class MainWindow(QMainWindow):
             properties_action.triggered.connect(
                 lambda: self.show_table_properties(item_data, display_name))
             menu.addAction(properties_action)
+
+            menu.addSeparator()
+            erd_action = QAction("Generate ERD", self)
+            erd_action.triggered.connect(
+                lambda: self.generate_erd_for_item(item_data, display_name))
+            menu.addAction(erd_action)
             
             menu.addSeparator()
             scripts_menu = menu.addMenu("Scripts")
@@ -4012,6 +4106,12 @@ class MainWindow(QMainWindow):
                 import_fdw_action = QAction("Import Foreign Schema...", self)
                 import_fdw_action.triggered.connect(lambda: self.import_foreign_schema_dialog(item_data))
                 menu.addAction(import_fdw_action)
+                
+                erd_action = QAction("Generate ERD", self)
+                erd_action.triggered.connect(
+                    lambda: self.generate_erd_for_item(item_data, f"Schema: {schema_name}"))
+                menu.addAction(erd_action)
+                
                 menu.addSeparator()
 
         elif item_data.get('type') == 'fdw_root':
