@@ -282,16 +282,6 @@ class ERDTableItem(QGraphicsRectItem):
         else: # bottom
             return QPointF(rect.left() + rect.width()/2, rect.bottom())
 
-    def get_anchor_side(self, other_pos):
-        rect = self.sceneBoundingRect()
-        center = rect.center()
-        
-        # Decide which side to use based on relative position
-        if other_pos.x() > rect.right():
-            return "right"
-        elif other_pos.x() < rect.left():
-            return "left"
-        return "left"  # Default 
 
 class ERDConnectionItem(QGraphicsPathItem):
     def boundingRect(self):
@@ -592,9 +582,6 @@ class ERDConnectionItem(QGraphicsPathItem):
         total_len = 0
         collision_penalty = 0
         
-        # Helper to check if a point is inside a rect
-        def is_inside(pt, rect, pad=2):
-            return rect.adjusted(-pad, -pad, pad, pad).contains(pt)
 
         for i in range(len(points) - 1):
             p_a = points[i]
@@ -628,14 +615,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         if max_x < r_x or min_x > r_x + r_w: return False
         if max_y < r_y or min_y > r_y + r_h: return False
         return True             
-    def calculate_connection_cost(self, s_side, t_side):
-        return 0 # Unused now
 
-    def calculate_stub(self, anchor, side, length):
-        if side == "right": return QPointF(anchor.x() + length, anchor.y())
-        if side == "left": return QPointF(anchor.x() - length, anchor.y())
-        if side == "top": return QPointF(anchor.x(), anchor.y() - length)
-        return QPointF(anchor.x(), anchor.y() + length)
 
     def updateSelfLoopPath(self):
         # Professional circular self-loop
@@ -1164,21 +1144,22 @@ class ERDWidget(QWidget):
         toolbar_container.setObjectName("erdToolbarContainer")
         toolbar_container.setStyleSheet("""
             #erdToolbarContainer {
-                background-color: #D3D3D3;
+                background-color: #f0f0f0;
                 border-bottom: 1px solid #A9A9A9;
-                padding: 4px;
+                padding: 2px 5px;
             }
             QToolBar {
                 background: transparent;
                 border: none;
-                spacing: 8px;
+                spacing: 5px;
             }
             QToolButton {
                 background-color: #ffffff;
                 border: 1px solid #cccccc;
                 border-radius: 4px;
-                padding: 4px;
+                padding: 1px 8px;
                 color: #333333;
+                font-size: 9pt;
             }
             QToolButton:hover {
                 background-color: #f0f2f5;
@@ -1186,11 +1167,6 @@ class ERDWidget(QWidget):
             }
             QToolButton:pressed {
                 background-color: #e8eaed;
-            }
-            QToolBar::separator {
-                width: 1px;
-                background-color: #A9A9A9;
-                margin: 4px 8px;
             }
         """)
         
@@ -1215,7 +1191,7 @@ class ERDWidget(QWidget):
         export_action.triggered.connect(self.save_as_image)
         self.toolbar.addAction(export_action)
         
-        self.toolbar.addSeparator()
+        
         
         # Group 2: View Controls
         zoom_in_action = QAction(QIcon("assets/zoom_in.svg"), "Zoom In", self)
@@ -1233,7 +1209,7 @@ class ERDWidget(QWidget):
         reset_zoom_action.triggered.connect(lambda: self.view.setTransform(QTransform()))
         self.toolbar.addAction(reset_zoom_action)
         
-        self.toolbar.addSeparator()
+        
         
         # Group 3: Layout & Visibility
         align_action = QAction(QIcon("assets/erd_auto_align.svg"), "Auto Align", self)
@@ -1255,7 +1231,7 @@ class ERDWidget(QWidget):
         self.show_types_action.triggered.connect(self.toggle_types)
         self.toolbar.addAction(self.show_types_action)
         
-        self.toolbar.addSeparator()
+        
         
         # Group 4: Advanced Tools
         self.sql_btn = QToolButton()
