@@ -83,10 +83,8 @@ class RunnableExport(QRunnable):
             if not delimiter: delimiter = ','
             
             # --- Check Semicolon for CSV/TXT ---
-            if file_format in [".csv", ".txt"] and delimiter != ';':
-                error_msg = "Export Error: Comma (,) is not allowed. Please select Semicolon (;) to export."
-                self.signals.error.emit(self.process_id, error_msg)
-                return
+            # Restriction removed to allow user selected delimiter
+
 
             # --- CHUNKING LOGIC (To Fix Memory Issues) ---
             chunk_size = 10000  # Process 10k rows at a time
@@ -179,11 +177,8 @@ class RunnableExportFromModel(QRunnable):
                 delimiter = self.export_options.get('delimiter', ',')
                 
                 # --- Enforce Semicolon (;) ---
-                if file_format in [".csv", ".txt"]:
-                    if delimiter != ';':
-                        error_msg = "Export Error: Only ';' (semicolon) is allowed."
-                        self.signals.error.emit(self.process_id, error_msg)
-                        return 
+                # Restriction removed to allow user selected delimiter
+ 
                 
                 if not delimiter: delimiter = ','
                 
