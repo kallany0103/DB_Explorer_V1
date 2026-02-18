@@ -1128,6 +1128,8 @@ class SQLPreviewDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save script: {str(e)}")
 
+
+
 class ERDWidget(QWidget):
     def __init__(self, schema_data, parent=None):
         super().__init__(parent)
@@ -1157,9 +1159,15 @@ class ERDWidget(QWidget):
                 background-color: #ffffff;
                 border: 1px solid #cccccc;
                 border-radius: 4px;
-                padding: 1px 8px;
+                padding: 1px 4px; /* Reduced padding for smaller button */
+                min-width: 26px;
+                max-width: 26px;
+                min-height: 26px;
+                max-height: 26px;
+                width: 26px;
+                height: 26px;
+                font-size: 8pt; /* Slightly smaller font if needed */
                 color: #333333;
-                font-size: 9pt;
             }
             QToolButton:hover {
                 background-color: #f0f2f5;
@@ -1174,7 +1182,7 @@ class ERDWidget(QWidget):
         container_layout.setContentsMargins(5, 5, 5, 5)
         
         self.toolbar = QToolBar()
-        self.toolbar.setIconSize(QSize(20, 20))
+        self.toolbar.setIconSize(QSize(16, 16))
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         
         # Group 1: File Operations
@@ -1236,7 +1244,8 @@ class ERDWidget(QWidget):
         # Group 4: Advanced Tools
         self.sql_btn = QToolButton()
         self.sql_btn.setIcon(QIcon("assets/sql_icon.svg"))
-        self.sql_btn.setIconSize(QSize(20, 20))
+        self.sql_btn.setIconSize(QSize(16, 16))
+        self.sql_btn.setFixedSize(26, 26)
         self.sql_btn.setToolTip("Generate SQL Script (Alt+Ctrl+S)")
         
         # Connection
@@ -1250,38 +1259,45 @@ class ERDWidget(QWidget):
         self.addAction(self.sql_shortcut)
         
         container_layout.addWidget(self.toolbar)
-        container_layout.addStretch()
-        
-        # Search Bar (Right Aligned)
+        # Search Bar (Toggle UI)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search tables... (Ctrl+F)")
+        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setFixedHeight(26)
         self.search_input.setFixedWidth(200)
-        
-        # Add Search Icon
-        self.search_input.addAction(QIcon("assets/search.svg"), QLineEdit.ActionPosition.LeadingPosition)
-        
         self.search_input.setStyleSheet("""
             QLineEdit {
-                background-color: #ffffff;
                 border: 1px solid #cccccc;
-                border-radius: 14px;
-                padding: 4px 12px; /* Qt adds space for the action icon automatically */
-                font-size: 9pt;
-                color: #333333;
+                border-radius: 4px;
+                padding-left: 5px;
+                padding-right: 5px;
             }
             QLineEdit:focus {
                 border: 1px solid #1A73E8;
             }
         """)
+        self.search_input.hide() # Initially hidden
         self.search_input.textChanged.connect(self.on_search_text_changed)
         self.search_input.returnPressed.connect(self.on_search_return_pressed)
+        # Install event filter to auto-hide on focus out
+        self.search_input.installEventFilter(self)
+
+        self.search_btn = QToolButton()
+        self.search_btn.setIcon(QIcon("assets/search.svg"))
+        self.search_btn.setIconSize(QSize(16, 16))
+        self.search_btn.setFixedSize(26, 26)
+        self.search_btn.setToolTip("Search (Ctrl+F)")
+        self.search_btn.clicked.connect(self.toggle_search)
+
+        # Add to toolbar layout BEFORE the stretch
+        container_layout.addWidget(self.search_input)
+        container_layout.addWidget(self.search_btn)
         
+        container_layout.addStretch()
+
         search_action = QAction(self)
         search_action.setShortcut("Ctrl+F")
-        search_action.triggered.connect(self.search_input.setFocus)
+        search_action.triggered.connect(self.toggle_search)
         self.addAction(search_action)
-
-        container_layout.addWidget(self.search_input)
 
         layout.addWidget(toolbar_container)
         
@@ -1334,6 +1350,22 @@ class ERDWidget(QWidget):
             if hasattr(self, "view") and self.view.viewport():
                 self.view.viewport().update()
 
+    def toggle_search(self):
+        if self.search_input.isVisible():
+            self.search_input.hide()
+            self.search_btn.show()
+            self.search_input.clear() # Optional: Clear search on close
+        else:
+            self.search_btn.hide()
+            self.search_input.show()
+            self.search_input.setFocus()
+
+    def eventFilter(self, watched, event):
+        if watched == self.search_input and event.type() == QEvent.Type.FocusOut:
+            if not self.search_input.text():
+                self.toggle_search()
+        return super().eventFilter(watched, event)
+
     def generate_forward_sql(self):
         # 1. Topological Sort for Table Creation (Parents first)
         adj = {name: [] for name in self.schema_data.keys()}
@@ -1368,7 +1400,7 @@ class ERDWidget(QWidget):
             "-- ENTERPRISE DATA MODEL EXPORT",
             f"-- Generated on: {gen_time}",
             "-- Engine: PostgreSQL / Standard SQL Compatibility",
-            "-- Description: Forward-Engineered Schema DDL",
+            "-- Description: ",
             "-- ===========================================================================\n",
             "BEGIN TRANSACTION;\n"
         ]

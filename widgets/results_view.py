@@ -1548,15 +1548,36 @@ class ResultsManager(QObject):
         results_info_layout.addWidget(rows_setting_btn)
 
         # ===== PAGINATION UI =====
-        arrow_font = QFont("Segoe UI", 15, QFont.Weight.Bold)
+        arrow_font = QFont("Segoe UI", 16, QFont.Weight.Bold) # Restored for visibility
+        
+        nav_btn_style = ("QPushButton { "
+                         "border: 1px solid #cccccc; "
+                         "border-radius: 4px; "
+                         "background-color: #ffffff; "
+                         "color: #333333; "
+                         "padding: 0px; " # Center icon/text
+                         "} "
+                         "QPushButton:hover { "
+                         "background-color: #f0f2f5; "
+                         "border-color: #adb5bd; "
+                         "} "
+                         "QPushButton:pressed { "
+                         "background-color: #e8eaed; "
+                         "} "
+                         "QPushButton:disabled { "
+                         "background-color: #f5f5f5; "
+                         "color: #aaaaaa; "
+                         "border-color: #e0e0e0; "
+                         "}")
 
         # Prev button
         prev_btn = QPushButton("◀")
-        prev_btn.setFixedSize(38, 28)
+        prev_btn.setFixedSize(32, 28) # Slightly wider for better touch/click
         prev_btn.setFont(arrow_font)
         prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         prev_btn.setEnabled(True) # Initially disabled
         prev_btn.setObjectName("prev_btn")
+        prev_btn.setStyleSheet(nav_btn_style)
 
         # Page label
         page_label = QLabel("Page 1")
@@ -1567,11 +1588,12 @@ class ResultsManager(QObject):
 
         # Next button
         next_btn = QPushButton("▶")
-        next_btn.setFixedSize(38, 28)
+        next_btn.setFixedSize(32, 28)
         next_btn.setFont(arrow_font)
         next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         next_btn.setEnabled(True) # Initially disabled until results load
         next_btn.setObjectName("next_btn")
+        next_btn.setStyleSheet(nav_btn_style)
 
         results_info_layout.addWidget(prev_btn)
         results_info_layout.addWidget(page_label)
