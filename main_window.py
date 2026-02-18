@@ -689,7 +689,7 @@ class MainWindow(QMainWindow):
         #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }}
         #resultsHeader QPushButton:checked, #editorHeader QPushButton:checked {{ background-color: {selection_color}; border-bottom: 1px solid {selection_color}; font-weight: bold; color: white; }}
         #resultsHeader, #editorHeader {{ background-color: {alternate_row_color}; padding-bottom: -1px; }}
-        #messageView, #history_details_view, QTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }}
+        #messageView, #history_details_view, QTextEdit, QPlainTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }}
         #tab_status_label {{ padding: 3px 5px; background-color: {alternate_row_color}; border-top: 1px solid {border_color}; }}
         QGroupBox {{ font-size: 9pt; font-weight: bold; color: {text_color_on_primary}; }}
         QTabWidget::pane {{ border-top: 1px solid {border_color}; }}
