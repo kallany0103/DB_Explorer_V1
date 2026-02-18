@@ -54,21 +54,17 @@ class ConnectionManager(QWidget):
         
         # --- Create Object Explorer Header (Toolbar Group) ---
         object_explorer_header = QWidget()
-        object_explorer_header.setFixedHeight(36)
+        # object_explorer_header.setFixedHeight(36) # Removed to match old behavior
         object_explorer_header.setObjectName("objectExplorerHeader")
         object_explorer_header.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         object_explorer_header.setStyleSheet("""
             #objectExplorerHeader { 
                 background-color: #A9A9A9; 
-                border: none; 
-            }
-            QLabel {
-                color: white;
-                font-weight: bold;
+                border-bottom: 1px solid #777777; 
             }
         """)
         object_explorer_header_layout = QHBoxLayout(object_explorer_header)
-        object_explorer_header_layout.setContentsMargins(8, 0, 8, 0)
+        object_explorer_header_layout.setContentsMargins(8, 4, 8, 4)
         object_explorer_header_layout.setSpacing(10)
 
         object_explorer_label = QLabel("Object Explorer")
@@ -86,7 +82,7 @@ class ConnectionManager(QWidget):
         self.explorer_search_box.setPlaceholderText("Filter...")
         self.explorer_search_box.setFixedHeight(24)
         self.explorer_search_box.setObjectName("explorer_search_box")
-        self.explorer_search_box.setFixedWidth(120)
+        self.explorer_search_box.setMinimumWidth(120)
         self.explorer_search_box.hide()  # Initially Hidden
 
         search_icon_path = "assets/search.svg"
@@ -111,18 +107,18 @@ class ConnectionManager(QWidget):
 
         self.explorer_search_btn = QToolButton()
         self.explorer_search_btn.setIcon(QIcon(search_icon_path if os.path.exists(search_icon_path) else ""))
-        self.explorer_search_btn.setFixedSize(26, 26)
-        self.explorer_search_btn.setIconSize(QSize(16, 16))
+        self.explorer_search_btn.setFixedSize(24, 24)
+        # self.explorer_search_btn.setIconSize(QSize(16, 16)) # Removed to match old behavior
         self.explorer_search_btn.setToolTip("Search Connections")
         self.explorer_search_btn.setStyleSheet("""
             QToolButton {
-                border: 1px solid #cccccc;
+                border: 1px solid #A9A9A9;
                 border-radius: 4px;
-                background-color: #ffffff;
+                background-color: #D3D3D3;
             }
             QToolButton:hover {
-                background-color: #f0f2f5;
-                border: 1px solid #adb5bd;
+                background-color: #A9A9A9;
+                border: 1px solid #777777;
             }
         """)
         self.explorer_search_btn.clicked.connect(self.toggle_explorer_search)
@@ -240,9 +236,11 @@ class ConnectionManager(QWidget):
             QMessageBox.warning(self, "Warning", "Please select a table or view to view properties.")
 
     def eventFilter(self, obj, event):
-        if obj.objectName() == "explorer_search_box" and event.type() == QEvent.Type.FocusOut:
-            obj.hide()
-            self.explorer_search_btn.show()
+        if obj == self.explorer_search_box and event.type() == QEvent.Type.FocusOut:
+            if not self.explorer_search_box.text().strip():
+                self.explorer_search_box.hide()
+                self.explorer_search_btn.show()
+                return True
         return super().eventFilter(obj, event)
 
     def refresh_object_explorer(self):
@@ -601,6 +599,33 @@ class ConnectionManager(QWidget):
             erd_action = QAction("Generate ERD", self)
             erd_action.triggered.connect(lambda: self.generate_erd(item))
             menu.addAction(erd_action)
+
+        elif depth >= 4: # Table/View level
+            item_data = item.data(Qt.ItemDataRole.UserRole)
+            # Only show menu if we have item_data (some nodes might be loading placeholders)
+            if item_data and isinstance(item_data, dict):
+                table_type = item_data.get('table_type', 'TABLE')
+                
+                # Script Actions
+                script_menu = menu.addMenu("Script Table as")
+                
+                select_action = QAction("SELECT", self)
+                select_action.triggered.connect(lambda: self.script_table_as_select(item_data, item.text()))
+                script_menu.addAction(select_action)
+                
+                # Additional script actions can be added here as needed
+                # create_action = QAction("CREATE", self)
+                # create_action.triggered.connect(lambda: self.script_table_as_create(item_data, item.text()))
+                # script_menu.addAction(create_action)
+                
+                menu.addSeparator()
+
+                # Delete/Drop Table
+                del_text = "Delete View" if "VIEW" in str(table_type).upper() else "Delete Table"
+                drop_action = QAction(del_text, self)
+                drop_action.triggered.connect(lambda: self.delete_table(item_data, item.text()))
+                menu.addAction(drop_action)
+
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     def show_connection_details(self, item):
@@ -1321,6 +1346,38 @@ class ConnectionManager(QWidget):
             sql = f'DELETE FROM "{table_name}"\nWHERE <condition>;'
         self._open_script_in_editor(item_data, sql)
 
+
+    def script_table_as_select(self, item_data, table_name):
+        schema_name = item_data.get('schema_name', 'public')
+        db_type = item_data.get('db_type')
+        if db_type == 'postgres':
+            sql = f'SELECT * FROM "{schema_name}"."{table_name}";'
+        else:
+            sql = f'SELECT * FROM "{table_name}";'
+        self._open_script_in_editor(item_data, sql)
+
+    def update_schema_context(self, schema_name, schema_type, table_count):
+        if not hasattr(self.main_window, 'schema_model') or not hasattr(self.main_window, 'schema_tree'):
+             return
+
+        self.main_window.schema_model.clear()
+        self.main_window.schema_model.setHorizontalHeaderLabels(["Database Schema"])
+
+        root = self.main_window.schema_model.invisibleRootItem()
+
+        name_item = QStandardItem(f"Name : {schema_name}")
+        type_item = QStandardItem(f"Type : {schema_type}")
+        table_item = QStandardItem(f"Tables : {table_count}")
+
+        name_item.setEditable(False)
+        type_item.setEditable(False)
+        table_item.setEditable(False)
+
+        root.appendRow(name_item)
+        root.appendRow(type_item)
+        root.appendRow(table_item)
+
+        self.main_window.schema_tree.expandAll()
 
     def delete_table(self, item_data, table_name):
         if not item_data: return
@@ -2623,3 +2680,20 @@ class ConnectionManager(QWidget):
             conn.close()
         except Exception as e:
             QMessageBox.critical(self, "SQL Error", str(e))
+
+    def handle_process_started(self, process_id, data):
+        self.status.showMessage(f"Export Started: {data.get('details', 'Processing...')}", 3000)
+        if hasattr(self.main_window, 'results_manager'):
+             self.main_window.results_manager.handle_process_started(process_id, data)
+
+    def handle_process_finished(self, process_id, message, time_taken, row_count):
+        self.status.showMessage(f"Export Finished: {message} ({time_taken:.2f}s)", 5000)
+        QMessageBox.information(self, "Export Complete", message)
+        if hasattr(self.main_window, 'results_manager'):
+             self.main_window.results_manager.handle_process_finished(process_id, message, time_taken, row_count)
+
+    def handle_process_error(self, process_id, error_message):
+        self.status.showMessage(f"Export Failed: {error_message}", 5000)
+        QMessageBox.critical(self, "Export Error", f"Export failed:\n{error_message}")
+        if hasattr(self.main_window, 'results_manager'):
+             self.main_window.results_manager.handle_process_error(process_id, error_message)
