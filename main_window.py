@@ -259,16 +259,28 @@ class MainWindow(QMainWindow):
         self.open_file_action.setIconVisibleInMenu(False)
         self.open_file_action.setShortcut("Ctrl+O")
         self.open_file_action.triggered.connect(self.open_sql_file)
+
+        self.save_action = QAction(QIcon("assets/bright_save_icon.svg"), "Save", self)
+        self.save_action.setShortcut("Ctrl+S")
+        self.save_action.triggered.connect(self.save_sql_file)
         
         self.save_as_action = QAction(QIcon("assets/bright_save_icon.svg"), "Save As...", self)
         self.save_as_action.setIconVisibleInMenu(False)
-        self.save_as_action.setShortcut("Ctrl+S")
+        self.save_as_action.setShortcut("Ctrl+Shift+S")
         self.save_as_action.triggered.connect(self.save_sql_file_as)
         
         self.exit_action = QAction(QIcon("assets/exit.svg"), "Exit", self)
         self.exit_action.setIconVisibleInMenu(False)
         self.exit_action.setShortcut("Ctrl+Q")
         self.exit_action.triggered.connect(self.close)
+
+        self.close_tab_action = QAction("Close", self)
+        self.close_tab_action.setShortcut("Ctrl+W")
+        self.close_tab_action.triggered.connect(self.close_current_tab)
+
+        self.close_all_tabs_action = QAction("Close All", self)
+        self.close_all_tabs_action.setShortcut("Ctrl+Shift+W")
+        self.close_all_tabs_action.triggered.connect(self.close_all_tabs)
         
         self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
         self.execute_action.setIconVisibleInMenu(False)
@@ -324,8 +336,10 @@ class MainWindow(QMainWindow):
         self.refresh_action = QAction("Refresh Explorer", self)
         self.refresh_action.triggered.connect(self.refresh_object_explorer)
         self.minimize_action = QAction("Minimize", self)
+        self.minimize_action.setShortcut("Ctrl+M")
         self.minimize_action.triggered.connect(self.showMinimized)
         self.zoom_action = QAction("Zoom", self)
+        self.zoom_action.setShortcut("Ctrl+F11")
         self.zoom_action.triggered.connect(self.toggle_maximize)
         self.sqlite_help_action = QAction("SQLite Website", self)
         self.sqlite_help_action.triggered.connect(
@@ -360,7 +374,6 @@ class MainWindow(QMainWindow):
 
         self.delete_object_action = QAction(QIcon("assets/trash.svg"), "Delete/Drop...", self)
         self.delete_object_action.setIconVisibleInMenu(False)
-        self.delete_object_action.triggered.connect(self._delete_object_from_menu)
         
         self.properties_object_action = QAction(QIcon("assets/settings.svg"), "Properties...", self)
         self.properties_object_action.setIconVisibleInMenu(False)
@@ -376,9 +389,12 @@ class MainWindow(QMainWindow):
         menubar.setNativeMenuBar(False)
         file_menu = menubar.addMenu("&File")
         file_menu.addAction(self.open_file_action)
+        file_menu.addAction(self.save_action)
         file_menu.addAction(self.save_as_action)
         file_menu.addSeparator()
-    
+        file_menu.addAction(self.close_tab_action)
+        file_menu.addAction(self.close_all_tabs_action)
+        file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
         
         object_menu = menubar.addMenu("&Object")
@@ -453,6 +469,10 @@ class MainWindow(QMainWindow):
                     self.status.showMessage(f"File opened: {file_name}", 3000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
+   
+    def save_sql_file(self):
+        self.save_sql_file_as()
+    
 
     def save_sql_file_as(self):
         editor = self._get_current_editor()
@@ -572,6 +592,43 @@ class MainWindow(QMainWindow):
 
     def cancel_current_query(self):
         self.worksheet_manager.cancel_current_query()
+
+    def close_current_tab(self):
+        index = self.tab_widget.currentIndex()
+        if index != -1:
+            if self.tab_widget.count() == 1:
+                # If only one tab, replace it with a fresh one
+                self.add_tab()
+                self.close_tab(0)
+            else:
+                self.close_tab(index)
+
+    def close_all_tabs(self):
+        # Add a fresh tab first
+        self.add_tab()
+        # Close all other tabs (which will now be count - 1 tabs)
+        while self.tab_widget.count() > 1:
+            # Always close the first tab until only the newly added one remains
+            self.close_tab(0)
+        self.status.showMessage("All tabs closed. New worksheet opened.", 3000)
+
+    def close_tab(self, index):
+        tab = self.tab_widget.widget(index)
+        if tab in self.running_queries:
+            self.running_queries[tab].cancel()
+            del self.running_queries[tab]
+            if not self.running_queries:
+                self.cancel_action.setEnabled(False)
+        if tab in self.tab_timers:
+            self.tab_timers[tab]["timer"].stop()
+            if "timeout_timer" in self.tab_timers[tab]:
+                self.tab_timers[tab]["timeout_timer"].stop()
+            del self.tab_timers[tab]
+        if self.tab_widget.count() > 1:
+            self.tab_widget.removeTab(index)
+            self.renumber_tabs()
+        else:
+            self.status.showMessage("Must keep at least one tab", 3000)
 
 
 
