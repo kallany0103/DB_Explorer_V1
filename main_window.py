@@ -253,14 +253,14 @@ class MainWindow(QMainWindow):
 
     def load_joined_connections(self, combo_box):
         return self.worksheet_manager.load_joined_connections(combo_box)
-
+#{moitre}
     def _create_actions(self):
         self.open_file_action = QAction(QIcon("assets/bright_folder_icon.svg"), "Open File", self)
         self.open_file_action.setIconVisibleInMenu(False)
         self.open_file_action.setShortcut("Ctrl+O")
         self.open_file_action.triggered.connect(self.open_sql_file)
 
-        self.save_action = QAction(QIcon("assets/bright_save_icon.svg"), "Save", self)
+        self.save_action = QAction("Save", self)
         self.save_action.setShortcut("Ctrl+S")
         self.save_action.triggered.connect(self.save_sql_file)
         
@@ -339,7 +339,6 @@ class MainWindow(QMainWindow):
         self.minimize_action.setShortcut("Ctrl+M")
         self.minimize_action.triggered.connect(self.showMinimized)
         self.zoom_action = QAction("Zoom", self)
-        self.zoom_action.setShortcut("Ctrl+F11")
         self.zoom_action.triggered.connect(self.toggle_maximize)
         self.sqlite_help_action = QAction("SQLite Website", self)
         self.sqlite_help_action.triggered.connect(
@@ -437,7 +436,7 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
         help_menu.addAction(self.about_action)
 
-
+#{moitre}
 
     def open_sql_file(self):
         editor = self._get_current_editor()
