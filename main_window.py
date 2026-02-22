@@ -37,7 +37,6 @@ from notification_manager import NotificationManager
 from table_properties import TablePropertiesDialog
 from code_editor import CodeEditor
 from widgets.explain_visualizer import ExplainVisualizer
-from widgets.erd_diagram import ERDWidget
 from widgets.connection_manager import ConnectionManager
 from widgets.worksheet import WorksheetManager
 from widgets.results_view import ResultsManager
@@ -51,7 +50,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.SESSION_FILE = "session_state.json"
-        
+
         self.setWindowTitle("Universal SQL Client")
         self.setGeometry(100, 100, 1200, 800)
 
@@ -179,73 +178,6 @@ class MainWindow(QMainWindow):
     def execute_query(self, *args, **kwargs):
         return self.worksheet_manager.execute_query(*args, **kwargs)
 
-    def generate_erd(self, item):
-        # item is a QStandardItem from ConnectionManager
-        item_data = item.data(Qt.ItemDataRole.UserRole)
-        display_name = item.text()
-        self.generate_erd_for_item(item_data, display_name)
-
-    def generate_erd_for_item(self, item_data, display_name):
-        try:
-            if not item_data or not isinstance(item_data, dict):
-                QMessageBox.warning(self, "Error", "Invalid item data for ERD generation.")
-                return
-
-            # Normalize db_type lookup
-            db_type_val = (item_data.get('db_type') or item_data.get('type') or item_data.get('code') or '').upper()
-            schema_name = item_data.get('schema_name')
-            table_name = item_data.get('table_name')
-            
-            # Connection data might be nested for schema/table nodes
-            conn_info = item_data.get('conn_data') or item_data
-            
-            full_schema = {}
-            if 'POSTGRES' in db_type_val:
-                # Optimized: If we know the schema name, only fetch that schema
-                full_schema = db.get_postgres_schema(conn_info, schema_name=schema_name)
-            elif 'SQLITE' in db_type_val:
-                # SQLite helper expects the db_path string or a dict containing it
-                full_schema = db.get_sqlite_schema(conn_info)
-            else:
-                QMessageBox.warning(self, "Not Supported", f"ERD generation is not supported for {db_type_val or 'unknown type'}")
-                return
-
-            if not full_schema:
-                QMessageBox.warning(self, "No Data", "Could not retrieve schema data for ERD.")
-                return
-
-            # Apply Filtering for Focused/Filtered View
-            filtered_schema = full_schema
-            if table_name:
-                # Focused ERD Logic: Target table + connected tables (neighbors)
-                # Note: target_full_name depends on how get_postgres_schema/get_sqlite_schema keys are built
-                # Postgres uses "schema.table", SQLite uses "table"
-                target_full_name = f"{schema_name}.{table_name}" if schema_name and 'POSTGRES' in db_type_val else table_name
-                
-                if target_full_name in full_schema:
-                    related_tables = {target_full_name}
-                    # 1. Add tables referenced BY the target table (outbound)
-                    for fk in full_schema[target_full_name].get('foreign_keys', []):
-                        related_tables.add(fk['table'])
-                    # 2. Add tables referencing the target table (inbound)
-                    for t_name, t_info in full_schema.items():
-                        for fk in t_info.get('foreign_keys', []):
-                            if fk['table'] == target_full_name:
-                                related_tables.add(t_name)
-                    
-                    filtered_schema = {name: info for name, info in full_schema.items() if name in related_tables}
-
-            if not filtered_schema:
-                QMessageBox.warning(self, "No Data", "No related tables found for ERD.")
-                return
-
-            erd_widget = ERDWidget(filtered_schema)
-            index = self.tab_widget.addTab(erd_widget, f"Worksheet {self.tab_widget.count() + 1}")
-            self.tab_widget.setCurrentIndex(index)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate ERD: {e}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate ERD: {e}")
 
     def refresh_all_comboboxes(self):
         self.worksheet_manager.refresh_all_comboboxes()
@@ -831,12 +763,12 @@ class MainWindow(QMainWindow):
                 self.add_tab()
                 current_tab_index = self.tab_widget.count() - 1
                 current_tab = self.tab_widget.widget(current_tab_index)
-                
+
                 # Restore SQL Content
                 editor = current_tab.findChild(CodeEditor, "query_editor")
                 if editor:
                     editor.setPlainText(tab_data.get("sql_content", ""))
-                
+
                 # Restore Connection
                 db_combo = current_tab.findChild(QComboBox, "db_combo_box")
                 if db_combo:
@@ -845,7 +777,7 @@ class MainWindow(QMainWindow):
                 # Restore Limits
                 current_tab.current_limit = tab_data.get("current_limit", 1000)
                 current_tab.current_offset = tab_data.get("current_offset", 0)
-                
+
                 # Restore Title (Initial add_tab sets default, we override if meaningful)
                 # self.tab_widget.setTabText(current_tab_index, tab_data.get("title", "Query"))
 
@@ -853,4 +785,183 @@ class MainWindow(QMainWindow):
             print(f"Error restoring session: {e}")
             self.add_tab() # Fallback
 # {siam}
-            
+
+    # =========================================================================
+    # --- SCHEMA / CONNECTION MANAGER DELEGATIONS ---
+    # =========================================================================
+
+    def load_postgres_schema(self, conn_data):
+        self.connection_manager.load_postgres_schema(conn_data)
+
+    def load_sqlite_schema(self, conn_data):
+        self.connection_manager.load_sqlite_schema(conn_data)
+
+    def load_csv_schema(self, conn_data):
+        self.connection_manager.load_csv_schema(conn_data)
+
+    def load_servicenow_schema(self, conn_data):
+        self.connection_manager.load_servicenow_schema(conn_data)
+
+    def load_tables_on_expand(self, index):
+        self.connection_manager.load_tables_on_expand(index)
+
+    def show_schema_context_menu(self, position):
+        self.connection_manager.show_schema_context_menu(position)
+
+    def show_table_properties(self, item_data, table_name):
+        self.connection_manager.show_table_properties(item_data, table_name)
+
+    def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
+        self.connection_manager.query_table_rows(item_data, table_name, limit=limit, execute_now=execute_now, order=order)
+
+    def count_table_rows(self, item_data, table_name):
+        self.connection_manager.count_table_rows(item_data, table_name)
+
+    def open_query_tool_for_table(self, item_data, display_name):
+        self.connection_manager.open_query_tool_for_table(item_data, display_name)
+
+    def script_table_as_create(self, item_data, table_name):
+        self.connection_manager.script_table_as_create(item_data, table_name)
+
+    def script_table_as_insert(self, item_data, table_name):
+        self.connection_manager.script_table_as_insert(item_data, table_name)
+
+    def script_table_as_update(self, item_data, table_name):
+        self.connection_manager.script_table_as_update(item_data, table_name)
+
+    def script_table_as_delete(self, item_data, table_name):
+        self.connection_manager.script_table_as_delete(item_data, table_name)
+
+    def script_table_as_select(self, item_data, table_name):
+        self.connection_manager.script_table_as_select(item_data, table_name)
+
+    def delete_table(self, item_data, table_name):
+        self.connection_manager.delete_table(item_data, table_name)
+
+    def delete_sequence(self, item_data, seq_name):
+        self.connection_manager.delete_sequence(item_data, seq_name)
+
+    def script_sequence_as_create(self, item_data, seq_name):
+        self.connection_manager.script_sequence_as_create(item_data, seq_name)
+
+    def script_function_as_create(self, item_data, func_name):
+        self.connection_manager.script_function_as_create(item_data, func_name)
+
+    def delete_function(self, item_data, func_name):
+        self.connection_manager.delete_function(item_data, func_name)
+
+    def open_create_function_template(self, item_data):
+        self.connection_manager.open_create_function_template(item_data)
+
+    def open_create_trigger_function_template(self, item_data):
+        self.connection_manager.open_create_trigger_function_template(item_data)
+
+    def script_language_as_create(self, item_data, lan_name):
+        self.connection_manager.script_language_as_create(item_data, lan_name)
+
+    def delete_language(self, item_data, lan_name):
+        self.connection_manager.delete_language(item_data, lan_name)
+
+    def drop_extension(self, item_data, ext_name, cascade=False):
+        self.connection_manager.drop_extension(item_data, ext_name, cascade=cascade)
+
+    def create_extension_dialog(self, item_data):
+        self.connection_manager.create_extension_dialog(item_data)
+
+    def create_fdw_template(self, item_data):
+        self.connection_manager.create_fdw_template(item_data)
+
+    def create_foreign_server_template(self, item_data):
+        self.connection_manager.create_foreign_server_template(item_data)
+
+    def create_user_mapping_template(self, item_data):
+        self.connection_manager.create_user_mapping_template(item_data)
+
+    def import_foreign_schema_dialog(self, item_data):
+        self.connection_manager.import_foreign_schema_dialog(item_data)
+
+    def drop_fdw(self, item_data):
+        self.connection_manager.drop_fdw(item_data)
+
+    def drop_foreign_server(self, item_data):
+        self.connection_manager.drop_foreign_server(item_data)
+
+    def drop_user_mapping(self, item_data):
+        self.connection_manager.drop_user_mapping(item_data)
+
+    def export_schema_table_rows(self, item_data, table_name):
+        self.connection_manager.export_schema_table_rows(item_data, table_name)
+
+    def open_create_table_template(self, item_data, table_name=None):
+        self.connection_manager.open_create_table_template(item_data, table_name=table_name)
+
+    def open_create_view_template(self, item_data):
+        self.connection_manager.open_create_view_template(item_data)
+
+    def show_error_popup(self, msg):
+        self.connection_manager.show_error_popup(msg)
+
+    def _execute_simple_sql(self, item_data, sql):
+        self.connection_manager._execute_simple_sql(item_data, sql)
+
+    def _open_script_in_editor(self, item_data, sql):
+        self.connection_manager._open_script_in_editor(item_data, sql)
+
+    # =========================================================================
+    # --- RESULTS MANAGER DELEGATIONS ---
+    # =========================================================================
+
+    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+        self.results_manager.handle_query_result(target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query)
+
+    def show_results_context_menu(self, position):
+        self.results_manager.show_results_context_menu(position)
+
+    def export_result_rows(self, table_view):
+        self.results_manager.export_result_rows(table_view)
+
+    def _initialize_processes_model(self, tab_content):
+        self.results_manager._initialize_processes_model(tab_content)
+
+    def switch_to_processes_view(self):
+        self.results_manager.switch_to_processes_view()
+
+    def get_current_tab_processes_model(self):
+        return self.results_manager.get_current_tab_processes_model()
+
+    def handle_process_started(self, process_id, data):
+        self.results_manager.handle_process_started(process_id, data)
+
+    def handle_process_finished(self, process_id, message, time_taken, row_count):
+        self.results_manager.handle_process_finished(process_id, message, time_taken, row_count)
+
+    def handle_process_error(self, process_id, error_message):
+        self.results_manager.handle_process_error(process_id, error_message)
+
+    def refresh_processes_view(self):
+        self.results_manager.refresh_processes_view()
+
+    def update_page_label(self, target_tab, row_count):
+        self.results_manager.update_page_label(target_tab, row_count)
+
+    def stop_spinner(self, target_tab, success=True, target_index=0):
+        self.results_manager.stop_spinner(target_tab, success=success, target_index=target_index)
+
+    # =========================================================================
+    # --- WORKSHEET MANAGER DELEGATIONS ---
+    # =========================================================================
+
+    def update_timer_label(self, label, tab):
+        self.worksheet_manager.update_timer_label(label, tab)
+
+    def handle_query_error(self, current_tab, conn_data, query, row_count, elapsed_time, error_message):
+        self.worksheet_manager.handle_query_error(current_tab, conn_data, query, row_count, elapsed_time, error_message)
+
+    def handle_query_timeout(self, tab, runnable):
+        self.worksheet_manager.handle_query_timeout(tab, runnable)
+
+    def show_info(self, text, parent=None):
+        self.worksheet_manager.show_info(text, parent=parent)
+
+    def save_query_to_history(self, conn_data, query, status, rows, duration):
+        self.worksheet_manager.save_query_to_history(conn_data, query, status, rows, duration)
