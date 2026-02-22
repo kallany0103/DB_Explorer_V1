@@ -27,6 +27,7 @@ from dialogs import (
 )
 from table_properties import TablePropertiesDialog
 from code_editor import CodeEditor
+from widgets.erd_diagram import ERDWidget
 
 from workers.workers import RunnableQuery, RunnableExportFromModel
 from workers.signals import ProcessSignals, QuerySignals
@@ -184,10 +185,71 @@ class ConnectionManager(QWidget):
         self.main_window.refresh_all_comboboxes()
 
     def generate_erd(self, item):
-        self.main_window.generate_erd(item)
+        # item is a QStandardItem from ConnectionManager
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        display_name = item.text()
+        self.generate_erd_for_item(item_data, display_name)
 
     def generate_erd_for_item(self, item_data, display_name):
-        self.main_window.generate_erd_for_item(item_data, display_name)
+        try:
+            if not item_data or not isinstance(item_data, dict):
+                QMessageBox.warning(self, "Error", "Invalid item data for ERD generation.")
+                return
+
+            # Normalize db_type lookup
+            db_type_val = (item_data.get('db_type') or item_data.get('type') or item_data.get('code') or '').upper()
+            schema_name = item_data.get('schema_name')
+            table_name = item_data.get('table_name')
+            
+            # Connection data might be nested for schema/table nodes
+            conn_info = item_data.get('conn_data') or item_data
+            
+            full_schema = {}
+            if 'POSTGRES' in db_type_val:
+                # Optimized: If we know the schema name, only fetch that schema
+                full_schema = db.get_postgres_schema(conn_info, schema_name=schema_name)
+            elif 'SQLITE' in db_type_val:
+                # SQLite helper expects the db_path string or a dict containing it
+                full_schema = db.get_sqlite_schema(conn_info)
+            else:
+                QMessageBox.warning(self, "Not Supported", f"ERD generation is not supported for {db_type_val or 'unknown type'}")
+                return
+
+            if not full_schema:
+                QMessageBox.warning(self, "No Data", "Could not retrieve schema data for ERD.")
+                return
+
+            # Apply Filtering for Focused/Filtered View
+            filtered_schema = full_schema
+            if table_name:
+                # Focused ERD Logic: Target table + connected tables (neighbors)
+                # Note: target_full_name depends on how get_postgres_schema/get_sqlite_schema keys are built
+                # Postgres uses "schema.table", SQLite uses "table"
+                target_full_name = f"{schema_name}.{table_name}" if schema_name and 'POSTGRES' in db_type_val else table_name
+                
+                if target_full_name in full_schema:
+                    related_tables = {target_full_name}
+                    # 1. Add tables referenced BY the target table (outbound)
+                    for fk in full_schema[target_full_name].get('foreign_keys', []):
+                        related_tables.add(fk['table'])
+                    # 2. Add tables referencing the target table (inbound)
+                    for t_name, t_info in full_schema.items():
+                        for fk in t_info.get('foreign_keys', []):
+                            if fk['table'] == target_full_name:
+                                related_tables.add(t_name)
+                    
+                    filtered_schema = {name: info for name, info in full_schema.items() if name in related_tables}
+
+            if not filtered_schema:
+                QMessageBox.warning(self, "No Data", "No related tables found for ERD.")
+                return
+
+            erd_widget = ERDWidget(filtered_schema)
+            # Add tab directly using the proxy to main_window
+            index = self.tab_widget.addTab(erd_widget, f"ERD: {display_name}")
+            self.tab_widget.setCurrentIndex(index)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to generate ERD: {e}")
 
     def show_error_popup(self, msg):
         QMessageBox.critical(self, "Error", msg)
@@ -335,8 +397,7 @@ class ConnectionManager(QWidget):
             item.setIcon(QIcon("assets/column_icon.png"))
             return
         
-        if level == "FDW_ROOT" or level == "FDW" or level == "SERVER" or level == "FOREIGN_TABLE":
-            # Using existing icons or falling back to folder/table
+        if level in ["FDW_ROOT", "FDW", "SERVER", "FOREIGN_TABLE", "EXTENSION_ROOT", "EXTENSION", "LANGUAGE_ROOT", "LANGUAGE", "SEQUENCE", "FUNCTION", "TRIGGER_FUNCTION"]:
             if level == "FDW_ROOT":
                 item.setIcon(QIcon("assets/server.svg"))
             elif level == "FDW":
@@ -344,7 +405,21 @@ class ConnectionManager(QWidget):
             elif level == "SERVER":
                 item.setIcon(QIcon("assets/database.svg"))
             elif level == "FOREIGN_TABLE":
-                item.setIcon(QIcon("assets/table.svg")) # Maybe find a better one later
+                item.setIcon(QIcon("assets/table.svg"))
+            elif level == "EXTENSION_ROOT":
+                item.setIcon(QIcon("assets/plug.svg"))
+            elif level == "EXTENSION":
+                item.setIcon(QIcon("assets/plug.svg"))
+            elif level == "LANGUAGE_ROOT":
+                item.setIcon(QIcon("assets/code.svg")) # Placeholder, find better
+            elif level == "LANGUAGE":
+                item.setIcon(QIcon("assets/code.svg"))
+            elif level == "SEQUENCE":
+                item.setIcon(QIcon("assets/list.svg"))
+            elif level == "FUNCTION":
+                item.setIcon(QIcon("assets/function.svg"))
+            elif level == "TRIGGER_FUNCTION":
+                item.setIcon(QIcon("assets/function.svg"))
             elif level == "USER":
                 item.setIcon(QIcon("assets/plus.svg"))
             return
@@ -1004,6 +1079,28 @@ class ConnectionManager(QWidget):
             fdw_type_item = QStandardItem("Group")
             fdw_type_item.setEditable(False)
             self.schema_model.appendRow([fdw_root, fdw_type_item])
+
+            # --- ADD EXTENSIONS NODE ---
+            ext_root = QStandardItem("Extensions")
+            ext_root.setEditable(False)
+            self._set_tree_item_icon(ext_root, level="EXTENSION_ROOT")
+            ext_root.setData({'db_type': 'postgres', 'type': 'extension_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+            ext_root.appendRow(QStandardItem("Loading..."))
+            
+            ext_type_item = QStandardItem("Group")
+            ext_type_item.setEditable(False)
+            self.schema_model.appendRow([ext_root, ext_type_item])
+
+            # --- ADD LANGUAGES NODE ---
+            lang_root = QStandardItem("Languages")
+            lang_root.setEditable(False)
+            self._set_tree_item_icon(lang_root, level="LANGUAGE_ROOT")
+            lang_root.setData({'db_type': 'postgres', 'type': 'language_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+            lang_root.appendRow(QStandardItem("Loading..."))
+            
+            lang_type_item = QStandardItem("Group")
+            lang_type_item.setEditable(False)
+            self.schema_model.appendRow([lang_root, lang_type_item])
             if hasattr(self, '_expanded_connection'):
                 try:
                     self.schema_tree.expanded.disconnect(
@@ -1063,6 +1160,8 @@ class ConnectionManager(QWidget):
         # Make sure the new tab becomes the active one
         self.tab_widget.setCurrentWidget(new_tab)
 
+
+
     def show_schema_context_menu(self, position):
         index = self.schema_tree.indexAt(position)
         if not index.isValid():
@@ -1079,6 +1178,13 @@ class ConnectionManager(QWidget):
         
         is_table_or_view = table_name is not None
         is_schema = schema_name is not None and not is_table_or_view
+        
+        table_type = item_data.get('table_type', '').upper()
+        is_sequence = table_type == 'SEQUENCE'
+        is_function = table_type == 'FUNCTION'
+        is_trigger_function = table_type == 'TRIGGER FUNCTION'
+        is_language = table_type == 'LANGUAGE'
+        is_extension = table_type == 'EXTENSION'
 
         menu = QMenu()
         
@@ -1170,7 +1276,78 @@ class ConnectionManager(QWidget):
             delete_table_action.triggered.connect(
                 lambda: self.delete_table(item_data, display_name))
             menu.addAction(delete_table_action)
+
+        elif is_sequence:
+            display_name = item.text()
             
+            query_tool_action = QAction("Query Tool", self)
+            query_tool_action.triggered.connect(
+                lambda: self.open_query_tool_for_table(item_data, display_name))
+            menu.addAction(query_tool_action)
+            
+            menu.addSeparator()
+            scripts_menu = menu.addMenu("Scripts")
+            create_script_action = QAction("CREATE Script", self)
+            create_script_action.triggered.connect(lambda: self.script_sequence_as_create(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
+            
+            menu.addSeparator()
+            delete_seq_action = QAction("Delete Sequence", self)
+            delete_seq_action.triggered.connect(
+                lambda: self.delete_sequence(item_data, display_name))
+            menu.addAction(delete_seq_action)
+
+        elif is_function or is_trigger_function:
+            display_name = item.text()
+            
+            query_tool_action = QAction("Query Tool", self)
+            query_tool_action.triggered.connect(
+                lambda: self.open_query_tool_for_table(item_data, display_name))
+            menu.addAction(query_tool_action)
+            
+            menu.addSeparator()
+            scripts_menu = menu.addMenu("Scripts")
+            create_script_action = QAction("CREATE Script", self)
+            create_script_action.triggered.connect(lambda: self.script_function_as_create(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
+            
+            menu.addSeparator()
+            delete_func_action = QAction(f"Drop {table_type.lower().capitalize()}", self)
+            delete_func_action.triggered.connect(
+                lambda: self.delete_function(item_data, display_name))
+            menu.addAction(delete_func_action)
+
+        elif is_language:
+            display_name = item.text()
+            
+            scripts_menu = menu.addMenu("Scripts")
+            create_script_action = QAction("CREATE Script", self)
+            create_script_action.triggered.connect(lambda: self.script_language_as_create(item_data, display_name))
+            scripts_menu.addAction(create_script_action)
+            
+            menu.addSeparator()
+            delete_lang_action = QAction("Drop Language", self)
+            delete_lang_action.triggered.connect(
+                lambda: self.delete_language(item_data, display_name))
+            menu.addAction(delete_lang_action)
+
+        elif is_extension:
+            display_name = item.text()
+            
+            menu.addSeparator()
+            drop_ext_action = QAction("Drop Extension", self)
+            drop_ext_action.triggered.connect(lambda: self.drop_extension(item_data, display_name))
+            menu.addAction(drop_ext_action)
+
+            drop_ext_cascade_action = QAction("Drop Extension (CASCADE)", self)
+            drop_ext_cascade_action.triggered.connect(lambda: self.drop_extension(item_data, display_name, cascade=True))
+            menu.addAction(drop_ext_cascade_action)
+            
+            menu.addSeparator()
+            refresh_action = QAction("Refresh", self)
+            refresh_action.triggered.connect(lambda: self.load_postgres_schema(item_data.get('conn_data')))
+            menu.addAction(refresh_action)
+
         elif is_schema:
             # --- Schema Actions ---
             if db_type == 'postgres':
@@ -1185,15 +1362,64 @@ class ConnectionManager(QWidget):
                 
                 menu.addSeparator()
 
+        elif item_data.get('type') == 'schema_group':
+            group_name = item_data.get('group_name')
+            if group_name == "Functions":
+                create_func_action = QAction("Create Function...", self)
+                create_func_action.triggered.connect(lambda: self.open_create_function_template(item_data))
+                menu.addAction(create_func_action)
+            elif group_name == "Trigger Functions":
+                create_trig_func_action = QAction("Create Trigger Function...", self)
+                create_trig_func_action.triggered.connect(lambda: self.open_create_trigger_function_template(item_data))
+                menu.addAction(create_trig_func_action)
+            
+            menu.addSeparator()
+            refresh_group_action = QAction("Refresh", self)
+            refresh_group_action.triggered.connect(lambda: self.load_tables_on_expand(index))
+            menu.addAction(refresh_group_action)
+
+        elif item_data.get('type') == 'language_root':
+            # --- Languages Root Actions ---
+            refresh_group_action = QAction("Refresh", self)
+            refresh_group_action.triggered.connect(lambda: self.load_tables_on_expand(index))
+            menu.addAction(refresh_group_action)
+
+        elif item_data.get('type') == 'extension_root':
+            # --- Extensions Root ---
+            create_ext_action = QAction("Create Extension...", self)
+            create_ext_action.triggered.connect(lambda: self.create_extension_dialog(item_data))
+            menu.addAction(create_ext_action)
+            
+            menu.addSeparator()
+            refresh_group_action = QAction("Refresh", self)
+            refresh_group_action.triggered.connect(lambda: self.load_tables_on_expand(index))
+            menu.addAction(refresh_group_action)
+
         elif item_data.get('type') == 'fdw_root':
             # --- Foreign Data Wrappers Root ---
+            if db_type == 'postgres':
+                create_pgfdw_action = QAction("Create postgres_fdw Extension", self)
+                create_pgfdw_action.triggered.connect(lambda: self._execute_simple_sql(item_data, "CREATE EXTENSION IF NOT EXISTS postgres_fdw;"))
+                menu.addAction(create_pgfdw_action)
+                menu.addSeparator()
+
             create_fdw_action = QAction("Create Foreign Data Wrapper...", self)
             create_fdw_action.triggered.connect(lambda: self.create_fdw_template(item_data))
             menu.addAction(create_fdw_action)
+            
+            menu.addSeparator()
+            refresh_group_action = QAction("Refresh", self)
+            refresh_group_action.triggered.connect(lambda: self.load_tables_on_expand(index))
+            menu.addAction(refresh_group_action)
 
         elif item_data.get('type') == 'fdw':
             # --- Individual FDW ---
-            create_srv_action = QAction("Create Foreign Server...", self)
+            fdw_name = item_data.get('fdw_name', '')
+            if fdw_name == 'postgres_fdw':
+                create_srv_action = QAction("Create Foreign Server (Postgres)...", self)
+            else:
+                create_srv_action = QAction("Create Foreign Server...", self)
+
             create_srv_action.triggered.connect(lambda: self.create_foreign_server_template(item_data))
             menu.addAction(create_srv_action)
             
@@ -1201,6 +1427,11 @@ class ConnectionManager(QWidget):
             drop_fdw_action = QAction("Drop Foreign Data Wrapper", self)
             drop_fdw_action.triggered.connect(lambda: self.drop_fdw(item_data))
             menu.addAction(drop_fdw_action)
+
+            menu.addSeparator()
+            refresh_action = QAction("Refresh", self)
+            refresh_action.triggered.connect(lambda: self.load_tables_on_expand(index))
+            menu.addAction(refresh_action)
 
         elif item_data.get('type') == 'foreign_server':
             # --- Foreign Server ---
@@ -1224,12 +1455,6 @@ class ConnectionManager(QWidget):
 
         menu.exec(self.schema_tree.viewport().mapToGlobal(position))
 
-    def show_table_properties(self, item_data, table_name):
-        if not item_data:
-            return
-        
-        dialog = TablePropertiesDialog(item_data, table_name, self)
-        dialog.show()
 
     def script_table_as_create(self, item_data, table_name):
         if not item_data: return
@@ -1379,445 +1604,10 @@ class ConnectionManager(QWidget):
 
         self.main_window.schema_tree.expandAll()
 
-    def delete_table(self, item_data, table_name):
-        if not item_data: return
-        
-        db_type = item_data.get('db_type')
-        conn_data = item_data.get('conn_data')
-        schema_name = item_data.get('schema_name')
-        table_type = item_data.get('table_type', 'TABLE').upper()
-        # Use table_name from item_data if it exists (e.g. for CSV with extension)
-        real_table_name = item_data.get('table_name', table_name)
-        
-        is_view = "VIEW" in table_type
-        object_type = "View" if is_view else "Table"
-        
-        reply = QMessageBox.question(
-            self, f'Confirm Delete {object_type}',
-            f"Are you sure you want to delete {object_type.lower()} '{table_name}'? This action cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.No:
-            return
-
-        try:
-            conn = None
-            sql = ""
-            if db_type == 'postgres':
-                conn = psycopg2.connect(
-                    host=conn_data.get("host"),
-                    port=conn_data.get("port"),
-                    database=conn_data.get("database"),
-                    user=conn_data.get("user"),
-                    password=conn_data.get("password")
-                )
-                full_name = f'"{schema_name}"."{real_table_name}"' if schema_name else f'"{real_table_name}"'
-                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
-                sql = f"{drop_cmd} {full_name};"
-            elif db_type == 'sqlite':
-                conn = db.create_sqlite_connection(conn_data.get('db_path'))
-                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
-                sql = f'{drop_cmd} "{real_table_name}";'
-            elif db_type == 'csv':
-                folder_path = conn_data.get("db_path")
-                file_path = os.path.join(folder_path, real_table_name)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    success_msg = f"CSV file '{table_name}' deleted successfully."
-                    self.status.showMessage(success_msg, 5000)
-                    QMessageBox.information(self, "Success", success_msg)
-                    
-                    # Also log to Messages tab if a query tab is open
-                    current_tab = self.tab_widget.currentWidget()
-                    if current_tab:
-                        message_view = current_tab.findChild(QTextEdit, "message_view")
-                        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                        if message_view and results_stack:
-                            results_stack.setCurrentIndex(1) # Switch to Messages
-                            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            message_view.append(f"[{timestamp}]  OS.REMOVE(\"{file_path}\")")
-                            message_view.append(f"  {success_msg}")
-                            
-                            header = current_tab.findChild(QWidget, "resultsHeader")
-                            if header:
-                                buttons = header.findChildren(QPushButton)
-                                if len(buttons) >= 2:
-                                    buttons[0].setChecked(False)
-                                    buttons[1].setChecked(True)
-
-                    self.load_csv_schema(conn_data)
-                    return
-                else:
-                    raise Exception(f"File not found: {file_path}")
-            
-            if conn and sql:
-                cursor = conn.cursor()
-                cursor.execute(sql)
-                conn.commit()
-                conn.close()
-                
-                success_msg = f"{object_type} '{table_name}' deleted successfully."
-                self.status.showMessage(success_msg, 5000)
-                QMessageBox.information(self, "Success", success_msg)
-                
-                # Also log to Messages tab if a query tab is open
-                current_tab = self.tab_widget.currentWidget()
-                if current_tab:
-                    message_view = current_tab.findChild(QTextEdit, "message_view")
-                    results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                    if message_view and results_stack:
-                        results_stack.setCurrentIndex(1) # Switch to Messages
-                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        message_view.append(f"[{timestamp}]  {sql}")
-                        message_view.append(f"  {success_msg}")
-                        
-                        # Set button state in header
-                        header = current_tab.findChild(QWidget, "resultsHeader")
-                        if header:
-                            buttons = header.findChildren(QPushButton)
-                            if len(buttons) >= 2:
-                                buttons[0].setChecked(False) # Results
-                                buttons[1].setChecked(True)  # Messages
-
-                # Refresh schema
-                if db_type == 'postgres':
-                    self.load_postgres_schema(conn_data)
-                elif db_type == 'sqlite':
-                    self.load_sqlite_schema(conn_data)
-                elif db_type == 'servicenow':
-                    self.load_servicenow_schema(conn_data)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to delete {object_type.lower()}:\n{e}")
 
     
-    def open_create_table_template(self, item_data, table_name=None):
-        if not item_data: return
-
-        db_type = item_data.get('db_type')
-        conn_data = item_data.get('conn_data')
-        
-        if not conn_data:
-            QMessageBox.critical(self, "Error", "Connection data is missing!")
-            return
-        
-        # --- Helper Function to Log Message to View ---
-        def log_success_to_view(table_name):
-            current_tab = self.tab_widget.currentWidget()
-           
-            if not current_tab:
-                self.add_tab()
-                current_tab = self.tab_widget.currentWidget()
-            
-            if current_tab:
-                message_view = current_tab.findChild(QTextEdit, "message_view")
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-            
-            if message_view and results_stack:
-                    results_stack.setCurrentIndex(1)
-                    
-                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    message_view.append(f"[{timestamp}]  CREATE TABLE \"{table_name}\"")
-                    message_view.append(f"  Table created successfully.")
-                    
-                    sb = message_view.verticalScrollBar()
-                    sb.setValue(sb.maximum())
-
-                    message_view.repaint() 
-                    QApplication.processEvents() 
-                
-                    header = current_tab.findChild(QWidget, "resultsHeader")
-                    if header:
-                       buttons = header.findChildren(QPushButton)
-                       if len(buttons) >= 2:
-                          buttons[0].setChecked(False)
-                          buttons[1].setChecked(True)
-                
-                    results_info_bar = current_tab.findChild(QWidget, "resultsInfoBar")
-                    if results_info_bar:
-                        results_info_bar.hide()
-               
-                        self.status_message_label.setText(f"Table '{table_name}' created successfully.")
-                    else:
-                       QMessageBox.information(self, "Success", f"Table '{table_name}' created successfully!")
-        
-
-        # --- POSTGRES LOGIC ---
-        if db_type == 'postgres':
-            valid_keys = ['host', 'port', 'database', 'user', 'password']
-            pg_conn_info = {k: v for k, v in conn_data.items() if k in valid_keys}
-            
-            if 'database' in pg_conn_info:
-                pg_conn_info['dbname'] = pg_conn_info.pop('database')
-
-            try:
-                conn = psycopg2.connect(**pg_conn_info)
-                cursor = conn.cursor()
-                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
-                schemas = [row[0] for row in cursor.fetchall()]
-                cursor.execute("SELECT current_user")
-                current_user = cursor.fetchone()[0]
-                conn.close()
-
-                # Pass db_type="postgres"
-                dialog = CreateTableDialog(self, schemas, current_user, db_type="postgres")
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    data = dialog.get_sql_data()
-                    
-                    cols_sql = []
-                    pk_cols = []
-                    for col in data['columns']:
-                        col_def = f'"{col["name"]}" {col["type"]}'
-                        cols_sql.append(col_def)
-                        if col['pk']:
-                            pk_cols.append(f'"{col["name"]}"')
-                    
-                    if pk_cols:
-                        cols_sql.append(f'PRIMARY KEY ({", ".join(pk_cols)})')
-                    
-                    sql = f'CREATE TABLE "{data["schema"]}"."{data["name"]}" (\n    {", ".join(cols_sql)}\n);'
-                    
-                    conn = psycopg2.connect(**pg_conn_info)
-                    cursor = conn.cursor()
-                    cursor.execute(sql)
-                    conn.commit()
-                    conn.close()
-                    
-                    log_success_to_view(data["name"])
-                    
-                    # --- NEW: Refresh Schema Tree explicitly for Postgres ---
-                    self.status.showMessage("Refreshing schema...", 2000)
-                    self.load_postgres_schema(conn_data)
-                    # --------------------------------------------------------
-
-            except Exception as e:
-                QMessageBox.critical(self, "Connection Error", f"Invalid Connection or SQL: {e}")
-        
-        # --- SQLITE LOGIC ---
-        elif db_type == 'sqlite':
-            try:
-                dialog = CreateTableDialog(self, schemas=None, current_user="", db_type="sqlite")
-                
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    data = dialog.get_sql_data()
-                    
-                    cols_sql = []
-                    for col in data['columns']:
-                        pk = "PRIMARY KEY" if col['pk'] else ""
-                        cols_sql.append(f'"{col["name"]}" {col["type"]} {pk}')
-                    
-                    sql = f'CREATE TABLE "{data["name"]}" (\n    {", ".join(cols_sql)}\n);'
-
-                    conn = db.create_sqlite_connection(conn_data.get('db_path'))
-                    if not conn:
-                         raise Exception("Could not open SQLite database file.")
-                         
-                    cursor = conn.cursor()
-                    cursor.execute(sql)
-                    conn.commit()
-                    conn.close()
-
-                    log_success_to_view(data["name"])
-
-                    # --- NEW: Refresh Schema Tree explicitly for SQLite ---
-                    self.status.showMessage("Refreshing schema...", 2000)
-                    self.load_sqlite_schema(conn_data)
-                    # ----------------------------------------------------
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to create SQLite table:\n{e}")
-
-        else:
-            QMessageBox.warning(self, "Not Supported", f"Interactive table creation is not supported for {db_type} yet.")
-
-    def open_create_view_template(self, item_data):
-        if not item_data: return
-
-        db_type = item_data.get('db_type')
-        conn_data = item_data.get('conn_data')
-        
-        if not conn_data:
-            QMessageBox.critical(self, "Error", "Connection data is missing!")
-            return
-
-        def log_success_to_view(view_name, sql):
-            current_tab = self.tab_widget.currentWidget()
-            if not current_tab:
-                self.add_tab()
-                current_tab = self.tab_widget.currentWidget()
-            
-            if current_tab:
-                message_view = current_tab.findChild(QTextEdit, "message_view")
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-            
-                if message_view and results_stack:
-                    results_stack.setCurrentIndex(1)
-                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    message_view.append(f"[{timestamp}]  {sql}")
-                    message_view.append(f"  View '{view_name}' created successfully.")
-                    
-                    sb = message_view.verticalScrollBar()
-                    sb.setValue(sb.maximum())
-                    
-                    header = current_tab.findChild(QWidget, "resultsHeader")
-                    if header:
-                       buttons = header.findChildren(QPushButton)
-                       if len(buttons) >= 2:
-                          buttons[0].setChecked(False)
-                          buttons[1].setChecked(True)
-                
-                self.status_message_label.setText(f"View '{view_name}' created successfully.")
-
-        # POSTGRES
-        if db_type == 'postgres':
-            valid_keys = ['host', 'port', 'database', 'user', 'password']
-            pg_conn_info = {k: v for k, v in conn_data.items() if k in valid_keys}
-            if 'database' in pg_conn_info:
-                pg_conn_info['dbname'] = pg_conn_info.pop('database')
-
-            try:
-                conn = psycopg2.connect(**pg_conn_info)
-                cursor = conn.cursor()
-                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
-                schemas = [row[0] for row in cursor.fetchall()]
-                conn.close()
-
-                dialog = CreateViewDialog(self, schemas, db_type="postgres")
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    data = dialog.get_data()
-                    sql = f'CREATE VIEW "{data["schema"]}"."{data["name"]}" AS\n{data["sql"]};'
-                    
-                    conn = psycopg2.connect(**pg_conn_info)
-                    cursor = conn.cursor()
-                    cursor.execute(sql)
-                    conn.commit()
-                    conn.close()
-                    
-                    log_success_to_view(data["name"], sql)
-                    self.load_postgres_schema(conn_data)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to create Postgres view:\n{e}")
-
-        # SQLITE
-        elif db_type == 'sqlite':
-            try:
-                dialog = CreateViewDialog(self, schemas=None, db_type="sqlite")
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    data = dialog.get_data()
-                    sql = f'CREATE VIEW "{data["name"]}" AS\n{data["sql"]};'
-
-                    conn = db.create_sqlite_connection(conn_data.get('db_path'))
-                    cursor = conn.cursor()
-                    cursor.execute(sql)
-                    conn.commit()
-                    conn.close()
-
-                    log_success_to_view(data["name"], sql)
-                    self.load_sqlite_schema(conn_data)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to create SQLite view:\n{e}")
-
-        else:
-            QMessageBox.warning(self, "Not Supported", f"Interactive view creation is not supported for {db_type} yet.")
-
-    def export_schema_table_rows(self, item_data, table_name):
-        if not item_data:
-            return
-
-        dialog = ExportDialog(
-            self, f"{table_name}_{datetime.datetime.now().strftime('%Y%m%d')}.csv")
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        
-        export_options = dialog.get_options()
-        if not export_options['filename']:
-            QMessageBox.warning(self, "No Filename",
-                                "Export cancelled. No filename specified.")
-            return
-
-        conn_data = item_data['conn_data']
-        
-         # 🔹 THIS LINE FIXES THE ERROR
-        conn_data['code'] = (conn_data.get('code') or item_data.get('db_type') or '').upper()
-
-        # Construct query
-        code = conn_data.get('code')
-        
-        if code == 'POSTGRES':
-            schema_name = item_data.get("schema_name")
-            query = f'SELECT * FROM "{schema_name}"."{table_name}"'
-            object_name = f"{schema_name}.{table_name}"
-        else: # SQLite
-            query = f'SELECT * FROM "{table_name}"'
-            object_name = table_name
-
-        
-        full_process_id = str(uuid.uuid4())
-        short_id = full_process_id[:8]
 
 
-        def on_data_fetched_for_export(
-            _conn_data, _query, results, columns, row_count, _elapsed_time, _is_select_query
-        ):
-           
-            self.status_message_label.setText("Data fetched. Starting export process...")
-            model = QStandardItemModel()
-            model.setColumnCount(len(columns))
-            model.setRowCount(len(results))
-            model.setHorizontalHeaderLabels(columns)
-
-            for row_idx, row in enumerate(results):
-                for col_idx, cell in enumerate(row):
-                    model.setItem(row_idx, col_idx, QStandardItem(str(cell)))
-
-            
-            if export_options["delimiter"] == ',':
-                export_options["delimiter"] = None
-
-            conn_name = conn_data.get("short_name", conn_data.get("name", "Unknown"))
-            conn_id = conn_data.get("id")
-
-            initial_data = {
-               "pid": short_id,
-               "type": "Export Data",
-               "status": "Running",
-               "server": conn_name,
-               "object": object_name, 
-               "time_taken": "...",
-               "start_time": datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
-               "details": f"Exporting {row_count} rows to {os.path.basename(export_options['filename'])}",
-               "_conn_id": conn_id
-            }
-
-            signals = ProcessSignals()
-            signals.started.connect(self.handle_process_started)
-            signals.finished.connect(self.handle_process_finished)
-            signals.error.connect(self.handle_process_error)
-            
-            
-            self.thread_pool.start(
-              RunnableExportFromModel(short_id, model, export_options, signals)
-            )
-            
-            signals.started.emit(short_id, initial_data)
-
-        
-        self.status_message_label.setText(f"Fetching data from {table_name} for export...")
-        
-        query_signals = QuerySignals()
-        query_runnable = RunnableQuery(conn_data, query, query_signals)
-        
-        
-        query_signals.finished.connect(on_data_fetched_for_export)
-        
-        query_signals.error.connect(
-             lambda conn, q, rc, et, err: self.show_error_popup(
-                 f"Failed to fetch data for export:\n{err}"
-             )
-        )
-        
-        self.thread_pool.start(query_runnable)
 
 
     def count_table_rows(self, item_data, table_name):
@@ -1996,6 +1786,29 @@ class ConnectionManager(QWidget):
                 item.removeRows(0, item.rowCount()) # "Loading..." 
                 try:
                     cursor = self.pg_conn.cursor()
+                    
+                    # 1. Add Folders for unique objects
+                    groups = [
+                        ("Functions", "Group", "Functions"),
+                        ("Trigger Functions", "Group", "Trigger Functions"),
+                        ("Sequences", "Group", "Sequences")
+                    ]
+                    for g_name, g_type, internal_group_name in groups:
+                        group_item = QStandardItem(g_name)
+                        group_item.setEditable(False)
+                        self._set_tree_item_icon(group_item, level="SCHEMA") # Folder icon
+                        
+                        group_data = item_data.copy()
+                        group_data['type'] = 'schema_group'
+                        group_data['group_name'] = internal_group_name
+                        group_item.setData(group_data, Qt.ItemDataRole.UserRole)
+                        group_item.appendRow(QStandardItem("Loading..."))
+                        
+                        type_item = QStandardItem(g_type)
+                        type_item.setEditable(False)
+                        item.appendRow([group_item, type_item])
+
+                    # 2. Add Tables and Views
                     cursor.execute("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = %s ORDER BY table_type, table_name;", (schema_name,))
                     tables = cursor.fetchall()
                     for (table_name, table_type) in tables:
@@ -2100,7 +1913,7 @@ class ConnectionManager(QWidget):
                     for (user_name,) in cursor.fetchall():
                         um_item = QStandardItem(user_name)
                         um_item.setEditable(False)
-                        self._set_tree_item_icon(um_item, level="USER") # Need to add USER icon maybe
+                        self._set_tree_item_icon(um_item, level="USER")
                         
                         um_data = item_data.copy()
                         um_data['type'] = 'user_mapping'
@@ -2112,6 +1925,126 @@ class ConnectionManager(QWidget):
                         item.appendRow([um_item, type_item])
                 except Exception as e:
                     self.status.showMessage(f"Error loading User Mappings: {e}", 5000)
+
+            elif item_data.get('type') == 'extension_root':
+                # --- CASE 2.4: Expanding Extensions Root ---
+                item.removeRows(0, item.rowCount())
+                try:
+                    cursor = self.pg_conn.cursor()
+                    cursor.execute("SELECT extname FROM pg_extension ORDER BY extname;")
+                    for (ext_name,) in cursor.fetchall():
+                        ext_item = QStandardItem(ext_name)
+                        ext_item.setEditable(False)
+                        self._set_tree_item_icon(ext_item, level="EXTENSION")
+                        
+                        ext_data = item_data.copy()
+                        ext_data['type'] = 'extension'
+                        ext_data['table_type'] = 'EXTENSION' # For context menu
+                        ext_data['ext_name'] = ext_name
+                        ext_item.setData(ext_data, Qt.ItemDataRole.UserRole)
+                        
+                        type_item = QStandardItem("Extension")
+                        type_item.setEditable(False)
+                        item.appendRow([ext_item, type_item])
+                except Exception as e:
+                    self.status.showMessage(f"Error loading Extensions: {e}", 5000)
+
+            elif item_data.get('type') == 'language_root':
+                # --- CASE 2.5: Expanding Languages Root ---
+                item.removeRows(0, item.rowCount())
+                try:
+                    cursor = self.pg_conn.cursor()
+                    cursor.execute("SELECT lanname FROM pg_language ORDER BY lanname;")
+                    for (lan_name,) in cursor.fetchall():
+                        lan_item = QStandardItem(lan_name)
+                        lan_item.setEditable(False)
+                        self._set_tree_item_icon(lan_item, level="LANGUAGE")
+                        
+                        lan_data = item_data.copy()
+                        lan_data['type'] = 'language'
+                        lan_data['table_type'] = 'LANGUAGE' # For context menu
+                        lan_data['lan_name'] = lan_name
+                        lan_item.setData(lan_data, Qt.ItemDataRole.UserRole)
+                        
+                        type_item = QStandardItem("Language")
+                        type_item.setEditable(False)
+                        item.appendRow([lan_item, type_item])
+                except Exception as e:
+                    self.status.showMessage(f"Error loading Languages: {e}", 5000)
+
+            elif item_data.get('type') == 'schema_group':
+                # --- CASE 2.6: Expanding a Schema Group (Functions, Sequences) ---
+                item.removeRows(0, item.rowCount())
+                group_name = item_data.get('group_name')
+                schema_name = item_data.get('schema_name')
+                try:
+                    cursor = self.pg_conn.cursor()
+                    if group_name == "Sequences":
+                        cursor.execute("SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relkind = 'S' ORDER BY relname;", (schema_name,))
+                        for (seq_name,) in cursor.fetchall():
+                            seq_item = QStandardItem(seq_name)
+                            seq_item.setEditable(False)
+                            self._set_tree_item_icon(seq_item, level="SEQUENCE")
+                            
+                            seq_data = item_data.copy()
+                            seq_data['table_name'] = seq_name
+                            seq_data['table_type'] = 'SEQUENCE'
+                            seq_item.setData(seq_data, Qt.ItemDataRole.UserRole)
+                            
+                            type_item = QStandardItem("Sequence")
+                            type_item.setEditable(False)
+                            item.appendRow([seq_item, type_item])
+                    
+                    elif group_name == "Functions":
+                        # List functions: skip trigger functions
+                        cursor.execute("""
+                            SELECT p.proname || '(' || pg_get_function_arguments(p.oid) || ')' 
+                            FROM pg_proc p 
+                            JOIN pg_namespace n ON n.oid = p.pronamespace 
+                            WHERE n.nspname = %s 
+                            AND p.prorettype != 'trigger'::regtype
+                            ORDER BY 1;
+                        """, (schema_name,))
+                        for (func_name,) in cursor.fetchall():
+                            func_item = QStandardItem(func_name)
+                            func_item.setEditable(False)
+                            self._set_tree_item_icon(func_item, level="FUNCTION")
+                            
+                            func_data = item_data.copy()
+                            func_data['table_name'] = func_name
+                            func_data['table_type'] = 'FUNCTION'
+                            func_item.setData(func_data, Qt.ItemDataRole.UserRole)
+                            
+                            type_item = QStandardItem("Function")
+                            type_item.setEditable(False)
+                            item.appendRow([func_item, type_item])
+
+                    elif group_name == "Trigger Functions":
+                        # List trigger functions specifically
+                        cursor.execute("""
+                            SELECT p.proname || '(' || pg_get_function_arguments(p.oid) || ')' 
+                            FROM pg_proc p 
+                            JOIN pg_namespace n ON n.oid = p.pronamespace 
+                            WHERE n.nspname = %s 
+                            AND p.prorettype = 'trigger'::regtype
+                            ORDER BY 1;
+                        """, (schema_name,))
+                        for (func_name,) in cursor.fetchall():
+                            func_item = QStandardItem(func_name)
+                            func_item.setEditable(False)
+                            self._set_tree_item_icon(func_item, level="TRIGGER_FUNCTION")
+                            
+                            func_data = item_data.copy()
+                            func_data['table_name'] = func_name
+                            func_data['table_type'] = 'TRIGGER FUNCTION'
+                            func_item.setData(func_data, Qt.ItemDataRole.UserRole)
+                            
+                            type_item = QStandardItem("Trigger Function")
+                            type_item.setEditable(False)
+                            item.appendRow([func_item, type_item])
+
+                except Exception as e:
+                    self.status.showMessage(f"Error loading {group_name}: {e}", 5000)
             # --------------------------------------------------------
         elif db_type == 'sqlite':
             # --- CASE 3: Expanding an SQLITE TABLE ---
@@ -2640,8 +2573,437 @@ class ConnectionManager(QWidget):
 
     def import_foreign_schema_dialog(self, item_data):
         schema_name = item_data.get('schema_name', 'public')
-        sql = f"IMPORT FOREIGN SCHEMA remote_schema\n    FROM SERVER foreign_server\n    INTO {schema_name};"
+        sql = f"IMPORT FOREIGN SCHEMA remote_schema\n    FROM SERVER foreign_server\n    INTO \"{schema_name}\";"
         self._open_script_in_editor(item_data, sql)
+
+    def show_table_properties(self, item_data, table_name):
+        if not item_data:
+            return
+        
+        dialog = TablePropertiesDialog(item_data, table_name, self)
+        dialog.show()
+
+    def delete_table(self, item_data, table_name):
+        if not item_data: return
+        
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_type = item_data.get('table_type', 'TABLE').upper()
+        # Use table_name from item_data if it exists (e.g. for CSV with extension)
+        real_table_name = item_data.get('table_name', table_name)
+        
+        is_view = "VIEW" in table_type
+        object_type = "View" if is_view else "Table"
+        
+        reply = QMessageBox.question(
+            self, f'Confirm Delete {object_type}',
+            f"Are you sure you want to delete {object_type.lower()} '{table_name}'? This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            conn = None
+            sql = ""
+            if db_type == 'postgres':
+                conn = db.create_postgres_connection(conn_data)
+                full_name = f'"{schema_name}"."{real_table_name}"' if schema_name else f'"{real_table_name}"'
+                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
+                sql = f"{drop_cmd} {full_name};"
+            elif db_type == 'sqlite':
+                conn = db.create_sqlite_connection(conn_data.get('db_path'))
+                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
+                sql = f'{drop_cmd} "{real_table_name}";'
+            elif db_type == 'csv':
+                folder_path = conn_data.get("db_path")
+                file_path = os.path.join(folder_path, real_table_name)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    success_msg = f"CSV file '{table_name}' deleted successfully."
+                    self.status.showMessage(success_msg, 5000)
+                    QMessageBox.information(self, "Success", success_msg)
+                    
+                    # Also log to Messages tab if a query tab is open
+                    current_tab = self.tab_widget.currentWidget()
+                    if current_tab:
+                        message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                        if not message_view:
+                             message_view = current_tab.findChild(QTextEdit, "message_view")
+                        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                        if message_view and results_stack:
+                            results_stack.setCurrentIndex(1) # Switch to Messages
+                            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            msg = f"[{timestamp}]  OS.REMOVE(\"{file_path}\")"
+                            message_view.appendPlainText(msg) if hasattr(message_view, 'appendPlainText') else message_view.append(msg)
+                            message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                            
+                            header = current_tab.findChild(QWidget, "resultsHeader")
+                            if header:
+                                buttons = header.findChildren(QPushButton)
+                                if len(buttons) >= 2:
+                                    buttons[0].setChecked(False)
+                                    buttons[1].setChecked(True)
+
+                    self.refresh_object_explorer()
+                    return
+                else:
+                    raise Exception(f"File not found: {file_path}")
+            
+            if conn and sql:
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+                
+                success_msg = f"{object_type} '{table_name}' deleted successfully."
+                self.status.showMessage(success_msg, 5000)
+                QMessageBox.information(self, "Success", success_msg)
+                
+                # Also log to Messages tab if a query tab is open
+                current_tab = self.tab_widget.currentWidget()
+                if current_tab:
+                    message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                    if not message_view:
+                         message_view = current_tab.findChild(QTextEdit, "message_view")
+                    results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                    if message_view and results_stack:
+                        results_stack.setCurrentIndex(1) # Switch to Messages
+                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
+                        message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                        
+                        # Set button state in header
+                        header = current_tab.findChild(QWidget, "resultsHeader")
+                        if header:
+                            buttons = header.findChildren(QPushButton)
+                            if len(buttons) >= 2:
+                                buttons[0].setChecked(False) # Results
+                                buttons[1].setChecked(True)  # Messages
+
+                self.refresh_object_explorer()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete {object_type.lower()}:\n{e}")
+
+    def open_create_table_template(self, item_data, table_name=None):
+        if not item_data: return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        
+        if not conn_data:
+            QMessageBox.critical(self, "Error", "Connection data is missing!")
+            return
+        
+        # --- Helper Function to Log Message to View ---
+        def log_success_to_view(table_name):
+            current_tab = self.tab_widget.currentWidget()
+           
+            if not current_tab:
+                self.add_tab()
+                current_tab = self.tab_widget.currentWidget()
+            
+            if current_tab:
+                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                if not message_view:
+                     message_view = current_tab.findChild(QTextEdit, "message_view")
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+            
+            if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    msg = f"[{timestamp}]  CREATE TABLE \"{table_name}\""
+                    message_view.appendPlainText(msg) if hasattr(message_view, 'appendPlainText') else message_view.append(msg)
+                    msg2 = f"  Table created successfully."
+                    message_view.appendPlainText(msg2) if hasattr(message_view, 'appendPlainText') else message_view.append(msg2)
+                    
+                    sb = message_view.verticalScrollBar()
+                    sb.setValue(sb.maximum())
+
+                    message_view.repaint() 
+                    QApplication.processEvents() 
+                
+                    header = current_tab.findChild(QWidget, "resultsHeader")
+                    if header:
+                       buttons = header.findChildren(QPushButton)
+                       if len(buttons) >= 2:
+                          buttons[0].setChecked(False)
+                          buttons[1].setChecked(True)
+                
+                    results_info_bar = current_tab.findChild(QWidget, "resultsInfoBar")
+                    if results_info_bar:
+                        results_info_bar.hide()
+               
+                        self.status_message_label.setText(f"Table '{table_name}' created successfully.")
+                    else:
+                       QMessageBox.information(self, "Success", f"Table '{table_name}' created successfully!")
+        
+
+        # --- POSTGRES LOGIC ---
+        if db_type == 'postgres':
+            try:
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
+                schemas = [row[0] for row in cursor.fetchall()]
+                cursor.execute("SELECT current_user")
+                current_user = cursor.fetchone()[0]
+                conn.close()
+
+                # Pass db_type="postgres"
+                dialog = CreateTableDialog(self, schemas, current_user, db_type="postgres")
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_sql_data()
+                    
+                    cols_sql = []
+                    pk_cols = []
+                    for col in data['columns']:
+                        col_def = f'"{col["name"]}" {col["type"]}'
+                        cols_sql.append(col_def)
+                        if col['pk']:
+                            pk_cols.append(f'"{col["name"]}"')
+                    
+                    if pk_cols:
+                        cols_sql.append(f'PRIMARY KEY ({", ".join(pk_cols)})')
+                    
+                    sql = f'CREATE TABLE "{data["schema"]}"."{data["name"]}" (\n    {", ".join(cols_sql)}\n);'
+                    
+                    conn = db.create_postgres_connection(conn_data)
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
+                    
+                    log_success_to_view(data["name"])
+                    
+                    self.status.showMessage("Refreshing schema...", 2000)
+                    self.refresh_object_explorer()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Connection Error", f"Invalid Connection or SQL: {e}")
+        
+        # --- SQLITE LOGIC ---
+        elif db_type == 'sqlite':
+            try:
+                dialog = CreateTableDialog(self, schemas=None, current_user="", db_type="sqlite")
+                
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_sql_data()
+                    
+                    cols_sql = []
+                    for col in data['columns']:
+                        pk = "PRIMARY KEY" if col['pk'] else ""
+                        cols_sql.append(f'"{col["name"]}" {col["type"]} {pk}')
+                    
+                    sql = f'CREATE TABLE "{data["name"]}" (\n    {", ".join(cols_sql)}\n);'
+
+                    conn = db.create_sqlite_connection(conn_data.get('db_path'))
+                    if not conn:
+                         raise Exception("Could not open SQLite database file.")
+                         
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
+
+                    log_success_to_view(data["name"])
+
+                    self.status.showMessage("Refreshing schema...", 2000)
+                    self.refresh_object_explorer()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create SQLite table:\n{e}")
+
+        else:
+            QMessageBox.warning(self, "Not Supported", f"Interactive table creation is not supported for {db_type} yet.")
+
+    def open_create_view_template(self, item_data):
+        if not item_data: return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        
+        if not conn_data:
+            QMessageBox.critical(self, "Error", "Connection data is missing!")
+            return
+
+        def log_success_to_view(view_name, sql):
+            current_tab = self.tab_widget.currentWidget()
+            if not current_tab:
+                self.add_tab()
+                current_tab = self.tab_widget.currentWidget()
+            
+            if current_tab:
+                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                if not message_view:
+                     message_view = current_tab.findChild(QTextEdit, "message_view")
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+            
+            if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
+                    message_view.appendPlainText(f"  View '{view_name}' created successfully.") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  View '{view_name}' created successfully.")
+                    
+                    sb = message_view.verticalScrollBar()
+                    sb.setValue(sb.maximum())
+
+                    header = current_tab.findChild(QWidget, "resultsHeader")
+                    if header:
+                       buttons = header.findChildren(QPushButton)
+                       if len(buttons) >= 2:
+                          buttons[0].setChecked(False)
+                          buttons[1].setChecked(True)
+                
+                    self.status_message_label.setText(f"View '{view_name}' created successfully.")
+
+        if db_type == 'postgres':
+             try:
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
+                schemas = [row[0] for row in cursor.fetchall()]
+                conn.close()
+
+                dialog = CreateViewDialog(self, schemas)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_data()
+                    sql = f"CREATE OR REPLACE VIEW \"{data['schema']}\".\"{data['name']}\" AS\n{data['definition']};"
+                    
+                    conn = db.create_postgres_connection(conn_data)
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
+                    
+                    log_success_to_view(data["name"], sql)
+                    self.refresh_object_explorer()
+
+             except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create Postgres view:\n{e}")
+
+        elif db_type == 'sqlite':
+            try:
+                dialog = CreateViewDialog(self, schemas=None)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_data()
+                    sql = f"CREATE VIEW \"{data['name']}\" AS\n{data['definition']};"
+                    
+                    conn = db.create_sqlite_connection(conn_data.get('db_path'))
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
+                    
+                    log_success_to_view(data["name"], sql)
+                    self.refresh_object_explorer()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create SQLite view:\n{e}")
+
+        else:
+            QMessageBox.warning(self, "Not Supported", f"Interactive view creation is not supported for {db_type} yet.")
+
+    def export_schema_table_rows(self, item_data, table_name):
+        if not item_data:
+            return
+
+        dialog = ExportDialog(self, f"{table_name}_export.csv")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        export_options = dialog.get_options()
+        if not export_options['filename']:
+            QMessageBox.warning(self, "No Filename",
+                                "Export cancelled. No filename specified.")
+            return
+
+        conn_data = item_data['conn_data']
+        
+         # 🔹 THIS LINE FIXES THE ERROR
+        conn_data['code'] = (conn_data.get('code') or item_data.get('db_type') or '').upper()
+
+        # Construct query
+        code = conn_data.get('code')
+        
+        if code == 'POSTGRES':
+            schema_name = item_data.get("schema_name", "public")
+            query = f'SELECT * FROM "{schema_name}"."{table_name}"'
+            object_name = f"{schema_name}.{table_name}"
+        else: # SQLite
+            query = f'SELECT * FROM "{table_name}"'
+            object_name = table_name
+
+        
+        full_process_id = str(uuid.uuid4())
+        short_id = full_process_id[:8]
+
+
+        def on_data_fetched_for_export(
+            _conn_data, _query, results, columns, row_count, _elapsed_time, _is_select_query
+        ):
+           
+            self.status_message_label.setText("Data fetched. Starting export process...")
+            model = QStandardItemModel()
+            model.setColumnCount(len(columns))
+            model.setRowCount(len(results))
+            model.setHorizontalHeaderLabels(columns)
+
+            for row_idx, row in enumerate(results):
+                for col_idx, cell in enumerate(row):
+                    model.setItem(row_idx, col_idx, QStandardItem(str(cell)))
+
+            
+            if export_options["delimiter"] == ',':
+                export_options["delimiter"] = None
+
+            conn_name = conn_data.get("short_name", conn_data.get("name", "Unknown"))
+            conn_id = conn_data.get("id")
+
+            initial_data = {
+               "pid": short_id,
+               "type": "Export Data",
+               "status": "Running",
+               "server": conn_name,
+               "object": object_name, 
+               "time_taken": "...",
+               "start_time": datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
+               "details": f"Exporting {row_count} rows to {os.path.basename(export_options['filename'])}",
+               "_conn_id": conn_id
+            }
+
+            signals = ProcessSignals()
+            signals.started.connect(self.handle_process_started)
+            signals.finished.connect(self.handle_process_finished)
+            signals.error.connect(self.handle_process_error)
+            
+            
+            self.thread_pool.start(
+              RunnableExportFromModel(short_id, model, export_options, signals)
+            )
+            
+            signals.started.emit(short_id, initial_data)
+
+        
+        self.status_message_label.setText(f"Fetching data from {table_name} for export...")
+        
+        query_signals = QuerySignals()
+        query_runnable = RunnableQuery(conn_data, query, query_signals)
+        
+        
+        query_signals.finished.connect(on_data_fetched_for_export)
+        
+        query_signals.error.connect(
+             lambda conn, q, rc, et, err: self.show_error_popup(
+                 f"Failed to fetch data for export:\n{err}"
+             )
+        )
+        
+        self.thread_pool.start(query_runnable)
+
 
     def drop_fdw(self, item_data):
         fdw_name = item_data.get('fdw_name')
@@ -2661,6 +3023,252 @@ class ConnectionManager(QWidget):
         if QMessageBox.question(self, "Drop User Mapping", f"Are you sure you want to drop User Mapping for '{user_name}' on server '{srv_name}'?", 
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
             self._execute_simple_sql(item_data, f"DROP USER MAPPING FOR \"{user_name}\" SERVER {srv_name};")
+
+    def delete_sequence(self, item_data, seq_name):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        
+        reply = QMessageBox.question(
+            self, 'Confirm Delete Sequence',
+            f"Are you sure you want to delete sequence '{seq_name}'? This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            conn = psycopg2.connect(
+                host=conn_data.get("host"),
+                port=conn_data.get("port"),
+                database=conn_data.get("database"),
+                user=conn_data.get("user"),
+                password=conn_data.get("password")
+            )
+            full_name = f'"{schema_name}"."{seq_name}"' if schema_name else f'"{seq_name}"'
+            sql = f"DROP SEQUENCE {full_name};"
+            
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            success_msg = f"Sequence '{seq_name}' deleted successfully."
+            self.status.showMessage(success_msg, 5000)
+            
+            # Log to Messages tab
+            current_tab = self.tab_widget.currentWidget()
+            if current_tab:
+                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                if not message_view:
+                     message_view = current_tab.findChild(QTextEdit, "message_view")
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
+                    message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+            
+            self.load_postgres_schema(conn_data)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete sequence:\n{e}")
+
+    def script_sequence_as_create(self, item_data, seq_name):
+        conn_data = item_data.get('conn_data')
+        try:
+            conn = psycopg2.connect(
+                host=conn_data.get("host"),
+                port=conn_data.get("port"),
+                database=conn_data.get("database"),
+                user=conn_data.get("user"),
+                password=conn_data.get("password")
+            )
+            cursor = conn.cursor()
+            schema_name = item_data.get('schema_name', 'public')
+            cursor.execute(f"SELECT 'CREATE SEQUENCE ' || quote_ident(n.nspname) || '.' || quote_ident(c.relname) || ';' FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = %s AND n.nspname = %s;", (seq_name, schema_name))
+            res = cursor.fetchone()
+            if res:
+                self._open_script_in_editor(item_data, res[0])
+            conn.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to script sequence:\n{e}")
+
+    def script_function_as_create(self, item_data, func_name):
+        conn_data = item_data.get('conn_data')
+        try:
+            conn = psycopg2.connect(
+                host=conn_data.get("host"),
+                port=conn_data.get("port"),
+                database=conn_data.get("database"),
+                user=conn_data.get("user"),
+                password=conn_data.get("password")
+            )
+            cursor = conn.cursor()
+            schema = item_data.get('schema_name')
+            # Use pg_get_functiondef to get the full source
+            query = """
+                SELECT pg_get_functiondef(p.oid)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = %s 
+                AND p.proname || '(' || pg_get_function_arguments(p.oid) || ')' = %s;
+            """
+            cursor.execute(query, (schema, func_name))
+            res = cursor.fetchone()
+            if res:
+                sql = res[0]
+                if not sql.strip().upper().startswith("CREATE OR REPLACE"):
+                     sql = sql.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+                self._open_script_in_editor(item_data, sql + ";")
+            else:
+                QMessageBox.warning(self, "Warning", "Could not find function definition.")
+            conn.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to script function:\n{e}")
+
+    def delete_function(self, item_data, func_name):
+        schema = item_data.get('schema_name')
+        msg = f"Are you sure you want to drop function {schema}.{func_name}?"
+        if QMessageBox.question(self, "Drop Function", msg, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            sql = f"DROP FUNCTION {schema}.{func_name} CASCADE;"
+            self._execute_simple_sql(item_data, sql)
+
+    def open_create_function_template(self, item_data):
+        schema = item_data.get('schema_name', 'public')
+        sql = f"""-- Create Function Template
+CREATE OR REPLACE FUNCTION {schema}.new_function(param1 integer, param2 text)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Your logic here
+END;
+$$;"""
+        self._open_script_in_editor(item_data, sql)
+
+    def open_create_trigger_function_template(self, item_data):
+        schema = item_data.get('schema_name', 'public')
+        sql = f"""-- Create Trigger Function Template
+CREATE OR REPLACE FUNCTION {schema}.new_trigger_function()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Your trigger logic here (e.g., NEW.field := value;)
+    RETURN NEW;
+END;
+$$;"""
+        self._open_script_in_editor(item_data, sql)
+
+    def script_language_as_create(self, item_data, lan_name):
+        sql = f"""-- Create Language Script
+-- Note: Most standard languages (plpgsql) are already installed.
+CREATE LANGUAGE {lan_name};"""
+        self._open_script_in_editor(item_data, sql)
+
+    def delete_language(self, item_data, lan_name):
+        msg = f"Are you sure you want to drop language {lan_name}?"
+        if QMessageBox.question(self, "Drop Language", msg, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            sql = f"DROP LANGUAGE {lan_name} CASCADE;"
+            self._execute_simple_sql(item_data, sql)
+
+    def drop_extension(self, item_data, ext_name, cascade=False):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        
+        msg = f"Are you sure you want to drop extension '{ext_name}'?"
+        if cascade:
+            msg += "\nThis will also drop all objects that depend on it."
+            
+        reply = QMessageBox.question(
+            self, 'Confirm Drop Extension', msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            conn = psycopg2.connect(
+                host=conn_data.get("host"),
+                port=conn_data.get("port"),
+                database=conn_data.get("database"),
+                user=conn_data.get("user"),
+                password=conn_data.get("password")
+            )
+            cursor = conn.cursor()
+            sql = f'DROP EXTENSION "{ext_name}"'
+            if cascade:
+                sql += " CASCADE"
+            sql += ";"
+            
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            success_msg = f"Extension '{ext_name}' dropped successfully."
+            self.status.showMessage(success_msg, 5000)
+            
+            # Log to Messages tab
+            current_tab = self.tab_widget.currentWidget()
+            if current_tab:
+                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                if not message_view:
+                     message_view = current_tab.findChild(QTextEdit, "message_view")
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
+                    message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+            
+            self.load_postgres_schema(conn_data)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to drop extension:\n{e}")
+
+    def create_extension_dialog(self, item_data):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        
+        ext_name, ok = QInputDialog.getText(self, "Create Extension", "Extension name:")
+        if ok and ext_name:
+            try:
+                conn = psycopg2.connect(
+                    host=conn_data.get("host"),
+                    port=conn_data.get("port"),
+                    database=conn_data.get("database"),
+                    user=conn_data.get("user"),
+                    password=conn_data.get("password")
+                )
+                cursor = conn.cursor()
+                sql = f'CREATE EXTENSION "{ext_name}";'
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+                
+                success_msg = f"Extension '{ext_name}' created successfully."
+                self.status.showMessage(success_msg, 5000)
+                
+                # Log to Messages tab
+                current_tab = self.tab_widget.currentWidget()
+                if current_tab:
+                    message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                    if not message_view:
+                         message_view = current_tab.findChild(QTextEdit, "message_view")
+                    results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+                    if message_view and results_stack:
+                        results_stack.setCurrentIndex(1)
+                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
+                        message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+
+                self.load_postgres_schema(conn_data)
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to create extension:\n{e}")
 
     def _execute_simple_sql(self, item_data, sql):
         conn_data = item_data.get('conn_data')
