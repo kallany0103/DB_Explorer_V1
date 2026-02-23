@@ -2,13 +2,13 @@ import math
 import json
 from PyQt6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsRectItem,
-    QGraphicsPathItem, QGraphicsTextItem, QWidget, QVBoxLayout, QHBoxLayout,
-    QToolBar, QStyle, QMenu, QFileDialog, QFrame, QMessageBox, QDialog,
+    QGraphicsPathItem, QWidget, QVBoxLayout, QHBoxLayout,
+    QToolBar, QStyle, QFileDialog, QFrame, QMessageBox, QDialog,
     QTextEdit, QDialogButtonBox, QPushButton, QToolButton, QLineEdit
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QAction,
-    QIcon, QTransform, QPixmap, QFontMetrics, QPolygonF
+    QIcon, QTransform, QPixmap, QFontMetrics
 )
 from PyQt6.QtCore import (
     Qt, QRectF, QPointF, pyqtSignal, QSize, QLineF, QEvent, QTimer
@@ -20,7 +20,6 @@ class ERDTableItem(QGraphicsRectItem):
         self.table_name = table_name
         self.schema_name = schema_name
         self.columns = columns
-        self.width = 180
         self.header_height = 40 if schema_name else 30
         self.row_height = 20
         self.show_columns = True
@@ -931,173 +930,6 @@ class ERDView(QGraphicsView):
         else:
             super().wheelEvent(event)
 
-class ERDMiniMap(QGraphicsView):
-    minimized_changed = pyqtSignal(bool)
-
-    def __init__(self, scene, main_view, parent=None):
-        super().__init__(scene, parent)
-        self.main_view = main_view
-        self.is_minimized = False
-        self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.setInteractive(False)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setFrameShape(QFrame.Shape.Box)
-        
-        # Use NoViewportUpdate to prevent QPainter engine failures from frequent repaints.
-        # We manually trigger viewport updates in drawForeground when needed.
-        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.NoViewportUpdate)
-        
-        # Cache the rendered scene to avoid constant QPainter repaints
-        self._cache_pixmap = None
-        self._cache_valid = False
-        self._last_items_rect = QRectF()
-        
-        # Style the minimap
-        self.setBackgroundBrush(QBrush(QColor(255, 255, 255, 220)))
-        
-        # Style the border only via stylesheet
-        self.setStyleSheet("""
-            QGraphicsView {
-                border: 2px solid #1A73E8;
-                background-color: #FFFFFF;
-            }
-        """)
-        
-        # Toggle Button
-        self.btn_toggle = QPushButton(self)
-        self.btn_toggle.setFixedSize(24, 24)
-        self.btn_toggle.setText("−") # Unicode minus sign
-        self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_toggle.setStyleSheet("""
-            QPushButton {
-                background-color: #1A73E8;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1557B0;
-            }
-        """)
-        self.btn_toggle.clicked.connect(self.toggle_minimized)
-        self.btn_toggle.raise_()
-        # The button will be positioned by resizeEvent when setFixedSize is called in initUI
-
-        # Handle viewport changes from main view
-        self.main_view.viewport_changed.connect(self.update_view_rect)
-        self.view_rect_item = None
-        
-    def toggle_minimized(self):
-        self.is_minimized = not self.is_minimized
-        if self.is_minimized:
-            self.setFixedSize(34, 34)
-            self.btn_toggle.setText("+")
-            # Stop the viewport from updating visually
-            self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.NoViewportUpdate)
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            self.setStyleSheet("ERDMiniMap { background: transparent; border: none; }")
-        else:
-            self.setFixedSize(220, 160)
-            self.btn_toggle.setText("−")
-            self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.NoViewportUpdate)
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-            self.setStyleSheet("""
-                ERDMiniMap {
-                    border: 2px solid #1A73E8;
-                    background-color: #FFFFFF;
-                }
-            """)
-        
-        self.reposition_button()
-        self.btn_toggle.raise_()
-        
-        # Emit signal so parent moves us
-        self.minimized_changed.emit(self.is_minimized)
-        
-        # USE A TIMER: Give the OS/Qt event loop 50ms to finish moving/resizing the widget
-        # before we force a refresh of the parent area. This prevents 'ghosting'.
-        QTimer.singleShot(50, self.force_refresh)
-
-    def force_refresh(self):
-        self.update()
-        if self.parentWidget():
-            self.parentWidget().update()
-        if self.main_view and self.main_view.viewport():
-            self.main_view.viewport().update()
-
-    def reposition_button(self):
-        # Always keep the button in the bottom-right corner of the minimap
-        # so it stays near the corner of the screen during toggle
-        margin = 5
-        btn_x = self.width() - self.btn_toggle.width() - margin
-        btn_y = self.height() - self.btn_toggle.height() - margin
-        # Ensure coordinates are at least margin
-        self.btn_toggle.move(max(margin, btn_x), max(margin, btn_y))
-
-    def update_view_rect(self):
-        if self.is_minimized or not self.isVisible() or not self.scene() or self.width() <= 20: 
-            return
-        items_rect = self.scene().itemsBoundingRect()
-        if items_rect.isNull():
-            return
-            
-        # Only refitView if items rect changed significantly
-        # This avoids constant fitInView calls that cause QPainter churn
-        if self._last_items_rect != items_rect:
-            self._last_items_rect = items_rect
-            self._cache_valid = False
-            self.fitInView(items_rect, Qt.AspectRatioMode.KeepAspectRatio)
-        
-        # Request a repaint of the viewport widget (not the scene)
-        if self.viewport() and self.isVisible():
-            self.viewport().update()
-
-    def drawBackground(self, painter, rect):
-        if self.is_minimized:
-            return
-        if not painter.isActive():
-            return
-        painter.fillRect(rect, QColor("#F8F9FA"))
-
-    def drawForeground(self, painter, rect):
-        if self.is_minimized or not self.main_view or not self.main_view.isVisible(): 
-            return
-        
-        # Ensure painter is active before drawing
-        if not painter.isActive():
-            return
-        
-        try:
-            # Draw the visible area of the main view
-            painter.setPen(QPen(QColor(26, 115, 232, 180), 2))
-            painter.setBrush(QColor(26, 115, 232, 30))
-            
-            # SAFEGUARD: check if main_view viewport is valid
-            if not self.main_view.viewport() or not self.main_view.viewport().isVisible():
-                return
-                
-            # Get visible area in scene coordinates
-            visible_rect = self.main_view.mapToScene(self.main_view.viewport().rect()).boundingRect()
-            painter.drawRect(visible_rect)
-        except Exception:
-            pass  # Gracefully ignore any paint errors
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.reposition_button()
-
-    def mousePressEvent(self, event):
-        # Let child widgets (like the toggle button) handle events first
-        super().mousePressEvent(event)
-        if event.isAccepted():
-            return
-
-        if self.is_minimized: return
-        # Click to jump main view
-        scene_pos = self.mapToScene(event.pos())
-        self.main_view.centerOn(scene_pos)
 
 class SQLPreviewDialog(QDialog):
     def __init__(self, sql_text, parent=None):
@@ -1311,44 +1143,17 @@ class ERDWidget(QWidget):
         self.view_layout.setContentsMargins(0, 0, 0, 0)
         self.view_layout.addWidget(self.view)
         
-        # MiniMap overlay (Fixed size in corner)
-        # We set view_container as the parent so it floats over the view
-        self.minimap = ERDMiniMap(self.scene, self.view, self.view_container)
-        self.minimap.setFixedSize(220, 160)
-        self.minimap.minimized_changed.connect(lambda _: self.update_minimap_pos())
-        self.minimap.show()
-        self.minimap.raise_()
-        
         layout.addWidget(self.view_container)
         
         self.load_schema()
         self.auto_layout()
-        if hasattr(self, "minimap"):
-            self.minimap.update_view_rect()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.update_minimap_pos()
 
     def showEvent(self, event):
         super().showEvent(event)
-        self.update_minimap_pos()
 
-    def update_minimap_pos(self):
-        # Keep minimap in bottom right of the view_container
-        if hasattr(self, "minimap") and hasattr(self, "view_container"):
-            m_width = self.minimap.width()
-            m_height = self.minimap.height()
-            # Position relative to view_container
-            self.minimap.move(
-                self.view_container.width() - m_width - 20,
-                self.view_container.height() - m_height - 20
-            )
-            self.minimap.raise_()
-            
-            # Refresh the area under the minimap to prevent ghosting
-            if hasattr(self, "view") and self.view.viewport():
-                self.view.viewport().update()
 
     def toggle_search(self):
         if self.search_input.isVisible():
@@ -1567,10 +1372,6 @@ class ERDWidget(QWidget):
         
         self.scene.update_scene_rect()
 
-    def auto_layout(self):
-        items = [item for item in self.scene.items() if isinstance(item, ERDTableItem)]
-        if not items: return
-        
     def auto_layout(self):
         items = [item for item in self.scene.items() if isinstance(item, ERDTableItem)]
         if not items: return

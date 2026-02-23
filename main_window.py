@@ -12,7 +12,14 @@ import sqlite3 as sqlite # This can be removed if not used elsewhere directly
 from functools import partial
 import uuid
 import pandas as pd, time, os, re
-from table_properties import TablePropertiesDialog
+from dialogs import (
+    PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
+    ExportDialog, CSVConnectionDialog, ServiceNowConnectionDialog,
+    CreateTableDialog, CreateViewDialog, TablePropertiesDialog
+)
+
+from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
+import db
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTreeView, QTabWidget,
     QSplitter, QLineEdit, QTextEdit, QComboBox, QTableView,QTableWidget,QTableWidgetItem, QHeaderView, QVBoxLayout, QWidget, QStatusBar, QToolBar, QFileDialog,
@@ -25,22 +32,13 @@ from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtGui import QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush, QKeySequence, QShortcut
 
 from PyQt6.QtCore import Qt, QByteArray, QDir, QModelIndex,QSortFilterProxyModel, QSize, QObject, pyqtSignal, QRunnable, QThreadPool, QTimer, QUrl, QEvent
-from widgets.find_replace_dialog import FindReplaceDialog
-from dialogs import (
-    PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
-    ExportDialog, CSVConnectionDialog, ServiceNowConnectionDialog,
-    CreateTableDialog, CreateViewDialog
+from widgets import (
+    CodeEditor, NotificationManager, ConnectionManager, 
+    WorksheetManager, ResultsManager, ExplainVisualizer, FindReplaceDialog
 )
 
-from workers import RunnableExport, RunnableExportFromModel, RunnableQuery, ProcessSignals, QuerySignals
-from notification_manager import NotificationManager
-from table_properties import TablePropertiesDialog
-from code_editor import CodeEditor
-from widgets.explain_visualizer import ExplainVisualizer
-from widgets.connection_manager import ConnectionManager
-from widgets.worksheet import WorksheetManager
-from widgets.results_view import ResultsManager
-import db
+
+
 
 
 
@@ -779,7 +777,7 @@ class MainWindow(QMainWindow):
                 current_tab.current_offset = tab_data.get("current_offset", 0)
 
                 # Restore Title (Initial add_tab sets default, we override if meaningful)
-                # self.tab_widget.setTabText(current_tab_index, tab_data.get("title", "Query"))
+                # self.tab_widget.setTabText(current_tab_index, tab_data.get("title", "Worksheet"))
 
         except Exception as e:
             print(f"Error restoring session: {e}")

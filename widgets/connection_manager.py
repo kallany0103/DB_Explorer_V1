@@ -23,11 +23,10 @@ import db
 from dialogs import (
     PostgresConnectionDialog, SQLiteConnectionDialog, OracleConnectionDialog,
     CSVConnectionDialog, ServiceNowConnectionDialog,
-    CreateTableDialog, CreateViewDialog, ExportDialog
+    CreateTableDialog, CreateViewDialog, ExportDialog, TablePropertiesDialog
 )
-from table_properties import TablePropertiesDialog
-from code_editor import CodeEditor
-from widgets.erd_diagram import ERDWidget
+from .code_editor import CodeEditor
+from .erd_diagram import ERDWidget
 
 from workers.workers import RunnableQuery, RunnableExportFromModel
 from workers.signals import ProcessSignals, QuerySignals
@@ -246,8 +245,10 @@ class ConnectionManager(QWidget):
 
             erd_widget = ERDWidget(filtered_schema)
             # Add tab directly using the proxy to main_window
-            index = self.tab_widget.addTab(erd_widget, f"ERD: {display_name}")
+            index = self.tab_widget.addTab(erd_widget, f"Worksheet {self.tab_widget.count() + 1}")
             self.tab_widget.setCurrentIndex(index)
+            # Renumber tabs to maintain consistency
+            self.main_window.renumber_tabs()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate ERD: {e}")
 

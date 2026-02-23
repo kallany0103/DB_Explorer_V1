@@ -23,7 +23,7 @@ from PyQt6.QtGui import (
 )
 
 import db
-from code_editor import CodeEditor
+from .code_editor import CodeEditor
 from .explain_visualizer import ExplainVisualizer
 from .results_view import ResultsManager
 from workers import RunnableQuery, RunnableExportFromModel, QuerySignals
@@ -1066,9 +1066,9 @@ class WorksheetManager(QWidget):
     def renumber_tabs(self):
         for i in range(self.tab_widget.count()):
             current_text = self.tab_widget.tabText(i)
-            # Only renumber if it's a default "Query X" name
-            if current_text.startswith("Query ") or current_text == "New Tab":
-                self.tab_widget.setTabText(i, f"Query {i+1}")
+            # Only renumber if it's a default "Worksheet X" name
+            if current_text.startswith("Worksheet ") or current_text == "New Tab":
+                self.tab_widget.setTabText(i, f"Worksheet {i+1}")
 
     def eventFilter(self, obj, event):
         if obj.objectName() == "table_search_box" and event.type() == QEvent.Type.FocusOut:
