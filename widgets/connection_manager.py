@@ -1057,10 +1057,15 @@ class ConnectionManager(QWidget):
             cursor = self.pg_conn.cursor()
             cursor.execute(
                 "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') ORDER BY schema_name;")
+
+            # --- ADD SCHEMAS ROOT NODE ---
+            schemas_root = QStandardItem("Schemas")
+            schemas_root.setEditable(False)
+            self._set_tree_item_icon(schemas_root, level="GROUP")
+            schemas_root.setData({'db_type': 'postgres', 'type': 'schemas_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+
             for (schema_name,) in cursor.fetchall():
                 schema_item = QStandardItem(schema_name)
-                # schema_item = QStandardItem(
-                #     QIcon("assets/schema_icon.png"), schema_name)
                 schema_item.setEditable(False)
                 self._set_tree_item_icon(schema_item, level="SCHEMA")
                 schema_item.setData({'db_type': 'postgres', 'schema_name': schema_name,
@@ -1068,7 +1073,11 @@ class ConnectionManager(QWidget):
                 schema_item.appendRow(QStandardItem("Loading..."))
                 type_item = QStandardItem("Schema")
                 type_item.setEditable(False)
-                self.schema_model.appendRow([schema_item, type_item])
+                schemas_root.appendRow([schema_item, type_item])
+
+            schemas_type_item = QStandardItem("Group")
+            schemas_type_item.setEditable(False)
+            self.schema_model.appendRow([schemas_root, schemas_type_item])
 
             # --- ADD FDW NODE ---
             fdw_root = QStandardItem("Foreign Data Wrappers")
@@ -1396,7 +1405,14 @@ class ConnectionManager(QWidget):
             refresh_group_action.triggered.connect(lambda: self.load_tables_on_expand(index))
             menu.addAction(refresh_group_action)
 
+        elif item_data.get('type') == 'schemas_root':
+            # --- Schemas Root Actions ---
+            refresh_action = QAction("Refresh", self)
+            refresh_action.triggered.connect(lambda: self.load_postgres_schema(item_data.get('conn_data')))
+            menu.addAction(refresh_action)
+
         elif item_data.get('type') == 'fdw_root':
+
             # --- Foreign Data Wrappers Root ---
             if db_type == 'postgres':
                 create_pgfdw_action = QAction("Create postgres_fdw Extension", self)
@@ -1781,7 +1797,7 @@ class ConnectionManager(QWidget):
                 # --- CASE 1: Expanding a POSTGRES TABLE ---
                 # This item is a table, load its details
                 self.load_postgres_table_details(item, item_data)
-            elif schema_name:
+            elif schema_name and item_data.get('type') != 'schema_group':
                 # --- CASE 2: Expanding a POSTGRES SCHEMA ---
                 # This is the original logic for expanding a schema to show tables
                 item.removeRows(0, item.rowCount()) # "Loading..." 
