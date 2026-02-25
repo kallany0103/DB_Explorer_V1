@@ -28,9 +28,17 @@ def create_sqlite_connection(path):
         return None
 
 
-def create_postgres_connection(host, port, database, user, password):
+def create_postgres_connection(host, port=None, database=None, user=None, password=None):
     """Establishes a connection to a PostgreSQL database."""
     try:
+        if isinstance(host, dict):
+            conn_data = host
+            host = conn_data.get("host")
+            port = conn_data.get("port")
+            database = conn_data.get("database")
+            user = conn_data.get("user")
+            password = conn_data.get("password")
+
         conn = psycopg2.connect(
             host=host,
             port=port,

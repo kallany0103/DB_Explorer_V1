@@ -13,14 +13,15 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QTextEdit, QTreeView,
     QVBoxLayout, QHBoxLayout, QSplitter, QHeaderView, QAbstractItemView,
     QButtonGroup, QSizePolicy, QFormLayout, QSpinBox, QDialogButtonBox, 
-    QFrame, QGroupBox, QInputDialog, QPlainTextEdit
+    QFrame, QGroupBox, QInputDialog, QPlainTextEdit,
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem
 )
 from PyQt6.QtCore import (
     Qt, QObject, QTimer, QSize, QSortFilterProxyModel, pyqtSignal, QEvent
 )
 from PyQt6.QtGui import (
     QAction, QColor, QBrush, QStandardItemModel, QStandardItem, QMovie, QFont,
-    QIcon, QKeySequence, QShortcut
+    QIcon, QKeySequence, QShortcut, QPalette
 )
 
 import db
@@ -28,7 +29,161 @@ from .explain_visualizer import ExplainVisualizer
 from dialogs import ExportDialog
 from workers import RunnableExportFromModel, ProcessSignals
 
+
+class ProcessRowDelegate(QStyledItemDelegate):
+    """Draws status-based row background while preserving distinct cell/row/column selection behavior."""
+
+    def __init__(self, status_meta, default_bg="#ffffff", parent=None):
+        super().__init__(parent)
+        self.status_meta = status_meta or {}
+        self.default_bg = QColor(default_bg)
+
+    def _get_status_column(self, model):
+        if not model or not hasattr(model, "columnCount"):
+            return -1
+        for column in range(model.columnCount()):
+            header = str(model.headerData(column, Qt.Orientation.Horizontal) or "").upper()
+            if "STATUS" in header:
+                return column
+        return -1
+
+    def paint(self, painter, option, index):
+        source_model = index.model()
+        source_index = index
+        if hasattr(source_model, "mapToSource") and hasattr(source_model, "sourceModel"):
+            source_index = source_model.mapToSource(index)
+            source_model = source_model.sourceModel()
+
+        status_col = self._get_status_column(source_model)
+        status_text = ""
+        if status_col >= 0:
+            status_index = source_model.index(source_index.row(), status_col)
+            status_text = str(status_index.data() or "").strip().upper()
+
+        status_cfg = self.status_meta.get(status_text, None)
+        bg_color = QColor(status_cfg.get("color")) if status_cfg else None
+
+        is_item_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_row_selection = False
+        is_col_selection = False
+        if option.widget and option.widget.selectionModel():
+            sel_model = option.widget.selectionModel()
+            is_row_selection = sel_model.isRowSelected(index.row(), index.parent())
+            is_col_selection = sel_model.isColumnSelected(index.column(), index.parent())
+
+        painter.save()
+        if is_item_selected:
+            if bg_color and (is_row_selection or is_col_selection):
+                row_bg = QColor(bg_color)
+                row_bg.setAlpha(220)
+                painter.fillRect(option.rect, row_bg)
+                overlay = QColor("#3b82f6")
+                overlay.setAlpha(38)
+                painter.fillRect(option.rect, overlay)
+            else:
+                painter.fillRect(option.rect, QColor("#3b82f6"))
+        elif bg_color:
+            row_bg = QColor(bg_color)
+            row_bg.setAlpha(205)
+            painter.fillRect(option.rect, row_bg)
+
+        paint_option = QStyleOptionViewItem(option)
+        paint_option.state &= ~QStyle.StateFlag.State_Selected
+        paint_option.state &= ~QStyle.StateFlag.State_HasFocus
+
+        if index.column() == status_col:
+            paint_option.displayAlignment = Qt.AlignmentFlag.AlignCenter
+
+        use_light_text = False
+        if is_item_selected and not (bg_color and (is_row_selection or is_col_selection)):
+            use_light_text = True
+        elif bg_color:
+            use_light_text = status_text not in {"RUNNING", "WARNING"}
+
+        if use_light_text:
+            paint_option.palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+        else:
+            paint_option.palette.setColor(QPalette.ColorRole.Text, QColor("#1f2937"))
+
+        super().paint(painter, paint_option, index)
+        painter.restore()
+
+
+class FlatSelectionDelegate(QStyledItemDelegate):
+    """Paints result-table selection like the process tab (full-cell blue, no inner focus frame)."""
+
+    def __init__(self, selection_color="#5384ef", parent=None):
+        super().__init__(parent)
+        self.selection_color = QColor(selection_color)
+
+    def paint(self, painter, option, index):
+        is_item_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_item_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        is_editing_cell = False
+        is_row_selection = False
+        is_col_selection = False
+        if option.widget and option.widget.selectionModel():
+            sel_model = option.widget.selectionModel()
+            is_row_selection = sel_model.isRowSelected(index.row(), index.parent())
+            is_col_selection = sel_model.isColumnSelected(index.column(), index.parent())
+            if option.widget.state() == QAbstractItemView.State.EditingState:
+                current_index = option.widget.currentIndex()
+                is_editing_cell = (
+                    current_index.isValid()
+                    and current_index.row() == index.row()
+                    and current_index.column() == index.column()
+                )
+
+        painter.save()
+        if is_item_selected and not is_editing_cell:
+            fill = QColor(self.selection_color)
+            if is_row_selection or is_col_selection:
+                fill.setAlpha(235)
+            painter.fillRect(option.rect, fill)
+        elif is_item_hovered and not is_editing_cell:
+            hover_fill = QColor(self.selection_color)
+            hover_fill.setAlpha(235)
+            painter.fillRect(option.rect, hover_fill)
+        elif is_editing_cell:
+            border_color = QColor("#a9a9a9")
+            painter.setPen(border_color)
+            painter.drawRect(option.rect.adjusted(0, 0, -1, -1))
+
+        paint_option = QStyleOptionViewItem(option)
+        paint_option.state &= ~QStyle.StateFlag.State_Selected
+        paint_option.state &= ~QStyle.StateFlag.State_MouseOver
+        paint_option.state &= ~QStyle.StateFlag.State_HasFocus
+        if is_editing_cell:
+            paint_option.text = ""
+        if (is_item_selected or is_item_hovered) and not is_editing_cell:
+            paint_option.palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+        super().paint(painter, paint_option, index)
+        painter.restore()
+
+    def createEditor(self, parent, option, index):
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            editor.setFrame(False)
+            editor.setStyleSheet("QLineEdit { border: 1px solid #a9a9a9; outline: none; border-radius: 0px; background-color: #ffffff; padding: 0 2px; }")
+        return editor
+
+    def updateEditorGeometry(self, editor, option, index):
+        editor.setGeometry(option.rect)
+
 class ResultsManager(QObject):
+    PROCESS_STATUS_META = {
+        "RUNNING": {"label": "Running", "color": "#ffc107", "priority": 1},
+        "SUCCESSFULL": {"label": "Successfull", "color": "#28a745", "priority": 2},
+        "WARNING": {"label": "Warning", "color": "#fd7e14", "priority": 3},
+        "ERROR": {"label": "Error", "color": "#BD3020", "priority": 4},
+    }
+
+    DEFAULT_PROCESS_STATUS_META = {
+        "label": "Unknown",
+        "color": "#6c757d",
+        "priority": 99,
+    }
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -43,6 +198,98 @@ class ResultsManager(QObject):
         self.tab_timers = {}
         self.running_queries = {}
         self.QUERY_TIMEOUT = 300000  # Default 5 minutes
+
+    def _normalize_process_status(self, status_text):
+        return str(status_text or "").strip().upper()
+
+    def _get_process_status_meta(self, status_text):
+        status_key = self._normalize_process_status(status_text)
+        return self.PROCESS_STATUS_META.get(status_key, self.DEFAULT_PROCESS_STATUS_META)
+
+    def _set_process_filter(self, tab_content, filter_key):
+        tab_content.process_status_filter = filter_key
+        self.refresh_processes_view()
+
+    def _update_process_summary_ui(self, target_tab, status_counts, total_count, visible_count):
+        summary_label = target_tab.findChild(QLabel, "process_summary_label")
+        if summary_label:
+            summary_label.setText(f"Showing {visible_count} of {total_count} process(es)")
+
+        filter_buttons = getattr(target_tab, "process_filter_buttons", {})
+        if not filter_buttons:
+            return
+
+        all_count = total_count
+        running_count = status_counts.get("RUNNING", 0)
+        success_count = status_counts.get("SUCCESSFULL", 0)
+        warning_count = status_counts.get("WARNING", 0)
+        error_count = status_counts.get("ERROR", 0)
+
+        if "ALL" in filter_buttons:
+            filter_buttons["ALL"].setText(f"All ({all_count})")
+        if "RUNNING" in filter_buttons:
+            filter_buttons["RUNNING"].setText(f"Running ({running_count})")
+        if "SUCCESSFULL" in filter_buttons:
+            filter_buttons["SUCCESSFULL"].setText(f"Successfull ({success_count})")
+        if "WARNING" in filter_buttons:
+            filter_buttons["WARNING"].setText(f"Warning ({warning_count})")
+        if "ERROR" in filter_buttons:
+            filter_buttons["ERROR"].setText(f"Error ({error_count})")
+
+    def _handle_process_cell_click(self, tab_content, index):
+        if not index.isValid():
+            return
+
+        processes_view = tab_content.findChild(QTableView, "processes_view")
+        if not processes_view:
+            return
+
+        model = processes_view.model()
+        if not model:
+            return
+
+        selection_model = processes_view.selectionModel()
+        is_row_selection = selection_model.isRowSelected(index.row(), index.parent()) if selection_model else False
+        is_col_selection = selection_model.isColumnSelected(index.column(), index.parent()) if selection_model else False
+
+        if is_row_selection:
+            selection_mode = "Row"
+        elif is_col_selection:
+            selection_mode = "Column"
+        else:
+            selection_mode = "Cell"
+
+        column_name = str(model.headerData(index.column(), Qt.Orientation.Horizontal) or f"Col {index.column() + 1}")
+        cell_text = str(index.data() or "")
+        message = f"{selection_mode} selected: R{index.row() + 1}, C{index.column() + 1} ({column_name})"
+
+        selection_label = tab_content.findChild(QLabel, "process_selection_label")
+        if selection_label:
+            selection_label.setText(message)
+
+        preview_text = cell_text if len(cell_text) <= 80 else f"{cell_text[:77]}..."
+        self.status_message_label.setText(f"{message} | {preview_text}")
+
+    def _handle_process_column_header_click(self, tab_content, column):
+        processes_view = tab_content.findChild(QTableView, "processes_view")
+        if not processes_view:
+            return
+
+        processes_view.selectColumn(column)
+        header_text = str(processes_view.model().headerData(column, Qt.Orientation.Horizontal) or "")
+        selection_label = tab_content.findChild(QLabel, "process_selection_label")
+        if selection_label:
+            selection_label.setText(f"Column selected: C{column + 1} ({header_text})")
+
+    def _handle_process_row_header_click(self, tab_content, row):
+        processes_view = tab_content.findChild(QTableView, "processes_view")
+        if not processes_view:
+            return
+
+        processes_view.selectRow(row)
+        selection_label = tab_content.findChild(QLabel, "process_selection_label")
+        if selection_label:
+            selection_label.setText(f"Row selected: R{row + 1}")
 
     def copy_current_result_table(self):
         tab = self.tab_widget.currentWidget()
@@ -809,6 +1056,8 @@ class ResultsManager(QObject):
     def stop_spinner(self, target_tab, success=True, target_index=0):
         if not target_tab: return
         stacked_widget = target_tab.findChild(QStackedWidget, "results_stacked_widget")
+        results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
+        process_info_bar = target_tab.findChild(QWidget, "processInfoBar")
         if stacked_widget:
             spinner_label = stacked_widget.findChild(QLabel, "spinner_label")
             if spinner_label and spinner_label.movie():
@@ -822,6 +1071,16 @@ class ResultsManager(QObject):
                     buttons[1].setChecked(target_index == 1) 
                     buttons[2].setChecked(target_index == 2)
                     buttons[3].setChecked(target_index == 3)
+                if results_info_bar and process_info_bar:
+                    if target_index == 0:
+                        results_info_bar.show()
+                        process_info_bar.hide()
+                    elif target_index == 3:
+                        results_info_bar.hide()
+                        process_info_bar.show()
+                    else:
+                        results_info_bar.hide()
+                        process_info_bar.hide()
             else:
                 stacked_widget.setCurrentIndex(1)
                 if buttons: 
@@ -829,6 +1088,10 @@ class ResultsManager(QObject):
                     buttons[1].setChecked(True)
                     buttons[2].setChecked(False)
                     buttons[3].setChecked(False)
+                if results_info_bar:
+                    results_info_bar.hide()
+                if process_info_bar:
+                    process_info_bar.hide()
 
 
     def update_page_label(self, target_tab, row_count):
@@ -868,6 +1131,9 @@ class ResultsManager(QObject):
         model.setHorizontalHeaderLabels(['Connection History'])
         history_list_view.setModel(model)
         history_details_view.clear()
+        history_list_view.expandAll()
+        history_list_view.setUniformRowHeights(False)
+        history_list_view.setItemsExpandable(False)
         conn_data = db_combo_box.currentData()
         if not conn_data: return
         conn_id = conn_data.get("id")
@@ -875,12 +1141,25 @@ class ResultsManager(QObject):
             history = db.get_query_history(conn_id)
             for row in history:
                 history_id, query, ts, status, rows, duration = row
-                short_query = ' '.join(query.split())[:70] + ('...' if len(query) > 70 else '')
+                clean_query = ' '.join(query.split())
+                short_query = clean_query[:90] + ('...' if len(clean_query) > 90 else '')
                 dt = datetime.datetime.fromisoformat(ts)
-                display_text = f"{short_query}\n{dt.strftime('%Y-%m-%d %H:%M:%S')}"
+                status_text = (status or "Unknown").upper()
+                display_text = f"{short_query}\n{dt.strftime('%Y-%m-%d %H:%M:%S')}  |  {status_text}  |  {duration:.3f}s"
                 item = QStandardItem(display_text)
                 item.setData({"id": history_id, "query": query, "timestamp": dt.strftime('%Y-%m-%d %H:%M:%S'), "status": status, "rows": rows, "duration": f"{duration:.3f} sec"}, Qt.ItemDataRole.UserRole)
+                item.setEditable(False)
+                item.setToolTip(query)
+                if status_text == "SUCCESS":
+                    item.setForeground(QBrush(QColor("#1f7a1f")))
+                elif status_text == "FAILURE":
+                    item.setForeground(QBrush(QColor("#b42318")))
                 model.appendRow(item)
+
+            if model.rowCount() > 0:
+                first_index = model.index(0, 0)
+                history_list_view.setCurrentIndex(first_index)
+                self.display_history_details(first_index, target_tab)
         except Exception as e:
             QMessageBox.critical(self.main_window, "Error", f"Failed to load query history:\n{e}")
 
@@ -888,8 +1167,15 @@ class ResultsManager(QObject):
         history_details_view = target_tab.findChild(QTextEdit, "history_details_view")
         if not index.isValid() or not history_details_view: return
         data = index.model().itemFromIndex(index).data(Qt.ItemDataRole.UserRole)
-        details_text = f"Timestamp: {data['timestamp']}\nStatus: {data['status']}\nDuration: {data['duration']}\nRows: {data['rows']}\n\n-- Query --\n{data['query']}"
-        history_details_view.setText(details_text)
+        details_text = (
+            f"Timestamp : {data['timestamp']}\n"
+            f"Status    : {data['status']}\n"
+            f"Duration  : {data['duration']}\n"
+            f"Rows      : {data['rows']}\n\n"
+            f"-- Query -----------------------------------------------------------\n"
+            f"{data['query']}"
+        )
+        history_details_view.setPlainText(details_text)
 
     def _get_selected_history_item(self, target_tab):
         """Helper to get the selected item's data from the history list."""
@@ -912,13 +1198,17 @@ class ResultsManager(QObject):
         history_data = self._get_selected_history_item(target_tab)
         if history_data:
             editor_stack = target_tab.findChild(QStackedWidget, "editor_stack")
-            query_editor = target_tab.findChild(CodeEditor, "query_editor")
+            query_editor = target_tab.findChild(QPlainTextEdit, "query_editor")
+            if not query_editor:
+                QMessageBox.warning(self.main_window, "Editor Not Found", "Could not locate the query editor in this tab.")
+                return
             query_editor.setPlainText(history_data['query'])
             
             # Switch back to the query editor view
-            editor_stack.setCurrentIndex(0)
-            query_view_btn = target_tab.findChild(QPushButton, "Query")
-            history_view_btn = target_tab.findChild(QPushButton, "Query History")
+            if editor_stack:
+                editor_stack.setCurrentIndex(0)
+            query_view_btn = target_tab.findChild(QPushButton, "query_view_btn")
+            history_view_btn = target_tab.findChild(QPushButton, "history_view_btn")
             if query_view_btn: query_view_btn.setChecked(True)
             if history_view_btn: history_view_btn.setChecked(False)
             
@@ -1019,7 +1309,9 @@ class ResultsManager(QObject):
     def _initialize_processes_model(self, tab_content):
         processes_view = tab_content.findChild(QTableView, "processes_view")
         if not processes_view:
-          return
+            return
+
+        tab_content.process_status_filter = "ALL"
 
         tab_content.processes_model = QStandardItemModel()
         tab_content.processes_model.setHorizontalHeaderLabels(
@@ -1186,34 +1478,32 @@ class ResultsManager(QObject):
         data = cursor.fetchall()
         conn.close()
 
+        active_filter = getattr(current_tab, "process_status_filter", "ALL")
+        status_counts = {key: 0 for key in self.PROCESS_STATUS_META.keys()}
+        filtered_data = []
+
+        for row in data:
+            status_key = self._normalize_process_status(row[2])
+            if status_key in status_counts:
+                status_counts[status_key] += 1
+
+            if active_filter == "ALL" or status_key == active_filter:
+                filtered_data.append(row)
+
         model.clear()
         model.setHorizontalHeaderLabels(
           ["PID", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Details"]
         )
 
-        for row_index, row in enumerate(data):
+        for row_index, row in enumerate(filtered_data):
             items = [QStandardItem(str(col)) for col in row]
 
-            status_text = row[2]  # 3rd column: Status
-            brush = None
-            if status_text == "Error":
-               brush = QBrush(QColor("#BD3020"))      # 🔴 
-            elif status_text == "Successfull":
-                brush = QBrush(QColor("#28a745"))  # 🟢 Successful
-            elif status_text == "Running":
-                brush = QBrush(QColor("#ffc107"))      # 🟡 Running
-            elif status_text == "Warning":
-                brush = QBrush(QColor("#fd7e14"))      # 🟠 Warning
-            # elif row_index == latest_row_index:
-            #     brush = QBrush(QColor("#d1ecf1"))      # 🔵  (latest row highlight)
-            else:
-                brush = QBrush(QColor("#ffffff"))      # ⚪  (default white)
-
-        #  Apply background color to all cells of this row
-            for item in items:
-              item.setBackground(brush)
+            if len(items) > 2:
+                items[2].setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
             model.appendRow(items)
+
+        self._update_process_summary_ui(current_tab, status_counts, len(data), len(filtered_data))
         
         # --- MODIFICATION: resizeColumnsToContents moved here ---
         processes_view.resizeColumnsToContents()
@@ -1402,6 +1692,13 @@ class ResultsManager(QObject):
         # ---------------------------------------------------------
         results_info_bar = QWidget()
         results_info_bar.setObjectName("resultsInfoBar")
+        results_info_bar.setStyleSheet(
+            "QWidget#resultsInfoBar { "
+            "background-color: #f3f4f6; "
+            "border-top: 1px solid #d1d5db; "
+            "border-bottom: 1px solid #d1d5db; "
+            "}"
+        )
         results_info_layout = QHBoxLayout(results_info_bar)
         results_info_layout.setContentsMargins(5, 2, 5, 2)
         results_info_layout.setSpacing(5)
@@ -1541,7 +1838,7 @@ class ResultsManager(QObject):
         rows_setting_btn = QToolButton()
         rows_setting_btn.setIcon(QIcon("assets/list-details.svg"))
         rows_setting_btn.setIconSize(QSize(16, 16))
-        rows_setting_btn.setFixedSize(32, 32)
+        rows_setting_btn.setFixedSize(32, 28)
         rows_setting_btn.setToolTip("Edit Limit/Offset")
         rows_setting_btn.setStyleSheet(btn_style_bottom)
         rows_setting_btn.clicked.connect(lambda: self.open_limit_offset_dialog(tab_content))
@@ -1601,6 +1898,91 @@ class ResultsManager(QObject):
         
         results_layout.addWidget(results_info_bar)
 
+        process_info_bar = QWidget()
+        process_info_bar.setObjectName("processInfoBar")
+        process_info_layout = QHBoxLayout(process_info_bar)
+        process_info_layout.setContentsMargins(5, 2, 5, 2)
+        process_info_layout.setSpacing(6)
+
+        process_summary_label = QLabel("Showing 0 of 0 process(es)")
+        process_summary_label.setObjectName("process_summary_label")
+        process_summary_label.setStyleSheet("color: #374151;")
+        process_info_layout.addWidget(process_summary_label)
+
+        process_selection_label = QLabel("Selection: none")
+        process_selection_label.setObjectName("process_selection_label")
+        process_selection_label.setStyleSheet("color: #4b5563;")
+        process_info_layout.addWidget(process_selection_label)
+
+        process_info_layout.addSpacing(6)
+
+        filter_btn_style = """
+            QPushButton {
+                border: 1px solid #cfd6df;
+                border-radius: 5px;
+                background: #ffffff;
+                color: #1f2937;
+                padding: 2px 8px;
+                min-height: 24px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: #f4f7fb;
+                border-color: #b8c2cf;
+            }
+            QPushButton:checked {
+                background: #eaf2ff;
+                border-color: #9db7dd;
+                color: #0f3b82;
+                font-weight: 600;
+            }
+        """
+
+        all_filter_btn = QPushButton("All (0)")
+        running_filter_btn = QPushButton("Running (0)")
+        success_filter_btn = QPushButton("Successfull (0)")
+        warning_filter_btn = QPushButton("Warning (0)")
+        error_filter_btn = QPushButton("Error (0)")
+
+        for btn in [all_filter_btn, running_filter_btn, success_filter_btn, warning_filter_btn, error_filter_btn]:
+            btn.setCheckable(True)
+            btn.setStyleSheet(filter_btn_style)
+            process_info_layout.addWidget(btn)
+
+        process_filter_group = QButtonGroup(process_info_bar)
+        process_filter_group.setExclusive(True)
+        process_filter_group.addButton(all_filter_btn)
+        process_filter_group.addButton(running_filter_btn)
+        process_filter_group.addButton(success_filter_btn)
+        process_filter_group.addButton(warning_filter_btn)
+        process_filter_group.addButton(error_filter_btn)
+        all_filter_btn.setChecked(True)
+
+        all_filter_btn.clicked.connect(lambda: self._set_process_filter(tab_content, "ALL"))
+        running_filter_btn.clicked.connect(lambda: self._set_process_filter(tab_content, "RUNNING"))
+        success_filter_btn.clicked.connect(lambda: self._set_process_filter(tab_content, "SUCCESSFULL"))
+        warning_filter_btn.clicked.connect(lambda: self._set_process_filter(tab_content, "WARNING"))
+        error_filter_btn.clicked.connect(lambda: self._set_process_filter(tab_content, "ERROR"))
+
+        tab_content.process_filter_buttons = {
+            "ALL": all_filter_btn,
+            "RUNNING": running_filter_btn,
+            "SUCCESSFULL": success_filter_btn,
+            "WARNING": warning_filter_btn,
+            "ERROR": error_filter_btn,
+        }
+
+        process_info_layout.addStretch()
+
+        refresh_now_btn = QPushButton("Refresh")
+        refresh_now_btn.setObjectName("process_refresh_now_btn")
+        refresh_now_btn.setStyleSheet(filter_btn_style)
+        refresh_now_btn.clicked.connect(self.refresh_processes_view)
+        process_info_layout.addWidget(refresh_now_btn)
+
+        process_info_bar.hide()
+        results_layout.addWidget(process_info_bar)
+
         # --- Pagination Logic ---
         def update_page_ui(tab):
             page_label.setText(f"Page {tab.current_page}")
@@ -1656,12 +2038,16 @@ class ResultsManager(QObject):
         table_view = QTableView()
         table_view.setObjectName("results_table")
         table_view.setAlternatingRowColors(True)
+        table_view.setMouseTracking(True)
+        table_view.viewport().setMouseTracking(True)
+        table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        table_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table_view.horizontalHeader().setSectionsClickable(True)
+        table_view.verticalHeader().setSectionsClickable(True)
+        table_view.setItemDelegate(FlatSelectionDelegate(parent=table_view))
         table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-        table_view.setEditTriggers(
-         QAbstractItemView.EditTrigger.DoubleClicked |
-         QAbstractItemView.EditTrigger.SelectedClicked
-          )
+        table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
         results_stack.addWidget(table_view)
         
         # Connect copy button to this table (lambda captures this specific table_view)
@@ -1685,9 +2071,20 @@ class ResultsManager(QObject):
         processes_view = QTableView()
         processes_view.setObjectName("processes_view")
         processes_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        processes_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        processes_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         processes_view.setAlternatingRowColors(True)
+        processes_view.horizontalHeader().setSectionsClickable(True)
+        processes_view.verticalHeader().setSectionsClickable(True)
         processes_view.horizontalHeader().setStretchLastSection(True)
+        processes_view.setItemDelegate(ProcessRowDelegate(self.PROCESS_STATUS_META, parent=processes_view))
+        processes_view.clicked.connect(lambda idx: self._handle_process_cell_click(tab_content, idx))
+        processes_view.horizontalHeader().sectionClicked.connect(
+            lambda section: self._handle_process_column_header_click(tab_content, section)
+        )
+        processes_view.verticalHeader().sectionClicked.connect(
+            lambda section: self._handle_process_row_header_click(tab_content, section)
+        )
         results_stack.addWidget(processes_view)
         
         # Page 4: Spinner / Loading
@@ -1725,11 +2122,18 @@ class ResultsManager(QObject):
         results_layout.setStretchFactor(tab_status_label, 0)
 
         def switch_results_view(index):
-           results_stack.setCurrentIndex(index)
-           if index == 0:
-              results_info_bar.show()
-           else:
-               results_info_bar.hide()
+            results_stack.setCurrentIndex(index)
+
+            if index == 0:
+                results_info_bar.show()
+                process_info_bar.hide()
+            elif index == 3:
+                results_info_bar.hide()
+                process_info_bar.show()
+                self.refresh_processes_view()
+            else:
+                results_info_bar.hide()
+                process_info_bar.hide()
            
         output_btn.clicked.connect(lambda: switch_results_view(0))
         message_btn.clicked.connect(lambda: switch_results_view(1))

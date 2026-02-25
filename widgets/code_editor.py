@@ -2,8 +2,64 @@
 
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
 # QTextCursor 
-from PyQt6.QtGui import QColor, QTextFormat, QFont, QPainter, QPolygon, QBrush, QTextCursor, QTextDocument
-from PyQt6.QtCore import QRect, QSize, Qt, QPoint
+from PyQt6.QtGui import (
+    QColor,
+    QTextFormat,
+    QFont,
+    QFontMetrics,
+    QPainter,
+    QPolygon,
+    QBrush,
+    QTextCursor,
+    QTextDocument,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QPen,
+)
+from PyQt6.QtCore import QRect, QSize, Qt, QPoint, QEvent
+
+
+# {mitayan}
+class SqlHighlighter(QSyntaxHighlighter):
+    def __init__(self, document):
+        super().__init__(document)
+        self.rules = []
+
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor("#0b63c7"))
+        keyword_format.setFontWeight(QFont.Weight.Bold)
+
+        keywords = [
+            "SELECT", "FROM", "WHERE", "GROUP", "BY", "ORDER", "HAVING", "LIMIT",
+            "OFFSET", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "ON",
+            "AS", "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE", "BETWEEN",
+            "UNION", "ALL", "DISTINCT", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
+            "DELETE", "CREATE", "TABLE", "VIEW", "DROP", "ALTER", "ADD", "PRIMARY",
+            "KEY", "FOREIGN", "REFERENCES", "INDEX", "CASE", "WHEN", "THEN", "ELSE",
+            "END", "WITH", "EXISTS",
+        ]
+        self.rules.extend((rf"\b{kw}\b", keyword_format) for kw in keywords)
+
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor("#b05500"))
+        self.rules.append((r"'[^']*'", string_format))
+
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor("#7d3ac1"))
+        self.rules.append((r"\b\d+(?:\.\d+)?\b", number_format))
+
+        self.comment_format = QTextCharFormat()
+        self.comment_format.setForeground(QColor("#2f7d4a"))
+
+    def highlightBlock(self, text):
+        import re
+
+        for pattern, fmt in self.rules:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                self.setFormat(match.start(), match.end() - match.start(), fmt)
+
+        for match in re.finditer(r"--.*$", text):
+            self.setFormat(match.start(), match.end() - match.start(), self.comment_format)
 
 class LineNumberArea(QWidget):
     def __init__(self, editor):
@@ -25,11 +81,14 @@ class CodeEditor(QPlainTextEdit):
         super().__init__(parent)
         self.lineNumberArea = LineNumberArea(self)
         self.folding_markers = {}
-        self.statement_map = {} 
+        self.fold_regions = {}
+        self.folded_blocks = set()
+        self.statement_map = {}
+        self.folding_gutter_width = 18
 
-        # Use monospace font for SQL editing
-        font = QFont("Courier New", 11)
-        self.setFont(font)
+        self._sync_document_font_from_widget()
+
+        self.highlighter = SqlHighlighter(self.document())
 
         self.blockCountChanged.connect(self.updateLineNumberAreaWidth)
         self.updateRequest.connect(self.updateLineNumberArea)
@@ -39,16 +98,24 @@ class CodeEditor(QPlainTextEdit):
         self.cursorPositionChanged.connect(self.highlightCurrentLine)
 
         self.updateLineNumberAreaWidth(0)
+        self.updateFoldingMarkers()
         self.highlightCurrentLine()
+# {mitayan}
+    def _sync_document_font_from_widget(self):
+        widget_font = self.font()
+        if self.document().defaultFont() != widget_font:
+            self.document().setDefaultFont(widget_font)
 
+# {mitayan}
     def lineNumberAreaWidth(self):
         # Find how many digits the highest line number will have
-        digits = len(str(max(1, self.blockCount())))
+        digits = max(3, len(str(max(1, self.blockCount()))))
+        metrics = QFontMetrics(self.document().defaultFont())
         # 2. Calculate the space needed:
         # horizontalAdvance('9')` gives the pixel width of the widest digit ('9')
         # multiply by digits to cover all digits of the largest line number
         # add 3 pixels as padding
-        space = 20 + self.fontMetrics().horizontalAdvance('9') * digits
+        space = 8 + metrics.horizontalAdvance('9') * digits + self.folding_gutter_width
         # print(space)
         return space
 
@@ -69,161 +136,230 @@ class CodeEditor(QPlainTextEdit):
         cr = self.contentsRect()
         self.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height()))
 
+# {mitayan}
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync_document_font_from_widget()
+        self.updateLineNumberAreaWidth(0)
+        cr = self.contentsRect()
+        self.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height()))
+        self.lineNumberArea.update()
+        self.viewport().update()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._sync_document_font_from_widget()
+            self.updateLineNumberAreaWidth(0)
+            if self.lineNumberArea is not None:
+                self.lineNumberArea.update()
+            self.viewport().update()
+
+# {mitayan}
     def lineNumberAreaPaintEvent(self, event):
         painter = QPainter(self.lineNumberArea)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(event.rect(), QColor(240, 240, 240))  # background
 
         block = self.firstVisibleBlock()
         blockNumber = block.blockNumber()
         top = int(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
         bottom = top + int(self.blockBoundingRect(block).height())
-        height = self.fontMetrics().height()
+        metrics = QFontMetrics(self.document().defaultFont())
+        height = metrics.height()
+        fold_start_x = self.lineNumberArea.width() - self.folding_gutter_width
 
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 # Draw line number
                 number = str(blockNumber + 1)
                 painter.setPen(Qt.GlobalColor.black)
-                painter.drawText(0, top, self.lineNumberArea.width() - 20,
+                painter.drawText(0, top, fold_start_x - 5,
                                  height, Qt.AlignmentFlag.AlignRight, number)
 
                 # Draw folding marker if exists
                 if blockNumber in self.folding_markers:
-                    marker_rect = QRect(self.lineNumberArea.width() - 15,  # X position (right side of line number area)
-                                        int(top) + (height - 10) // 2,     # Y position (vertically centered)
-                                        10, 10)                            # Width & height of marker (10x10 square)    
-                    painter.setPen(Qt.GlobalColor.black)
-                    painter.setBrush(QBrush(Qt.GlobalColor.black))
-
-                    if self.folding_markers[blockNumber]['open']:
-                        # Down triangle ▼
-                        points = [
-                            QPoint(marker_rect.left(), marker_rect.top()),
-                            QPoint(marker_rect.right(), marker_rect.top()),
-                            QPoint(marker_rect.center().x(), marker_rect.bottom())
-                        ]
-                    else:
-                        # Right triangle ►
-                        points = [
-                            QPoint(marker_rect.left(), marker_rect.top()),
-                            QPoint(marker_rect.left(), marker_rect.bottom()),
-                            QPoint(marker_rect.right(), marker_rect.center().y())
-                        ]
-                    painter.drawPolygon(QPolygon(points))
+                    self.drawChevron(painter, fold_start_x, top, blockNumber in self.folded_blocks)
 
             block = block.next()
             top = bottom
             bottom = top + int(self.blockBoundingRect(block).height())
             blockNumber += 1
 
-
+#{mitayan}
     def updateFoldingMarkers(self):
-        new_markers = {}
-        new_statement_map = {} 
-        processed_lines = set()
+        new_regions = {}
+        new_statement_map = {}
+        text = self.toPlainText()
 
+        # 1) Statement-based folding and statement map
+        block = self.document().begin()
+        stmt_start_block = -1
+
+        while block.isValid():
+            b_idx = block.blockNumber()
+            line_text = block.text().strip()
+            is_comment = line_text.startswith('--') or line_text.startswith('/*')
+
+            if stmt_start_block == -1 and line_text and not is_comment:
+                stmt_start_block = b_idx
+
+            if ';' in line_text and not is_comment and stmt_start_block != -1:
+                boundaries = (stmt_start_block, b_idx)
+                for i in range(stmt_start_block, b_idx + 1):
+                    new_statement_map[i] = boundaries
+
+                if b_idx > stmt_start_block:
+                    new_regions[stmt_start_block] = list(range(stmt_start_block + 1, b_idx + 1))
+                stmt_start_block = -1
+
+            block = block.next()
+
+        # fill single-line defaults for statement selection
+        total_blocks = self.document().blockCount()
+        for i in range(total_blocks):
+            if i not in new_statement_map:
+                new_statement_map[i] = (i, i)
+
+        # 2) Parenthesis-based folding
         block = self.document().begin()
         while block.isValid():
-            block_num = block.blockNumber()
-            if block_num in processed_lines:
-                block = block.next()
-                continue
+            b_idx = block.blockNumber()
+            line_text = block.text()
 
-            
-            # Find start and end of statement
-            statement_start = None     # Keeps track of where a statement starts
-            temp_block = block         # Start scanning from the current block (line)
-            statement_text = ""        # Accumulates the text of the statement
-            end_block_num = -1         # Marks where the statement ends
+            if '(' in line_text and not line_text.strip().startswith('--') and b_idx not in new_regions:
+                stack = 0
+                found_end = -1
+                start_pos = block.position() + line_text.find('(')
 
+                remaining_text = text[start_pos:]
+                for i, char in enumerate(remaining_text):
+                    if char == '(':
+                        stack += 1
+                    elif char == ')':
+                        stack -= 1
+                        if stack == 0:
+                            found_end = start_pos + i
+                            break
 
-            while temp_block.isValid():
-                text = temp_block.text().strip()
-                if text and statement_start is None:
-                    statement_start = temp_block.blockNumber()
+                if found_end != -1:
+                    end_block = self.document().findBlock(found_end)
+                    if end_block.isValid() and end_block.blockNumber() > b_idx:
+                        new_regions[b_idx] = list(range(b_idx + 1, end_block.blockNumber() + 1))
 
-                if text:  # ignore only empty lines in statement
-                    statement_text += text
+            block = block.next()
 
-                if ';' in statement_text:
-                    end_block_num = temp_block.blockNumber()
-                    break
-                temp_block = temp_block.next()
+        # 3) Consecutive comment lines folding
+        block = self.document().begin()
+        comment_start = -1
 
-            if statement_start is not None and end_block_num != -1:
-                # Found a statement (single or multi-line)
-                boundaries = (statement_start, end_block_num)
+        while block.isValid():
+            b_idx = block.blockNumber()
+            line = block.text().strip()
 
-                for i in range(statement_start, end_block_num + 1):
-                    new_statement_map[i] = boundaries
-                    processed_lines.add(i)
-
-                if end_block_num > statement_start:
-                    is_open = self.folding_markers.get(
-                        statement_start, {'open': True})['open']
-                    new_markers[statement_start] = {
-                        'end': end_block_num, 'open': is_open}
-
-                # Move to the next block after the processed statement
-                if end_block_num != -1:
-                    block = self.document().findBlockByNumber(end_block_num).next()
-                else:
-                    block = block.next()
-            
+            if line.startswith('--'):
+                if comment_start == -1:
+                    comment_start = b_idx
             else:
-                if block_num not in processed_lines:
-                    new_statement_map[block_num] = (block_num, block_num)
-                block = block.next()
+                if comment_start != -1:
+                    if b_idx - 1 > comment_start:
+                        new_regions[comment_start] = list(range(comment_start + 1, b_idx))
+                    comment_start = -1
 
+            block = block.next()
 
-        self.folding_markers = new_markers
-        self.statement_map = new_statement_map 
-        self.lineNumberArea.update()
+        if comment_start != -1 and self.document().blockCount() - 1 > comment_start:
+            new_regions[comment_start] = list(range(comment_start + 1, self.document().blockCount()))
 
+        self.fold_regions = new_regions
+        self.statement_map = new_statement_map
+
+        # Keep folded state only for still-valid region starts
+        self.folded_blocks = {idx for idx in self.folded_blocks if idx in self.fold_regions}
+
+        self.folding_markers = {
+            start: {
+                'end': children[-1] if children else start,
+                'open': start not in self.folded_blocks,
+                'children': children,
+            }
+            for start, children in self.fold_regions.items()
+        }
+
+        self.applyFolding()
+
+# {mitayan}
 
 
     def toggleFold(self, block_number: int) -> None:
-        # """
-        #  Fold/unfold the region that starts at `block_number`.
-        # Expects self.folding_markers[block_number] = {"open": bool, "end": int}
-        # """
-       
-        if not hasattr(self, "folding_markers") or block_number not in self.folding_markers:
+        if not hasattr(self, "fold_regions") or block_number not in self.fold_regions:
             return
 
-        marker = self.folding_markers[block_number]
-        is_open = marker.get("open", True)
-        end_block_num = marker.get("end", block_number)
+        if block_number in self.folded_blocks:
+            self.folded_blocks.remove(block_number)
+        else:
+            self.folded_blocks.add(block_number)
 
-        # toggle state update
-        marker["open"] = not is_open
+            # If cursor is inside region being folded, move it to the start block.
+            cursor = self.textCursor()
+            current_block = cursor.block().blockNumber()
+            if current_block in self.fold_regions[block_number]:
+                target_block = self.document().findBlockByNumber(block_number)
+                new_cursor = self.textCursor()
+                new_cursor.setPosition(target_block.position() + target_block.length() - 1)
+                self.setTextCursor(new_cursor)
 
-        doc = self.document()
-        start_block = doc.findBlockByNumber(block_number)
+        self.folding_markers[block_number]['open'] = block_number not in self.folded_blocks
+        self.applyFolding()
 
-        # terget end-block find (invalid than end)
-        end_block = doc.findBlockByNumber(end_block_num)
-        if not end_block.isValid():
-            # fallback
-            end_block_num = doc.blockCount() - 1
-            end_block = doc.findBlockByNumber(end_block_num)
+    def applyFolding(self):
+        hidden_blocks = set()
+        for parent_idx, children in self.fold_regions.items():
+            if parent_idx in self.folded_blocks:
+                hidden_blocks.update(children)
 
-        # 
-        block = start_block.next()
-        while block.isValid() and block.blockNumber() <= end_block_num:
-            block.setVisible(not is_open)  
+        block = self.document().begin()
+        while block.isValid():
+            block_idx = block.blockNumber()
+            block.setVisible(block_idx not in hidden_blocks)
             block = block.next()
 
-       
-        start_pos = start_block.position()
-        end_pos = end_block.position() + end_block.length()
-        doc.markContentsDirty(start_pos, max(0, end_pos - start_pos))
-
-        # ---- UI refresh ----
-        # Text area and line number area update
         self.viewport().update()
-        if hasattr(self, "lineNumberArea") and self.lineNumberArea is not None:
+        if self.lineNumberArea is not None:
             self.lineNumberArea.update()
+#{mitayan}
+    def drawChevron(self, painter, x, y, is_collapsed):
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        pen = QPen(QColor("#5f6368"))
+        pen.setWidthF(1.2)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        size = 6
+        cx = x + (self.folding_gutter_width // 2) - (size // 2)
+        metrics = QFontMetrics(self.document().defaultFont())
+        cy = y + (metrics.height() // 2) - (size // 2)
+
+        if is_collapsed:
+            poly = QPolygon([
+                QPoint(int(cx + 1), int(cy)),
+                QPoint(int(cx + size - 1), int(cy + size // 2)),
+                QPoint(int(cx + 1), int(cy + size)),
+            ])
+        else:
+            poly = QPolygon([
+                QPoint(int(cx), int(cy + 2)),
+                QPoint(int(cx + size // 2), int(cy + size - 1)),
+                QPoint(int(cx + size), int(cy + 2)),
+            ])
+
+        painter.drawPolyline(poly)
+        painter.restore()
+#{mitayan}
 
     # def on_text_changed(self):
     #     # A simple debounce mechanism could be added here if performance is an issue
@@ -266,7 +402,7 @@ class CodeEditor(QPlainTextEdit):
                 bn = block.blockNumber()
                 
                 
-                marker_x_start = self.lineNumberArea.width() - 15 
+                marker_x_start = self.lineNumberArea.width() - self.folding_gutter_width
                 
     
             

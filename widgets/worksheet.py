@@ -1,33 +1,24 @@
-import sys
-import os
 import time
-import datetime
-import re
-import pandas as pd
 import sqlparse
-import sqlite3 as sqlite
-import psycopg2
 from functools import partial
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableView, QMessageBox,
-    QMenu, QComboBox, QLineEdit, QToolButton, QStackedWidget, QTextEdit,
-    QLabel, QPushButton, QApplication, QHeaderView, QAbstractItemView, QPlainTextEdit,
-    QDialog, QFileDialog, QButtonGroup, QSizePolicy, QFormLayout, QSpinBox, QDialogButtonBox, QFrame, QTreeView, QGroupBox, QInputDialog
+    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QMessageBox,
+    QMenu, QComboBox, QToolButton, QStackedWidget, QTextEdit,
+    QLabel, QPushButton, QApplication, QAbstractItemView, QPlainTextEdit,
+    QButtonGroup, QFrame, QTreeView, QGroupBox, QInputDialog
 )
 from PyQt6.QtCore import (
-    Qt, QObject, QTimer, QSize, QSortFilterProxyModel, pyqtSignal, QEvent
+    Qt, QTimer, QSize, QEvent, QRect
 )
 from PyQt6.QtGui import (
-    QAction, QColor, QBrush, QStandardItemModel, QStandardItem, QMovie, QFont, QIcon, QKeySequence, QShortcut
+    QAction, QFont, QIcon, QKeySequence, QShortcut, QTextCursor
 )
 
 import db
 from .code_editor import CodeEditor
-from .explain_visualizer import ExplainVisualizer
 from .results_view import ResultsManager
-from workers import RunnableQuery, RunnableExportFromModel, QuerySignals
-from dialogs import ExportDialog
+from workers import RunnableQuery, QuerySignals
 
 class WorksheetManager(QWidget):
     def __init__(self, main_window):
@@ -44,6 +35,7 @@ class WorksheetManager(QWidget):
         
         # Initialize helpers
         self.results_manager = ResultsManager(main_window)
+        self.tab_widget.currentChanged.connect(self._refresh_active_editor_layout)
         
         # State
         self.tab_timers = {}
@@ -55,6 +47,18 @@ class WorksheetManager(QWidget):
         if not current_tab: return None
         return current_tab.findChild(CodeEditor, "query_editor")
 
+# {mitayan}
+    def _refresh_active_editor_layout(self, _index):
+        editor = self._get_current_editor()
+        if not editor:
+            return
+        editor.updateLineNumberAreaWidth(0)
+        cr = editor.contentsRect()
+        editor.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), editor.lineNumberAreaWidth(), cr.height()))
+        editor.lineNumberArea.update()
+        editor.viewport().update()
+
+# {mitayan}
     def create_vertical_separator(self):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.VLine)
@@ -435,6 +439,8 @@ class WorksheetManager(QWidget):
 
         query_view_btn = QPushButton("Query")
         history_view_btn = QPushButton("Query History")
+        query_view_btn.setObjectName("query_view_btn")
+        history_view_btn.setObjectName("history_view_btn")
         query_view_btn.setMinimumWidth(100)
         history_view_btn.setMinimumWidth(150)
         query_view_btn.setCheckable(True)
@@ -472,25 +478,84 @@ class WorksheetManager(QWidget):
         history_list_view.setObjectName("history_list_view")
         history_list_view.setHeaderHidden(True)
         history_list_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        history_list_view.setRootIsDecorated(False)
+        history_list_view.setAlternatingRowColors(True)
+        history_list_view.setIndentation(0)
+        history_list_view.setStyleSheet("""
+            QTreeView {
+                border: 1px solid #d8dce2;
+                border-radius: 6px;
+                background: #ffffff;
+                alternate-background-color: #f7f9fc;
+                padding: 4px;
+            }
+            QTreeView::item {
+                padding: 6px 8px;
+                border-bottom: 1px solid #f0f2f5;
+            }
+            QTreeView::item:selected {
+                background: #eaf2ff;
+                color: #1f2937;
+            }
+        """)
 
         history_details_group = QGroupBox("Query Details")
         history_details_layout = QVBoxLayout(history_details_group)
         history_details_view = QTextEdit()
         history_details_view.setObjectName("history_details_view")
         history_details_view.setReadOnly(True)
+        history_details_view.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        history_details_view.setFont(QFont("Consolas", 10))
+        history_details_view.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #d8dce2;
+                border-radius: 6px;
+                background: #ffffff;
+                padding: 8px;
+            }
+        """)
         history_details_layout.addWidget(history_details_view)
 
         history_button_layout = QHBoxLayout()
+        history_button_layout.setContentsMargins(0, 8, 0, 0)
+        history_button_layout.setSpacing(8)
+        history_action_btn_style = """
+            QPushButton {
+                min-height: 26px;
+                padding: 2px 10px;
+                border: 1px solid #cfd6df;
+                border-radius: 6px;
+                background: #ffffff;
+                color: #1f2937;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: #f4f7fb;
+                border-color: #b8c2cf;
+            }
+            QPushButton:pressed {
+                background: #e9eef5;
+            }
+        """
         copy_history_btn = QPushButton("Copy")
-        copy_to_edit_btn = QPushButton("Copy to Edit Query")
+        copy_to_edit_btn = QPushButton("Copy to Editor")
         remove_history_btn = QPushButton("Remove")
         remove_all_history_btn = QPushButton("Remove All")
+        copy_history_btn.setMinimumWidth(78)
+        copy_to_edit_btn.setMinimumWidth(132)
+        remove_history_btn.setMinimumWidth(78)
+        remove_all_history_btn.setMinimumWidth(98)
+        copy_history_btn.setStyleSheet(history_action_btn_style)
+        copy_to_edit_btn.setStyleSheet(history_action_btn_style)
+        remove_history_btn.setStyleSheet(history_action_btn_style)
+        remove_all_history_btn.setStyleSheet(history_action_btn_style)
     
         history_button_layout.addStretch()
         history_button_layout.addWidget(copy_history_btn)
         history_button_layout.addWidget(copy_to_edit_btn)
         history_button_layout.addWidget(remove_history_btn)
         history_button_layout.addWidget(remove_all_history_btn)
+        history_button_layout.addStretch()
         history_details_layout.addLayout(history_button_layout)
 
         history_widget.addWidget(history_list_view)
@@ -926,6 +991,8 @@ class WorksheetManager(QWidget):
         
         message_view = current_tab.findChild(QTextEdit, "message_view")
         tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
+        if tab_status_label:
+            tab_status_label.setText("")
 
         #message_view.setText(f"Error:\n\n{error_message}")
         if message_view:

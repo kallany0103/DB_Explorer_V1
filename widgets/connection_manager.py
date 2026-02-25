@@ -775,8 +775,101 @@ class ConnectionManager(QWidget):
 
 
     def add_connection_group(self, parent_item):
-        name, ok = QInputDialog.getText(self, "New Group", "Group name:")
-        if ok and name:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New Group")
+        dialog.resize(460, 220)
+        dialog.setSizeGripEnabled(True)
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.Window)
+        dialog.setStyleSheet(
+            """
+            QDialog {
+                background-color: #f6f8fb;
+            }
+            QLabel#dialogTitle {
+                font-size: 16px;
+                font-weight: 600;
+                color: #1f2937;
+            }
+            QLabel#dialogSubtitle {
+                color: #6b7280;
+                margin-bottom: 8px;
+            }
+            QLineEdit {
+                min-height: 28px;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                background: white;
+                padding: 3px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0078d4;
+            }
+            QPushButton {
+                min-height: 28px;
+                padding: 2px 14px;
+                border: 1px solid #c4c9d4;
+                background-color: #eef1f6;
+                color: #1f2937;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #e3e8f2;
+            }
+            QPushButton:pressed {
+                background-color: #d7deeb;
+            }
+            QPushButton#primaryButton {
+                border: 1px solid #006cbe;
+                background-color: #0078d4;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            QPushButton#primaryButton:hover {
+                background-color: #006cbe;
+            }
+            QPushButton#primaryButton:pressed {
+                background-color: #005a9e;
+            }
+            """
+        )
+
+        title_label = QLabel("Create Connection Group")
+        title_label.setObjectName("dialogTitle")
+        subtitle_label = QLabel("Enter a group name for organizing connections.")
+        subtitle_label.setObjectName("dialogSubtitle")
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("Group name")
+
+        save_btn = QPushButton("Create")
+        save_btn.setObjectName("primaryButton")
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.setContentsMargins(22, 20, 22, 18)
+        dialog_layout.setSpacing(14)
+        dialog_layout.addWidget(title_label)
+        dialog_layout.addWidget(subtitle_label)
+        dialog_layout.addWidget(name_input)
+        dialog_layout.addLayout(button_layout)
+
+        cancel_btn.clicked.connect(dialog.reject)
+
+        def _validate_and_accept():
+            if not name_input.text().strip():
+                QMessageBox.warning(dialog, "Missing Info", "Group name is required.")
+                return
+            dialog.accept()
+
+        save_btn.clicked.connect(_validate_and_accept)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            name = name_input.text().strip()
             parent_id = parent_item.data(Qt.ItemDataRole.UserRole+1)
             try:
                 db.add_connection_group(name, parent_id)

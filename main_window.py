@@ -134,9 +134,9 @@ class MainWindow(QMainWindow):
         self.thread_monitor_timer.start(1000)
 
         # self.load_data() - Handled by ConnectionManager
+        self._apply_styles()
         self.restore_session_state()
         self.main_splitter.setSizes([280, 920])
-        self._apply_styles()
         self.raise_()
         self.activateWindow()
 
