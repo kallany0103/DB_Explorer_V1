@@ -54,13 +54,13 @@ class ConnectionManager(QWidget):
         
         # --- Create Object Explorer Header (Toolbar Group) ---
         object_explorer_header = QWidget()
-        # object_explorer_header.setFixedHeight(36) # Removed to match old behavior
+        object_explorer_header.setFixedHeight(36)
         object_explorer_header.setObjectName("objectExplorerHeader")
         object_explorer_header.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         object_explorer_header.setStyleSheet("""
             #objectExplorerHeader { 
-                background-color: #A9A9A9; 
-                border-bottom: 1px solid #777777; 
+                background-color: #9FA6AF; 
+                border-bottom: 1px solid #8B929B; 
             }
         """)
         object_explorer_header_layout = QHBoxLayout(object_explorer_header)
@@ -108,17 +108,19 @@ class ConnectionManager(QWidget):
         self.explorer_search_btn = QToolButton()
         self.explorer_search_btn.setIcon(QIcon(search_icon_path if os.path.exists(search_icon_path) else ""))
         self.explorer_search_btn.setFixedSize(24, 24)
-        # self.explorer_search_btn.setIconSize(QSize(16, 16)) # Removed to match old behavior
+        self.explorer_search_btn.setIconSize(QSize(16, 16))
         self.explorer_search_btn.setToolTip("Search Connections")
         self.explorer_search_btn.setStyleSheet("""
             QToolButton {
-                border: 1px solid #A9A9A9;
+                border: none;
                 border-radius: 4px;
-                background-color: #D3D3D3;
+                background-color: transparent;
             }
             QToolButton:hover {
-                background-color: #A9A9A9;
-                border: 1px solid #777777;
+                background-color: #C9CFD8;
+            }
+            QToolButton:pressed {
+                background-color: #B8BEC6;
             }
         """)
         self.explorer_search_btn.clicked.connect(self.toggle_explorer_search)
@@ -162,6 +164,7 @@ class ConnectionManager(QWidget):
         self.schema_model = QStandardItemModel()
         self.schema_model.setHorizontalHeaderLabels(["Database Schema"])
         self.schema_tree.setModel(self.schema_model)
+        self._apply_schema_header_style()
         self.schema_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.schema_tree.customContextMenuRequested.connect(self.show_schema_context_menu)
         self.schema_tree.doubleClicked.connect(self.schema_item_double_clicked)
@@ -172,6 +175,27 @@ class ConnectionManager(QWidget):
 
         layout.addWidget(object_explorer_header)
         layout.addWidget(self.vertical_splitter)
+
+    def _apply_schema_header_style(self):
+        header = self.schema_tree.header()
+        header.setFixedHeight(36)
+        header.setDefaultSectionSize(36)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        header.setStyleSheet("""
+            QHeaderView::section {
+                background-color: #9FA6AF;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 10pt;
+                padding: 3px 8px;
+                border: none;
+                border-bottom: 1px solid #8B929B;
+                border-right: 1px solid #B8BEC6;
+            }
+            QHeaderView::section:last {
+                border-right: none;
+            }
+        """)
 
     # Proxy methods for main_window
     def add_tab(self):
@@ -1074,14 +1098,7 @@ class ConnectionManager(QWidget):
         header = self.schema_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.schema_tree.setStyleSheet("""
-            QHeaderView::section {
-                border-right: 1px solid #d3d3d3;
-                padding: 4px;
-                background-color: #a9a9a9;   
-            }
-        """)
+        self._apply_schema_header_style()
 
         db_path = conn_data.get("db_path")
         if not db_path or not os.path.exists(db_path):
@@ -1221,14 +1238,7 @@ class ConnectionManager(QWidget):
         header = self.schema_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.schema_tree.setStyleSheet("""
-            QHeaderView::section {
-                border-right: 1px solid #d3d3d3;
-                padding: 4px;
-                background-color: #a9a9a9;   
-            }
-        """)
+        self._apply_schema_header_style()
         
         
 
@@ -2590,14 +2600,7 @@ class ConnectionManager(QWidget):
             header = self.schema_tree.header()
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.schema_tree.setStyleSheet("""
-                QHeaderView::section {
-                    border-right: 1px solid #d3d3d3;
-                    padding: 4px;
-                    background-color: #a9a9a9;   
-                }
-            """)
+            self._apply_schema_header_style()
             # List all CSV files in the folder
             csv_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.csv')]
 

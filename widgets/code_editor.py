@@ -136,6 +136,18 @@ class CodeEditor(QPlainTextEdit):
         cr = self.contentsRect()
         self.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height()))
 
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.updateLineNumberAreaWidth(0)
+        self.lineNumberArea.update()
+        self.viewport().update()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.updateLineNumberAreaWidth(0)
+        self.lineNumberArea.update()
+        self.viewport().update()
+
 # {mitayan}
     def showEvent(self, event):
         super().showEvent(event)

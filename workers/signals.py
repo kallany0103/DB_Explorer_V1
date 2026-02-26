@@ -12,3 +12,10 @@ class QuerySignals(QObject):
 
     error = pyqtSignal(dict, str, int, float, str)  
     # conn_data, query, row_count, elapsed_time, error_message
+
+class MetadataSignals(QObject):
+    finished = pyqtSignal(dict, list, str)
+    # metadata_dict, original_columns, table_name
+    
+    error = pyqtSignal(str)
+    # error_message

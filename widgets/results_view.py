@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QTextEdit, QTreeView,
     QVBoxLayout, QHBoxLayout, QSplitter, QHeaderView, QAbstractItemView,
     QButtonGroup, QSizePolicy, QFormLayout, QSpinBox, QDialogButtonBox, 
-    QFrame, QGroupBox, QInputDialog, QPlainTextEdit,
+    QFrame, QGroupBox, QInputDialog, QPlainTextEdit, QTabWidget,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem
 )
 from PyQt6.QtCore import (
@@ -27,7 +27,7 @@ from PyQt6.QtGui import (
 import db
 from .explain_visualizer import ExplainVisualizer
 from dialogs import ExportDialog
-from workers import RunnableExportFromModel, ProcessSignals
+from workers import RunnableExportFromModel, ProcessSignals, FetchMetadataWorker, MetadataSignals
 
 
 class ProcessRowDelegate(QStyledItemDelegate):
@@ -37,14 +37,26 @@ class ProcessRowDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self.status_meta = status_meta or {}
         self.default_bg = QColor(default_bg)
+        self._status_column_cache = {}  # Cache {model_id -> column_index}
 
     def _get_status_column(self, model):
+        """Get status column index, cached per model."""
         if not model or not hasattr(model, "columnCount"):
             return -1
+        
+        # Use model id for caching (Phase 3 optimization)
+        model_id = id(model)
+        if model_id in self._status_column_cache:
+            return self._status_column_cache[model_id]
+        
+        # Lookup if not cached
         for column in range(model.columnCount()):
             header = str(model.headerData(column, Qt.Orientation.Horizontal) or "").upper()
             if "STATUS" in header:
+                self._status_column_cache[model_id] = column
                 return column
+        
+        self._status_column_cache[model_id] = -1
         return -1
 
     def paint(self, painter, option, index):
@@ -73,32 +85,23 @@ class ProcessRowDelegate(QStyledItemDelegate):
 
         painter.save()
         if is_item_selected:
-            if bg_color and (is_row_selection or is_col_selection):
-                row_bg = QColor(bg_color)
-                row_bg.setAlpha(220)
-                painter.fillRect(option.rect, row_bg)
-                overlay = QColor("#3b82f6")
-                overlay.setAlpha(38)
-                painter.fillRect(option.rect, overlay)
-            else:
-                painter.fillRect(option.rect, QColor("#3b82f6"))
+            selection_fill = QColor("#8f959e")
+            if is_row_selection or is_col_selection:
+                selection_fill.setAlpha(235)
+            painter.fillRect(option.rect, selection_fill)
         elif bg_color:
             row_bg = QColor(bg_color)
-            row_bg.setAlpha(205)
             painter.fillRect(option.rect, row_bg)
 
         paint_option = QStyleOptionViewItem(option)
         paint_option.state &= ~QStyle.StateFlag.State_Selected
+        paint_option.state &= ~QStyle.StateFlag.State_MouseOver
         paint_option.state &= ~QStyle.StateFlag.State_HasFocus
 
         if index.column() == status_col:
             paint_option.displayAlignment = Qt.AlignmentFlag.AlignCenter
 
-        use_light_text = False
-        if is_item_selected and not (bg_color and (is_row_selection or is_col_selection)):
-            use_light_text = True
-        elif bg_color:
-            use_light_text = status_text not in {"RUNNING", "WARNING"}
+        use_light_text = is_item_selected
 
         if use_light_text:
             paint_option.palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
@@ -112,7 +115,7 @@ class ProcessRowDelegate(QStyledItemDelegate):
 class FlatSelectionDelegate(QStyledItemDelegate):
     """Paints result-table selection like the process tab (full-cell blue, no inner focus frame)."""
 
-    def __init__(self, selection_color="#5384ef", parent=None):
+    def __init__(self, selection_color="#8f959e", parent=None):
         super().__init__(parent)
         self.selection_color = QColor(selection_color)
 
@@ -172,15 +175,15 @@ class FlatSelectionDelegate(QStyledItemDelegate):
 
 class ResultsManager(QObject):
     PROCESS_STATUS_META = {
-        "RUNNING": {"label": "Running", "color": "#ffc107", "priority": 1},
-        "SUCCESSFULL": {"label": "Successfull", "color": "#28a745", "priority": 2},
-        "WARNING": {"label": "Warning", "color": "#fd7e14", "priority": 3},
-        "ERROR": {"label": "Error", "color": "#BD3020", "priority": 4},
+        "RUNNING": {"label": "Running", "color": "#FFF4CC", "priority": 1},
+        "SUCCESSFULL": {"label": "Successfull", "color": "#E8F5E9", "priority": 2},
+        "WARNING": {"label": "Warning", "color": "#FFF3E0", "priority": 3},
+        "ERROR": {"label": "Error", "color": "#FDECEC", "priority": 4},
     }
 
     DEFAULT_PROCESS_STATUS_META = {
         "label": "Unknown",
-        "color": "#6c757d",
+        "color": "#8f959e",
         "priority": 99,
     }
 
@@ -202,6 +205,234 @@ class ResultsManager(QObject):
     def _normalize_process_status(self, status_text):
         return str(status_text or "").strip().upper()
 
+    def _extract_query_table_name(self, query):
+        match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query or "", re.IGNORECASE)
+        if not match:
+            return None
+        extracted_table = match.group(1)
+        table_name = extracted_table.replace('"', '').replace('[', '').replace(']', '')
+        if "." in table_name:
+            parts = table_name.split('.')
+            return parts[-1]
+        return table_name
+
+    def _get_output_tabs_widget(self, tab_content):
+        if not tab_content:
+            return None
+        return tab_content.findChild(QTabWidget, "output_tabs")
+
+    def _ensure_output_tabs_widget(self, tab_content):
+        output_tabs = self._get_output_tabs_widget(tab_content)
+        if output_tabs:
+            return output_tabs
+
+        results_stack = tab_content.findChild(QStackedWidget, "results_stacked_widget")
+        if not results_stack:
+            return None
+
+        old_page_zero = results_stack.widget(0)
+
+        output_tabs = QTabWidget()
+        output_tabs.setObjectName("output_tabs")
+        output_tabs.setTabsClosable(True)
+        output_tabs.setMovable(False)
+        output_tabs.setTabBarAutoHide(False)
+        output_tabs.setDocumentMode(True)
+        output_tabs.tabCloseRequested.connect(lambda index: self._handle_output_tab_close(tab_content, index))
+
+        output_container = QWidget()
+        output_layout = QVBoxLayout(output_container)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        output_layout.setSpacing(0)
+
+        existing_table = old_page_zero.findChild(QTableView, "results_table") if old_page_zero else None
+        if existing_table:
+            existing_table.setParent(None)
+            output_layout.addWidget(existing_table)
+        else:
+            output_layout.addWidget(self._create_output_table_view(tab_content))
+
+        output_tabs.addTab(output_container, "Result 1")
+        output_tabs.setCurrentIndex(0)
+
+        results_stack.insertWidget(0, output_tabs)
+        if old_page_zero is not None:
+            results_stack.removeWidget(old_page_zero)
+            old_page_zero.deleteLater()
+
+        return output_tabs
+
+    def _get_output_tab_container(self, tab_content, output_tab_index=None):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return None
+        if output_tab_index is not None and 0 <= output_tab_index < output_tabs.count():
+            return output_tabs.widget(output_tab_index)
+        return output_tabs.currentWidget()
+
+    def _get_result_table_for_tab(self, tab_content, output_tab_index=None):
+        output_container = self._get_output_tab_container(tab_content, output_tab_index)
+        if not output_container:
+            return None
+        return output_container.findChild(QTableView, "results_table")
+
+    def _ensure_result_table_for_tab(self, tab_content, output_tab_index=None):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return None, None
+
+        self._ensure_at_least_one_output_tab(tab_content)
+
+        if output_tab_index is not None and 0 <= output_tab_index < output_tabs.count():
+            output_tabs.setCurrentIndex(output_tab_index)
+
+        output_container = output_tabs.currentWidget()
+        if not output_container:
+            # Rebuild one tab defensively
+            self._ensure_at_least_one_output_tab(tab_content)
+            output_container = output_tabs.currentWidget()
+            if not output_container:
+                return None, None
+
+        table_view = output_container.findChild(QTableView, "results_table")
+        if table_view is None:
+            output_layout = output_container.layout()
+            if output_layout is None:
+                output_layout = QVBoxLayout(output_container)
+                output_layout.setContentsMargins(0, 0, 0, 0)
+                output_layout.setSpacing(0)
+            table_view = self._create_output_table_view(tab_content)
+            output_layout.addWidget(table_view)
+
+        return table_view, output_tabs.currentIndex()
+
+    def _create_output_table_view(self, tab_content):
+        table_view = QTableView()
+        table_view.setObjectName("results_table")
+        table_view.setAlternatingRowColors(True)
+        table_view.setMouseTracking(True)
+        table_view.viewport().setMouseTracking(True)
+        table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        table_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table_view.horizontalHeader().setSectionsClickable(True)
+        table_view.verticalHeader().setSectionsClickable(True)
+        table_view.verticalHeader().setDefaultSectionSize(28)
+        table_view.setItemDelegate(FlatSelectionDelegate(parent=table_view))
+        table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table_view.customContextMenuRequested.connect(self.show_results_context_menu)
+        table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
+
+        output_state = {
+            "table_name": None,
+            "real_table_name": None,
+            "schema_name": None,
+            "column_names": [],
+            "modified_coords": set(),
+            "new_row_index": None,
+            "cached_proxy_model": None,
+        }
+        table_view.setProperty("output_state", output_state)
+        return table_view
+
+    def create_output_tab(self, tab_content, title=None, activate=True):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return None
+
+        output_container = QWidget()
+        output_layout = QVBoxLayout(output_container)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        output_layout.setSpacing(0)
+
+        table_view = self._create_output_table_view(tab_content)
+        output_layout.addWidget(table_view)
+
+        default_title = title or f"Result {output_tabs.count() + 1}"
+        new_index = output_tabs.addTab(output_container, default_title)
+        if activate:
+            output_tabs.setCurrentIndex(new_index)
+        return new_index
+
+    def _ensure_at_least_one_output_tab(self, tab_content):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if output_tabs and output_tabs.count() == 0:
+            output_container = QWidget()
+            output_layout = QVBoxLayout(output_container)
+            output_layout.setContentsMargins(0, 0, 0, 0)
+            output_layout.setSpacing(0)
+            table_view = self._create_output_table_view(tab_content)
+            output_layout.addWidget(table_view)
+            output_tabs.addTab(output_container, "Result 1")
+            output_tabs.setCurrentIndex(0)
+
+    def _set_output_tab_title(self, tab_content, output_tab_index, query):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs or output_tab_index is None:
+            return
+        if output_tab_index < 0 or output_tab_index >= output_tabs.count():
+            return
+
+        table_name = self._extract_query_table_name(query)
+        if not table_name:
+            table_name = "Result"
+
+        display_number = output_tab_index + 1
+        output_tabs.setTabText(output_tab_index, f"{table_name} {display_number}")
+
+    def _handle_output_tab_close(self, tab_content, index):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return
+        if output_tabs.count() <= 1:
+            return
+        output_tabs.removeTab(index)
+        if output_tabs.count() == 0:
+            self.create_output_tab(tab_content, title="Result 1", activate=True)
+
+    def serialize_output_tabs(self, tab_content):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return {"tabs": ["Result 1"], "active_index": 0}
+
+        tab_titles = [output_tabs.tabText(i) or f"Result {i + 1}" for i in range(output_tabs.count())]
+        active_index = output_tabs.currentIndex() if output_tabs.currentIndex() >= 0 else 0
+        return {
+            "tabs": tab_titles if tab_titles else ["Result 1"],
+            "active_index": active_index,
+        }
+
+    def restore_output_tabs(self, tab_content, output_data):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return
+
+        output_tabs.blockSignals(True)
+        output_tabs.clear()
+
+        saved_titles = []
+        if isinstance(output_data, dict):
+            saved_titles = output_data.get("tabs", []) or []
+
+        if not saved_titles:
+            saved_titles = ["Result 1"]
+
+        for title in saved_titles:
+            self.create_output_tab(tab_content, title=str(title), activate=False)
+
+        active_index = 0
+        if isinstance(output_data, dict):
+            active_index = output_data.get("active_index", 0)
+        if active_index < 0 or active_index >= output_tabs.count():
+            active_index = 0
+        output_tabs.setCurrentIndex(active_index)
+        output_tabs.blockSignals(False)
+
+    def ensure_default_output_tab(self, tab_content):
+        output_tabs = self._ensure_output_tabs_widget(tab_content)
+        if not output_tabs:
+            return None
+        return output_tabs
+
     def _get_process_status_meta(self, status_text):
         status_key = self._normalize_process_status(status_text)
         return self.PROCESS_STATUS_META.get(status_key, self.DEFAULT_PROCESS_STATUS_META)
@@ -211,10 +442,6 @@ class ResultsManager(QObject):
         self.refresh_processes_view()
 
     def _update_process_summary_ui(self, target_tab, status_counts, total_count, visible_count):
-        summary_label = target_tab.findChild(QLabel, "process_summary_label")
-        if summary_label:
-            summary_label.setText(f"Showing {visible_count} of {total_count} process(es)")
-
         filter_buttons = getattr(target_tab, "process_filter_buttons", {})
         if not filter_buttons:
             return
@@ -260,15 +487,7 @@ class ResultsManager(QObject):
             selection_mode = "Cell"
 
         column_name = str(model.headerData(index.column(), Qt.Orientation.Horizontal) or f"Col {index.column() + 1}")
-        cell_text = str(index.data() or "")
         message = f"{selection_mode} selected: R{index.row() + 1}, C{index.column() + 1} ({column_name})"
-
-        selection_label = tab_content.findChild(QLabel, "process_selection_label")
-        if selection_label:
-            selection_label.setText(message)
-
-        preview_text = cell_text if len(cell_text) <= 80 else f"{cell_text[:77]}..."
-        self.status_message_label.setText(f"{message} | {preview_text}")
 
     def _handle_process_column_header_click(self, tab_content, column):
         processes_view = tab_content.findChild(QTableView, "processes_view")
@@ -276,10 +495,6 @@ class ResultsManager(QObject):
             return
 
         processes_view.selectColumn(column)
-        header_text = str(processes_view.model().headerData(column, Qt.Orientation.Horizontal) or "")
-        selection_label = tab_content.findChild(QLabel, "process_selection_label")
-        if selection_label:
-            selection_label.setText(f"Column selected: C{column + 1} ({header_text})")
 
     def _handle_process_row_header_click(self, tab_content, row):
         processes_view = tab_content.findChild(QTableView, "processes_view")
@@ -287,16 +502,13 @@ class ResultsManager(QObject):
             return
 
         processes_view.selectRow(row)
-        selection_label = tab_content.findChild(QLabel, "process_selection_label")
-        if selection_label:
-            selection_label.setText(f"Row selected: R{row + 1}")
 
     def copy_current_result_table(self):
         tab = self.tab_widget.currentWidget()
         if not tab:
            return
 
-        table_view = tab.findChild(QTableView, "results_table")
+        table_view = self._get_result_table_for_tab(tab)
         if not table_view:
            return
 
@@ -393,49 +605,48 @@ class ResultsManager(QObject):
         if not current_tab:
             return
 
-        table_name = getattr(current_tab, 'table_name', None)
+        table_view = self._get_result_table_for_tab(current_tab)
+        if not table_view:
+            return
+
+        output_state = table_view.property("output_state") or {}
+        table_name = output_state.get("table_name")
         
         if not table_name:
             QMessageBox.warning(self.main_window, "Warning", "Cannot determine table name. Please run a SELECT query first.")
             return
 
-        table_view = current_tab.findChild(QTableView, "results_table")
-        if not table_view:
+        display_model = table_view.model()
+        selection_model = table_view.selectionModel()
+        if not display_model or not selection_model:
             return
-        model = table_view.model()
-        selection_model = table_view.selectionModel()
-        proxy_rows = selection_model.selectedRows()
 
-        selected_rows = []
-        
-        
-        if isinstance(model, QSortFilterProxyModel):
-            source_model = model.sourceModel()
-            for proxy_index in proxy_rows:
-               
-                source_index = model.mapToSource(proxy_index)
-                selected_rows.append(source_index)
-           
-            model = source_model 
+        if isinstance(display_model, QSortFilterProxyModel):
+            source_model = display_model.sourceModel()
         else:
-            selected_rows = proxy_rows
+            source_model = display_model
 
-        selection_model = table_view.selectionModel()
-        selected_rows = selection_model.selectedRows()
-        if not selected_rows:
-            indexes = selection_model.selectedIndexes()
-            rows_set = set(index.row() for index in indexes)
-            model = table_view.model()
-            selected_rows = [model.index(r, 0) for r in rows_set]
+        selected_source_rows = set()
 
-        if not selected_rows:
+        for idx in selection_model.selectedRows():
+            if isinstance(display_model, QSortFilterProxyModel):
+                idx = display_model.mapToSource(idx)
+            selected_source_rows.add(idx.row())
+
+        if not selected_source_rows:
+            for idx in selection_model.selectedIndexes():
+                if isinstance(display_model, QSortFilterProxyModel):
+                    idx = display_model.mapToSource(idx)
+                selected_source_rows.add(idx.row())
+
+        if not selected_source_rows:
             QMessageBox.warning(self.main_window, "Warning", "Please select a row to delete.")
             return
 
         reply = QMessageBox.question(
             self.main_window, 
             'Confirm Deletion',
-            f"Are you sure you want to delete {len(selected_rows)} row(s)?",
+            f"Are you sure you want to delete {len(selected_source_rows)} row(s)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -450,7 +661,6 @@ class ResultsManager(QObject):
             return
 
         db_code = (conn_data.get('code') or conn_data.get('db_type', '')).upper()
-        model = table_view.model()
         deleted_count = 0
         errors = []
 
@@ -470,10 +680,9 @@ class ResultsManager(QObject):
 
             cursor = conn.cursor()
 
-            for index in sorted(selected_rows, key=lambda x: x.row(), reverse=True):
-                row_idx = index.row()
+            for row_idx in sorted(selected_source_rows, reverse=True):
                 
-                item = model.item(row_idx, 0) 
+                item = source_model.item(row_idx, 0)
                 if not item: continue
                 
                 item_data = item.data(Qt.ItemDataRole.UserRole)
@@ -497,7 +706,7 @@ class ResultsManager(QObject):
                         cursor.execute(sql)
                     
                     
-                    model.removeRow(row_idx)
+                    source_model.removeRow(row_idx)
                     deleted_count += 1
 
                 except Exception as inner_e:
@@ -541,7 +750,7 @@ class ResultsManager(QObject):
         return pd.DataFrame(data, columns=headers)
 
     def download_result(self, tab_content):
-        table = tab_content.findChild(QTableView, "results_table")
+        table = self._get_result_table_for_tab(tab_content)
         if not table or not table.model():
            QMessageBox.warning(self.main_window, "No Data", "No result data to download")
            return
@@ -584,7 +793,9 @@ class ResultsManager(QObject):
         tab = self.tab_widget.currentWidget()
         if not tab: return
 
-        table = tab.findChild(QTableView, "results_table")
+        table = self._get_result_table_for_tab(tab)
+        if not table:
+            return
         model = table.model()
         if isinstance(model, QSortFilterProxyModel):
             model = model.sourceModel()
@@ -596,9 +807,9 @@ class ResultsManager(QObject):
         row = model.rowCount()
         model.insertRow(row)
         
-        # --- NEW: new row index tracking ---
-        tab.new_row_index = row 
-        # ----------------------------------------
+        output_state = table.property("output_state") or {}
+        output_state["new_row_index"] = row
+        table.setProperty("output_state", output_state)
 
         table.scrollToBottom()
         table.setCurrentIndex(model.index(row, 0))
@@ -614,11 +825,15 @@ class ResultsManager(QObject):
         if not tab: return
         
         saved_any = False
+        update_popup_shown = False
         db_combo_box = tab.findChild(QComboBox, "db_combo_box")
         conn_data = db_combo_box.currentData()
         if not conn_data: return
         
-        table = tab.findChild(QTableView, "results_table")
+        table = self._get_result_table_for_tab(tab)
+        if not table:
+            return
+        output_state = table.property("output_state") or {}
         model = table.model()
         if isinstance(model, QSortFilterProxyModel):
             model = model.sourceModel()
@@ -626,11 +841,11 @@ class ResultsManager(QObject):
         # ---------------------------------------------------------
         # PART 1: Handle INSERT (New Rows)
         # ---------------------------------------------------------
-        if hasattr(tab, "new_row_index"):
-            if not hasattr(tab, "table_name") or not hasattr(tab, "column_names"):
+        if output_state.get("new_row_index") is not None:
+            if not output_state.get("table_name") or not output_state.get("column_names"):
                  QMessageBox.warning(self.main_window, "Error", "Table context missing.")
             else:
-                row_idx = tab.new_row_index
+                row_idx = output_state["new_row_index"]
                 values = []
                 for col_idx in range(model.columnCount()):
                     item = model.item(row_idx, col_idx)
@@ -638,7 +853,7 @@ class ResultsManager(QObject):
                     if val == '': val = None
                     values.append(val)
 
-                cols_str = ", ".join([f'"{c}"' for c in tab.column_names])
+                cols_str = ", ".join([f'"{c}"' for c in output_state["column_names"]])
                 db_code = (conn_data.get('code') or conn_data.get('db_type', '')).upper()
                 
                 sql = ""
@@ -647,26 +862,27 @@ class ResultsManager(QObject):
                 try:
                     if db_code == 'POSTGRES':
                         placeholders = ", ".join(["%s"] * len(values))
-                        sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
+                        sql = f'INSERT INTO {output_state["table_name"]} ({cols_str}) VALUES ({placeholders})'
                         conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ['host', 'port', 'database', 'user', 'password']})
                         
                     elif 'SQLITE' in str(db_code): 
                         placeholders = ", ".join(["?"] * len(values))
-                        sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
+                        sql = f'INSERT INTO {output_state["table_name"]} ({cols_str}) VALUES ({placeholders})'
                         conn = db.create_sqlite_connection(conn_data.get('db_path'))
                     
 
                     elif 'SERVICENOW' in str(db_code):
                         placeholders = ", ".join(["?"] * len(values))
                         # ServiceNow-
-                        sql = f'INSERT INTO {tab.table_name} ({cols_str}) VALUES ({placeholders})'
+                        sql = f'INSERT INTO {output_state["table_name"]} ({cols_str}) VALUES ({placeholders})'
                         conn = db.create_servicenow_connection(conn_data)
                     if conn:
                         cursor = conn.cursor()
                         cursor.execute(sql, values)
                         conn.commit()
                         conn.close()
-                        del tab.new_row_index
+                        output_state["new_row_index"] = None
+                        table.setProperty("output_state", output_state)
                         saved_any = True
                         
                 except Exception as e:
@@ -675,86 +891,104 @@ class ResultsManager(QObject):
         # ---------------------------------------------------------
         # PART 2: Handle UPDATE (Modified Cells)
         # ---------------------------------------------------------
-        if hasattr(tab, "modified_coords") and tab.modified_coords:
-            updates_count = 0
-            errors = []
-            
-            coords_to_process = list(tab.modified_coords)
-            
+        modified_coords = output_state.get("modified_coords", set())
+        updates_count = 0
+        update_errors = []
+        if modified_coords:
+            coords_to_process = list(modified_coords)
             db_code = (conn_data.get('code') or conn_data.get('db_type', '')).upper()
             conn = None
-            
+
             try:
                 if db_code == 'POSTGRES':
                     conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ['host', 'port', 'database', 'user', 'password']})
                 elif 'SQLITE' in str(db_code):
                     conn = db.create_sqlite_connection(conn_data.get('db_path'))
-                
                 elif 'SERVICENOW' in str(db_code):
                     conn = db.create_servicenow_connection(conn_data)
-                if conn:
-                    cursor = conn.cursor()
-                    
-                    for row, col in coords_to_process:
-                        item = model.item(row, col)
-                        if not item: continue
-                        
-                        edit_data = item.data(Qt.ItemDataRole.UserRole)
-                        pk_col = edit_data.get("pk_col")
-                        pk_val = edit_data.get("pk_val")
-                        col_name = edit_data.get("col_name")
-                        new_val = item.text()
-                        
-                        val_to_update = None if new_val == '' else new_val
 
-                        if not pk_col or pk_val is None:
-                            if 'SERVICENOW' in str(db_code):
-                                # fallback: 
-                                pass
-                            errors.append(f"Missing PK for column {col_name}")
-                            continue
+                if not conn:
+                    raise Exception("Could not create database connection for updates.")
 
+                cursor = conn.cursor()
+                table_name_for_update = output_state.get("table_name")
+
+                for row, col in coords_to_process:
+                    item = model.item(row, col)
+                    if not item:
+                        continue
+
+                    edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
+                    pk_col = edit_data.get("pk_col")
+                    pk_val = edit_data.get("pk_val")
+                    col_name = edit_data.get("col_name")
+                    new_val = item.text()
+                    val_to_update = None if new_val == '' else new_val
+
+                    if not table_name_for_update:
+                        update_errors.append("Missing table context for update.")
+                        continue
+                    if not pk_col or pk_val is None:
+                        update_errors.append(f"Missing PK for column {col_name}")
+                        continue
+
+                    try:
                         if db_code == 'POSTGRES':
-                             sql = f'UPDATE {tab.table_name} SET "{col_name}" = %s WHERE "{pk_col}" = %s'
+                            sql = f'UPDATE {table_name_for_update} SET "{col_name}" = %s WHERE "{pk_col}" = %s'
+                            cursor.execute(sql, (val_to_update, pk_val))
                         elif 'SQLITE' in str(db_code):
-                             sql = f'UPDATE {tab.table_name} SET "{col_name}" = ? WHERE "{pk_col}" = ?'
+                            sql = f'UPDATE {table_name_for_update} SET "{col_name}" = ? WHERE "{pk_col}" = ?'
+                            cursor.execute(sql, (val_to_update, pk_val))
+                        elif 'SERVICENOW' in str(db_code):
+                            sql = f"UPDATE {table_name_for_update} SET {col_name} = ? WHERE {pk_col} = ?"
+                            cursor.execute(sql, (val_to_update, pk_val))
                         else:
+                            update_errors.append(f"Unsupported DB type for updates: {db_code}")
                             continue
 
-                        try:
-                            cursor.execute(sql, (val_to_update, pk_val))
-                            
-                            # Success: Update original value and clear background
-                            edit_data['orig_val'] = new_val
-                            item.setData(edit_data, Qt.ItemDataRole.UserRole)
-                            item.setBackground(QColor(Qt.GlobalColor.white))
-                            
-                            if (row, col) in tab.modified_coords:
-                                tab.modified_coords.remove((row, col))
-                                
-                            updates_count += 1
-                        except Exception as inner_e:
-                            errors.append(str(inner_e))
+                        if hasattr(cursor, "rowcount") and cursor.rowcount == 0:
+                            update_errors.append(f"No row updated for PK '{pk_col}'={pk_val}")
+                            continue
 
-                    conn.commit()
-                    conn.close()
-                    
-                    if updates_count > 0:
-                        saved_any = True
+                        edit_data['orig_val'] = new_val
+                        item.setData(edit_data, Qt.ItemDataRole.UserRole)
+                        item.setBackground(QColor(Qt.GlobalColor.white))
+                        if (row, col) in modified_coords:
+                            modified_coords.remove((row, col))
+                        updates_count += 1
+                    except Exception as inner_e:
+                        update_errors.append(str(inner_e))
+
+                conn.commit()
+                if updates_count > 0:
+                    saved_any = True
 
             except Exception as e:
-                 QMessageBox.critical(self.main_window, "Connection Error", f"Failed to connect for updates:\n{str(e)}")
+                QMessageBox.critical(self.main_window, "Connection Error", f"Failed to update rows:\n{str(e)}")
+            finally:
+                if conn:
+                    conn.close()
 
-            if errors:
-                QMessageBox.warning(self.main_window, "Update Warnings", f"Some updates failed:\n" + "\n".join(errors[:5]))
+            output_state["modified_coords"] = modified_coords
+            table.setProperty("output_state", output_state)
+
+            if updates_count > 0:
+                update_popup_shown = True
+                QMessageBox.information(self.main_window, "Update Success", f"Updated {updates_count} value(s) successfully.")
+            elif coords_to_process:
+                QMessageBox.warning(self.main_window, "Update Failed", "Update failed. No values were updated.")
+
+            if update_errors:
+                QMessageBox.warning(self.main_window, "Update Details", "\n".join(update_errors[:8]))
 
         # ---------------------------------------------------------
         # Final Feedback
         # ---------------------------------------------------------
         if saved_any:
             self.status.showMessage("Changes saved successfully!", 3000)
-            QMessageBox.information(self.main_window, "Success", "Changes saved successfully!")
-        elif not hasattr(tab, "new_row_index") and (not hasattr(tab, "modified_coords") or not tab.modified_coords):
+            if not update_popup_shown:
+                QMessageBox.information(self.main_window, "Success", "Changes saved successfully!")
+        elif output_state.get("new_row_index") is None and not modified_coords:
             self.status.showMessage("No changes to save.", 3000)
 
     def toggle_table_search(self):
@@ -771,18 +1005,36 @@ class ResultsManager(QObject):
             search_box.setFocus()
 
 
-    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query, output_mode="current", output_tab_index=None):
         
         # Stop timers
         if target_tab in self.tab_timers:
-            self.tab_timers[target_tab]["timer"].stop()
-            self.tab_timers[target_tab]["timeout_timer"].stop()
-            del self.tab_timers[target_tab]
+                self.tab_timers[target_tab]["timer"].stop(); self.tab_timers[target_tab]["timeout_timer"].stop(); del self.tab_timers[target_tab]
 
         self.save_query_to_history(conn_data, query, "Success", row_count, elapsed_time)
 
         # Get widgets
-        table_view = target_tab.findChild(QTableView, "results_table")
+        self._ensure_at_least_one_output_tab(target_tab)
+        if output_mode == "new" and output_tab_index is None:
+            output_tab_index = self.create_output_tab(target_tab, activate=True)
+
+        if output_tab_index is not None:
+            output_tabs = self._get_output_tabs_widget(target_tab)
+            if output_tabs and 0 <= output_tab_index < output_tabs.count():
+                output_tabs.setCurrentIndex(output_tab_index)
+
+        table_view, resolved_output_index = self._ensure_result_table_for_tab(target_tab, output_tab_index)
+        if not table_view:
+            message_view = target_tab.findChild(QTextEdit, "message_view")
+            if message_view:
+                message_view.append("Error rendering query result:\n\nOutput table container is unavailable.")
+            tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
+            if tab_status_label:
+                tab_status_label.setText("Error rendering query result")
+            self.stop_spinner(target_tab, success=False)
+            return
+
+        output_state = table_view.property("output_state") or {}
         message_view = target_tab.findChild(QTextEdit, "message_view")
         tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
         rows_info_label = target_tab.findChild(QLabel, "rows_info_label")
@@ -856,23 +1108,26 @@ class ResultsManager(QObject):
         # Condition: If it is NOT structural AND (it is Select OR has columns) -> Show Output Tab (0)
         if not is_structural and (is_select or (columns and len(columns) > 0)):
             final_tab_index = 0
-            
-            target_tab.column_names = columns
-            target_tab.modified_coords = set() 
+            output_state["column_names"] = list(columns)
+            output_state["modified_coords"] = set()
+            output_state["new_row_index"] = None
 
             # Extract table name logic
             match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query, re.IGNORECASE)
             if match:
                 extracted_table = match.group(1)
-                target_tab.table_name = extracted_table.replace('"', '').replace('[', '').replace(']', '')
-                if "." in target_tab.table_name:
-                    parts = target_tab.table_name.split('.')
-                    target_tab.schema_name = parts[0]
-                    target_tab.real_table_name = parts[1]
+                output_state["table_name"] = extracted_table.replace('"', '').replace('[', '').replace(']', '')
+                if "." in output_state["table_name"]:
+                    parts = output_state["table_name"].split('.')
+                    output_state["schema_name"] = parts[0]
+                    output_state["real_table_name"] = parts[1]
                 else:
-                    target_tab.real_table_name = target_tab.table_name
+                    output_state["schema_name"] = None
+                    output_state["real_table_name"] = output_state["table_name"]
             else:
-                if hasattr(target_tab, 'table_name'): del target_tab.table_name
+                output_state["table_name"] = None
+                output_state["real_table_name"] = None
+                output_state["schema_name"] = None
 
             # Row count logic
             current_offset = getattr(target_tab, 'current_offset', 0)
@@ -893,29 +1148,11 @@ class ResultsManager(QObject):
             model.setColumnCount(len(columns))
             model.setRowCount(len(results))
             
-            meta_columns = None
-            pk_indices = [] 
-            if hasattr(target_tab, 'real_table_name'):
-                meta_columns = self.get_table_column_metadata(conn_data, target_tab.real_table_name)
-
-            headers = []
-            if meta_columns and len(meta_columns) == len(columns):
-                for idx, col in enumerate(meta_columns):
-                    col_str = str(col)
-                    if "[PK]" in col_str:
-                        pk_indices.append(idx)
-                    if isinstance(col, str):
-                        parts = col.split(maxsplit=1)
-                        col_name = parts[0]
-                        data_type = parts[1] if len(parts) > 1 else ""
-                    else:
-                        col_name = str(col)
-                        data_type = ""
-                    headers.append(f"{col_name}\n{data_type}")
-            else:
-                headers = [f"{col}\n" for col in columns]
-                if columns and any(x in columns[0].lower() for x in ['id', 'uuid', 'pk']):
-                    pk_indices.append(0)
+            # Build headers without metadata initially (will be updated async)
+            headers = [str(col) for col in columns]
+            pk_indices = []
+            if columns and any(x in columns[0].lower() for x in ['id', 'uuid', 'pk']):
+                pk_indices.append(0)
 
             for col_idx, header_text in enumerate(headers):
                 model.setHeaderData(col_idx, Qt.Orientation.Horizontal, header_text)
@@ -939,21 +1176,53 @@ class ResultsManager(QObject):
                     }
                     item.setData(edit_data, Qt.ItemDataRole.UserRole)
                     model.setItem(row_idx, col_idx, item)
-
-            # Proxy Model
-            try: model.itemChanged.disconnect() 
-            except: pass
-            model.itemChanged.connect(lambda item: self.handle_cell_edit(item, target_tab))
-
-            proxy_model = QSortFilterProxyModel(table_view)
-            proxy_model.setSourceModel(model)
-            proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            proxy_model.setFilterKeyColumn(-1)
             
+            # Store metadata context on target_tab for async callback
+            table_view.setProperty("output_state", output_state)
+            
+            # Phase 4: Connect signal AFTER all rows inserted (signal batching)
+            try: 
+                model.itemChanged.disconnect() 
+            except: 
+                pass
+            model.itemChanged.connect(lambda item: self.handle_cell_edit(item, target_tab, table_view))
+            
+            # Spawn async metadata fetch if table name available
+            pending_table_name = output_state.get("real_table_name")
+            if pending_table_name and hasattr(self, 'main_window'):
+                metadata_signals = MetadataSignals()
+                metadata_signals.finished.connect(partial(self.on_metadata_ready, model))
+                metadata_signals.error.connect(partial(self.on_metadata_error, target_tab))
+                
+                worker = FetchMetadataWorker(
+                    conn_data,
+                    pending_table_name,
+                    columns,
+                    metadata_signals
+                )
+                self.main_window.thread_pool.start(worker)
+
+            # Proxy Model (Phase 5: Reuse proxy if exists)
+            proxy_model = output_state.get("cached_proxy_model")
+            if proxy_model is None:
+                # Create proxy once per tab
+                proxy_model = QSortFilterProxyModel(table_view)
+                proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                proxy_model.setFilterKeyColumn(-1)
+                output_state["cached_proxy_model"] = proxy_model
+            
+            # Reuse proxy by swapping source model
+            proxy_model.setSourceModel(model)
             table_view.setModel(proxy_model)
             search_box = target_tab.findChild(QLineEdit, "table_search_box")
             if search_box and search_box.text():
                 proxy_model.setFilterFixedString(search_box.text())
+
+            table_view.setProperty("output_state", output_state)
+            current_output_index = output_tab_index
+            if current_output_index is None:
+                current_output_index = resolved_output_index
+            self._set_output_tab_title(target_tab, current_output_index, query)
             
             msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
             status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
@@ -1018,7 +1287,7 @@ class ResultsManager(QObject):
         if not self.running_queries:
             self.cancel_action.setEnabled(False)
 
-    def handle_cell_edit(self, item, tab):
+    def handle_cell_edit(self, item, tab, table_view=None):
         """
         Track changes locally using coordinates (row, col).
         """
@@ -1030,9 +1299,15 @@ class ResultsManager(QObject):
         orig_val = edit_data.get("orig_val")
         new_val = item.text()
 
-        # Initialize tracking set if missing
-        if not hasattr(tab, "modified_coords"):
-            tab.modified_coords = set()
+        if table_view is None:
+            table_view = self._get_result_table_for_tab(tab)
+        if not table_view:
+            return
+        output_state = table_view.property("output_state") or {}
+        modified_coords = output_state.get("modified_coords")
+        if modified_coords is None:
+            modified_coords = set()
+            output_state["modified_coords"] = modified_coords
 
         # 2. Check if value actually changed
         val_changed = str(orig_val) != str(new_val)
@@ -1044,20 +1319,90 @@ class ResultsManager(QObject):
             # Change background to indicate unsaved change
             item.setBackground(QColor("#FFFDD0")) 
             # Store Coordinate (Hashable)
-            tab.modified_coords.add((row, col))
+            modified_coords.add((row, col))
             self.status.showMessage("Cell modified")
         else:
             # Revert background
             item.setBackground(QColor(Qt.GlobalColor.white))
-            if (row, col) in tab.modified_coords:
-                tab.modified_coords.remove((row, col))
+            if (row, col) in modified_coords:
+                modified_coords.remove((row, col))
+
+        table_view.setProperty("output_state", output_state)
+
+    def on_metadata_ready(self, model, metadata_dict, original_columns, table_name):
+        """Callback when metadata finishes fetching asynchronously."""
+        try:
+            if not model:
+                return
+            
+            # Update headers with metadata (PK indicators, data types)
+            pk_indices = []
+            headers = []
+            
+            for idx, col in enumerate(original_columns):
+                col_lower = col.lower()
+                meta = metadata_dict.get(col_lower, {})
+                
+                suffix = ""
+                if meta.get('pk'):
+                    if meta.get('is_serial'):
+                        suffix = " [Serial PK]"
+                    else:
+                        suffix = " [PK]"
+                    pk_indices.append(idx)
+                elif meta.get('nullable') == False:
+                    suffix = " *"
+                
+                data_type = meta.get('data_type', '')
+                compact_type = self._compact_data_type_label(data_type)
+                header_text = f"{col}{suffix}\n{compact_type}" if compact_type else f"{col}{suffix}"
+                headers.append(header_text)
+                model.setHeaderData(idx, Qt.Orientation.Horizontal, header_text)
+                if data_type:
+                    model.setHeaderData(idx, Qt.Orientation.Horizontal, str(data_type), Qt.ItemDataRole.ToolTipRole)
+            
+        except Exception as e:
+            print(f"Error updating metadata headers: {e}")
+
+    def _compact_data_type_label(self, data_type):
+        text = str(data_type or "").strip()
+        if not text:
+            return ""
+
+        compact = re.sub(r"\s+", " ", text.lower())
+        replacements = [
+            ("character varying", "varchar"),
+            ("varying character", "varchar"),
+            ("timestamp without time zone", "timestamp"),
+            ("timestamp with time zone", "timestamptz"),
+            ("time without time zone", "time"),
+            ("time with time zone", "timetz"),
+            ("double precision", "float8"),
+            ("smallint", "int2"),
+            ("int4", "integer"),
+            ("bigint", "int8"),
+            ("boolean", "bool"),
+            ("character", "char"),
+        ]
+
+        for source, target in replacements:
+            compact = compact.replace(source, target)
+
+        if len(compact) > 20:
+            compact = f"{compact[:19]}…"
+
+        return compact
+
+    def on_metadata_error(self, target_tab, error_message):
+        """Callback when metadata fetch fails."""
+        print(f"Metadata fetch error for {target_tab}: {error_message}")
 
 
     def stop_spinner(self, target_tab, success=True, target_index=0):
         if not target_tab: return
         stacked_widget = target_tab.findChild(QStackedWidget, "results_stacked_widget")
         results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
-        process_info_bar = target_tab.findChild(QWidget, "processInfoBar")
+        process_filter_bar = target_tab.findChild(QWidget, "processFilterBar")
         if stacked_widget:
             spinner_label = stacked_widget.findChild(QLabel, "spinner_label")
             if spinner_label and spinner_label.movie():
@@ -1071,16 +1416,16 @@ class ResultsManager(QObject):
                     buttons[1].setChecked(target_index == 1) 
                     buttons[2].setChecked(target_index == 2)
                     buttons[3].setChecked(target_index == 3)
-                if results_info_bar and process_info_bar:
+                if results_info_bar and process_filter_bar:
                     if target_index == 0:
                         results_info_bar.show()
-                        process_info_bar.hide()
+                        process_filter_bar.hide()
                     elif target_index == 3:
                         results_info_bar.hide()
-                        process_info_bar.show()
+                        process_filter_bar.show()
                     else:
                         results_info_bar.hide()
-                        process_info_bar.hide()
+                        process_filter_bar.hide()
             else:
                 stacked_widget.setCurrentIndex(1)
                 if buttons: 
@@ -1090,8 +1435,8 @@ class ResultsManager(QObject):
                     buttons[3].setChecked(False)
                 if results_info_bar:
                     results_info_bar.hide()
-                if process_info_bar:
-                    process_info_bar.hide()
+                if process_filter_bar:
+                    process_filter_bar.hide()
 
 
     def update_page_label(self, target_tab, row_count):
@@ -1099,7 +1444,7 @@ class ResultsManager(QObject):
         if not page_label:
            return
 
-        limit_val = getattr(target_tab, 'current_limit', 1000)
+        limit_val = getattr(target_tab, 'current_limit', 0)
         offset_val = getattr(target_tab, 'current_offset', 0)
 
         if row_count <= 0 or limit_val == 0:
@@ -1329,11 +1674,24 @@ class ResultsManager(QObject):
         results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
         header = current_tab.findChild(QWidget, "resultsHeader")
         buttons = header.findChildren(QPushButton)
+        results_info_bar = current_tab.findChild(QWidget, "resultsInfoBar")
+        process_info_bar = current_tab.findChild(QWidget, "processInfoBar")
+        process_filter_bar = current_tab.findChild(QWidget, "processFilterBar")
 
         if results_stack and len(buttons) >= 4:
           results_stack.setCurrentIndex(3)
           for i, btn in enumerate(buttons[:4]):
             btn.setChecked(i == 3)
+          
+          # Sync toolbar visibility to match Processes tab
+          if results_info_bar:
+            results_info_bar.hide()
+          if process_filter_bar:
+            process_filter_bar.show()
+          if process_info_bar:
+            process_info_bar.hide()
+          
+          self.refresh_processes_view()
     
     
 
@@ -1508,6 +1866,7 @@ class ResultsManager(QObject):
         # --- MODIFICATION: resizeColumnsToContents moved here ---
         processes_view.resizeColumnsToContents()
         processes_view.horizontalHeader().setStretchLastSection(True)
+        
 
     def get_table_column_metadata(self, conn_data, table_name):
       """
@@ -1592,7 +1951,7 @@ class ResultsManager(QObject):
         # Limit Input
         limit_spin = QSpinBox()
         limit_spin.setRange(0, 999999999) # 0 means no limit (logic handled below)
-        limit_spin.setValue(getattr(tab_content, 'current_limit', 1000))
+        limit_spin.setValue(int(getattr(tab_content, 'current_limit', 0) or 0))
         limit_spin.setSpecialValueText("No Limit") # If value is 0
         layout.addRow("Rows Limit:", limit_spin)
 
@@ -1613,7 +1972,7 @@ class ResultsManager(QObject):
             new_limit = limit_spin.value()
             new_offset = offset_spin.value()
             
-            tab_content.current_limit = new_limit if new_limit > 0 else None
+            tab_content.current_limit = new_limit if new_limit > 0 else 0
             tab_content.current_offset = new_offset
             
             # Refresh Display Label (Optional immediate update)
@@ -1624,7 +1983,7 @@ class ResultsManager(QObject):
 
             # Execute Query with new settings
             # Call WorksheetManager to execute
-            self.main_window.worksheet_manager.execute_query()
+            self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
     def eventFilter(self, watched, event):
         if watched.objectName() == "table_search_box" and event.type() == QEvent.Type.FocusOut:
@@ -1655,8 +2014,8 @@ class ResultsManager(QObject):
         results_header = QWidget()
         results_header.setObjectName("resultsHeader")
         results_header_layout = QHBoxLayout(results_header)
-        results_header_layout.setContentsMargins(5, 2, 5, 0)
-        results_header_layout.setSpacing(2)
+        results_header_layout.setContentsMargins(6, 3, 6, 1)
+        results_header_layout.setSpacing(4)
 
         output_btn = QPushButton("Output")
         message_btn = QPushButton("Messages")
@@ -1694,35 +2053,35 @@ class ResultsManager(QObject):
         results_info_bar.setObjectName("resultsInfoBar")
         results_info_bar.setStyleSheet(
             "QWidget#resultsInfoBar { "
-            "background-color: #f3f4f6; "
-            "border-top: 1px solid #d1d5db; "
-            "border-bottom: 1px solid #d1d5db; "
+            "background-color: #ECEFF3; "
+            "border-top: 1px solid #C9CFD8; "
+            "border-bottom: 1px solid #C9CFD8; "
             "}"
         )
         results_info_layout = QHBoxLayout(results_info_bar)
-        results_info_layout.setContentsMargins(5, 2, 5, 2)
-        results_info_layout.setSpacing(5)
+        results_info_layout.setContentsMargins(6, 3, 6, 3)
+        results_info_layout.setSpacing(6)
 
         
         # --- Button Style for Bottom Bar (Reuse btn_style) ---
         btn_style_bottom = (
             "QPushButton, QToolButton { "
-            "padding: 1px 8px; border: 1px solid #cccccc; "
+            "padding: 2px 8px; border: 1px solid #b9b9b9; "
             "background-color: #ffffff; border-radius: 4px; "
             "font-size: 9pt; color: #333333; "
             "} "
             "QPushButton:hover, QToolButton:hover { "
-            "background-color: #f0f2f5; border-color: #adb5bd; "
+            "background-color: #e8e8e8; border-color: #9c9c9c; "
             "} "
             "QPushButton:pressed, QToolButton:pressed { "
-            "background-color: #e8eaed; "
+            "background-color: #dcdcdc; "
             "} "
         )
 
         add_row_btn = QPushButton()
         add_row_btn.setIcon(QIcon("assets/row-plus.svg"))
         add_row_btn.setIconSize(QSize(16, 16))
-        add_row_btn.setFixedSize(32, 32)
+        add_row_btn.setFixedSize(30, 30)
         add_row_btn.setToolTip("Add new row")
         add_row_btn.setStyleSheet(btn_style_bottom)
         add_row_btn.clicked.connect(self.add_empty_row)
@@ -1730,7 +2089,7 @@ class ResultsManager(QObject):
         save_row_btn = QPushButton()
         save_row_btn.setIcon(QIcon("assets/save.svg"))
         save_row_btn.setIconSize(QSize(16, 16))
-        save_row_btn.setFixedSize(32, 32)
+        save_row_btn.setFixedSize(30, 30)
         save_row_btn.setToolTip("Save new row")
         save_row_btn.setStyleSheet(btn_style_bottom)
         results_info_layout.addWidget(add_row_btn)
@@ -1741,8 +2100,8 @@ class ResultsManager(QObject):
         # --- COPY / PASTE BUTTONS (pgAdmin style) ---
         copy_btn = QToolButton()
         copy_btn.setIcon(QIcon("assets/copy.svg")) 
-        copy_btn.setIconSize(QSize(16, 16))
-        copy_btn.setFixedSize(32, 32)
+        copy_btn.setIconSize(QSize(19, 19))
+        copy_btn.setFixedSize(30, 30)
         copy_btn.setToolTip("Copy selected cells (Ctrl+C)")
         copy_btn.setStyleSheet(btn_style_bottom)
         # Logic connected later when table is created
@@ -1751,8 +2110,8 @@ class ResultsManager(QObject):
 
         paste_btn = QToolButton()
         paste_btn.setIcon(QIcon("assets/paste.svg")) 
-        paste_btn.setIconSize(QSize(16, 16))
-        paste_btn.setFixedSize(32, 32)
+        paste_btn.setIconSize(QSize(19, 19))
+        paste_btn.setFixedSize(30, 30)
         paste_btn.setToolTip("Paste to editor")
         paste_btn.setStyleSheet(btn_style_bottom)
         paste_btn.clicked.connect(self.paste_to_editor)
@@ -1761,7 +2120,7 @@ class ResultsManager(QObject):
         delete_row_btn = QPushButton()
         delete_row_btn.setIcon(QIcon("assets/trash.svg")) 
         delete_row_btn.setIconSize(QSize(16, 16))
-        delete_row_btn.setFixedSize(32, 32)
+        delete_row_btn.setFixedSize(30, 30)
         delete_row_btn.setToolTip("Delete selected row(s)")
         delete_row_btn.setObjectName("delete_row_btn") 
         delete_row_btn.setStyleSheet(btn_style_bottom) 
@@ -1775,7 +2134,7 @@ class ResultsManager(QObject):
         download_btn = QPushButton()
         download_btn.setIcon(QIcon("assets/export.svg"))
         download_btn.setIconSize(QSize(16, 16))
-        download_btn.setFixedSize(32, 32)
+        download_btn.setFixedSize(30, 30)
         download_btn.setToolTip("Download query result")
         download_btn.setStyleSheet(btn_style_bottom)
         download_btn.clicked.connect(lambda: self.download_result(tab_content))
@@ -1798,28 +2157,39 @@ class ResultsManager(QObject):
         table_search_btn = QToolButton()
         table_search_btn.setObjectName("table_search_btn")
         table_search_btn.setIcon(QIcon(icon_path if os.path.exists(icon_path) else ""))
-        table_search_btn.setFixedSize(32, 32)
+        table_search_btn.setFixedSize(30, 30)
         table_search_btn.setToolTip("Search in Results")
         table_search_btn.setStyleSheet("""
             QToolButton {
-                border: 1px solid #cccccc;
+                border: 1px solid #b9b9b9;
                 border-radius: 4px;
                 background-color: #ffffff;
             }
             QToolButton:hover {
-                background-color: #f0f2f5;
-                border: 1px solid #adb5bd;
+                background-color: #e8e8e8;
+                border: 1px solid #9c9c9c;
             }
         """)
         table_search_btn.clicked.connect(self.toggle_table_search)
         
-        def on_search_text_changed(text):
-            current_table = tab_content.findChild(QTableView, "results_table")
+        # Create debouncer timer for search (Phase 2 optimization)
+        search_debounce_timer = QTimer()
+        search_debounce_timer.setInterval(300)  # 300ms debounce delay
+        search_debounce_timer.setSingleShot(True)
+        
+        def trigger_filter():
+            current_table = self._get_result_table_for_tab(tab_content)
             if current_table:
                 current_model = current_table.model()
                 if isinstance(current_model, QSortFilterProxyModel):
-                    current_model.setFilterFixedString(text)
-
+                    current_model.setFilterFixedString(search_box.text())
+        
+        def on_search_text_changed(text):
+            # Reset timer every keystroke (debounce)
+            search_debounce_timer.stop()
+            search_debounce_timer.start()
+        
+        search_debounce_timer.timeout.connect(trigger_filter)
         search_box.textChanged.connect(on_search_text_changed)
         results_info_layout.addWidget(search_box)
         results_info_layout.addWidget(table_search_btn)
@@ -1838,7 +2208,7 @@ class ResultsManager(QObject):
         rows_setting_btn = QToolButton()
         rows_setting_btn.setIcon(QIcon("assets/list-details.svg"))
         rows_setting_btn.setIconSize(QSize(16, 16))
-        rows_setting_btn.setFixedSize(32, 28)
+        rows_setting_btn.setFixedSize(28, 28)
         rows_setting_btn.setToolTip("Edit Limit/Offset")
         rows_setting_btn.setStyleSheet(btn_style_bottom)
         rows_setting_btn.clicked.connect(lambda: self.open_limit_offset_dialog(tab_content))
@@ -1848,28 +2218,28 @@ class ResultsManager(QObject):
         arrow_font = QFont("Segoe UI", 16, QFont.Weight.Bold) # Restored for visibility
         
         nav_btn_style = ("QPushButton { "
-                         "border: 1px solid #cccccc; "
+                         "border: 1px solid #b9b9b9; "
                          "border-radius: 4px; "
                          "background-color: #ffffff; "
                          "color: #333333; "
                          "padding: 0px; " # Center icon/text
                          "} "
                          "QPushButton:hover { "
-                         "background-color: #f0f2f5; "
-                         "border-color: #adb5bd; "
+                         "background-color: #e8e8e8; "
+                         "border-color: #9c9c9c; "
                          "} "
                          "QPushButton:pressed { "
-                         "background-color: #e8eaed; "
+                         "background-color: #dcdcdc; "
                          "} "
                          "QPushButton:disabled { "
-                         "background-color: #f5f5f5; "
+                         "background-color: #f2f2f2; "
                          "color: #aaaaaa; "
-                         "border-color: #e0e0e0; "
+                         "border-color: #cfcfcf; "
                          "}")
 
         # Prev button
         prev_btn = QPushButton("◀")
-        prev_btn.setFixedSize(32, 28) # Slightly wider for better touch/click
+        prev_btn.setFixedSize(30, 28)
         prev_btn.setFont(arrow_font)
         prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         prev_btn.setEnabled(True) # Initially disabled
@@ -1885,7 +2255,7 @@ class ResultsManager(QObject):
 
         # Next button
         next_btn = QPushButton("▶")
-        next_btn.setFixedSize(32, 28)
+        next_btn.setFixedSize(30, 28)
         next_btn.setFont(arrow_font)
         next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         next_btn.setEnabled(True) # Initially disabled until results load
@@ -1898,42 +2268,33 @@ class ResultsManager(QObject):
         
         results_layout.addWidget(results_info_bar)
 
-        process_info_bar = QWidget()
-        process_info_bar.setObjectName("processInfoBar")
-        process_info_layout = QHBoxLayout(process_info_bar)
-        process_info_layout.setContentsMargins(5, 2, 5, 2)
-        process_info_layout.setSpacing(6)
-
-        process_summary_label = QLabel("Showing 0 of 0 process(es)")
-        process_summary_label.setObjectName("process_summary_label")
-        process_summary_label.setStyleSheet("color: #374151;")
-        process_info_layout.addWidget(process_summary_label)
-
-        process_selection_label = QLabel("Selection: none")
-        process_selection_label.setObjectName("process_selection_label")
-        process_selection_label.setStyleSheet("color: #4b5563;")
-        process_info_layout.addWidget(process_selection_label)
-
-        process_info_layout.addSpacing(6)
+        # ----- PROCESS FILTER BAR (Toolbar-like) -----
+        process_filter_bar = QWidget()
+        process_filter_bar.setObjectName("processFilterBar")
+        process_filter_layout = QHBoxLayout(process_filter_bar)
+        process_filter_layout.setContentsMargins(6, 3, 6, 3)
+        process_filter_layout.setSpacing(6)
 
         filter_btn_style = """
             QPushButton {
-                border: 1px solid #cfd6df;
-                border-radius: 5px;
-                background: #ffffff;
+                border: 1px solid #B8BEC6;
+                border-radius: 4px;
+                background: #F9FAFB;
                 color: #1f2937;
-                padding: 2px 8px;
-                min-height: 24px;
+                padding: 4px 10px;
                 font-size: 9pt;
             }
             QPushButton:hover {
-                background: #f4f7fb;
-                border-color: #b8c2cf;
+                background: #E7EBF1;
+                border-color: #9FA6AF;
+            }
+            QPushButton:pressed {
+                background: #D9DFE8;
             }
             QPushButton:checked {
-                background: #eaf2ff;
-                border-color: #9db7dd;
-                color: #0f3b82;
+                background: #8E959E;
+                border-color: #7A828C;
+                color: #ffffff;
                 font-weight: 600;
             }
         """
@@ -1947,9 +2308,11 @@ class ResultsManager(QObject):
         for btn in [all_filter_btn, running_filter_btn, success_filter_btn, warning_filter_btn, error_filter_btn]:
             btn.setCheckable(True)
             btn.setStyleSheet(filter_btn_style)
-            process_info_layout.addWidget(btn)
+            btn.setFixedHeight(28)
+            btn.setMinimumWidth(84)
+            process_filter_layout.addWidget(btn)
 
-        process_filter_group = QButtonGroup(process_info_bar)
+        process_filter_group = QButtonGroup(process_filter_bar)
         process_filter_group.setExclusive(True)
         process_filter_group.addButton(all_filter_btn)
         process_filter_group.addButton(running_filter_btn)
@@ -1972,16 +2335,39 @@ class ResultsManager(QObject):
             "ERROR": error_filter_btn,
         }
 
-        process_info_layout.addStretch()
+        process_filter_layout.addStretch()
 
         refresh_now_btn = QPushButton("Refresh")
         refresh_now_btn.setObjectName("process_refresh_now_btn")
         refresh_now_btn.setStyleSheet(filter_btn_style)
+        refresh_now_btn.setFixedHeight(28)
+        refresh_now_btn.setMinimumWidth(76)
         refresh_now_btn.clicked.connect(self.refresh_processes_view)
-        process_info_layout.addWidget(refresh_now_btn)
+        process_filter_layout.addWidget(refresh_now_btn)
 
+        process_filter_bar.setStyleSheet("background: #ECEFF3; border-bottom: 1px solid #C9CFD8;")
+        process_filter_bar.hide()
+        results_layout.addWidget(process_filter_bar)
+
+        # ----- PROCESS INFO BAR (Hidden - Summary shown in status bar) -----
+        process_info_bar = QWidget()
+        process_info_bar.setObjectName("processInfoBar")
+        process_info_layout = QHBoxLayout(process_info_bar)
+        process_info_layout.setContentsMargins(8, 3, 8, 3)
+        process_info_layout.setSpacing(20)
+
+        # Hidden labels (kept for compatibility)
+        process_summary_label = QLabel("")
+        process_summary_label.setObjectName("process_summary_label")
+        process_selection_label = QLabel("")
+        process_selection_label.setObjectName("process_selection_label")
+        
+        process_info_bar.setStyleSheet("background: transparent; border: none;")
         process_info_bar.hide()
         results_layout.addWidget(process_info_bar)
+        
+        # Store references for later access
+        tab_content.process_filter_bar = process_filter_bar
 
         # --- Pagination Logic ---
         def update_page_ui(tab):
@@ -2000,23 +2386,22 @@ class ResultsManager(QObject):
 
         
         def go_prev():
-            tab = tab_content 
+            tab = tab_content
             if not tab or tab.current_page <= 1:
-              return
+                return
             tab.current_page -= 1
-            tab.current_offset -= (tab.current_page - 1) * tab.current_limit
+            tab.current_offset = (tab.current_page - 1) * tab.current_limit
             update_page_ui(tab)
-            # Call WorksheetManager execution
-            self.main_window.worksheet_manager.execute_query()
+            self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
         def go_next():
             tab = tab_content
             if not tab.has_more_pages:
-               return
+                return
             tab.current_page += 1
             tab.current_offset = (tab.current_page - 1) * tab.current_limit
             update_page_ui(tab)
-            self.main_window.worksheet_manager.execute_query()
+            self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
         prev_btn.clicked.connect(go_prev)
         next_btn.clicked.connect(go_next)
@@ -2034,26 +2419,16 @@ class ResultsManager(QObject):
         results_stack = QStackedWidget()
         results_stack.setObjectName("results_stacked_widget")
 
-        # Page 0: Table View
-        table_view = QTableView()
-        table_view.setObjectName("results_table")
-        table_view.setAlternatingRowColors(True)
-        table_view.setMouseTracking(True)
-        table_view.viewport().setMouseTracking(True)
-        table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
-        table_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        table_view.horizontalHeader().setSectionsClickable(True)
-        table_view.verticalHeader().setSectionsClickable(True)
-        table_view.setItemDelegate(FlatSelectionDelegate(parent=table_view))
-        table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table_view.customContextMenuRequested.connect(self.show_results_context_menu)
-        table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
-        results_stack.addWidget(table_view)
-        
-        # Connect copy button to this table (lambda captures this specific table_view)
-        copy_btn.clicked.connect(
-          lambda: self.copy_result_with_header(table_view)
-        )
+        # Page 0: Output Tabs (multiple result tables)
+        output_tabs = QTabWidget()
+        output_tabs.setObjectName("output_tabs")
+        output_tabs.setTabsClosable(True)
+        output_tabs.setMovable(False)
+        output_tabs.setTabBarAutoHide(False)
+        output_tabs.setDocumentMode(True)
+        output_tabs.tabCloseRequested.connect(lambda index: self._handle_output_tab_close(tab_content, index))
+        results_stack.addWidget(output_tabs)
+
         copy_btn.clicked.connect(self.copy_current_result_table)
 
         # Page 1: Message View
@@ -2076,6 +2451,7 @@ class ResultsManager(QObject):
         processes_view.setAlternatingRowColors(True)
         processes_view.horizontalHeader().setSectionsClickable(True)
         processes_view.verticalHeader().setSectionsClickable(True)
+        processes_view.verticalHeader().setDefaultSectionSize(28)
         processes_view.horizontalHeader().setStretchLastSection(True)
         processes_view.setItemDelegate(ProcessRowDelegate(self.PROCESS_STATUS_META, parent=processes_view))
         processes_view.clicked.connect(lambda idx: self._handle_process_cell_click(tab_content, idx))
@@ -2085,6 +2461,10 @@ class ResultsManager(QObject):
         processes_view.verticalHeader().sectionClicked.connect(
             lambda section: self._handle_process_row_header_click(tab_content, section)
         )
+        
+        # Initialize the processes model before adding to stack
+        self._initialize_processes_model(tab_content)
+        
         results_stack.addWidget(processes_view)
         
         # Page 4: Spinner / Loading
@@ -2127,13 +2507,16 @@ class ResultsManager(QObject):
             if index == 0:
                 results_info_bar.show()
                 process_info_bar.hide()
+                process_filter_bar.hide()
             elif index == 3:
                 results_info_bar.hide()
-                process_info_bar.show()
+                process_filter_bar.show()
+                process_info_bar.hide()
                 self.refresh_processes_view()
             else:
                 results_info_bar.hide()
                 process_info_bar.hide()
+                process_filter_bar.hide()
            
         output_btn.clicked.connect(lambda: switch_results_view(0))
         message_btn.clicked.connect(lambda: switch_results_view(1))

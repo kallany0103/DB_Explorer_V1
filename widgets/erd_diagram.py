@@ -979,39 +979,39 @@ class ERDWidget(QWidget):
         toolbar_container.setStyleSheet("""
             #erdToolbarContainer {
                 background-color: #f0f0f0;
-                border-bottom: 1px solid #A9A9A9;
-                padding: 2px 5px;
+                border-bottom: 1px solid #c6c6c6;
+                padding: 0px 6px;
             }
             QToolBar {
                 background: transparent;
                 border: none;
-                spacing: 5px;
+                spacing: 6px;
             }
             QToolButton {
                 background-color: #ffffff;
-                border: 1px solid #cccccc;
+                border: 1px solid #b9b9b9;
                 border-radius: 4px;
-                padding: 1px 4px; /* Reduced padding for smaller button */
-                min-width: 26px;
-                max-width: 26px;
-                min-height: 26px;
-                max-height: 26px;
-                width: 26px;
-                height: 26px;
-                font-size: 8pt; /* Slightly smaller font if needed */
+                padding: 2px 4px;
+                min-width: 32px;
+                max-width: 32px;
+                min-height: 32px;
+                max-height: 32px;
+                width: 32px;
+                height: 32px;
+                font-size: 9pt;
                 color: #333333;
             }
             QToolButton:hover {
-                background-color: #f0f2f5;
-                border: 1px solid #adb5bd;
+                background-color: #e8e8e8;
+                border: 1px solid #9c9c9c;
             }
             QToolButton:pressed {
-                background-color: #e8eaed;
+                background-color: #dcdcdc;
             }
         """)
         
         container_layout = QHBoxLayout(toolbar_container)
-        container_layout.setContentsMargins(5, 5, 5, 5)
+        container_layout.setContentsMargins(6, 3, 6, 3)
         
         self.toolbar = QToolBar()
         self.toolbar.setIconSize(QSize(16, 16))
@@ -1077,7 +1077,7 @@ class ERDWidget(QWidget):
         self.sql_btn = QToolButton()
         self.sql_btn.setIcon(QIcon("assets/sql_icon.svg"))
         self.sql_btn.setIconSize(QSize(16, 16))
-        self.sql_btn.setFixedSize(26, 26)
+        self.sql_btn.setFixedSize(32, 32)
         self.sql_btn.setToolTip("Generate SQL Script (Alt+Ctrl+S)")
         
         # Connection
@@ -1094,7 +1094,7 @@ class ERDWidget(QWidget):
         # Search Bar (Toggle UI)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search...")
-        self.search_input.setFixedHeight(26)
+        self.search_input.setFixedHeight(32)
         self.search_input.setFixedWidth(200)
         self.search_input.setStyleSheet("""
             QLineEdit {
@@ -1116,7 +1116,7 @@ class ERDWidget(QWidget):
         self.search_btn = QToolButton()
         self.search_btn.setIcon(QIcon("assets/search.svg"))
         self.search_btn.setIconSize(QSize(16, 16))
-        self.search_btn.setFixedSize(26, 26)
+        self.search_btn.setFixedSize(32, 32)
         self.search_btn.setToolTip("Search (Ctrl+F)")
         self.search_btn.clicked.connect(self.toggle_search)
 

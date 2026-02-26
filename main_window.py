@@ -107,24 +107,24 @@ class MainWindow(QMainWindow):
         add_tab_btn.setToolTip("New Worksheet (Alt+Ctrl+S)")
         add_tab_btn.clicked.connect(self.add_tab)
         
-        # Integrated Silver/Gray Enterprise Style
+        # Tab-integrated neutral style
         add_tab_btn.setStyleSheet("""
             QPushButton#add_tab_btn { 
-                padding: 2px 10px; 
-                border: 1px solid #A9A9A9; 
-                background-color: #f5f5f5; 
-                border-radius: 4px; 
-                color: #333333;
-                font-weight: bold;
+                padding: 5px 12px;
+                border: 1px solid #B8BEC6;
+                background-color: #ECEFF3;
+                border-radius: 3px;
+                color: #1f2937;
+                font-weight: 600;
                 font-size: 9pt;
                 text-align: center;
             }
             QPushButton#add_tab_btn:hover {
-                background-color: #e8e8e8;
-                border: 1px solid #777777;
+                background-color: #DDE2E8;
+                border: 1px solid #9FA6AF;
             }
             QPushButton#add_tab_btn:pressed {
-                background-color: #dcdcdc;
+                background-color: #CED5DE;
             }
         """)
         self.tab_widget.setCornerWidget(add_tab_btn)
@@ -174,6 +174,9 @@ class MainWindow(QMainWindow):
     def execute_query(self, *args, **kwargs):
         return self.worksheet_manager.execute_query(*args, **kwargs)
 
+    def execute_query_in_new_output_tab(self):
+        return self.worksheet_manager.execute_query(output_mode="new")
+
 
     def refresh_all_comboboxes(self):
         self.worksheet_manager.refresh_all_comboboxes()
@@ -210,6 +213,10 @@ class MainWindow(QMainWindow):
         self.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", self)
         self.execute_action.setShortcuts(["Ctrl+Enter","Ctrl+RETURN"])
         self.execute_action.triggered.connect(self.execute_query)
+
+        self.execute_new_tab_action = QAction(QIcon("assets/execute_icon.png"), "Execute in New Output Tab", self)
+        self.execute_new_tab_action.setShortcut("Ctrl+Shift+Enter")
+        self.execute_new_tab_action.triggered.connect(self.execute_query_in_new_output_tab)
         
         self.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", self)
         self.explain_action.setShortcut("Ctrl+E")
@@ -372,6 +379,7 @@ class MainWindow(QMainWindow):
         # edit_menu.addAction(self.describe_action)
         actions_menu = menubar.addMenu("&Actions")
         actions_menu.addAction(self.execute_action)
+        actions_menu.addAction(self.execute_new_tab_action)
         actions_menu.addAction(self.explain_action)
         actions_menu.addAction(self.cancel_action)
         
@@ -668,42 +676,44 @@ class MainWindow(QMainWindow):
    
 
     def _apply_styles(self):
-        primary_color, header_color, selection_color = "#D3D3D3", "#A9A9A9", "#A9A9A9"
-        text_color_on_primary, alternate_row_color, border_color = "#000000", "#f0f0f0", "#A9A9A9"
+        primary_color, header_color, selection_color = "#ECEFF3", "#9FA6AF", "#8E959E"
+        text_color_on_primary, alternate_row_color, border_color = "#1f2937", "#F7F8FA", "#B8BEC6"
         self.setStyleSheet(f"""
         QSplitter::handle {{ background: #e0e0e0; border: none; }}
-        QMainWindow, QToolBar, QStatusBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }}
+        QMainWindow, QToolBar {{ background-color: {primary_color}; color: {text_color_on_primary}; }}
+        QStatusBar {{ background-color: #F2F4F7; color: {text_color_on_primary}; border-top: 1px solid #D1D6DD; }}
         QTreeView {{ background-color: white; alternate-background-color: {alternate_row_color}; border: 1px solid {border_color}; outline: none; }}
         QTreeView::item {{ border: none; }}
         QTreeView::item:selected, QTreeView::item:selected:active, QTreeView::item:selected:!active {{ background-color: #f0f0f0; color: black; border: none; outline: none; }}
-        QTableView {{ alternate-background-color: {alternate_row_color}; background-color: white; gridline-color: #a9a9a9; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}}
+        QTableView {{ alternate-background-color: #f7f7f7; background-color: white; gridline-color: #c8c8c8; border: 1px solid {border_color}; font-family: Arial, sans-serif; font-size: 9pt;}}
         QTableView::item {{ padding: 4px; }}
         QTableView::item:selected {{ background-color: {selection_color}; color: white; }}
         QHeaderView::section {{
             background-color: #A9A9A9;
             color: #ffffff;
-            padding: 4px;
+            padding: 5px;
             border: none;
             border-right: 1px solid #d3d3d3;
             border-bottom: 1px solid #A9A9A9;
-            font-weight: bold;
-            font-size: 10pt;
+            font-weight: 600;
+            font-size: 9pt;
         }}
         QHeaderView::section:disabled {{
             color: #ffffff;
         }}
         
         QTreeView QHeaderView::section {{
-            background-color: #A9A9A9;
+            background-color: #9FA6AF;
             color: #ffffff;
-            font-weight: bold;
+            font-weight: 600;
+            border-bottom: 1px solid #8B929B;
         }}
         
         #objectExplorerLabel {{
             font-size: 10pt;
             font-weight: bold;
             color: #ffffff;
-            background-color: #A9A9A9;
+            background-color: transparent;
             border: none;
             padding: 0;
         }}
@@ -713,13 +723,14 @@ class MainWindow(QMainWindow):
         }}
         
         #objectExplorerHeader {{
-            background-color: #A9A9A9;
-            border-bottom: 1px solid #777777;
+            background-color: #9FA6AF;
+            border-bottom: 1px solid #8B929B;
         }}
 
         QMenuBar {{
-            background-color: {primary_color};
+            background-color: #F7F8FA;
             border: none;
+            border-bottom: 1px solid #D3D8DF;
         }}
 
         QMenuBar::item {{
@@ -729,8 +740,8 @@ class MainWindow(QMainWindow):
         }}
 
         QMenuBar::item:selected {{
-        background-color: {selection_color};
-        color: white;
+        background-color: #DDE2E8;
+        color: #1f2937;
         }}
 
         QMenuBar::separator {{
@@ -743,12 +754,13 @@ class MainWindow(QMainWindow):
         #resultsHeader QPushButton, #editorHeader QPushButton {{ background-color: #ffffff; border: 1px solid {border_color}; padding: 5px 15px; font-size: 9pt; }}
         #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover {{ background-color: {primary_color}; }}
         #resultsHeader QPushButton:checked, #editorHeader QPushButton:checked {{ background-color: {selection_color}; border-bottom: 1px solid {selection_color}; font-weight: bold; color: white; }}
-        #resultsHeader, #editorHeader {{ background-color: {alternate_row_color}; padding-bottom: -1px; }}
+        #resultsHeader, #editorHeader {{ background-color: #F4F6F8; padding-bottom: -1px; border-bottom: 1px solid #D6DBE2; }}
+        #tab_toolbar {{ background-color: #ECEFF3; border-top: 1px solid #D7DCE3; border-bottom: 1px solid #C9CFD8; }}
         #messageView, #history_details_view, QTextEdit, QPlainTextEdit {{ font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid {border_color}; }}
         #tab_status_label {{ padding: 3px 5px; background-color: {alternate_row_color}; border-top: 1px solid {border_color}; }}
         QGroupBox {{ font-size: 9pt; font-weight: bold; color: {text_color_on_primary}; }}
         QTabWidget::pane {{ border-top: 1px solid {border_color}; }}
-        QTabBar::tab {{ background: #E0E0E0; border: 1px solid {border_color}; padding: 5px 10px; border-bottom: none; }}
+        QTabBar::tab {{ background: #ECEFF3; border: 1px solid {border_color}; padding: 6px 12px; border-bottom: none; font-size: 9pt; }}
         QTabBar::tab:selected {{ background: {selection_color}; color: white; }}
         QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; }}
         
@@ -765,7 +777,7 @@ class MainWindow(QMainWindow):
             border: 1px solid #adb5bd;
         }}
         QLineEdit#table_search_box:focus {{
-            border: 1px solid #2196F3;
+            border: 1px solid #8f8f8f;
             background-color: #ffffff;
         }}
     """)
@@ -793,7 +805,7 @@ class MainWindow(QMainWindow):
                 "sql_content": editor.toPlainText() if editor else "",
                 "selected_connection_index": db_combo.currentIndex() if db_combo else 0,
                  # We might want to store more property if needed
-                "current_limit": getattr(tab, 'current_limit', 1000),
+                "current_limit": getattr(tab, 'current_limit', 0),
                 "current_offset": getattr(tab, 'current_offset', 0)
             }
             session_data["tabs"].append(tab_data)
@@ -842,11 +854,34 @@ class MainWindow(QMainWindow):
                     db_combo.setCurrentIndex(tab_data.get("selected_connection_index", 0))
 
                 # Restore Limits
-                current_tab.current_limit = tab_data.get("current_limit", 1000)
+                current_tab.current_limit = int(tab_data.get("current_limit", 0) or 0)
                 current_tab.current_offset = tab_data.get("current_offset", 0)
 
                 # Restore Title (Initial add_tab sets default, we override if meaningful)
                 # self.tab_widget.setTabText(current_tab_index, tab_data.get("title", "Worksheet"))
+
+            # Persist immediately to drop any legacy output_tabs payload from older sessions
+            try:
+                with open(self.SESSION_FILE, 'w') as f:
+                    sanitized = {
+                        "window_geometry": self.saveGeometry().toBase64().data().decode(),
+                        "window_state": self.saveState().toBase64().data().decode(),
+                        "tabs": []
+                    }
+                    for i in range(self.tab_widget.count()):
+                        tab = self.tab_widget.widget(i)
+                        editor = tab.findChild(CodeEditor, "query_editor")
+                        db_combo = tab.findChild(QComboBox, "db_combo_box")
+                        sanitized["tabs"].append({
+                            "title": self.tab_widget.tabText(i),
+                            "sql_content": editor.toPlainText() if editor else "",
+                            "selected_connection_index": db_combo.currentIndex() if db_combo else 0,
+                            "current_limit": getattr(tab, 'current_limit', 0),
+                            "current_offset": getattr(tab, 'current_offset', 0)
+                        })
+                    json.dump(sanitized, f, indent=4)
+            except Exception:
+                pass
 
         except Exception as e:
             print(f"Error restoring session: {e}")
@@ -978,8 +1013,8 @@ class MainWindow(QMainWindow):
     # --- RESULTS MANAGER DELEGATIONS ---
     # =========================================================================
 
-    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
-        self.results_manager.handle_query_result(target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query)
+    def handle_query_result(self, target_tab, output_mode, output_tab_index, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+        self.worksheet_manager.handle_query_result(target_tab, output_mode, output_tab_index, conn_data, query, results, columns, row_count, elapsed_time, is_select_query)
 
     def show_results_context_menu(self, position):
         self.results_manager.show_results_context_menu(position)
@@ -1021,8 +1056,8 @@ class MainWindow(QMainWindow):
     def update_timer_label(self, label, tab):
         self.worksheet_manager.update_timer_label(label, tab)
 
-    def handle_query_error(self, current_tab, conn_data, query, row_count, elapsed_time, error_message):
-        self.worksheet_manager.handle_query_error(current_tab, conn_data, query, row_count, elapsed_time, error_message)
+    def handle_query_error(self, current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message):
+        self.worksheet_manager.handle_query_error(current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message)
 
     def handle_query_timeout(self, tab, runnable):
         self.worksheet_manager.handle_query_timeout(tab, runnable)

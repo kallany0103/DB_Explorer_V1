@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QMessageBox,
     QMenu, QComboBox, QToolButton, QStackedWidget, QTextEdit,
     QLabel, QPushButton, QApplication, QAbstractItemView, QPlainTextEdit,
-    QButtonGroup, QFrame, QTreeView, QGroupBox, QInputDialog
+    QButtonGroup, QFrame, QTreeView, QGroupBox, QInputDialog, QTabWidget
 )
 from PyQt6.QtCore import (
     Qt, QTimer, QSize, QEvent, QRect
@@ -32,6 +32,7 @@ class WorksheetManager(QWidget):
         self.open_file_action = main_window.open_file_action
         self.save_as_action = main_window.save_as_action
         self.execute_action = main_window.execute_action
+        self.execute_new_tab_action = main_window.execute_new_tab_action
         
         # Initialize helpers
         self.results_manager = ResultsManager(main_window)
@@ -42,14 +43,51 @@ class WorksheetManager(QWidget):
         self.running_queries = {}
         self.QUERY_TIMEOUT = 300000
 
+    def _start_query_worker(self, current_tab, conn_data, query, output_mode="current", output_tab_index=None):
+        signals = QuerySignals()
+        signals._target_tab = current_tab
+        signals._output_mode = output_mode
+        signals._output_tab_index = output_tab_index
+
+        runnable = RunnableQuery(conn_data, query, signals)
+        signals.finished.connect(self._on_query_finished_signal)
+        signals.error.connect(self._on_query_error_signal)
+        return runnable
+
+    def _on_query_finished_signal(self, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+        signals = self.sender()
+        target_tab = getattr(signals, "_target_tab", self.tab_widget.currentWidget())
+        output_mode = getattr(signals, "_output_mode", "current")
+        output_tab_index = getattr(signals, "_output_tab_index", None)
+        self.handle_query_result(
+            target_tab,
+            output_mode,
+            output_tab_index,
+            conn_data,
+            query,
+            results,
+            columns,
+            row_count,
+            elapsed_time,
+            is_select_query,
+        )
+
+    def _on_query_error_signal(self, conn_data, query, row_count, elapsed_time, error_message):
+        signals = self.sender()
+        target_tab = getattr(signals, "_target_tab", self.tab_widget.currentWidget())
+        output_tab_index = getattr(signals, "_output_tab_index", None)
+        self.handle_query_error(target_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message)
+
     def _get_current_editor(self):
         current_tab = self.tab_widget.currentWidget()
         if not current_tab: return None
         return current_tab.findChild(CodeEditor, "query_editor")
 
 # {mitayan}
-    def _refresh_active_editor_layout(self, _index):
-        editor = self._get_current_editor()
+    def _refresh_editor_layout_for_tab(self, tab):
+        if not tab:
+            return
+        editor = tab.findChild(CodeEditor, "query_editor")
         if not editor:
             return
         editor.updateLineNumberAreaWidth(0)
@@ -57,6 +95,10 @@ class WorksheetManager(QWidget):
         editor.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), editor.lineNumberAreaWidth(), cr.height()))
         editor.lineNumberArea.update()
         editor.viewport().update()
+
+# {mitayan}
+    def _refresh_active_editor_layout(self, _index):
+        self._refresh_editor_layout_for_tab(self.tab_widget.currentWidget())
 
 # {mitayan}
     def create_vertical_separator(self):
@@ -197,7 +239,7 @@ class WorksheetManager(QWidget):
     def add_tab(self):
         tab_content = QWidget(self.tab_widget)
         # --- Initialize tab specific limit and offset settings ---
-        tab_content.current_limit = 1000  # Default Limit
+        tab_content.current_limit = 0  # 0 = No Limit
         tab_content.current_offset = 0    # Default Offset
         tab_content.current_page = 1
         tab_content.has_more_pages = True
@@ -217,30 +259,30 @@ class WorksheetManager(QWidget):
         toolbar_widget = QWidget()
         toolbar_widget.setObjectName("tab_toolbar")
         toolbar_layout = QHBoxLayout(toolbar_widget)
-        toolbar_layout.setContentsMargins(5, 2, 5, 2)
-        toolbar_layout.setSpacing(5)
+        toolbar_layout.setContentsMargins(6, 3, 6, 3)
+        toolbar_layout.setSpacing(6)
 
         # --- Group A: File Actions ---
         btn_style = (
             "QToolButton, QPushButton, QComboBox { "
-            "padding: 1px 8px; border: 1px solid #cccccc; "
+            "padding: 2px 8px; border: 1px solid #b9b9b9; "
             "background-color: #ffffff; border-radius: 4px; "
             "font-size: 9pt; color: #333333; "
             "} "
             "QToolButton:hover, QPushButton:hover, QComboBox:hover { "
-            "background-color: #f0f2f5; border-color: #adb5bd; "
+            "background-color: #e8e8e8; border-color: #9c9c9c; "
             "} "
             "QToolButton:pressed, QPushButton:pressed, QComboBox:on { "
-            "background-color: #e8eaed; "
+            "background-color: #dcdcdc; "
             "} "
             "QComboBox::drop-down { "
-            "border: none; border-left: 1px solid #dddfe2; "
+            "border: none; border-left: 1px solid #c6c6c6; "
             "width: 24px; "
             "border-top-right-radius: 4px; "
             "border-bottom-right-radius: 4px; "
             "} "
             "QComboBox::drop-down:hover { "
-            "background-color: #e4e6e9; "
+            "background-color: #dcdcdc; "
             "} "
             "QComboBox::down-arrow { "
             "image: url(assets/chevron-down.svg); "
@@ -251,7 +293,7 @@ class WorksheetManager(QWidget):
         open_btn = QToolButton()
         open_btn.setDefaultAction(self.open_file_action)
         open_btn.setIconSize(QSize(16, 16))
-        open_btn.setFixedHeight(26)
+        open_btn.setFixedHeight(30)
         open_btn.setMinimumWidth(26)
         open_btn.setToolTip("Open SQL File")
         open_btn.setStyleSheet(btn_style)
@@ -260,7 +302,7 @@ class WorksheetManager(QWidget):
         save_btn = QToolButton()
         save_btn.setDefaultAction(self.save_as_action)
         save_btn.setIconSize(QSize(16, 16))
-        save_btn.setFixedHeight(26)
+        save_btn.setFixedHeight(30)
         save_btn.setMinimumWidth(26)
         save_btn.setToolTip("Save SQL File")
         save_btn.setStyleSheet(btn_style)
@@ -273,21 +315,25 @@ class WorksheetManager(QWidget):
         exec_btn.setDefaultAction(self.execute_action)
         exec_btn.setIconSize(QSize(16, 16))
         exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        exec_btn.setFixedHeight(26)
+        exec_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        exec_menu = QMenu(exec_btn)
+        exec_menu.addAction(self.execute_new_tab_action)
+        exec_btn.setMenu(exec_menu)
+        exec_btn.setFixedHeight(30)
         exec_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(exec_btn)
         cancel_btn = QToolButton()
         cancel_btn.setDefaultAction(self.cancel_action)
         cancel_btn.setIconSize(QSize(16, 16))
         cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        cancel_btn.setFixedHeight(26)
+        cancel_btn.setFixedHeight(30)
         cancel_btn.setStyleSheet(btn_style)
         toolbar_layout.addWidget(cancel_btn)
 
 # {siam}
         # --- Explain Combo (Replaces Split Button) ---
         explain_combo = QComboBox()
-        explain_combo.setFixedHeight(26)
+        explain_combo.setFixedHeight(30)
         explain_combo.setFixedWidth(135)
         explain_combo.setStyleSheet(btn_style)
         
@@ -309,7 +355,7 @@ class WorksheetManager(QWidget):
         edit_btn = QToolButton()
         edit_btn.setText("Edit")
         edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        edit_btn.setFixedHeight(26)
+        edit_btn.setFixedHeight(30)
         edit_btn.setFixedWidth(85)
         edit_btn.setStyleSheet(btn_style + """
             QToolButton::menu-indicator {
@@ -326,9 +372,9 @@ class WorksheetManager(QWidget):
         
         edit_menu = QMenu(self)
         edit_menu.setStyleSheet("""
-            QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
+            QMenu { background-color: #ffffff; border: 1px solid #b9b9b9; }
             QMenu::item { padding: 5px 20px 5px 10px; min-width: 250px; }
-            QMenu::item:selected { background-color: #f0f2f5; color: #333333; }
+            QMenu::item:selected { background-color: #e8e8e8; color: #333333; }
             QMenu::separator { height: 1px; background: #eeeeee; margin: 2px 0px; }
         """)
 
@@ -383,7 +429,7 @@ class WorksheetManager(QWidget):
         rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
         rows_limit_combo.setCurrentText("No Limit")
         rows_limit_combo.setFixedWidth(90)
-        rows_limit_combo.setFixedHeight(26)
+        rows_limit_combo.setFixedHeight(30)
         rows_limit_combo.setStyleSheet(btn_style)
 
         # When limit changes, reset offset/page and refresh
@@ -434,15 +480,15 @@ class WorksheetManager(QWidget):
         editor_header = QWidget()
         editor_header.setObjectName("editorHeader")
         editor_header_layout = QHBoxLayout(editor_header)
-        editor_header_layout.setContentsMargins(5, 2, 5, 0)
-        editor_header_layout.setSpacing(2)
+        editor_header_layout.setContentsMargins(6, 3, 6, 1)
+        editor_header_layout.setSpacing(4)
 
         query_view_btn = QPushButton("Query")
         history_view_btn = QPushButton("Query History")
         query_view_btn.setObjectName("query_view_btn")
         history_view_btn.setObjectName("history_view_btn")
-        query_view_btn.setMinimumWidth(100)
-        history_view_btn.setMinimumWidth(150)
+        query_view_btn.setMinimumWidth(120)
+        history_view_btn.setMinimumWidth(120)
         query_view_btn.setCheckable(True)
         history_view_btn.setCheckable(True)
         query_view_btn.setChecked(True)
@@ -759,10 +805,7 @@ class WorksheetManager(QWidget):
         progress_timer.start(100)
 
         # Run query asynchronously
-        signals = QuerySignals()
-        runnable = RunnableQuery(conn_data, explain_query, signals)
-        signals.finished.connect(partial(self.handle_query_result, current_tab))
-        signals.error.connect(partial(self.handle_query_error, current_tab))
+        runnable = self._start_query_worker(current_tab, conn_data, explain_query, output_mode="current", output_tab_index=None)
         timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
         self.running_queries[current_tab] = runnable
         self.cancel_action.setEnabled(True)
@@ -774,89 +817,79 @@ class WorksheetManager(QWidget):
 
 
     def explain_query(self):
-      current_tab = self.tab_widget.currentWidget()
-      if not current_tab:
-        return
+        current_tab = self.tab_widget.currentWidget()
+        if not current_tab:
+            return
 
-      # Get query editor and DB info
-      query_editor = current_tab.findChild(CodeEditor, "query_editor")
-      if not query_editor:
-         query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
-      
-      db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-      index = db_combo_box.currentIndex()
-      conn_data = db_combo_box.itemData(index)
+        query_editor = current_tab.findChild(CodeEditor, "query_editor")
+        if not query_editor:
+            query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
 
-      if not conn_data.get("host"): # Simple check for Postgres
-           self.show_info("Explain Analyze is only supported for PostgreSQL connections.")
-           return
+        db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
+        index = db_combo_box.currentIndex()
+        conn_data = db_combo_box.itemData(index)
 
-      # Extract query under cursor
-      cursor = query_editor.textCursor()
-      cursor_pos = cursor.position()
-      full_text = query_editor.toPlainText()
-      queries = full_text.split(";")
+        if not conn_data.get("host"):
+            self.show_info("Explain Analyze is only supported for PostgreSQL connections.")
+            return
 
-      selected_query = ""
-      start = 0
-      for q in queries:
-          end = start + len(q)
-          if start <= cursor_pos <= end:
-              selected_query = q.strip()
-              break
-          start = end + 1  # for semicolon
+        cursor = query_editor.textCursor()
+        cursor_pos = cursor.position()
+        full_text = query_editor.toPlainText()
+        queries = full_text.split(";")
 
-      if not selected_query:
-          self.show_info("Please select a query to explain.")
-          return
-      
-      # If query already starts with EXPLAIN, use it as-is
-      # Otherwise, wrap SELECT queries with EXPLAIN
-      query_upper = selected_query.upper().strip()
-      if query_upper.startswith("EXPLAIN"):
-          explain_query = selected_query
-      elif query_upper.startswith("SELECT"):
-          explain_query = f"EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON) {selected_query}"
-      else:
-          self.show_info("Please select a SELECT query to explain.")
-          return
+        selected_query = ""
+        start = 0
+        for q in queries:
+            end = start + len(q)
+            if start <= cursor_pos <= end:
+                selected_query = q.strip()
+                break
+            start = end + 1
 
-      # Show results stack page with spinner
-      results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-      spinner_label = results_stack.findChild(QLabel, "spinner_label")
-      results_stack.setCurrentIndex(4) # Spinner index
-      if spinner_label and spinner_label.movie():
+        if not selected_query:
+            self.show_info("Please select a query to explain.")
+            return
+
+        query_upper = selected_query.upper().strip()
+        if query_upper.startswith("EXPLAIN"):
+            explain_query = selected_query
+        elif query_upper.startswith("SELECT"):
+            explain_query = f"EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON) {selected_query}"
+        else:
+            self.show_info("Please select a SELECT query to explain.")
+            return
+
+        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+        spinner_label = results_stack.findChild(QLabel, "spinner_label")
+        results_stack.setCurrentIndex(4)
+        if spinner_label and spinner_label.movie():
             spinner_label.movie().start()
             spinner_label.show()
-      
-      # Set up timers
-      tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
-      progress_timer = QTimer(self)
-      start_time = time.time()
-      timeout_timer = QTimer(self)
-      timeout_timer.setSingleShot(True)
-      self.tab_timers[current_tab] = {
-          "timer": progress_timer,
-          "start_time": start_time,
-          "timeout_timer": timeout_timer
-      }
-      progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
-      progress_timer.start(100)
 
-      # Run query asynchronously
-      signals = QuerySignals()
-      runnable = RunnableQuery(conn_data, explain_query, signals)
-      signals.finished.connect(partial(self.handle_query_result, current_tab))
-      signals.error.connect(partial(self.handle_query_error, current_tab))
-      timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
-      self.running_queries[current_tab] = runnable
-      self.cancel_action.setEnabled(True)
-      self.thread_pool.start(runnable)
-      timeout_timer.start(self.QUERY_TIMEOUT)
+        tab_status_label = current_tab.findChild(QLabel, "tab_status_label")
+        progress_timer = QTimer(self)
+        start_time = time.time()
+        timeout_timer = QTimer(self)
+        timeout_timer.setSingleShot(True)
+        self.tab_timers[current_tab] = {
+            "timer": progress_timer,
+            "start_time": start_time,
+            "timeout_timer": timeout_timer
+        }
+        progress_timer.timeout.connect(partial(self.update_timer_label, tab_status_label, current_tab))
+        progress_timer.start(100)
 
-      self.status_message_label.setText("Executing Explain Analyze...")
+        runnable = self._start_query_worker(current_tab, conn_data, explain_query, output_mode="current", output_tab_index=None)
+        timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
+        self.running_queries[current_tab] = runnable
+        self.cancel_action.setEnabled(True)
+        self.thread_pool.start(runnable)
+        timeout_timer.start(self.QUERY_TIMEOUT)
 
-    def execute_query(self, conn_data=None, query=None):
+        self.status_message_label.setText("Executing Explain Analyze...")
+
+    def execute_query(self, conn_data=None, query=None, output_mode="current", preserve_pagination=False):
         current_tab = self.tab_widget.currentWidget()
         if not current_tab:
             return
@@ -900,10 +933,16 @@ class WorksheetManager(QWidget):
         query = query.strip()
         # has_semicolon = query.endswith(";")
         query = query.rstrip(";")
+
+        # For regular Execute, avoid reusing stale worksheet offset unless pagination flow requested
+        if query.upper().startswith("SELECT") and not preserve_pagination and "OFFSET" not in query.upper():
+            current_tab.current_offset = 0
+            current_tab.current_page = 1
+
         # if has_semicolon:
         #    query += ";"
         # Get stored values (default to 1000 and 0 if not set)
-        limit = getattr(current_tab, 'current_limit', 1000)
+        limit = getattr(current_tab, 'current_limit', 0)
         offset = getattr(current_tab, 'current_offset', 0)
         # tab = self.tab_widget.currentWidget()
 
@@ -921,6 +960,14 @@ class WorksheetManager(QWidget):
              query += f" OFFSET {offset}"
 
         query += ";"
+
+        output_tab_index = None
+        if output_mode == "new":
+            output_tab_index = self.results_manager.create_output_tab(current_tab, activate=True)
+        else:
+            output_tabs = current_tab.findChild(QTabWidget, "output_tabs")
+            if output_tabs and output_tabs.currentIndex() >= 0:
+                output_tab_index = output_tabs.currentIndex()
 
         # query = query.strip().rstrip(";")
 
@@ -952,10 +999,7 @@ class WorksheetManager(QWidget):
         progress_timer.start(100)
 
         # Run query asynchronously
-        signals = QuerySignals()
-        runnable = RunnableQuery(conn_data, query, signals)
-        signals.finished.connect(partial(self.handle_query_result, current_tab))
-        signals.error.connect(partial(self.handle_query_error, current_tab))
+        runnable = self._start_query_worker(current_tab, conn_data, query, output_mode=output_mode, output_tab_index=output_tab_index)
         timeout_timer.timeout.connect(partial(self.handle_query_timeout, current_tab, runnable))
         self.running_queries[current_tab] = runnable
         self.cancel_action.setEnabled(True)
@@ -980,7 +1024,7 @@ class WorksheetManager(QWidget):
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.exec()
 
-    def handle_query_error(self, current_tab, conn_data, query, row_count, elapsed_time, error_message):
+    def handle_query_error(self, current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message):
         if current_tab in self.tab_timers:
             self.tab_timers[current_tab]["timer"].stop()
             self.tab_timers[current_tab]["timeout_timer"].stop()
@@ -1023,6 +1067,7 @@ class WorksheetManager(QWidget):
 
         # --- Show popup ---
         self.show_error_popup(error_message, parent=current_tab)
+        self._refresh_editor_layout_for_tab(current_tab)
 
         if current_tab in self.running_queries:
             del self.running_queries[current_tab]
@@ -1047,6 +1092,7 @@ class WorksheetManager(QWidget):
                 self.cancel_action.setEnabled(False)
             self.status_message_label.setText("Error occurred")
             QMessageBox.warning(self, "Query Timeout", f"The query was stopped as it exceeded {self.QUERY_TIMEOUT / 1000}s.")
+            self._refresh_editor_layout_for_tab(tab)
 
     def cancel_current_query(self):
         current_tab = self.tab_widget.currentWidget()
@@ -1066,6 +1112,7 @@ class WorksheetManager(QWidget):
                 del self.running_queries[current_tab]
             if not self.running_queries:
                 self.cancel_action.setEnabled(False)
+            self._refresh_editor_layout_for_tab(current_tab)
 
 
     def save_query_to_history(self, conn_data, query, status, rows, duration):
@@ -1094,13 +1141,35 @@ class WorksheetManager(QWidget):
 
     # --- Delegated Result Methods ---
 
-    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+    def handle_query_result(self, target_tab, output_mode, output_tab_index, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
         if target_tab in self.tab_timers:
             self.tab_timers[target_tab]["timer"].stop()
             self.tab_timers[target_tab]["timeout_timer"].stop()
             del self.tab_timers[target_tab]
 
-        self.results_manager.handle_query_result(target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query)
+        try:
+            self.results_manager.handle_query_result(
+                target_tab,
+                conn_data,
+                query,
+                results,
+                columns,
+                row_count,
+                elapsed_time,
+                is_select_query,
+                output_mode=output_mode,
+                output_tab_index=output_tab_index,
+            )
+        except Exception as e:
+            message_view = target_tab.findChild(QTextEdit, "message_view")
+            if message_view:
+                message_view.append(f"Error rendering query result:\n\n{str(e)}")
+            self.results_manager.stop_spinner(target_tab, success=False)
+            self.status_message_label.setText("Error occurred")
+        self._refresh_editor_layout_for_tab(target_tab)
+
+    def execute_query_in_new_output_tab(self):
+        self.execute_query(output_mode="new")
 
     def copy_current_result_table(self):
         self.results_manager.copy_current_result_table()

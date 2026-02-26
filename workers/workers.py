@@ -244,6 +244,8 @@ class RunnableQuery(QRunnable):
                     raise ValueError("CSV folder path missing.")
                 self.query = transform_csv_query(self.query, folder_path)
                 conn = mod.connect(f"URI={folder_path};")
+                if not conn:
+                    raise ConnectionError("Failed to connect to CSV data source")
                 cursor = conn.cursor()
                 cursor.execute(self.query)
             elif code == "SQLITE":
@@ -251,6 +253,8 @@ class RunnableQuery(QRunnable):
                 if not db_path:
                     raise ValueError("SQLite database path missing.")
                 conn = db.create_sqlite_connection(db_path)
+                if not conn:
+                    raise ConnectionError("Failed to connect to SQLite database")
                 cursor = conn.cursor()
                 cursor.execute(self.query)
             elif code == "POSTGRES":
@@ -261,11 +265,15 @@ class RunnableQuery(QRunnable):
                     password=self.conn_data["password"],
                     port=int(self.conn_data["port"]) if self.conn_data.get("port") else 5432
                 )
+                if not conn:
+                    raise ConnectionError("Failed to connect to PostgreSQL database")
                 cursor = conn.cursor()
                 cursor.execute(self.query)
             else:
                 if self.conn_data.get("db_path"):
                     conn = db.create_sqlite_connection(self.conn_data["db_path"])
+                    if not conn:
+                        raise ConnectionError("Failed to connect to SQLite database")
                     cursor = conn.cursor()
                     cursor.execute(self.query)
                 else:
@@ -306,3 +314,55 @@ class RunnableQuery(QRunnable):
                 cursor.close()
             if conn:
                 conn.close()
+
+
+# =========================================================
+# 4. FetchMetadataWorker (Async Metadata Fetching)
+# =========================================================
+class FetchMetadataWorker(QRunnable):
+    """Fetches table column metadata asynchronously in a background thread."""
+    
+    def __init__(self, conn_data, table_name, original_columns, signals):
+        super().__init__()
+        self.conn_data = conn_data
+        self.table_name = table_name
+        self.original_columns = original_columns
+        self.signals = signals
+
+    def run(self):
+        try:
+            from db import db_retrieval
+            
+            code = (self.conn_data.get("code") or "").upper()
+            if not code:
+                if "host" in self.conn_data:
+                    code = "POSTGRES"
+                elif "db_path" in self.conn_data:
+                    code = "SQLITE"
+
+            # Call the metadata retrieval function
+            metadata_list = db_retrieval.get_table_column_metadata(
+                self.conn_data, self.table_name
+            )
+
+            # Transform metadata list into expected dict format
+            # Keys are column names (lowercase), values are dicts with pk, data_type, etc.
+            metadata_dict = {}
+            if metadata_list:
+                for m in metadata_list:
+                    col_name = m['name'].lower()
+                    metadata_dict[col_name] = {
+                        'pk': m.get('constraint_type') == 'p',
+                        'data_type': m.get('data_type', ''),
+                        'constraint_type': m.get('constraint_type')
+                    }
+
+            # Emit success with transformed metadata
+            self.signals.finished.emit(
+                metadata_dict,
+                self.original_columns,
+                self.table_name
+            )
+
+        except Exception as e:
+            self.signals.error.emit(f"Metadata fetch failed: {str(e)}")
