@@ -1,6 +1,6 @@
 import sqlite3 as sqlite
 import datetime
-from .db_connections import DB_FILE
+from db.db_connections import DB_FILE
 
 def add_connection_group(name, parent_id):
     with sqlite.connect(DB_FILE) as conn:

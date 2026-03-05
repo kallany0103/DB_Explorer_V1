@@ -4,6 +4,7 @@ sqlparse
 oracledb
 pandas
 PyQt6
+qtawesome>=1.4.0
 openpyxl
 cdata_servicenow_connector-25.0.9440-cp311-cp311-win_amd64.whl
 cdata_csv_connector-25.0.9440-cp311-cp311-win_amd64.whl

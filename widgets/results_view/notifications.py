@@ -1,6 +1,7 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QStyle
 
+
 class NotificationWidget(QWidget):
     closed = pyqtSignal(QWidget)
 
@@ -79,3 +80,8 @@ class NotificationManager:
             notification.move(x, y)
             y -= self.spacing
 
+
+def create_notification_view():
+    notification_view = QLabel("Notifications will appear here.")
+    notification_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    return notification_view

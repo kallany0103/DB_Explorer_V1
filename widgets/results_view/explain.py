@@ -626,3 +626,7 @@ class ExplainGraphView(QGraphicsView):
             zoom_factor = zoom_out_factor
             
         self.scale(zoom_factor, zoom_factor)
+
+
+def create_explain_view():
+    return ExplainVisualizer()

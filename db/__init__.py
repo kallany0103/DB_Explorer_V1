@@ -1,4 +1,4 @@
-from .db_connections import (
+from db.db_connections import (
     create_sqlite_connection,
     create_postgres_connection,
     create_oracle_connection,
@@ -7,17 +7,17 @@ from .db_connections import (
     DB_FILE,
 )
 
-from .db_retrieval import (
+from db.db_retrieval import (
     get_all_connections_from_db,
     get_hierarchy_data,
 )
 
-from .schema_retrieval import (
+from db.schema_retrieval import (
     get_sqlite_schema,
     get_postgres_schema,
 )
 
-from .db_modifications import (
+from db.db_modifications import (
     add_connection_group,
     add_connection,
     update_connection,

@@ -1,5 +1,5 @@
 import sqlite3 as sqlite
-from .db_connections import DB_FILE, create_postgres_connection 
+from db.db_connections import DB_FILE, create_postgres_connection 
  
 def get_all_connections_from_db():
     """Returns a list of dicts with full hierarchical connection info from usf_connections table."""

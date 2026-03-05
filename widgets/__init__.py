@@ -1,7 +1,13 @@
-from .code_editor import CodeEditor
-from .notification_manager import NotificationManager
-from .connection_manager import ConnectionManager
-from .worksheet import WorksheetManager
-from .results_view import ResultsManager
-from .explain_visualizer import ExplainVisualizer
-from .find_replace_dialog import FindReplaceDialog
+from widgets.worksheet import CodeEditor, FindReplaceDialog, WorksheetManager
+from widgets.results_view import ExplainVisualizer, NotificationManager, ResultsManager
+from widgets.connection_manager import ConnectionManager
+
+__all__ = [
+	"CodeEditor",
+	"NotificationManager",
+	"ConnectionManager",
+	"WorksheetManager",
+	"ResultsManager",
+	"ExplainVisualizer",
+	"FindReplaceDialog",
+]

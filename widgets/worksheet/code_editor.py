@@ -1,6 +1,10 @@
 # code_editor.py
-
-from PyQt6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit
+import re
+from PyQt6.QtWidgets import (
+    QPlainTextEdit,
+    QWidget,
+    QTextEdit,
+)
 # QTextCursor 
 from PyQt6.QtGui import (
     QColor,
@@ -20,6 +24,8 @@ from PyQt6.QtCore import QRect, QSize, Qt, QPoint, QEvent
 
 
 # {mitayan}
+# TODO: This is a basic SQL syntax highlighter. You might want to consider adding
+# multi-line comment/string handling if needed.
 class SqlHighlighter(QSyntaxHighlighter):
     def __init__(self, document):
         super().__init__(document)
@@ -52,8 +58,6 @@ class SqlHighlighter(QSyntaxHighlighter):
         self.comment_format.setForeground(QColor("#2f7d4a"))
 
     def highlightBlock(self, text):
-        import re
-
         for pattern, fmt in self.rules:
             for match in re.finditer(pattern, text, re.IGNORECASE):
                 self.setFormat(match.start(), match.end() - match.start(), fmt)

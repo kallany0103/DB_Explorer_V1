@@ -6,6 +6,14 @@ import re
 import cdata.csv as mod  # CData CSV connector
 from PyQt6.QtCore import QRunnable, Qt
 import db
+from workers.signals import (
+    emit_metadata_error,
+    emit_metadata_finished,
+    emit_process_error,
+    emit_process_finished,
+    emit_query_error,
+    emit_query_finished,
+)
 
 def transform_csv_query(query, folder_path):
     """
@@ -125,11 +133,11 @@ class RunnableExport(QRunnable):
             time_taken = time.time() - start_time
             success_message = f"Successfully exported {row_count} rows to {os.path.basename(file_path)}"
             
-            self.signals.finished.emit(self.process_id, success_message, time_taken, row_count)
+            emit_process_finished(self.signals, self.process_id, success_message, time_taken, row_count)
                 
         except Exception as e:
             error_msg = f"An error occurred during export: {str(e)}"
-            self.signals.error.emit(self.process_id, error_msg)
+            emit_process_error(self.signals, self.process_id, error_msg)
 
         finally:
             if conn:
@@ -195,10 +203,10 @@ class RunnableExportFromModel(QRunnable):
             row_count = len(df)
             msg = f"Exported {row_count} rows to {os.path.basename(file_path)}"
              
-            self.signals.finished.emit(self.process_id, msg, time_taken, row_count)
+            emit_process_finished(self.signals, self.process_id, msg, time_taken, row_count)
 
         except Exception as e:
-            self.signals.error.emit(self.process_id, str(e))
+            emit_process_error(self.signals, self.process_id, str(e))
 
 
 # =========================================================
@@ -221,7 +229,7 @@ class RunnableQuery(QRunnable):
         start_time = time.time()
 
         try:
-            if not self.conn_data:
+            if not isinstance(self.conn_data, dict) or not self.conn_data:
                 raise ConnectionError("Incomplete connection information.")
 
             code = (self.conn_data.get("code") or "").upper()
@@ -298,8 +306,16 @@ class RunnableQuery(QRunnable):
             if is_mutation and conn:
                 conn.commit()
 
-            self.signals.finished.emit(
-                self.conn_data, self.query, results, columns, row_count, elapsed_time, is_returning_results
+            conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
+            emit_query_finished(
+                self.signals,
+                conn_payload,
+                self.query,
+                results,
+                columns,
+                row_count,
+                elapsed_time,
+                is_returning_results,
             )
         except Exception as e:
             if not self._is_cancelled:
@@ -307,7 +323,8 @@ class RunnableQuery(QRunnable):
                     try: conn.rollback()
                     except: pass
                 elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
-                self.signals.error.emit(self.conn_data, self.query, 0, elapsed_time, str(e))
+                conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
+                emit_query_error(self.signals, conn_payload, self.query, 0, elapsed_time, str(e))
 
         finally:
             if cursor:
@@ -358,11 +375,7 @@ class FetchMetadataWorker(QRunnable):
                     }
 
             # Emit success with transformed metadata
-            self.signals.finished.emit(
-                metadata_dict,
-                self.original_columns,
-                self.table_name
-            )
+            emit_metadata_finished(self.signals, metadata_dict, self.original_columns, self.table_name)
 
         except Exception as e:
-            self.signals.error.emit(f"Metadata fetch failed: {str(e)}")
+            emit_metadata_error(self.signals, f"Metadata fetch failed: {str(e)}")
