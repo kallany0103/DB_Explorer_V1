@@ -30,9 +30,10 @@ class TableDetailsLoader:
             elif schema_name and item_data.get('type') != 'schema_group':
                 item.removeRows(0, item.rowCount())
                 try:
-                    cursor = self.manager.pg_conn.cursor()
-
                     groups = [
+                        ("Tables", "Group", "Tables"),
+                        ("Views", "Group", "Views"),
+                        ("Foreign Tables", "Group", "Foreign Tables"),
                         ("Functions", "Group", "Functions"),
                         ("Trigger Functions", "Group", "Trigger Functions"),
                         ("Sequences", "Group", "Sequences")
@@ -40,7 +41,7 @@ class TableDetailsLoader:
                     for g_name, g_type, internal_group_name in groups:
                         group_item = QStandardItem(g_name)
                         group_item.setEditable(False)
-                        self.manager._set_tree_item_icon(group_item, level="SCHEMA")
+                        self.manager._set_tree_item_icon(group_item, level="GROUP")
 
                         group_data = item_data.copy()
                         group_data['type'] = 'schema_group'
@@ -51,38 +52,6 @@ class TableDetailsLoader:
                         type_item = QStandardItem(g_type)
                         type_item.setEditable(False)
                         item.appendRow([group_item, type_item])
-
-                    cursor.execute("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = %s ORDER BY table_type, table_name;", (schema_name,))
-                    tables = cursor.fetchall()
-                    for (table_name, table_type) in tables:
-                        icon_path = "assets/table_icon.png" if "TABLE" in table_type else "assets/view_icon.png"
-                        table_item = QStandardItem(QIcon(icon_path), table_name)
-                        table_item.setEditable(False)
-
-                        table_data = item_data.copy()
-                        table_data['table_name'] = table_name
-                        table_data['table_type'] = table_type
-                        table_item.setData(table_data, Qt.ItemDataRole.UserRole)
-
-                        if "TABLE" in table_type or "VIEW" in table_type:
-                            table_item.appendRow(QStandardItem("Loading..."))
-
-                        if "TABLE" in table_type and "FOREIGN" not in table_type:
-                            self.manager._set_tree_item_icon(table_item, level="TABLE")
-                            type_text = "Table"
-                        elif "VIEW" in table_type:
-                            self.manager._set_tree_item_icon(table_item, level="VIEW")
-                            type_text = "View"
-                        elif "FOREIGN" in table_type:
-                            self.manager._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
-                            type_text = "Foreign Table"
-                        else:
-                            type_text = table_type.title()
-
-                        type_item = QStandardItem(type_text)
-                        type_item.setEditable(False)
-
-                        item.appendRow([table_item, type_item])
 
                 except Exception as e:
                     self.manager.status.showMessage(f"Error expanding schema: {e}", 5000)
@@ -215,7 +184,44 @@ class TableDetailsLoader:
                 schema_name = item_data.get('schema_name')
                 try:
                     cursor = self.manager.pg_conn.cursor()
-                    if group_name == "Sequences":
+                    if group_name in ["Tables", "Views", "Foreign Tables"]:
+                        target_type = {
+                            "Tables": "BASE TABLE",
+                            "Views": "VIEW",
+                            "Foreign Tables": "FOREIGN TABLE"
+                        }.get(group_name)
+
+                        cursor.execute("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = %s AND table_type = %s ORDER BY table_name;", (schema_name, target_type))
+                        tables = cursor.fetchall()
+                        for (table_name, table_type) in tables:
+                            table_item = QStandardItem(table_name)
+                            table_item.setEditable(False)
+
+                            table_data = item_data.copy()
+                            table_data['type'] = 'table' # Reset type from schema_group
+                            table_data['table_name'] = table_name
+                            table_data['table_type'] = table_type
+                            table_item.setData(table_data, Qt.ItemDataRole.UserRole)
+
+                            table_item.appendRow(QStandardItem("Loading..."))
+
+                            if group_name == "Tables":
+                                self.manager._set_tree_item_icon(table_item, level="TABLE")
+                                type_text = "Table"
+                            elif group_name == "Views":
+                                self.manager._set_tree_item_icon(table_item, level="VIEW")
+                                type_text = "View"
+                            elif group_name == "Foreign Tables":
+                                self.manager._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
+                                type_text = "Foreign Table"
+                            else:
+                                type_text = table_type.title()
+
+                            type_item = QStandardItem(type_text)
+                            type_item.setEditable(False)
+                            item.appendRow([table_item, type_item])
+
+                    elif group_name == "Sequences":
                         cursor.execute("SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relkind = 'S' ORDER BY relname;", (schema_name,))
                         for (seq_name,) in cursor.fetchall():
                             seq_item = QStandardItem(seq_name)

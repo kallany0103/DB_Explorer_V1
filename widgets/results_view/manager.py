@@ -351,7 +351,11 @@ class ResultsManager(QObject):
                     buttons[3].setChecked(target_index == 3)
                 if results_info_bar and process_filter_bar:
                     if target_index == 0:
-                        results_info_bar.show()
+                        if stacked_widget.widget(0).findChild(QTableView, "results_table"):
+                            results_info_bar.show()
+                        else:
+                            # Hide toolbar if no results table is present or being shown
+                            results_info_bar.hide()
                         process_filter_bar.hide()
                     elif target_index == 3:
                         results_info_bar.hide()

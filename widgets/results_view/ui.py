@@ -200,6 +200,7 @@ def create_results_ui(manager, tab_content):
     results_info_layout.addWidget(search_box)
     results_info_layout.addWidget(table_search_btn)
 
+    results_info_bar.hide()
     results_info_layout.addStretch()
 
     rows_info_label = QLabel("Showing Rows")
@@ -451,6 +452,35 @@ def create_results_ui(manager, tab_content):
     explain_visualizer = create_explain_view()
     results_stack.addWidget(explain_visualizer)
 
+    placeholder_widget = QWidget()
+    placeholder_layout = QVBoxLayout(placeholder_widget)
+    placeholder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    
+    placeholder_content = QWidget()
+    placeholder_content_layout = QHBoxLayout(placeholder_content)
+    placeholder_content_layout.setSpacing(10)
+    placeholder_content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    info_icon_label = QLabel()
+    info_icon_path = "assets/information.svg"
+    if os.path.exists(info_icon_path):
+        info_icon_label.setPixmap(QIcon(info_icon_path).pixmap(20, 20))
+    else:
+        # Fallback if svg not found, maybe just a text or circle
+        info_icon_label.setText("ⓘ")
+        info_icon_label.setStyleSheet("font-weight: bold; font-size: 14pt; color: #555;")
+
+    placeholder_message = QLabel("No data output. Execute a query to get output.")
+    placeholder_message.setStyleSheet("color: #555; font-size: 10pt;")
+    
+    placeholder_content_layout.addWidget(info_icon_label)
+    placeholder_content_layout.addWidget(placeholder_message)
+    
+    placeholder_layout.addWidget(placeholder_content)
+    results_stack.addWidget(placeholder_widget)
+
+    results_stack.setCurrentIndex(6)
+
     results_layout.addWidget(results_stack)
     results_layout.setStretchFactor(results_stack, 1)
 
@@ -463,7 +493,10 @@ def create_results_ui(manager, tab_content):
         results_stack.setCurrentIndex(index)
 
         if index == 0:
-            results_info_bar.show()
+            if results_stack.widget(0).findChild(QTableView, "results_table"):
+              results_info_bar.show()
+            else:
+              results_info_bar.hide()
             process_info_bar.hide()
             process_filter_bar.hide()
         elif index == 3:
