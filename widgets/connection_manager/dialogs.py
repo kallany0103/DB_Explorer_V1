@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QFormLayout,
 )
 
 import db
@@ -85,64 +86,13 @@ class ConnectionDialogs:
 
     def add_connection_group(self, parent_item):
         dialog = QDialog(self.manager)
-        dialog.setWindowTitle("New Group")
+        dialog.setWindowTitle("New Connection Group")
         dialog.resize(460, 220)
         dialog.setSizeGripEnabled(True)
-        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.Window)
-        dialog.setStyleSheet(
-            """
-            QDialog {
-                background-color: #f6f8fb;
-            }
-            QLabel#dialogTitle {
-                font-size: 16px;
-                font-weight: 600;
-                color: #1f2937;
-            }
-            QLabel#dialogSubtitle {
-                color: #6b7280;
-                margin-bottom: 8px;
-            }
-            QLineEdit {
-                min-height: 28px;
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                background: white;
-                padding: 3px 8px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #0078d4;
-            }
-            QPushButton {
-                min-height: 28px;
-                padding: 2px 14px;
-                border: 1px solid #c4c9d4;
-                background-color: #eef1f6;
-                color: #1f2937;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #e3e8f2;
-            }
-            QPushButton:pressed {
-                background-color: #d7deeb;
-            }
-            QPushButton#primaryButton {
-                border: 1px solid #006cbe;
-                background-color: #0078d4;
-                color: #ffffff;
-                font-weight: 600;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #006cbe;
-            }
-            QPushButton#primaryButton:pressed {
-                background-color: #005a9e;
-            }
-            """
-        )
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.Dialog)
+        dialog.setStyleSheet(self.manager._get_dialog_style())
 
-        title_label = QLabel("Create Connection Group")
+        title_label = QLabel("New Connection Group")
         title_label.setObjectName("dialogTitle")
         subtitle_label = QLabel("Enter a group name for organizing connections.")
         subtitle_label.setObjectName("dialogSubtitle")
@@ -185,6 +135,156 @@ class ConnectionDialogs:
                 self.manager.load_data()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to add group:\n{e}")
+
+    def edit_connection_group(self, item):
+        group_id = item.data(Qt.ItemDataRole.UserRole + 1)
+        current_name = item.text()
+
+        dialog = QDialog(self.manager)
+        dialog.setWindowTitle("Edit Connection Group")
+        dialog.resize(460, 220)
+        dialog.setStyleSheet(self.manager._get_dialog_style())
+
+        title_label = QLabel("Edit Connection Group")
+        title_label.setObjectName("dialogTitle")
+        subtitle_label = QLabel("Update the name for this group.")
+        subtitle_label.setObjectName("dialogSubtitle")
+        
+        name_input = QLineEdit()
+        name_input.setText(current_name)
+        name_input.setPlaceholderText("Group name")
+
+        save_btn = QPushButton("Update")
+        save_btn.setObjectName("primaryButton")
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.setContentsMargins(22, 20, 22, 18)
+        dialog_layout.setSpacing(14)
+        dialog_layout.addWidget(title_label)
+        dialog_layout.addWidget(subtitle_label)
+        dialog_layout.addWidget(name_input)
+        dialog_layout.addLayout(button_layout)
+
+        cancel_btn.clicked.connect(dialog.reject)
+
+        def _on_save():
+            name = name_input.text().strip()
+            if not name:
+                QMessageBox.warning(dialog, "Missing Info", "Group name is required.")
+                return
+            try:
+                db.update_connection_group(group_id, name)
+                dialog.accept()
+                self.manager.load_data()
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to update group:\n{e}")
+
+        save_btn.clicked.connect(_on_save)
+        dialog.exec()
+
+    def delete_connection_group(self, item):
+        group_id = item.data(Qt.ItemDataRole.UserRole + 1)
+        group_name = item.text()
+        
+        reply = QMessageBox.question(
+            self.manager,
+            "Delete Connection Group",
+            f"Are you sure you want to delete the group '{group_name}'?\nThis will also delete ALL connections within this group.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                db.delete_connection_group(group_id)
+                self.manager.load_data()
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to delete group:\n{e}")
+
+    def edit_connection_type(self, item):
+        type_id = item.data(Qt.ItemDataRole.UserRole + 1)
+        current_name = item.text()
+        current_code = item.data(Qt.ItemDataRole.UserRole)
+
+        dialog = QDialog(self.manager)
+        dialog.setWindowTitle("Edit Connection Type")
+        dialog.resize(460, 260)
+        dialog.setStyleSheet(self.manager._get_dialog_style())
+
+        title_label = QLabel("Edit Connection Type")
+        title_label.setObjectName("dialogTitle")
+        subtitle_label = QLabel("Update the display name and code for this category.")
+        subtitle_label.setObjectName("dialogSubtitle")
+        
+        name_input = QLineEdit()
+        name_input.setText(current_name)
+        name_input.setPlaceholderText("Display Name")
+        
+        code_input = QLineEdit()
+        code_input.setText(current_code)
+        code_input.setPlaceholderText("Type (e.g. SQLITE)")
+
+        save_btn = QPushButton("Update")
+        save_btn.setObjectName("primaryButton")
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+
+        form = QFormLayout()
+        form.addRow("Name:", name_input)
+        form.addRow("Type:", code_input)
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.setContentsMargins(22, 20, 22, 18)
+        dialog_layout.setSpacing(14)
+        dialog_layout.addWidget(title_label)
+        dialog_layout.addWidget(subtitle_label)
+        dialog_layout.addLayout(form)
+        dialog_layout.addLayout(button_layout)
+
+        cancel_btn.clicked.connect(dialog.reject)
+
+        def _on_save():
+            name = name_input.text().strip()
+            code = code_input.text().strip().upper()
+            if not name or not code:
+                QMessageBox.warning(dialog, "Missing Info", "Both Name and Type are required.")
+                return
+            try:
+                db.update_connection_type(type_id, name, code)
+                dialog.accept()
+                self.manager.load_data()
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to update type:\n{e}")
+
+        save_btn.clicked.connect(_on_save)
+        dialog.exec()
+
+    def delete_connection_type(self, item):
+        type_id = item.data(Qt.ItemDataRole.UserRole + 1)
+        type_name = item.text()
+        
+        reply = QMessageBox.question(
+            self.manager,
+            "Delete Connection Type",
+            f"Are you sure you want to delete the type '{type_name}'?\nThis will also delete ALL groups and connections within this type.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                db.delete_connection_type(type_id)
+                self.manager.load_data()
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to delete type:\n{e}")
 
     def add_postgres_connection(self, parent_item):
         connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)

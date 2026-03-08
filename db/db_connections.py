@@ -53,7 +53,6 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
         return None
 
 
-
 def create_oracle_connection(host, port, service_name, user, password):
     """Establishes a connection to an Oracle database."""
     try:

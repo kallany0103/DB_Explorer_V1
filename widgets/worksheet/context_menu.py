@@ -58,6 +58,18 @@ def show_editor_context_menu(manager, pos, editor):
     menu.addAction(select_all_action)
 
     menu.addSeparator()
+
+    explain_analyze_action = QAction("Explain Analyze", manager)
+    explain_analyze_action.triggered.connect(manager.explain_query)
+    menu.addAction(explain_analyze_action)
+
+
+
+    explain_plan_action = QAction("Explain Plan", manager)
+    explain_plan_action.triggered.connect(manager.explain_plan_query)
+    menu.addAction(explain_plan_action)
+
+    menu.addSeparator()
     format_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", manager)
     format_action.setIconVisibleInMenu(False)
     format_action.setShortcut("Ctrl+Shift+F")

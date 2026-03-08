@@ -8,7 +8,17 @@ import datetime
 import qtawesome as qta
 from PyQt6.QtCore import Qt, QModelIndex
 from PyQt6.QtGui import QStandardItem
-from PyQt6.QtWidgets import QWidget, QMessageBox
+from PyQt6.QtWidgets import (
+    QWidget,
+    QMessageBox,
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QHBoxLayout,
+    QFormLayout,
+)
 
 import db
 from widgets.erd.widget import ERDWidget
@@ -358,3 +368,115 @@ class ConnectionManager(QWidget):
         QMessageBox.critical(self, "Export Error", f"Export failed:\n{error_message}")
         if hasattr(self.main_window, "results_manager"):
             self.main_window.results_manager.handle_process_error(process_id, error_message)
+
+    def _get_dialog_style(self):
+        return """
+            QDialog {
+                background-color: #f6f8fb;
+            }
+            QLabel#dialogTitle {
+                font-size: 16px;
+                font-weight: 600;
+                color: #1f2937;
+            }
+            QLabel#dialogSubtitle {
+                color: #6b7280;
+                margin-bottom: 8px;
+            }
+            QLineEdit {
+                min-height: 28px;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                background: white;
+                padding: 3px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0078d4;
+            }
+            QPushButton {
+                min-height: 28px;
+                padding: 2px 14px;
+                border: 1px solid #c4c9d4;
+                background-color: #eef1f6;
+                color: #1f2937;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #e3e8f2;
+            }
+            QPushButton:pressed {
+                background-color: #d7deeb;
+            }
+            QPushButton#primaryButton {
+                border: 1px solid #006cbe;
+                background-color: #0078d4;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            QPushButton#primaryButton:hover {
+                background-color: #006cbe;
+            }
+            QPushButton#primaryButton:pressed {
+                background-color: #005a9e;
+            }
+            """
+
+    def add_connection_type_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New Connection Type")
+        dialog.resize(460, 260)
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.Window)
+        dialog.setStyleSheet(self._get_dialog_style())
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.setContentsMargins(22, 20, 22, 18)
+        dialog_layout.setSpacing(14)
+
+        title_label = QLabel("Add Connection Type")
+        title_label.setObjectName("dialogTitle")
+        subtitle_label = QLabel("Define a new category for your database connections.")
+        subtitle_label.setObjectName("dialogSubtitle")
+        
+        Name_Input = QLineEdit()
+        Name_Input.setPlaceholderText("Display Name")
+        
+        Type_Input = QLineEdit()
+        Type_Input.setPlaceholderText("Type (e.g. SQLITE)")
+
+        save_btn = QPushButton("Add Type")
+        save_btn.setObjectName("primaryButton")
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+        
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(save_btn)
+
+        form = QFormLayout()
+        form.addRow("Name:", Name_Input)
+        form.addRow("Type:", Type_Input)
+
+        dialog_layout.addWidget(title_label)
+        dialog_layout.addWidget(subtitle_label)
+        dialog_layout.addLayout(form)
+        dialog_layout.addLayout(button_layout)
+
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        def _on_save():
+            Name = Name_Input.text().strip()
+            Type = Type_Input.text().strip().upper()
+            if not Name or not Type:
+                QMessageBox.warning(dialog, "Missing Info", "Both Name and Code are required.")
+                return
+            try:
+                db.add_connection_type(Name, Type)
+                dialog.accept()
+                self.load_data()
+                self.status.showMessage(f"Connection type '{Name}' added.", 3000)
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Failed to add connection type:\n{e}")
+
+        save_btn.clicked.connect(_on_save)
+        dialog.exec()

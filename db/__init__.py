@@ -26,6 +26,11 @@ from db.db_modifications import (
     get_query_history,
     delete_history,
     delete_all_history,
+    add_connection_type,
+    update_connection_group,
+    delete_connection_group,
+    update_connection_type,
+    delete_connection_type,
 )
 
 
@@ -47,4 +52,9 @@ __all__ = [
     "delete_all_history",
     "get_sqlite_schema",
     "get_postgres_schema",
+    "add_connection_type",
+    "update_connection_group",
+    "delete_connection_group",
+    "update_connection_type",
+    "delete_connection_type",
 ]

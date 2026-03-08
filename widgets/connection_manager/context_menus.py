@@ -16,9 +16,19 @@ class ContextMenuHandler:
         depth = self.manager.get_item_depth(item)
         menu = QMenu()
         if depth == 1:
-            add_connection_group = QAction("Add Group", self.manager)
+            add_connection_group = QAction("New Connection Group", self.manager)
             add_connection_group.triggered.connect(lambda: self.manager.connection_dialogs.add_connection_group(item))
             menu.addAction(add_connection_group)
+            
+            menu.addSeparator()
+            
+            edit_type_action = QAction("Edit Connection Type", self.manager)
+            edit_type_action.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection_type(item))
+            menu.addAction(edit_type_action)
+            
+            delete_type_action = QAction("Delete Connection Type", self.manager)
+            delete_type_action.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_type(item))
+            menu.addAction(delete_type_action)
 
         elif depth == 2:
             parent_item = item.parent()
@@ -44,6 +54,16 @@ class ContextMenuHandler:
                 add_sn_action = QAction("New ServiceNow Connection", self.manager)
                 add_sn_action.triggered.connect(lambda: self.manager.connection_dialogs.add_servicenow_connection(item))
                 menu.addAction(add_sn_action)
+            
+            menu.addSeparator()
+            
+            edit_group_action = QAction("Edit Connection Group", self.manager)
+            edit_group_action.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection_group(item))
+            menu.addAction(edit_group_action)
+            
+            delete_group_action = QAction("Delete Connection Group", self.manager)
+            delete_group_action.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_group(item))
+            menu.addAction(delete_group_action)
 
         elif depth == 3:
             conn_data = item.data(Qt.ItemDataRole.UserRole)

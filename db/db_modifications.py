@@ -194,3 +194,53 @@ def delete_all_history(conn_id):
         c = conn.cursor()
         c.execute("DELETE FROM usf_query_history WHERE connection_id = ?", (conn_id,))
         conn.commit()
+#{moitre}
+
+def add_connection_type(name, code):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO usf_connection_types (name, code) VALUES (?, ?)", (name, code))
+        conn.commit()
+
+def update_connection_group(group_id, name):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE usf_connection_groups SET name = ? WHERE id = ?", (name, group_id))
+        conn.commit()
+
+def update_connection_group(group_id, name):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE usf_connection_groups SET name = ? WHERE id = ?", (name, group_id))
+        conn.commit()
+
+def delete_connection_group(group_id):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        # Delete connections within the group first
+        c.execute("SELECT id FROM usf_connections WHERE connection_group_id = ?", (group_id,))
+        conn_ids = [row[0] for row in c.fetchall()]
+        for conn_id in conn_ids:
+            delete_connection(conn_id)
+        
+        c.execute("DELETE FROM usf_connection_groups WHERE id = ?", (group_id,))
+        conn.commit()
+
+def update_connection_type(type_id, name, code):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE usf_connection_types SET name = ?, code = ? WHERE id = ?", (name, code, type_id))
+        conn.commit()
+
+def delete_connection_type(type_id):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        # Delete groups within the type first
+        c.execute("SELECT id FROM usf_connection_groups WHERE connection_type_id = ?", (type_id,))
+        group_ids = [row[0] for row in c.fetchall()]
+        for group_id in group_ids:
+            delete_connection_group(group_id)
+            
+        c.execute("DELETE FROM usf_connection_types WHERE id = ?", (type_id,))
+        conn.commit()
+#{moitre}
