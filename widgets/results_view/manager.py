@@ -34,7 +34,7 @@ from workers.signals import emit_process_started
 class ResultsManager(QObject):
     PROCESS_STATUS_META = {
         "RUNNING": {"label": "Running", "color": "#FFF4CC", "priority": 1},
-        "SUCCESSFULL": {"label": "Successfull", "color": "#E8F5E9", "priority": 2},
+        "SUCCESSFUL": {"label": "Successful", "color": "#E8F5E9", "priority": 2},
         "WARNING": {"label": "Warning", "color": "#FFF3E0", "priority": 3},
         "ERROR": {"label": "Error", "color": "#FDECEC", "priority": 4},
     }

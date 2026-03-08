@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
+    QTableView,
     QToolButton,
     QVBoxLayout,
     QWidget,
