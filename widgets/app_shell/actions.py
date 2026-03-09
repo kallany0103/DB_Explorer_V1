@@ -3,15 +3,15 @@ import qtawesome as qta
 
 
 def build_main_window_actions(main_window):
-    main_window.open_file_action = QAction(qta.icon("fa5s.folder-open", color="#555555"), "Open File", main_window)
+    main_window.open_file_action = QAction(qta.icon("mdi.folder", color="#333333"), "Open File", main_window)
     main_window.open_file_action.setShortcut("Ctrl+O")
     main_window.open_file_action.triggered.connect(main_window.open_sql_file)
 
-    main_window.save_action = QAction(qta.icon("fa5s.save", color="#555555"), "Save", main_window)
+    main_window.save_action = QAction("Save", main_window)
     main_window.save_action.setShortcut("Ctrl+S")
     main_window.save_action.triggered.connect(main_window.save_sql_file)
 
-    main_window.save_as_action = QAction(qta.icon("fa5s.save", color="#555555"), "Save As", main_window)
+    main_window.save_as_action = QAction(qta.icon("mdi.save", color="#333333"), "Save As", main_window)
     main_window.save_as_action.setShortcut("Ctrl+Shift+S")
     main_window.save_as_action.triggered.connect(main_window.save_sql_file_as)
 

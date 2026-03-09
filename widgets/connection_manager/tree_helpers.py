@@ -1,5 +1,6 @@
 from PyQt6.QtCore import Qt, QEvent
 from PyQt6.QtGui import QIcon
+import qtawesome as qta
 
 
 class TreeHelpers:
@@ -28,18 +29,39 @@ class TreeHelpers:
 
     def set_tree_item_icon(self, item, level, code=""):
         if level == "GROUP":
-            item.setIcon(QIcon("assets/folder-open.svg"))
+            item.setIcon(qta.icon("fa5s.folder", color="#FFB300"))
+            return
+        if level == "GROUP_SCHEMAS":
+            item.setIcon(qta.icon("fa6s.layer-group", color="#FFB300"))
+            return
+        if level == "GROUP_TABLES":
+            item.setIcon(qta.icon("mdi.table-multiple", color="#FFB300"))
+            return
+        if level == "GROUP_VIEWS":
+            item.setIcon(qta.icon("mdi6.folder-eye", color="#FFB300"))
+            return
+        if level == "GROUP_FOREIGN_TABLES":
+            item.setIcon(qta.icon("mdi.folder-network", color="#FFB300"))
+            return
+        if level == "GROUP_FUNCTIONS":
+            item.setIcon(qta.icon("mdi.code-braces", color="#E91E63"))
+            return
+        if level == "GROUP_TRIGGER_FUNCTIONS":
+            item.setIcon(qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#FFC107'}, {'color': '#FFC107', 'scale_factor': 0.5}]))
+            return
+        if level == "GROUP_SEQUENCES":
+            item.setIcon(qta.icon("mdi.numeric", color="#FF9800"))
             return
 
         if level == "SCHEMA":
-            item.setIcon(QIcon("assets/schema.svg"))
+            item.setIcon(qta.icon("mdi.cube-outline", color="#FFB300"))
             return
 
         if level == "TABLE":
-            item.setIcon(QIcon("assets/table.svg"))
+            item.setIcon(qta.icon("mdi.table", color="#4CAF50"))
             return
         if level == "VIEW":
-            item.setIcon(QIcon("assets/view_icon.png"))
+            item.setIcon(qta.icon("mdi.table-eye", color="#2196F3"))
             return
 
         if level == "COLUMN":
@@ -48,29 +70,29 @@ class TreeHelpers:
 
         if level in ["FDW_ROOT", "FDW", "SERVER", "FOREIGN_TABLE", "EXTENSION_ROOT", "EXTENSION", "LANGUAGE_ROOT", "LANGUAGE", "SEQUENCE", "FUNCTION", "TRIGGER_FUNCTION"]:
             if level == "FDW_ROOT":
-                item.setIcon(QIcon("assets/server.svg"))
+                item.setIcon(qta.icon("mdi.server-network", color="#9E9E9E"))
             elif level == "FDW":
-                item.setIcon(QIcon("assets/plug.svg"))
+                item.setIcon(qta.icon("mdi.server-network", color="#9E9E9E"))
             elif level == "SERVER":
-                item.setIcon(QIcon("assets/database.svg"))
+                item.setIcon(qta.icon("fa5s.database", color="#9E9E9E"))
             elif level == "FOREIGN_TABLE":
-                item.setIcon(QIcon("assets/table.svg"))
+                item.setIcon(qta.icon("mdi.table-network", color="#4CAF50"))
             elif level == "EXTENSION_ROOT":
-                item.setIcon(QIcon("assets/plug.svg"))
+                item.setIcon(qta.icon("mdi.puzzle", color="#9C27B0"))
             elif level == "EXTENSION":
-                item.setIcon(QIcon("assets/plug.svg"))
+                item.setIcon(qta.icon("mdi.puzzle", color="#9C27B0"))
             elif level == "LANGUAGE_ROOT":
-                item.setIcon(QIcon("assets/code.svg"))
+                item.setIcon(qta.icon("fa5s.code", color="#795548"))
             elif level == "LANGUAGE":
-                item.setIcon(QIcon("assets/code.svg"))
+                item.setIcon(qta.icon("fa5s.code", color="#795548"))
             elif level == "SEQUENCE":
-                item.setIcon(QIcon("assets/list.svg"))
+                item.setIcon(qta.icon("mdi.numeric", color="#FF9800"))
             elif level == "FUNCTION":
-                item.setIcon(QIcon("assets/function.svg"))
+                item.setIcon(qta.icon("mdi.code-braces", color="#E91E63"))
             elif level == "TRIGGER_FUNCTION":
-                item.setIcon(QIcon("assets/function.svg"))
+                item.setIcon(qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#FFC107'}, {'color': '#FFC107', 'scale_factor': 0.5}]))
             elif level == "USER":
-                item.setIcon(QIcon("assets/plus.svg"))
+                item.setIcon(qta.icon("fa5s.user", color="#607D8B"))
             return
 
         icon_map = {
