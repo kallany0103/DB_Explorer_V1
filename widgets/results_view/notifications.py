@@ -1,9 +1,9 @@
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QStyle
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QStyle
 
 
 class NotificationWidget(QWidget):
-    closed = pyqtSignal(QWidget)
+    closed = Signal(QWidget)
 
     def __init__(self, parent=None):
         super().__init__(parent)

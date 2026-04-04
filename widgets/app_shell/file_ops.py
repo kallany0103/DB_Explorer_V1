@@ -1,5 +1,7 @@
-from PyQt6.QtCore import QDir
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
+#from PyQt6.QtCore import QDir
+#from PyQt6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
+from PySide6.QtCore import QDir
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
 
 from widgets.worksheet.editor_actions import FindReplaceDialog
 

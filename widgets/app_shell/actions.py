@@ -1,4 +1,5 @@
-from PyQt6.QtGui import QAction, QIcon
+#from PyQt6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction, QIcon
 import qtawesome as qta
 
 

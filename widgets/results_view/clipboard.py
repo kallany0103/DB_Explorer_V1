@@ -1,6 +1,7 @@
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QTableView, QTextEdit
-
+# from PyQt6.QtCore import Qt
+# from PyQt6.QtWidgets import QApplication, QTableView, QTextEdit
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QTableView, QTextEdit
 
 def copy_current_result_table(manager):
     tab = manager.tab_widget.currentWidget()

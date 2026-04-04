@@ -1,12 +1,12 @@
 # code_editor.py
 import re
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QPlainTextEdit,
     QWidget,
     QTextEdit,
 )
 # QTextCursor 
-from PyQt6.QtGui import (
+from PySide6.QtGui import (
     QColor,
     QTextFormat,
     QFont,
@@ -20,7 +20,7 @@ from PyQt6.QtGui import (
     QTextCharFormat,
     QPen,
 )
-from PyQt6.QtCore import QRect, QSize, Qt, QPoint, QEvent
+from PySide6.QtCore import QRect, QSize, Qt, QPoint, QEvent
 
 
 # {mitayan}

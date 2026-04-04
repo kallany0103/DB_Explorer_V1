@@ -1,5 +1,8 @@
-from PyQt6.QtCore import Qt, QEvent
-from PyQt6.QtGui import QIcon
+# from PyQt6.QtCore import Qt, QEvent
+# from PyQt6.QtGui import QIcon
+
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QIcon
 import qtawesome as qta
 
 

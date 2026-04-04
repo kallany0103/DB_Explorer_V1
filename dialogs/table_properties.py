@@ -1,15 +1,15 @@
 # table_properties
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QHBoxLayout, QPushButton, QMessageBox, QInputDialog, QFormLayout, QLabel, QComboBox, QCheckBox, 
     QLineEdit, QTextEdit, QGroupBox, QDialogButtonBox, QFrame, QSizePolicy, QTableView, QHeaderView, QStyle )
-from PyQt6.QtGui import (
+from PySide6.QtGui import (
     QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush, QPainter,
     QTextFormat, QPolygon
 )
 from functools import partial
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 import db
 
 

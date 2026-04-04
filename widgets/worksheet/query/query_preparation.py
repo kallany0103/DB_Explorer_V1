@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QComboBox, QPlainTextEdit, QTabWidget
+from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QTabWidget
 
 from widgets.worksheet.code_editor import CodeEditor
 

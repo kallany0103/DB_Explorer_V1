@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QLabel, QPushButton, QStackedWidget, QWidget
+from PySide6.QtWidgets import QLabel, QPushButton, QStackedWidget, QWidget
 
 
 def show_loading_view(tab):

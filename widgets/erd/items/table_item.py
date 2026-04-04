@@ -1,8 +1,8 @@
 import math
 import qtawesome as qta
-from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect
-from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QFontMetrics
-from PyQt6.QtCore import Qt, QRectF, QPointF, QLineF
+from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect
+from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QFontMetrics
+from PySide6.QtCore import Qt, QRectF, QPointF, QLineF
 
 
 from widgets.erd.commands import MoveTableCommand

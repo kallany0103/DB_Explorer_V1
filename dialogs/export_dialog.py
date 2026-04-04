@@ -99,11 +99,11 @@
 #            "quote": self.quote_edit.text()
 #        }
 
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
                              QLabel, QLineEdit, QPushButton, QHBoxLayout,
                              QComboBox, QCheckBox, QDialogButtonBox, QFileDialog, QStyle)
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt
 import os 
 
 class ExportDialog(QDialog):

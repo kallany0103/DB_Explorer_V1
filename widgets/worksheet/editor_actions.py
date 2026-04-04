@@ -1,6 +1,6 @@
 import sqlparse
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMessageBox,
     QInputDialog,
     QDialog,
@@ -12,15 +12,15 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QGridLayout,
 )
-from PyQt6.QtGui import QTextCursor
-from PyQt6.QtCore import Qt, pyqtSignal
+from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import Qt, Signal
 
 
 class FindReplaceDialog(QDialog):
-    find_next = pyqtSignal(str, bool, bool)
-    find_previous = pyqtSignal(str, bool, bool)
-    replace = pyqtSignal(str, str, bool, bool)
-    replace_all = pyqtSignal(str, str, bool, bool)
+    find_next = Signal(str, bool, bool)
+    find_previous = Signal(str, bool, bool)
+    replace = Signal(str, str, bool, bool)
+    replace_all = Signal(str, str, bool, bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)

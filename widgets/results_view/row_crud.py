@@ -1,7 +1,7 @@
 import pandas as pd
-from PyQt6.QtCore import Qt, QSortFilterProxyModel
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QComboBox, QFileDialog, QMessageBox
+from PySide6.QtCore import Qt, QSortFilterProxyModel
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QComboBox, QFileDialog, QMessageBox
 
 import db
 

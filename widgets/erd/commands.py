@@ -1,4 +1,5 @@
-from PyQt6.QtGui import QUndoCommand
+# from PyQt6.QtGui import QUndoCommand
+from PySide6.QtGui import QUndoCommand
 
 class MoveTableCommand(QUndoCommand):
     """Records table position before/after drag."""

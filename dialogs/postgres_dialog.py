@@ -2,11 +2,11 @@
 
 import os
 import psycopg2
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QLabel
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 
 class PostgresConnectionDialog(QDialog):
     def __init__(self, parent=None, is_editing=False):

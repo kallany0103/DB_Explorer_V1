@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -15,8 +15,8 @@ from PyQt6.QtWidgets import (
     QTreeView,
     QGroupBox,
 )
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QAction, QFont, QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence, QShortcut
 
 from widgets.worksheet.code_editor import CodeEditor
 

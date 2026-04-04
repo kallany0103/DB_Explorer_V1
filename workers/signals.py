@@ -1,23 +1,25 @@
 # signals.py
-from PyQt6.QtCore import QObject, pyqtSignal
+#from PyQt6.QtCore import QObject, pyqtSignal
+
+from PySide6.QtCore import QObject, Signal
 
 class ProcessSignals(QObject):
-    started = pyqtSignal(str, dict)
-    finished = pyqtSignal(str, str, float, int)
-    error = pyqtSignal(str, str)
+    started = Signal(str, dict)
+    finished = Signal(str, str, float, int)
+    error = Signal(str, str)
       
 class QuerySignals(QObject):
-    finished = pyqtSignal(dict, str, list, list, int, float, bool)  
+    finished = Signal(dict, str, list, list, int, float, bool)  
     # conn_data, query, results, columns, row_count, elapsed_time, is_select_query
 
-    error = pyqtSignal(dict, str, int, float, str)  
+    error = Signal(dict, str, int, float, str)  
     # conn_data, query, row_count, elapsed_time, error_message
 
 class MetadataSignals(QObject):
-    finished = pyqtSignal(dict, list, str)
+    finished = Signal(dict, list, str)
     # metadata_dict, original_columns, table_name
     
-    error = pyqtSignal(str)
+    error = Signal(str)
     # error_message
 
 

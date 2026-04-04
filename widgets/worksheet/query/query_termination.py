@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from widgets.worksheet.query.query_feedback import replace_message, set_global_status, set_tab_status
 from widgets.worksheet.query.query_runtime import clear_query_runtime

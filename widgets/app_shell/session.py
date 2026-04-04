@@ -1,8 +1,11 @@
 import json
 import os
 
-from PyQt6.QtCore import QByteArray
-from PyQt6.QtWidgets import QComboBox
+# from PyQt6.QtCore import QByteArray
+# from PyQt6.QtWidgets import QComboBox
+
+from PySide6.QtCore import QByteArray
+from PySide6.QtWidgets import QComboBox
 
 from widgets.worksheet.code_editor import CodeEditor
 

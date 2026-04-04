@@ -6,16 +6,16 @@ import sqlite3 as sqlite
 import copy
 from numbers import Number
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QTableView, QMessageBox, QMenu, QComboBox,
     QDialog, QToolButton, QStackedWidget,
     QWidget, QLabel, QPushButton, QTextEdit,
     QFormLayout, QSpinBox, QDialogButtonBox,
 )
-from PyQt6.QtCore import (
+from PySide6.QtCore import (
     Qt, QObject, QEvent
 )
-from PyQt6.QtGui import (
+from PySide6.QtGui import (
     QAction
 )
 

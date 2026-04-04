@@ -1,7 +1,11 @@
 import math
-from PyQt6.QtWidgets import QGraphicsScene
-from PyQt6.QtGui import QBrush, QColor, QPen
-from PyQt6.QtCore import QLineF, Qt
+# from PyQt6.QtWidgets import QGraphicsScene
+# from PyQt6.QtGui import QBrush, QColor, QPen
+# from PyQt6.QtCore import QLineF, Qt
+
+from PySide6.QtWidgets import QGraphicsScene
+from PySide6.QtGui import QBrush, QColor, QPen
+from PySide6.QtCore import QLineF, Qt
 
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem
