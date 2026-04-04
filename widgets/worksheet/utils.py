@@ -1,8 +1,8 @@
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMessageBox,
     QToolButton,
 )
-from PyQt6.QtCore import QEvent
+from PySide6.QtCore import QEvent
 
 
 def renumber_tabs(manager):

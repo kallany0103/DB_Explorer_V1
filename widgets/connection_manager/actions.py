@@ -4,8 +4,22 @@ import uuid
 
 import db
 import psycopg2
-from PyQt6.QtGui import QStandardItemModel, QStandardItem
-from PyQt6.QtWidgets import (
+# from PyQt6.QtGui import QStandardItemModel, QStandardItem
+# from PyQt6.QtWidgets import (
+#     QApplication,
+#     QComboBox,
+#     QDialog,
+#     QInputDialog,
+#     QMessageBox,
+#     QPushButton,
+#     QPlainTextEdit,
+#     QStackedWidget,
+#     QTextEdit,
+#     QWidget,
+# )
+
+from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,

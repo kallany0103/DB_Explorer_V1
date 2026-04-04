@@ -1,5 +1,5 @@
-from PyQt6.QtGui import QAction
-
+#from PyQt6.QtGui import QAction
+from PySide6.QtGui import QAction
 
 def build_main_window_menu(main_window):
     menubar = main_window.menuBar()

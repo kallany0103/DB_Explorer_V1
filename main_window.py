@@ -1,6 +1,8 @@
 # main_window.py
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
-from PyQt6.QtCore import Qt, QSize, QThreadPool, QTimer
+#from PyQt6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
+#from PyQt6.QtCore import Qt, QSize, QThreadPool, QTimer
+from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
+from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer
 from widgets import NotificationManager, ConnectionManager, WorksheetManager, ResultsManager
 from widgets.app_shell import (
     build_main_window_actions,

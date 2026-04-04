@@ -1,9 +1,9 @@
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QLabel, QPlainTextEdit, QDialogButtonBox, 
     QMessageBox
 )
-from PyQt6.QtGui import QFont
+from PySide6.QtGui import QFont
 
 class CreateViewDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
@@ -12,7 +12,7 @@ class CreateViewDialog(QDialog):
         self.resize(600, 500)
         self.db_type = db_type
         
-        from PyQt6.QtCore import Qt
+        from PySide6.QtCore import Qt
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 

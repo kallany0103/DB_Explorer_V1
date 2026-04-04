@@ -1,13 +1,13 @@
 # dialogs/servicenow_dialog.py
 
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout,
     QPushButton, QHBoxLayout, QVBoxLayout,
     QMessageBox, QLabel
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 
 
 class ServiceNowConnectionDialog(QDialog):

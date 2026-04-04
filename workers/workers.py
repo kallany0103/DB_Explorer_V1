@@ -4,7 +4,8 @@ import time
 import pandas as pd
 import re
 import cdata.csv as mod  # CData CSV connector
-from PyQt6.QtCore import QRunnable, Qt
+#from PyQt6.QtCore import QRunnable, Qt
+from PySide6.QtCore import QRunnable, Qt
 import db
 from workers.signals import (
     emit_metadata_error,

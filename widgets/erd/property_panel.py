@@ -1,11 +1,19 @@
 import qtawesome as qta
-from PyQt6.QtWidgets import (
+# from PyQt6.QtWidgets import (
+#     QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
+#     QFormLayout, QComboBox, QPushButton, QHBoxLayout,
+#     QGraphicsDropShadowEffect
+# )
+# from PyQt6.QtCore import Qt, QSize
+# from PyQt6.QtGui import QFont, QColor
+
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
     QFormLayout, QComboBox, QPushButton, QHBoxLayout,
     QGraphicsDropShadowEffect
 )
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QColor
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QFont, QColor
 
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem

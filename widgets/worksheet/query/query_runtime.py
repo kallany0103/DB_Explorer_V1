@@ -2,7 +2,7 @@ import time
 import uuid
 from functools import partial
 
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 
 def begin_query_runtime(manager, current_tab, tab_status_label, runnable):

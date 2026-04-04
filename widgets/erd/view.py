@@ -1,12 +1,17 @@
-from PyQt6.QtWidgets import QGraphicsView, QFrame
-from PyQt6.QtCore import pyqtSignal, Qt, QPointF, QTimeLine
-from PyQt6.QtGui import QPainter, QTransform
+# from PyQt6.QtWidgets import QGraphicsView, QFrame
+# from PyQt6.QtCore import pyqtSignal, Qt, QPointF, QTimeLine
+# from PyQt6.QtGui import QPainter, QTransform
+
+from PySide6.QtWidgets import QGraphicsView, QFrame
+from PySide6.QtCore import Signal, Qt, QPointF, QTimeLine
+from PySide6.QtGui import QPainter, QTransform
+
 
 from widgets.erd.commands import MoveTableCommand
 from widgets.erd.items.table_item import ERDTableItem
 
 class ERDView(QGraphicsView):
-    viewport_changed = pyqtSignal()
+    viewport_changed = Signal()
 
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)

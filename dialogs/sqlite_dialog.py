@@ -1,10 +1,10 @@
 # dialogs/sqlite_dialog.py
 
 import sqlite3 as sqlite
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout, QFileDialog, QMessageBox, QLabel
 )
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 class SQLiteConnectionDialog(QDialog):
     def __init__(self, parent=None, conn_data=None):

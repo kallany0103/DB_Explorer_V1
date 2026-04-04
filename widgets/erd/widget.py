@@ -3,14 +3,24 @@ import heapq
 from collections import deque
 from datetime import datetime
 import qtawesome as qta
-from PyQt6.QtWidgets import (
+# from PyQt6.QtWidgets import (
+#     QWidget, QVBoxLayout, QHBoxLayout,
+#     QToolBar, QFileDialog, QMessageBox, QDialog,
+#     QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QMenu, QSplitter
+# )
+# from PyQt6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
+# from PyQt6.QtCore import Qt, QSize, QEvent, QRectF, QTimer, QPointF
+#from PyQt6.QtSvg import QSvgGenerator
+
+
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QFileDialog, QMessageBox, QDialog,
     QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QMenu, QSplitter
 )
-from PyQt6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
-from PyQt6.QtCore import Qt, QSize, QEvent, QRectF, QTimer, QPointF
-from PyQt6.QtSvg import QSvgGenerator
+from PySide6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
+from PySide6.QtCore import Qt, QSize, QEvent, QRectF, QTimer, QPointF
+from PySide6.QtSvg import QSvgGenerator
 
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem

@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QLabel, QTextEdit
+from PySide6.QtWidgets import QLabel, QTextEdit
 
 
 def _get_message_view(tab):

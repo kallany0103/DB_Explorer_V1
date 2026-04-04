@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel
 
 from widgets.worksheet.query.query_feedback import set_global_status
 from widgets.worksheet.query.query_runtime import begin_query_runtime

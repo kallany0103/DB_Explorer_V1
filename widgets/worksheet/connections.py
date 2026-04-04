@@ -1,5 +1,5 @@
 import db
-from PyQt6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QComboBox
 
 
 def refresh_all_comboboxes(manager):

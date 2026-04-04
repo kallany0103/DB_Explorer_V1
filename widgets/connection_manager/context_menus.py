@@ -1,6 +1,10 @@
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMenu
+# from PyQt6.QtCore import Qt
+# from PyQt6.QtGui import QAction
+# from PyQt6.QtWidgets import QMenu
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QMenu
 
 
 class ContextMenuHandler:

@@ -2,9 +2,9 @@ import re
 from functools import partial
 
 import sqlparse
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, QTimer
-from PyQt6.QtGui import QColor, QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QLabel, QLineEdit, QStackedWidget, QTextEdit, QToolButton, QWidget, QTabWidget, QTableView
+from PySide6.QtCore import Qt, QSortFilterProxyModel, QTimer
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QLabel, QLineEdit, QStackedWidget, QTextEdit, QToolButton, QWidget, QTabWidget, QTableView
 
 from widgets.results_view.explain import ExplainVisualizer
 from widgets.results_view.perf_metrics import perf_elapsed_ms, perf_record, perf_take, perf_now

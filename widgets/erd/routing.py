@@ -1,5 +1,6 @@
 import heapq
-from PyQt6.QtCore import QPointF, QRectF
+# from PyQt6.QtCore import QPointF, QRectF
+from PySide6.QtCore import QPointF, QRectF
 from widgets.erd.items.table_item import ERDTableItem
 
 class ERDRouter:

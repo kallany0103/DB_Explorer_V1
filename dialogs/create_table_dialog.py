@@ -1,10 +1,10 @@
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QTextEdit, QTableWidget, QHeaderView, 
     QAbstractItemView, QHBoxLayout, QPushButton, QDialogButtonBox, 
     QTableWidgetItem, QMessageBox
 )
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 class CreateTableDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
