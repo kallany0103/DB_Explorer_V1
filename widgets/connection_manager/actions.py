@@ -254,10 +254,8 @@ class ConnectionActions:
                         results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
                         if message_view and results_stack:
                             results_stack.setCurrentIndex(1)
-                            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            msg = f'[{timestamp}]  OS.REMOVE("{file_path}")'
-                            message_view.appendPlainText(msg) if hasattr(message_view, 'appendPlainText') else message_view.append(msg)
-                            message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                            msg = f'OS.REMOVE("{file_path}")\n\n{success_msg}'
+                            message_view.setPlainText(msg)
 
                             header = current_tab.findChild(QWidget, "resultsHeader")
                             if header:
@@ -288,9 +286,8 @@ class ConnectionActions:
                     results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
                     if message_view and results_stack:
                         results_stack.setCurrentIndex(1)
-                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
-                        message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                        msg = f"{sql}\n\nQuery returned successfully."
+                        message_view.setPlainText(msg)
 
                         header = current_tab.findChild(QWidget, "resultsHeader")
                         if header:
@@ -334,11 +331,8 @@ class ConnectionActions:
             if message_view and results_stack:
                 results_stack.setCurrentIndex(1)
 
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                msg = f'[{timestamp}]  CREATE TABLE "{created_table_name}"'
-                message_view.appendPlainText(msg) if hasattr(message_view, 'appendPlainText') else message_view.append(msg)
-                msg2 = "  Table created successfully."
-                message_view.appendPlainText(msg2) if hasattr(message_view, 'appendPlainText') else message_view.append(msg2)
+                msg = f'CREATE TABLE\n\nQuery returned successfully.'
+                message_view.setPlainText(msg)
 
                 sb = message_view.verticalScrollBar()
                 sb.setValue(sb.maximum())
@@ -463,9 +457,8 @@ class ConnectionActions:
 
             if message_view and results_stack:
                 results_stack.setCurrentIndex(1)
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
-                message_view.appendPlainText(f"  View '{view_name}' created successfully.") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  View '{view_name}' created successfully.")
+                msg = f"CREATE VIEW\n\nQuery returned successfully."
+                message_view.setPlainText(msg)
 
                 sb = message_view.verticalScrollBar()
                 sb.setValue(sb.maximum())
@@ -683,8 +676,8 @@ class ConnectionActions:
                 if message_view and results_stack:
                     results_stack.setCurrentIndex(1)
                     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
-                    message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                    msg = f"[{timestamp}]  {sql}\n\n{success_msg}"
+                    message_view.setPlainText(msg)
 
             self.manager.load_postgres_schema(conn_data)
 
@@ -762,9 +755,8 @@ class ConnectionActions:
                 results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
                 if message_view and results_stack:
                     results_stack.setCurrentIndex(1)
-                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
-                    message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                    msg = f"{sql}\n\nQuery returned successfully."
+                    message_view.setPlainText(msg)
 
             self.manager.load_postgres_schema(conn_data)
 
@@ -803,9 +795,8 @@ class ConnectionActions:
                     results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
                     if message_view and results_stack:
                         results_stack.setCurrentIndex(1)
-                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        message_view.appendPlainText(f"[{timestamp}]  {sql}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"[{timestamp}]  {sql}")
-                        message_view.appendPlainText(f"  {success_msg}") if hasattr(message_view, 'appendPlainText') else message_view.append(f"  {success_msg}")
+                        msg_html = self._format_enterprise_message(sql, success_msg)
+                        message_view.setHtml(msg_html)
 
                 self.manager.load_postgres_schema(conn_data)
 

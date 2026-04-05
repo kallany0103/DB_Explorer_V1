@@ -125,7 +125,8 @@ class ConnectionManager(QWidget):
             if "POSTGRES" in db_type_val:
                 full_schema = db.get_postgres_schema(conn_info, schema_name=schema_name)
             elif "SQLITE" in db_type_val:
-                full_schema = db.get_sqlite_schema(conn_info)
+                sqlite_db_path = conn_info.get("db_path") if isinstance(conn_info, dict) else conn_info
+                full_schema = db.get_sqlite_schema(sqlite_db_path)
             else:
                 QMessageBox.warning(self, "Not Supported", f"ERD generation is not supported for {db_type_val or 'unknown type'}")
                 return

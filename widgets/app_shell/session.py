@@ -5,7 +5,7 @@ import os
 # from PyQt6.QtWidgets import QComboBox
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QComboBox, QLabel
 
 from widgets.worksheet.code_editor import CodeEditor
 
@@ -72,6 +72,28 @@ def restore_main_window_session(main_window, session_file):
 
             current_tab.current_limit = int(tab_data.get("current_limit", 0) or 0)
             current_tab.current_offset = tab_data.get("current_offset", 0)
+
+            # --- Sync UI to restored state ---
+            limit_val = current_tab.current_limit
+            offset_val = current_tab.current_offset
+
+            # 1. Sync Worksheet Limit Dropdown
+            rows_limit_combo = current_tab.findChild(QComboBox, "rows_limit_combo")
+            if rows_limit_combo:
+                rows_limit_combo.blockSignals(True)
+                limit_str = str(limit_val) if limit_val > 0 else "No Limit"
+                if rows_limit_combo.findText(limit_str) == -1:
+                    rows_limit_combo.addItem(limit_str)
+                rows_limit_combo.setCurrentText(limit_str)
+                rows_limit_combo.blockSignals(False)
+
+            # 2. Sync Results View Label
+            rows_info_label = current_tab.findChild(QLabel, "rows_info_label")
+            if rows_info_label:
+                if limit_val > 0:
+                    rows_info_label.setText(f"Limit: {limit_val} | Offset: {offset_val}")
+                else:
+                    rows_info_label.setText("No Limit")
 
         try:
             with open(session_file, "w") as f:
