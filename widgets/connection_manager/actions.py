@@ -126,14 +126,14 @@ class ConnectionActions:
         code = conn_data.get('code')
         if code == 'POSTGRES':
             schema = item_data.get("schema_name", "public")
-            new_tab.table_name = f'"{schema}"."{table_name}"'
-            query = f'SELECT * FROM "{schema}"."{table_name}";'
+            new_tab.table_name = f'{schema}.{table_name}'
+            query = f'SELECT * FROM {schema}.{table_name};'
         elif code == 'SQLITE':
-            new_tab.table_name = f'"{table_name}"'
-            query = f'SELECT * FROM "{table_name}";'
+            new_tab.table_name = f'{table_name}'
+            query = f'SELECT * FROM {table_name};'
         elif code == 'CSV':
             new_tab.table_name = f'[{table_name}]'
-            query = f'SELECT * FROM "{table_name}";'
+            query = f'SELECT * FROM {table_name};'
         elif code == 'SERVICENOW':
             new_tab.table_name = table_name
             query = f'SELECT * FROM {table_name}'
@@ -157,24 +157,24 @@ class ConnectionActions:
             self.manager.tab_widget.setCurrentWidget(new_tab)
             self.manager.execute_query(conn_data, query)
 
-    def create_fdw_template(self, item_data):
-        sql = "CREATE FOREIGN DATA WRAPPER fdw_name\n    HANDLER handler_function\n    VALIDATOR validator_function;"
-        self.manager.script_generator.open_script_in_editor(item_data, sql)
+    # def create_fdw_template(self, item_data):
+    #     sql = "CREATE FOREIGN DATA WRAPPER fdw_name\n    HANDLER handler_function\n    VALIDATOR validator_function;"
+    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
 
-    def create_foreign_server_template(self, item_data):
-        fdw_name = item_data.get('fdw_name', 'fdw_name')
-        sql = f"CREATE SERVER server_name\n    FOREIGN DATA WRAPPER {fdw_name}\n    OPTIONS (host '127.0.0.1', port '5432', dbname 'remote_db');"
-        self.manager.script_generator.open_script_in_editor(item_data, sql)
+    # def create_foreign_server_template(self, item_data):
+    #     fdw_name = item_data.get('fdw_name', 'fdw_name')
+    #     sql = f"CREATE SERVER server_name\n    FOREIGN DATA WRAPPER {fdw_name}\n    OPTIONS (host '127.0.0.1', port '5432', dbname 'remote_db');"
+    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
 
-    def create_user_mapping_template(self, item_data):
-        srv_name = item_data.get('server_name', 'server_name')
-        sql = f"CREATE USER MAPPING FOR current_user\n    SERVER {srv_name}\n    OPTIONS (user 'remote_user', password 'password');"
-        self.manager.script_generator.open_script_in_editor(item_data, sql)
+    # def create_user_mapping_template(self, item_data):
+    #     srv_name = item_data.get('server_name', 'server_name')
+    #     sql = f"CREATE USER MAPPING FOR current_user\n    SERVER {srv_name}\n    OPTIONS (user 'remote_user', password 'password');"
+    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
 
-    def import_foreign_schema_dialog(self, item_data):
-        schema_name = item_data.get('schema_name', 'public')
-        sql = f"IMPORT FOREIGN SCHEMA remote_schema\n    FROM SERVER foreign_server\n    INTO \"{schema_name}\";"
-        self.manager.script_generator.open_script_in_editor(item_data, sql)
+    # def import_foreign_schema_dialog(self, item_data):
+    #     schema_name = item_data.get('schema_name', 'public')
+    #     sql = f"IMPORT FOREIGN SCHEMA remote_schema\n    FROM SERVER foreign_server\n    INTO \"{schema_name}\";"
+    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
 
     def show_table_properties(self, item_data, table_name):
         if not item_data:
@@ -183,24 +183,24 @@ class ConnectionActions:
         dialog = TablePropertiesDialog(item_data, table_name, self.manager)
         dialog.show()
 
-    def execute_simple_sql(self, item_data, sql):
-        conn_data = item_data.get('conn_data')
-        try:
-            conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                port=conn_data.get("port"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password")
-            )
-            conn.autocommit = True
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            self.manager.status.showMessage("Operation successful.", 3000)
-            self.manager.refresh_object_explorer()
-            conn.close()
-        except Exception as e:
-            QMessageBox.critical(self.manager, "SQL Error", str(e))
+    # def execute_simple_sql(self, item_data, sql):
+    #     conn_data = item_data.get('conn_data')
+    #     try:
+    #         conn = psycopg2.connect(
+    #             host=conn_data.get("host"),
+    #             port=conn_data.get("port"),
+    #             database=conn_data.get("database"),
+    #             user=conn_data.get("user"),
+    #             password=conn_data.get("password")
+    #         )
+    #         conn.autocommit = True
+    #         cursor = conn.cursor()
+    #         cursor.execute(sql)
+    #         self.manager.status.showMessage("Operation successful.", 3000)
+    #         self.manager.refresh_object_explorer()
+    #         conn.close()
+    #     except Exception as e:
+    #         QMessageBox.critical(self.manager, "SQL Error", str(e))
 
     def delete_table(self, item_data, table_name):
         if not item_data:
@@ -600,205 +600,3 @@ class ConnectionActions:
         )
 
         self.manager.thread_pool.start(query_runnable)
-
-    def drop_fdw(self, item_data):
-        fdw_name = item_data.get('fdw_name')
-        if QMessageBox.question(
-            self.manager,
-            "Drop FDW",
-            f"Are you sure you want to drop Foreign Data Wrapper '{fdw_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes:
-            self.execute_simple_sql(item_data, f"DROP FOREIGN DATA WRAPPER {fdw_name} CASCADE;")
-
-    def drop_foreign_server(self, item_data):
-        srv_name = item_data.get('server_name')
-        if QMessageBox.question(
-            self.manager,
-            "Drop Server",
-            f"Are you sure you want to drop Foreign Server '{srv_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes:
-            self.execute_simple_sql(item_data, f"DROP SERVER {srv_name} CASCADE;")
-
-    def drop_user_mapping(self, item_data):
-        user_name = item_data.get('user_name')
-        srv_name = item_data.get('server_name')
-        if QMessageBox.question(
-            self.manager,
-            "Drop User Mapping",
-            f"Are you sure you want to drop User Mapping for '{user_name}' on server '{srv_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes:
-            self.execute_simple_sql(item_data, f'DROP USER MAPPING FOR "{user_name}" SERVER {srv_name};')
-
-    def delete_sequence(self, item_data, seq_name):
-        if not item_data:
-            return
-        conn_data = item_data.get('conn_data')
-        schema_name = item_data.get('schema_name')
-
-        reply = QMessageBox.question(
-            self.manager,
-            'Confirm Delete Sequence',
-            f"Are you sure you want to delete sequence '{seq_name}'? This action cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-
-        if reply == QMessageBox.StandardButton.No:
-            return
-
-        try:
-            conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                port=conn_data.get("port"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password")
-            )
-            full_name = f'"{schema_name}"."{seq_name}"' if schema_name else f'"{seq_name}"'
-            sql = f"DROP SEQUENCE {full_name};"
-
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            conn.commit()
-            conn.close()
-
-            success_msg = f"Sequence '{seq_name}' deleted successfully."
-            self.manager.status.showMessage(success_msg, 5000)
-
-            current_tab = self.manager.tab_widget.currentWidget()
-            if current_tab:
-                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                if not message_view:
-                    message_view = current_tab.findChild(QTextEdit, "message_view")
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                if message_view and results_stack:
-                    results_stack.setCurrentIndex(1)
-                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    msg = f"[{timestamp}]  {sql}\n\n{success_msg}"
-                    message_view.setPlainText(msg)
-
-            self.manager.load_postgres_schema(conn_data)
-
-        except Exception as e:
-            QMessageBox.critical(self.manager, "Error", f"Failed to delete sequence:\n{e}")
-
-    def delete_function(self, item_data, func_name):
-        schema = item_data.get('schema_name')
-        msg = f"Are you sure you want to drop function {schema}.{func_name}?"
-        if QMessageBox.question(
-            self.manager,
-            "Drop Function",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes:
-            sql = f"DROP FUNCTION {schema}.{func_name} CASCADE;"
-            self.execute_simple_sql(item_data, sql)
-
-    def delete_language(self, item_data, lan_name):
-        msg = f"Are you sure you want to drop language {lan_name}?"
-        if QMessageBox.question(
-            self.manager,
-            "Drop Language",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes:
-            sql = f"DROP LANGUAGE {lan_name} CASCADE;"
-            self.execute_simple_sql(item_data, sql)
-
-    def drop_extension(self, item_data, ext_name, cascade=False):
-        if not item_data:
-            return
-        conn_data = item_data.get('conn_data')
-
-        msg = f"Are you sure you want to drop extension '{ext_name}'?"
-        if cascade:
-            msg += "\nThis will also drop all objects that depend on it."
-
-        reply = QMessageBox.question(
-            self.manager,
-            'Confirm Drop Extension',
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-
-        if reply == QMessageBox.StandardButton.No:
-            return
-
-        try:
-            conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                port=conn_data.get("port"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password")
-            )
-            cursor = conn.cursor()
-            sql = f'DROP EXTENSION "{ext_name}"'
-            if cascade:
-                sql += " CASCADE"
-            sql += ";"
-
-            cursor.execute(sql)
-            conn.commit()
-            conn.close()
-
-            success_msg = f"Extension '{ext_name}' dropped successfully."
-            self.manager.status.showMessage(success_msg, 5000)
-
-            current_tab = self.manager.tab_widget.currentWidget()
-            if current_tab:
-                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                if not message_view:
-                    message_view = current_tab.findChild(QTextEdit, "message_view")
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                if message_view and results_stack:
-                    results_stack.setCurrentIndex(1)
-                    msg = f"{sql}\n\nQuery returned successfully."
-                    message_view.setPlainText(msg)
-
-            self.manager.load_postgres_schema(conn_data)
-
-        except Exception as e:
-            QMessageBox.critical(self.manager, "Error", f"Failed to drop extension:\n{e}")
-
-    def create_extension_dialog(self, item_data):
-        if not item_data:
-            return
-        conn_data = item_data.get('conn_data')
-
-        ext_name, ok = QInputDialog.getText(self.manager, "Create Extension", "Extension name:")
-        if ok and ext_name:
-            try:
-                conn = psycopg2.connect(
-                    host=conn_data.get("host"),
-                    port=conn_data.get("port"),
-                    database=conn_data.get("database"),
-                    user=conn_data.get("user"),
-                    password=conn_data.get("password")
-                )
-                cursor = conn.cursor()
-                sql = f'CREATE EXTENSION "{ext_name}";'
-                cursor.execute(sql)
-                conn.commit()
-                conn.close()
-
-                success_msg = f"Extension '{ext_name}' created successfully."
-                self.manager.status.showMessage(success_msg, 5000)
-
-                current_tab = self.manager.tab_widget.currentWidget()
-                if current_tab:
-                    message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                    if not message_view:
-                        message_view = current_tab.findChild(QTextEdit, "message_view")
-                    results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                    if message_view and results_stack:
-                        results_stack.setCurrentIndex(1)
-                        msg_html = self._format_enterprise_message(sql, success_msg)
-                        message_view.setHtml(msg_html)
-
-                self.manager.load_postgres_schema(conn_data)
-
-            except Exception as e:
-                QMessageBox.critical(self.manager, "Error", f"Failed to create extension:\n{e}")

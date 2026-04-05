@@ -85,8 +85,8 @@ class ScriptGenerator:
                 col_defs = []
                 for col_name, dtype, nullable, default in cols:
                     null_str = " NOT NULL" if nullable == "NO" else ""
-                    def_str = f" DEFAULT {default}" if default else ""
-                    col_defs.append(f'    "{col_name}" {dtype}{null_str}{def_str}')
+                    def_str = f' DEFAULT {default}' if default else ""
+                    col_defs.append(f'    {col_name} {dtype}{null_str}{def_str}')
 
                 cursor.execute(
                     """
@@ -103,11 +103,11 @@ class ScriptGenerator:
                 pk_cols = [r[0] for r in cursor.fetchall()]
 
                 if pk_cols:
-                    pk_names = ", ".join([f'"{c}"' for c in pk_cols])
-                    col_defs.append(f'    CONSTRAINT "{table_name}_pkey" PRIMARY KEY ({pk_names})')
+                    pk_names = ", ".join([f'{c}' for c in pk_cols])
+                    col_defs.append(f'    CONSTRAINT {table_name}_pkey PRIMARY KEY ({pk_names})')
 
                 sql_script = f'-- Table: {schema_name}.{table_name}\n\n'
-                sql_script += f'CREATE TABLE "{schema_name}"."{table_name}" (\n' + ",\n".join(col_defs) + "\n);"
+                sql_script += f'CREATE TABLE {schema_name}.{table_name} (\n' + ",\n".join(col_defs) + "\n);"
 
                 cursor.execute(
                     "SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND tablename = %s;",
@@ -129,36 +129,36 @@ class ScriptGenerator:
         schema_name = item_data.get('schema_name', 'public')
         db_type = item_data.get('db_type')
         if db_type == 'postgres':
-            sql = f'INSERT INTO "{schema_name}"."{table_name}" (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
+            sql = f'INSERT INTO {schema_name}.{table_name} (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
         else:
-            sql = f'INSERT INTO "{table_name}" (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
+            sql = f'INSERT INTO {table_name} (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
         self.open_script_in_editor(item_data, sql)
 
     def script_table_as_update(self, item_data, table_name):
         schema_name = item_data.get('schema_name', 'public')
         db_type = item_data.get('db_type')
         if db_type == 'postgres':
-            sql = f'UPDATE "{schema_name}"."{table_name}"\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
+            sql = f'UPDATE {schema_name}.{table_name}nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
         else:
-            sql = f'UPDATE "{table_name}"\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
+            sql = f'UPDATE {table_name}\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
         self.open_script_in_editor(item_data, sql)
 
     def script_table_as_delete(self, item_data, table_name):
         schema_name = item_data.get('schema_name', 'public')
         db_type = item_data.get('db_type')
         if db_type == 'postgres':
-            sql = f'DELETE FROM "{schema_name}"."{table_name}"\nWHERE <condition>;'
+            sql = f'DELETE FROM {schema_name}.{table_name}\nWHERE <condition>;'
         else:
-            sql = f'DELETE FROM "{table_name}"\nWHERE <condition>;'
+            sql = f'DELETE FROM {table_name}\nWHERE <condition>;'
         self.open_script_in_editor(item_data, sql)
 
     def script_table_as_select(self, item_data, table_name):
         schema_name = item_data.get('schema_name', 'public')
         db_type = item_data.get('db_type')
         if db_type == 'postgres':
-            sql = f'SELECT * FROM "{schema_name}"."{table_name}";'
+            sql = f'SELECT * FROM {schema_name}.{table_name};'
         else:
-            sql = f'SELECT * FROM "{table_name}";'
+            sql = f'SELECT * FROM {table_name};'
         self.open_script_in_editor(item_data, sql)
 
     def script_sequence_as_create(self, item_data, seq_name):
