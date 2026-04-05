@@ -7,6 +7,15 @@ def get_sqlite_schema(db_path):
     Retrieves metadata for all tables in a SQLite database.
     Returns a dict: { table_name: { columns: [...], foreign_keys: [...] } }
     """
+    if isinstance(db_path, dict):
+        db_path = db_path.get("db_path")
+
+    if not db_path:
+        return {}
+
+    def _quote_sqlite_ident(name):
+        return '"' + str(name).replace('"', '""') + '"'
+
     schema = {}
     conn = create_sqlite_connection(db_path)
     if not conn:
@@ -21,17 +30,20 @@ def get_sqlite_schema(db_path):
         
         for table in tables:
             # Get columns
-            cursor.execute(f"PRAGMA table_info('{table}');")
+            cursor.execute(f"PRAGMA table_info({_quote_sqlite_ident(table)});")
             columns = []
             for col in cursor.fetchall():
+                col_type = (col[2] or "").strip() or "ANY"
                 columns.append({
                     "name": col[1],
-                    "type": col[2],
+                    "type": col_type,
+                    "nullable": not bool(col[3]),
+                    "default": col[4],
                     "pk": bool(col[5])
                 })
             
             # Get foreign keys
-            cursor.execute(f"PRAGMA foreign_key_list('{table}');")
+            cursor.execute(f"PRAGMA foreign_key_list({_quote_sqlite_ident(table)});")
             foreign_keys = []
             for fk in cursor.fetchall():
                 foreign_keys.append({

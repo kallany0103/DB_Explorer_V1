@@ -195,8 +195,22 @@ class ERDConnectionPathPlanner:
         x = max(rect.left() + margin, min(rect.right() - margin, anchor.x() + offset))
         return QPointF(x, anchor.y())
 
+    def _get_base_anchor(self, item, side):
+        """Return a side anchor that prefers the actual related column row when available."""
+        if item == self.connection_item.source_item:
+            col_name = self.connection_item.source_col
+        elif item == self.connection_item.target_item:
+            col_name = self.connection_item.target_col
+        else:
+            col_name = None
+
+        if col_name and hasattr(item, "get_column_anchor_pos"):
+            return item.get_column_anchor_pos(col_name, side)
+
+        return get_dynamic_anchor(item, side)
+
     def _get_anchor_with_slot(self, item, other_item, side):
-        anchor = get_dynamic_anchor(item, side)
+        anchor = self._get_base_anchor(item, side)
         return self._apply_slot_offset(item, side, anchor)
 
     def _orthogonalize_end_segments(self, points, s_side, t_side):
@@ -248,10 +262,22 @@ class ERDConnectionPathPlanner:
         if len(expanded) >= 3:
             t_prev_idx = len(expanded) - 3
             t_prev = expanded[t_prev_idx]
-            if t_side in ("left", "right"):
-                expanded[t_prev_idx] = QPointF(t_prev.x(), target_stub.y())
+            # When there is only one middle hinge, avoid overwriting the same point twice.
+            # Insert an extra hinge so both source and target stubs remain orthogonal.
+            if t_prev_idx == 2 and len(expanded) == 5:
+                if s_side in ("left", "right"):
+                    first_hinge = QPointF(t_prev.x(), source_stub.y())
+                    second_hinge = QPointF(t_prev.x(), target_stub.y())
+                else:
+                    first_hinge = QPointF(source_stub.x(), t_prev.y())
+                    second_hinge = QPointF(target_stub.x(), t_prev.y())
+                expanded[2] = first_hinge
+                expanded.insert(3, second_hinge)
             else:
-                expanded[t_prev_idx] = QPointF(target_stub.x(), t_prev.y())
+                if t_side in ("left", "right"):
+                    expanded[t_prev_idx] = QPointF(t_prev.x(), target_stub.y())
+                else:
+                    expanded[t_prev_idx] = QPointF(target_stub.x(), t_prev.y())
 
         dedup = [expanded[0]]
         for point in expanded[1:]:
@@ -343,6 +369,22 @@ class ERDConnectionPathPlanner:
 
     def _get_pretty_manhattan_path(self, start, end, s_side, t_side):
         candidates = []
+
+        # Prefer side-aware elbow paths so the final segment approaches the
+        # target from its declared side without forcing a distant dogleg.
+        side_gap = 24.0
+        if t_side == "left":
+            tx = end.x() - side_gap
+            candidates.append([start, QPointF(tx, start.y()), QPointF(tx, end.y()), end])
+        elif t_side == "right":
+            tx = end.x() + side_gap
+            candidates.append([start, QPointF(tx, start.y()), QPointF(tx, end.y()), end])
+        elif t_side == "top":
+            ty = end.y() - side_gap
+            candidates.append([start, QPointF(start.x(), ty), QPointF(end.x(), ty), end])
+        elif t_side == "bottom":
+            ty = end.y() + side_gap
+            candidates.append([start, QPointF(start.x(), ty), QPointF(end.x(), ty), end])
 
         if abs(start.x() - end.x()) < 0.5 or abs(start.y() - end.y()) < 0.5:
             candidates.append([start, end])

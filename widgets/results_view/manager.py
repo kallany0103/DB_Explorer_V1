@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialog, QToolButton, QStackedWidget,
     QWidget, QLabel, QPushButton, QTextEdit,
     QFormLayout, QSpinBox, QDialogButtonBox,
+    QVBoxLayout, QHBoxLayout,
 )
 from PySide6.QtCore import (
     Qt, QObject, QEvent
@@ -313,6 +314,16 @@ class ResultsManager(QObject):
         message_view.append(snapshot_text)
         scrollbar = message_view.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+        
+    def clear_messages(self, tab_content=None):
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+            
+        message_view = target_tab.findChild(QTextEdit, "message_view")
+        if message_view:
+            message_view.clear()
+            self.status.showMessage("Messages cleared.", 2000)
 
 
     def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query, output_mode="current", output_tab_index=None):
@@ -559,28 +570,91 @@ class ResultsManager(QObject):
             Qt.WindowType.CustomizeWindowHint
         )
         dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowMinMaxButtonsHint)
-        dialog.setFixedSize(300, 150)
+        dialog.setFixedSize(340, 160)
         
-        layout = QFormLayout(dialog)
+        # Apply the connection dialog styles
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #f6f8fb;
+            }
+            QSpinBox {
+                min-height: 28px;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                background: white;
+                padding-left: 6px;
+                padding-right: 20px;
+            }
+            QSpinBox:focus {
+                border: 1px solid #0078d4;
+            }
+            QPushButton {
+                min-height: 28px;
+                padding: 2px 14px;
+                border: 1px solid #c4c9d4;
+                background-color: #eef1f6;
+                color: #1f2937;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #e3e8f2;
+            }
+            QPushButton:pressed {
+                background-color: #d7deeb;
+            }
+            QPushButton#primaryButton {
+                border: 1px solid #006cbe;
+                background-color: #0078d4;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            QPushButton#primaryButton:hover {
+                background-color: #006cbe;
+            }
+            QPushButton#primaryButton:pressed {
+                background-color: #005a9e;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 20, 20, 15)
+        layout.setSpacing(15)
+        
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        form.setHorizontalSpacing(15)
+        form.setVerticalSpacing(12)
 
         # Limit Input
         limit_spin = QSpinBox()
         limit_spin.setRange(0, 999999999) # 0 means no limit (logic handled below)
         limit_spin.setValue(int(getattr(tab_content, 'current_limit', 0) or 0))
         limit_spin.setSpecialValueText("No Limit") # If value is 0
-        layout.addRow("Rows Limit:", limit_spin)
+        form.addRow("Rows Limit:", limit_spin)
 
         # Offset Input
         offset_spin = QSpinBox()
         offset_spin.setRange(0, 999999999)
         offset_spin.setValue(getattr(tab_content, 'current_offset', 0))
-        layout.addRow("Start Row (Offset):", offset_spin)
+        form.addRow("Start Row (Offset):", offset_spin)
+        
+        layout.addLayout(form)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        ok_btn = QPushButton("OK")
+        ok_btn.setObjectName("primaryButton")
+        ok_btn.clicked.connect(dialog.accept)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(ok_btn)
+        layout.addLayout(button_layout)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # Update values in tab object
@@ -596,9 +670,19 @@ class ResultsManager(QObject):
                 limit_text = str(new_limit) if new_limit > 0 else "All"
                 rows_info_label.setText(f"Settings: Limit {limit_text}, Offset {new_offset}")
 
-            # Execute Query with new settings
-            # Call WorksheetManager to execute
-            self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
+            # Sync to Worksheet Limit Dropdown
+            rows_limit_combo = tab_content.findChild(QComboBox, "rows_limit_combo")
+            if rows_limit_combo:
+                # Temporarily block signals to avoid recursion if on_limit_change was still auto-executing
+                rows_limit_combo.blockSignals(True)
+                limit_str = str(new_limit) if new_limit > 0 else "No Limit"
+                
+                # If custom limit not in the list, add it
+                if rows_limit_combo.findText(limit_str) == -1:
+                    rows_limit_combo.addItem(limit_str)
+                
+                rows_limit_combo.setCurrentText(limit_str)
+                rows_limit_combo.blockSignals(False)
 
     def eventFilter(self, watched, event):
         if watched.objectName() == "table_search_box" and event.type() == QEvent.Type.FocusOut:

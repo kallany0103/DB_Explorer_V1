@@ -21,7 +21,6 @@ def create_sqlite_connection(path):
     """Establishes a connection to a SQLite database."""
     try:
         conn = sqlite.connect(path)
-        print("SQLite database connection established.")
         return conn
     except sqlite.Error as e:
         print(f"SQLite connection error: {e}")
@@ -46,7 +45,6 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             user=user,
             password=password
         )
-        print("PostgreSQL database connection established.")
         return conn
     except OperationalError as e:
         print(f"PostgreSQL connection error: {e}")
@@ -58,7 +56,6 @@ def create_oracle_connection(host, port, service_name, user, password):
     try:
         dsn = f"{host}:{port}/{service_name}"
         conn = oracledb.connect(user=user, password=password, dsn=dsn)
-        print("Oracle database connection established.")
         return conn
     except oracledb.DatabaseError as e:
         print(f"Oracle connection error: {e}")
@@ -78,7 +75,6 @@ def create_servicenow_connection(conn_data):
         )
 
         conn = sn.connect(conn_str)
-        print("ServiceNow connection established.")
         return conn
 
     except Exception as e:

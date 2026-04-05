@@ -1,4 +1,5 @@
 import re
+import datetime
 from functools import partial
 
 import sqlparse
@@ -33,6 +34,35 @@ DEFAULT_CHUNK_PROFILES = [
         "batch_rows": 1200,
     },
 ]
+
+
+def _extract_object_type(query_upper, fallback="Object"):
+    """
+    Helper to extract the object type (TABLE, VIEW, SEQUENCE, etc.) 
+    from a SQL command.
+    """
+    if not query_upper:
+        return fallback
+
+    words = query_upper.split()
+    if not words:
+        return fallback
+
+    keyword = words[0]
+    # For common DDL commands, skip modifiers to find the object type
+    if keyword in ["CREATE", "DROP", "ALTER", "TRUNCATE"]:
+        idx = 1
+        while idx < len(words):
+            word = words[idx]
+            # Skip common qualifiers
+            if word in ["OR", "REPLACE", "TEMPORARY", "TEMP", "IF", "NOT", "EXISTS", "MATERIALIZED"]:
+                idx += 1
+                continue
+            # Return the first word that isn't a qualifier
+            return word
+        return keyword # Fallback to the command itself
+
+    return fallback
 
 
 def _resolve_chunk_profile(total_rows, manager):
@@ -191,6 +221,10 @@ def handle_query_result(
     results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
     results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
 
+    # Initialize defaults to prevent reference errors
+    msg = ""
+    tab_status = "Ready"
+
     if message_view:
         message_view.clear()
 
@@ -206,16 +240,14 @@ def handle_query_result(
 
                     manager.stop_spinner(target_tab, success=True, target_index=5)
 
-                    msg = f"Explain Analyze executed successfully.\nTime: {elapsed_time:.2f} sec"
-                    status = f"Explain Analyze executed | Time: {elapsed_time:.2f} sec"
+                    tab_status = f"Explain Analyze executed | Time: {elapsed_time:.2f} sec"
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    msg = f"[{timestamp}]  Explain Analyze executed successfully.\n\nTime: {elapsed_time:.2f} sec"
 
                     if message_view:
-                        previous_text = message_view.toPlainText()
-                        if previous_text:
-                            message_view.append("\n" + "-" * 50 + "\n")
-                        message_view.append(msg)
+                        message_view.setPlainText(msg)
                     if tab_status_label:
-                        tab_status_label.setText(status)
+                        tab_status_label.setText(tab_status)
                     manager.status_message_label.setText("Ready")
 
                     if target_tab in manager.running_queries:
@@ -332,14 +364,11 @@ def handle_query_result(
             current_output_index = resolved_output_index
         manager._set_output_tab_title(target_tab, current_output_index, query)
 
-        msg = f"Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
-        status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = f"[{timestamp}]  Query executed successfully.\n\nTotal rows: {row_count}\nTime: {elapsed_time:.2f} sec"
+        tab_status = f"Query executed successfully | Total rows: {row_count} | Time: {elapsed_time:.2f} sec"
 
         def finalize_result_model():
-            try:
-                model.itemChanged.disconnect()
-            except Exception:
-                pass
             model.itemChanged.connect(lambda item: manager.handle_cell_edit(item, target_tab, table_view))
 
         if total_rows > initial_rows:
@@ -387,7 +416,7 @@ def handle_query_result(
                     output_state["chunk_loader"] = None
                     finalize_result_model()
                     if tab_status_label:
-                        tab_status_label.setText(status)
+                        tab_status_label.setText(tab_status)
                     perf_record(manager, "result_full_render_ms", perf_elapsed_ms(full_render_start))
                     perf_record(manager, "result_chunk_interaction_throttle_hits", chunk_state["throttle_hits"])
                     perf_record(manager, "result_chunk_inactive_tab_hits", chunk_state["inactive_tab_hits"])
@@ -412,26 +441,50 @@ def handle_query_result(
         table_view.setModel(QStandardItemModel(table_view))
         should_refresh_tree = False
 
+        def format_time_pgadmin(s):
+            ms = s * 1000
+            return f"{int(ms)} msec" if ms < 1000 else f"{s:.2f} sec"
+
+        time_str = format_time_pgadmin(elapsed_time)
+
         if q_type.startswith("INSERT"):
-            msg = f"INSERT 0 {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
-            status = f"INSERT 0 {row_count} | Time: {elapsed_time:.2f} sec"
+            status_text = f"INSERT 0 {row_count}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("UPDATE"):
-            msg = f"UPDATE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
-            status = f"UPDATE {row_count} | Time: {elapsed_time:.2f} sec"
+            status_text = f"UPDATE {row_count}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("DELETE"):
-            msg = f"DELETE {row_count}\n\nQuery returned successfully in {elapsed_time:.2f} sec."
-            status = f"DELETE {row_count} | Time: {elapsed_time:.2f} sec"
+            status_text = f"DELETE {row_count}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("CREATE"):
-            msg = f"CREATE TABLE executed successfully.\n\nTime: {elapsed_time:.2f} sec"
-            status = f"Table Created | Time: {elapsed_time:.2f} sec"
+            obj_type = _extract_object_type(match_query, "Object")
+            status_text = f"CREATE {obj_type.upper()}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
             should_refresh_tree = True
         elif q_type.startswith("DROP"):
-            msg = f"DROP TABLE executed successfully.\n\nTime: {elapsed_time:.2f} sec"
-            status = f"DROP success | Time: {elapsed_time:.2f} sec"
+            obj_type = _extract_object_type(match_query, "Object")
+            status_text = f"DROP {obj_type.upper()}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
             should_refresh_tree = True
+        elif q_type.startswith("ALTER"):
+            obj_type = _extract_object_type(match_query, "Object")
+            status_text = f"ALTER {obj_type.upper()}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
+            should_refresh_tree = True
+        elif q_type.startswith("TRUNCATE"):
+            obj_type = _extract_object_type(match_query, "TABLE")
+            status_text = f"TRUNCATE {obj_type.upper()}"
+            msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
         else:
-            msg = f"Query executed successfully.\n\nRows affected: {row_count}\nTime: {elapsed_time:.2f} sec"
-            status = f"Rows affected: {row_count} | Time: {elapsed_time:.2f} sec"
+            msg = f"{q_type}\n\nQuery returned successfully in {time_str}."
+            tab_status = f"Rows affected: {row_count} | Time: {time_str}"
 
         if should_refresh_tree:
             manager.main_window.refresh_object_explorer()
@@ -440,12 +493,12 @@ def handle_query_result(
             results_info_bar.hide()
 
     if message_view:
-        message_view.append(msg)
+        message_view.setPlainText(msg)
         sb = message_view.verticalScrollBar()
         sb.setValue(sb.maximum())
 
     if tab_status_label:
-        tab_status_label.setText(status)
+        tab_status_label.setText(tab_status)
 
     manager.status_message_label.setText("Ready")
     manager.stop_spinner(target_tab, success=True, target_index=final_tab_index)

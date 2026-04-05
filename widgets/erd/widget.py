@@ -760,7 +760,7 @@ class ERDWidget(QWidget):
                         item = self.scene.tables[full_name]
                         item.setPos(pos_data["x"], pos_data["y"])
                         
-                # Update bounds and center
+
                 # Update bounds and center
                 self.scene.update_scene_rect()
                 if self.scene.items():

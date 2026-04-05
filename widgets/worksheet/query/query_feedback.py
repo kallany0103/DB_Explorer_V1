@@ -36,8 +36,11 @@ def append_error_message(tab, error_message):
     message_view = _get_message_view(tab)
     if not message_view:
         return
-    previous_text = message_view.toPlainText()
-    if previous_text:
-        message_view.append("\n" + "-" * 50 + "\n")
-    message_view.append(f"Error:\n\n{error_message}")
+        
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    msg = f"[{timestamp}]  ERROR:\n\n{error_message}"
+    
+    message_view.setPlainText(msg)
     message_view.verticalScrollBar().setValue(message_view.verticalScrollBar().maximum())

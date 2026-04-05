@@ -225,7 +225,15 @@ def add_tab(manager):
         if page_label_widget:
             page_label_widget.setText("Page 1")
 
-        manager.execute_query()
+        # Sync to Results View Label
+        rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
+        if rows_info_label:
+            limit = tab_content.current_limit
+            offset = tab_content.current_offset
+            if limit > 0:
+                rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
+            else:
+                rows_info_label.setText("No Limit")
 
     rows_limit_combo.currentIndexChanged.connect(on_limit_change)
     toolbar_layout.addWidget(rows_limit_combo)
