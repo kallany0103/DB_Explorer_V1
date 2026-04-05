@@ -153,16 +153,59 @@ class PostgresConnectionDialog(QDialog):
         self._password_action.setIcon(self._eye_off_icon if self._password_visible else self._eye_icon)
 
     def testConnection(self):
+        db_name = self.db_input.text()
         try:
             conn = psycopg2.connect(
                 host=self.host_input.text(),
                 port=int(self.port_input.text()),
-                database=self.db_input.text(),
+                database=db_name,
                 user=self.user_input.text(),
                 password=self.password_input.text()
             )
             conn.close()
             QMessageBox.information(self, "Success", "Connection successful!")
+        except psycopg2.OperationalError as e:
+            error_msg = str(e)
+            if 'does not exist' in error_msg and 'database' in error_msg:
+                reply = QMessageBox.question(
+                    self,
+                    "Database Not Found",
+                    f"The database '{db_name}' does not exist. Do you want to create it?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    try:
+                        conn_pg = psycopg2.connect(
+                            host=self.host_input.text(),
+                            port=int(self.port_input.text()),
+                            database="postgres",
+                            user=self.user_input.text(),
+                            password=self.password_input.text()
+                        )
+                        conn_pg.autocommit = True
+                        cursor = conn_pg.cursor()
+                        # Use double quotes to safely handle database names with special characters/spaces
+                        cursor.execute(f'CREATE DATABASE "{db_name}"')
+                        cursor.close()
+                        conn_pg.close()
+                        
+                        # Verify connection
+                        conn_new = psycopg2.connect(
+                            host=self.host_input.text(),
+                            port=int(self.port_input.text()),
+                            database=db_name,
+                            user=self.user_input.text(),
+                            password=self.password_input.text()
+                        )
+                        conn_new.close()
+                        QMessageBox.information(self, "Success", f"Database '{db_name}' created and connection successful!")
+                    except Exception as create_e:
+                        QMessageBox.critical(self, "Error", f"Failed to create database:\n{create_e}")
+                else:
+                    QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
+            else:
+                QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
 
