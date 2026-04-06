@@ -1,5 +1,5 @@
 import sqlite3 as sqlite
-from db.db_connections import DB_FILE, create_postgres_connection 
+from db.db_connections import DB_FILE
  
 def get_all_connections_from_db():
     """Returns a list of dicts with full hierarchical connection info from usf_connections table."""
@@ -97,58 +97,35 @@ def get_hierarchy_data():
             data.append(connection_type_data)
     return data
 
-
-def get_table_column_metadata(conn_data, table_name):
-    """
-    Returns a list of dicts with column metadata for PostgreSQL tables.
-    Each dict contains: name, data_type, constraint_type (e.g., 'p' for PK, 'f' for FK)
-    """
-    metadata_list = []
-    conn = None
-    try:
-        # Use reusable connection function
-        conn = create_postgres_connection(
-            host=conn_data.get("host"),
-            port=conn_data.get("port"),
-            database=conn_data.get("database"),
-            user=conn_data.get("user"),
-            password=conn_data.get("password")
-        )
-        if not conn:
-            return []
-
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT
-                a.attname AS column_name,
-                format_type(a.atttypid, a.atttypmod) AS data_type,
-                CASE WHEN ct.contype = 'p' THEN 'p'
-                     WHEN ct.contype = 'f' THEN 'f'
-                     ELSE NULL
-                END AS constraint_type
-            FROM pg_attribute a
-            JOIN pg_class c ON a.attrelid = c.oid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_constraint ct 
-              ON ct.conrelid = c.oid 
-             AND a.attnum = ANY(ct.conkey)
-            WHERE c.relname = %s 
-              AND a.attnum > 0 
-              AND NOT a.attisdropped
-            ORDER BY a.attnum;
-        """, (table_name,))
-        
-        rows = cur.fetchall()
-        for col, dtype, constraint in rows:
-            metadata_list.append({
-                'name': col,
-                'data_type': dtype,
-                'constraint_type': constraint
-            })
-    except Exception as e:
-        print(f"Metadata fetch error for table '{table_name}': {e}")
-    finally:
-        if conn:
-            conn.close()
+def normalize_type(raw_type: str) -> str:
+    """Standardizes database types for human-readable display."""
+    if not raw_type:
+        return ""
+    t = raw_type.lower().strip()
     
-    return metadata_list
+    mapping = {
+        'character varying': 'VARCHAR',
+        'character': 'CHAR',
+        'integer': 'INT',
+        'bigint': 'BIGINT',
+        'smallint': 'SMALLINT',
+        'boolean': 'BOOL',
+        'double precision': 'FLOAT8',
+        'real': 'FLOAT4',
+        'timestamp without time zone': 'TIMESTAMP',
+        'timestamp with time zone': 'TIMESTAMPTZ',
+        'time without time zone': 'TIME',
+        'numeric': 'DECIMAL',
+        'jsonb': 'JSONB',
+        'json': 'JSON',
+        'uuid': 'UUID',
+        'text': 'TEXT',
+    }
+    
+    # Sort longest key first so 'character varying' matches before 'character'
+    for key in sorted(mapping.keys(), key=len, reverse=True):
+        if t.startswith(key):
+            # Preserve the length/precision if present (e.g. character varying(255) -> VARCHAR(255))
+            return t.replace(key, mapping[key]).upper()
+            
+    return raw_type.upper()

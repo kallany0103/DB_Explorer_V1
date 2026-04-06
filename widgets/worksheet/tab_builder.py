@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence, QShortcut
+import qtawesome as qta
 
 from widgets.worksheet.code_editor import CodeEditor
 
@@ -360,8 +361,8 @@ def add_tab(manager):
             background: #e9eef5;
         }
     """
-    copy_history_btn = QPushButton("Copy")
-    copy_to_edit_btn = QPushButton("Copy to Editor")
+    copy_history_btn = QPushButton(qta.icon("fa5.copy", color="#555555"), "Copy")
+    copy_to_edit_btn = QPushButton(qta.icon("fa5s.external-link-alt", color="#555555"), "Copy to Editor")
     remove_history_btn = QPushButton("Remove")
     remove_all_history_btn = QPushButton("Remove All")
     copy_history_btn.setMinimumWidth(78)

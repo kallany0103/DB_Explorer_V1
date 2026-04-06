@@ -31,10 +31,14 @@ class ERDRouter:
     def find_path(self, start: QPointF, start_side: str, end: QPointF, end_side: str) -> list[QPointF]:
         def get_stub(pt, side, dist=2):
             gx, gy = self._to_grid(pt)
-            if side == "left": return (gx - dist, gy)
-            if side == "right": return (gx + dist, gy)
-            if side == "top": return (gx, gy - dist)
-            if side == "bottom": return (gx, gy + dist)
+            if side == "left":
+                return (gx - dist, gy)
+            if side == "right":
+                return (gx + dist, gy)
+            if side == "top":
+                return (gx, gy - dist)
+            if side == "bottom":
+                return (gx, gy + dist)
             return (gx, gy)
             
         start_grid = self._to_grid(start)
@@ -104,7 +108,8 @@ class ERDRouter:
             for i in range(1, len(res)):
                 p = res[i]
                 prev = final[-1]
-                if (p - prev).manhattanLength() < 0.5: continue
+                if (p - prev).manhattanLength() < 0.5:
+                    continue
                 
                 if len(final) >= 2:
                     p_prev = final[-2]

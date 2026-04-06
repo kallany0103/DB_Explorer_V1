@@ -7,9 +7,8 @@ import cdata.csv as mod  # CData CSV connector
 #from PyQt6.QtCore import QRunnable, Qt
 from PySide6.QtCore import QRunnable, Qt
 import db
+from db.result_metadata import resolve_column_specs
 from workers.signals import (
-    emit_metadata_error,
-    emit_metadata_finished,
     emit_process_error,
     emit_process_finished,
     emit_query_error,
@@ -89,7 +88,8 @@ class RunnableExport(QRunnable):
             file_path = self.export_options['filename']
             file_format = os.path.splitext(file_path)[1].lower()
             delimiter = self.export_options.get('delimiter', ',')
-            if not delimiter: delimiter = ','
+            if not delimiter:
+                delimiter = ','
             
             # --- Check Semicolon for CSV/TXT ---
             # Restriction removed to allow user selected delimiter
@@ -189,7 +189,8 @@ class RunnableExportFromModel(QRunnable):
                 # Restriction removed to allow user selected delimiter
  
                 
-                if not delimiter: delimiter = ','
+                if not delimiter:
+                    delimiter = ','
                 
                 df.to_csv(
                     file_path,
@@ -292,8 +293,17 @@ class RunnableQuery(QRunnable):
                 return
 
             # --- Handle Results ---
-            columns = [desc[0] for desc in cursor.description] if cursor.description else []
             results = cursor.fetchall() if cursor.description else []
+            columns = []
+            column_specs = []
+            if cursor.description:
+                columns, column_specs = resolve_column_specs(
+                    code,
+                    conn,
+                    self.conn_data,
+                    self.query,
+                    cursor.description,
+                )
             row_count = len(results) if cursor.description else (cursor.rowcount if hasattr(cursor, 'rowcount') else 0)
             
             elapsed_time = time.time() - start_time
@@ -314,6 +324,7 @@ class RunnableQuery(QRunnable):
                 self.query,
                 results,
                 columns,
+                column_specs,
                 row_count,
                 elapsed_time,
                 is_returning_results,
@@ -321,8 +332,10 @@ class RunnableQuery(QRunnable):
         except Exception as e:
             if not self._is_cancelled:
                 if conn:
-                    try: conn.rollback()
-                    except: pass
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                 elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
                 conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
                 emit_query_error(self.signals, conn_payload, self.query, 0, elapsed_time, str(e))
@@ -334,49 +347,3 @@ class RunnableQuery(QRunnable):
                 conn.close()
 
 
-# =========================================================
-# 4. FetchMetadataWorker (Async Metadata Fetching)
-# =========================================================
-class FetchMetadataWorker(QRunnable):
-    """Fetches table column metadata asynchronously in a background thread."""
-    
-    def __init__(self, conn_data, table_name, original_columns, signals):
-        super().__init__()
-        self.conn_data = conn_data
-        self.table_name = table_name
-        self.original_columns = original_columns
-        self.signals = signals
-
-    def run(self):
-        try:
-            from db import db_retrieval
-            
-            code = (self.conn_data.get("code") or "").upper()
-            if not code:
-                if "host" in self.conn_data:
-                    code = "POSTGRES"
-                elif "db_path" in self.conn_data:
-                    code = "SQLITE"
-
-            # Call the metadata retrieval function
-            metadata_list = db_retrieval.get_table_column_metadata(
-                self.conn_data, self.table_name
-            )
-
-            # Transform metadata list into expected dict format
-            # Keys are column names (lowercase), values are dicts with pk, data_type, etc.
-            metadata_dict = {}
-            if metadata_list:
-                for m in metadata_list:
-                    col_name = m['name'].lower()
-                    metadata_dict[col_name] = {
-                        'pk': m.get('constraint_type') == 'p',
-                        'data_type': m.get('data_type', ''),
-                        'constraint_type': m.get('constraint_type')
-                    }
-
-            # Emit success with transformed metadata
-            emit_metadata_finished(self.signals, metadata_dict, self.original_columns, self.table_name)
-
-        except Exception as e:
-            emit_metadata_error(self.signals, f"Metadata fetch failed: {str(e)}")

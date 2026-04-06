@@ -106,6 +106,7 @@ def create_output_tabs_view(manager, tab_content):
     output_tabs.setTabBarAutoHide(False)
     output_tabs.setDocumentMode(True)
     output_tabs.tabCloseRequested.connect(lambda index: manager._handle_output_tab_close(tab_content, index))
+    output_tabs.currentChanged.connect(lambda _index: manager.sync_row_action_state(tab_content))
     return output_tabs
 
 
@@ -133,6 +134,7 @@ def ensure_output_tabs_widget(manager, tab_content):
     output_tabs.setTabBarAutoHide(False)
     output_tabs.setDocumentMode(True)
     output_tabs.tabCloseRequested.connect(lambda index: manager._handle_output_tab_close(tab_content, index))
+    output_tabs.currentChanged.connect(lambda _index: manager.sync_row_action_state(tab_content))
 
     output_container = QWidget()
     output_layout = QVBoxLayout(output_container)
@@ -221,8 +223,10 @@ def create_output_table_view(manager, tab_content):
 
     output_state = {
         "table_name": None,
+        "qualified_table_name": None,
         "real_table_name": None,
         "schema_name": None,
+        "is_editable": False,
         "column_names": [],
         "modified_coords": set(),
         "new_row_index": None,
@@ -308,6 +312,7 @@ def handle_output_tab_close(manager, tab_content, index):
     output_tabs.removeTab(index)
     if output_tabs.count() == 0:
         create_output_tab(manager, tab_content, title="Result 1", activate=True)
+    manager.sync_row_action_state(tab_content)
 
 
 def serialize_output_tabs(manager, tab_content):

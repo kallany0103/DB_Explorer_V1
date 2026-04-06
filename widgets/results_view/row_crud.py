@@ -4,6 +4,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QComboBox, QFileDialog, QMessageBox
 
 import db
+from widgets.results_view.value_state import display_cell_text, editor_text_from_raw, editor_text_to_db_value
 
 
 def delete_selected_row(manager):
@@ -17,9 +18,10 @@ def delete_selected_row(manager):
 
     output_state = table_view.property("output_state") or {}
     table_name = output_state.get("table_name")
+    qualified_table_name = output_state.get("qualified_table_name")
 
-    if not table_name:
-        QMessageBox.warning(manager.main_window, "Warning", "Cannot determine table name. Please run a SELECT query first.")
+    if not output_state.get("is_editable") or not table_name or not qualified_table_name:
+        QMessageBox.warning(manager.main_window, "Warning", "This result set is read-only. Run a simple single-table SELECT to edit rows.")
         return
 
     display_model = table_view.model()
@@ -99,13 +101,13 @@ def delete_selected_row(manager):
 
             try:
                 if db_code == "POSTGRES":
-                    sql = f'DELETE FROM {table_name} WHERE "{pk_col}" = %s'
+                    sql = f'DELETE FROM {qualified_table_name} WHERE "{pk_col}" = %s'
                     cursor.execute(sql, (pk_val,))
                 elif "SQLITE" in str(db_code):
-                    sql = f'DELETE FROM {table_name} WHERE "{pk_col}" = ?'
+                    sql = f'DELETE FROM {qualified_table_name} WHERE "{pk_col}" = ?'
                     cursor.execute(sql, (pk_val,))
                 elif "SERVICENOW" in str(db_code):
-                    sql = f"DELETE FROM {table_name} WHERE {pk_col} = '{pk_val}'"
+                    sql = f"DELETE FROM {qualified_table_name} WHERE {pk_col} = '{pk_val}'"
                     cursor.execute(sql)
 
                 source_model.removeRow(row_idx)
@@ -198,6 +200,10 @@ def add_empty_row(manager):
     table = manager._get_result_table_for_tab(tab)
     if not table:
         return
+    output_state = table.property("output_state") or {}
+    if not output_state.get("is_editable") or not output_state.get("qualified_table_name"):
+        QMessageBox.warning(manager.main_window, "Warning", "This result set is read-only. Run a simple single-table SELECT to add rows.")
+        return
     model = table.model()
     if isinstance(model, QSortFilterProxyModel):
         model = model.sourceModel()
@@ -208,7 +214,6 @@ def add_empty_row(manager):
     row = model.rowCount()
     model.insertRow(row)
 
-    output_state = table.property("output_state") or {}
     output_state["new_row_index"] = row
     table.setProperty("output_state", output_state)
 
@@ -233,6 +238,9 @@ def save_new_row(manager):
     if not table:
         return
     output_state = table.property("output_state") or {}
+    if not output_state.get("is_editable") or not output_state.get("qualified_table_name"):
+        QMessageBox.warning(manager.main_window, "Warning", "This result set is read-only. Run a simple single-table SELECT to save changes.")
+        return
     model = table.model()
     if isinstance(model, QSortFilterProxyModel):
         model = model.sourceModel()
@@ -245,9 +253,9 @@ def save_new_row(manager):
             values = []
             for col_idx in range(model.columnCount()):
                 item = model.item(row_idx, col_idx)
-                val = item.text() if item else None
-                if val == "":
-                    val = None
+                raw_text = item.data(Qt.ItemDataRole.EditRole) if item else None
+                raw_text = "" if raw_text is None else str(raw_text)
+                val = editor_text_to_db_value(raw_text) if item else None
                 values.append(val)
 
             cols_str = ", ".join([f'"{c}"' for c in output_state["column_names"]])
@@ -258,17 +266,17 @@ def save_new_row(manager):
             try:
                 if db_code == "POSTGRES":
                     placeholders = ", ".join(["%s"] * len(values))
-                    sql = f'INSERT INTO {output_state["table_name"]} ({cols_str}) VALUES ({placeholders})'
+                    sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
                     conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ["host", "port", "database", "user", "password"]})
 
                 elif "SQLITE" in str(db_code):
                     placeholders = ", ".join(["?"] * len(values))
-                    sql = f'INSERT INTO {output_state["table_name"]} ({cols_str}) VALUES ({placeholders})'
+                    sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
                     conn = db.create_sqlite_connection(conn_data.get("db_path"))
 
                 elif "SERVICENOW" in str(db_code):
                     placeholders = ", ".join(["?"] * len(values))
-                    sql = f'INSERT INTO {output_state["table_name"]} ({cols_str}) VALUES ({placeholders})'
+                    sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
                     conn = db.create_servicenow_connection(conn_data)
                 if conn:
                     cursor = conn.cursor()
@@ -276,6 +284,19 @@ def save_new_row(manager):
                     conn.commit()
                     conn.close()
                     output_state["new_row_index"] = None
+                    for col_idx in range(model.columnCount()):
+                        item = model.item(row_idx, col_idx)
+                        if not item:
+                            continue
+                        raw_value = values[col_idx]
+                        edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
+                        edit_data["orig_val"] = raw_value
+                        edit_data["raw_val"] = raw_value
+                        edit_data["is_db_null"] = raw_value is None
+                        item.setData(edit_data, Qt.ItemDataRole.UserRole)
+                        item.setData(display_cell_text(raw_value), Qt.ItemDataRole.DisplayRole)
+                        item.setData(editor_text_from_raw(raw_value), Qt.ItemDataRole.EditRole)
+                        item.setBackground(QColor(Qt.GlobalColor.white))
                     table.setProperty("output_state", output_state)
                     saved_any = True
 
@@ -302,7 +323,7 @@ def save_new_row(manager):
                 raise Exception("Could not create database connection for updates.")
 
             cursor = conn.cursor()
-            table_name_for_update = output_state.get("table_name")
+            table_name_for_update = output_state.get("qualified_table_name")
 
             for row, col in coords_to_process:
                 item = model.item(row, col)
@@ -313,8 +334,9 @@ def save_new_row(manager):
                 pk_col = edit_data.get("pk_col")
                 pk_val = edit_data.get("pk_val")
                 col_name = edit_data.get("col_name")
-                new_val = item.text()
-                val_to_update = None if new_val == "" else new_val
+                new_val = item.data(Qt.ItemDataRole.EditRole)
+                new_val = "" if new_val is None else str(new_val)
+                val_to_update = editor_text_to_db_value(new_val)
 
                 if not table_name_for_update:
                     update_errors.append("Missing table context for update.")
@@ -341,8 +363,12 @@ def save_new_row(manager):
                         update_errors.append(f"No row updated for PK '{pk_col}'={pk_val}")
                         continue
 
-                    edit_data["orig_val"] = new_val
+                    edit_data["orig_val"] = val_to_update
+                    edit_data["raw_val"] = val_to_update
+                    edit_data["is_db_null"] = val_to_update is None
                     item.setData(edit_data, Qt.ItemDataRole.UserRole)
+                    item.setData(display_cell_text(val_to_update), Qt.ItemDataRole.DisplayRole)
+                    item.setData(editor_text_from_raw(val_to_update), Qt.ItemDataRole.EditRole)
                     item.setBackground(QColor(Qt.GlobalColor.white))
                     if (row, col) in modified_coords:
                         modified_coords.remove((row, col))

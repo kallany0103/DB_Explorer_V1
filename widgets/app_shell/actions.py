@@ -50,23 +50,23 @@ def build_main_window_actions(main_window):
     main_window.cancel_action.triggered.connect(main_window.cancel_current_query)
     main_window.cancel_action.setEnabled(False)
 
-    main_window.undo_action = QAction(QIcon("assets/undo.svg"), "Undo", main_window)
+    main_window.undo_action = QAction(qta.icon("fa5s.undo", color="#555555"), "Undo", main_window)
     main_window.undo_action.setShortcut("Ctrl+Z")
     main_window.undo_action.triggered.connect(main_window.undo_text)
 
-    main_window.redo_action = QAction(QIcon("assets/redo.svg"), "Redo", main_window)
+    main_window.redo_action = QAction(qta.icon("fa5s.redo", color="#555555"), "Redo", main_window)
     main_window.redo_action.setShortcuts(["Ctrl+Y", "Ctrl+Shift+Z"])
     main_window.redo_action.triggered.connect(main_window.redo_text)
 
-    main_window.cut_action = QAction(QIcon("assets/cut.svg"), "Cut", main_window)
+    main_window.cut_action = QAction(qta.icon("fa5s.cut", color="#555555"), "Cut", main_window)
     main_window.cut_action.setShortcut("Ctrl+X")
     main_window.cut_action.triggered.connect(main_window.cut_text)
 
-    main_window.copy_action = QAction(QIcon("assets/copy.svg"), "Copy", main_window)
+    main_window.copy_action = QAction(qta.icon("fa5s.copy", color="#555555"), "Copy", main_window)
     main_window.copy_action.setShortcut("Ctrl+C")
     main_window.copy_action.triggered.connect(main_window.copy_text)
 
-    main_window.paste_action = QAction(QIcon("assets/paste.svg"), "Paste", main_window)
+    main_window.paste_action = QAction(qta.icon("fa5s.paste", color="#555555"), "Paste", main_window)
     main_window.paste_action.setShortcut("Ctrl+V")
     main_window.paste_action.triggered.connect(main_window.paste_text)
 

@@ -13,7 +13,6 @@ from PySide6.QtGui import (
     QFontMetrics,
     QPainter,
     QPolygon,
-    QBrush,
     QTextCursor,
     QTextDocument,
     QSyntaxHighlighter,

@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QMenu, QApplication
 from PySide6.QtGui import QAction, QIcon
+import qtawesome as qta
 
 
 def show_editor_context_menu(manager, pos, editor):
@@ -14,15 +15,15 @@ def show_editor_context_menu(manager, pos, editor):
         """
     )
 
-    undo_action = QAction(QIcon("assets/undo.svg"), "Undo", manager)
-    undo_action.setIconVisibleInMenu(False)
+    undo_action = QAction(qta.icon("fa5s.undo", color="#555555"), "Undo", manager)
+    undo_action.setIconVisibleInMenu(True)
     undo_action.setShortcut("Ctrl+Z")
     undo_action.triggered.connect(editor.undo)
     undo_action.setEnabled(editor.document().isUndoAvailable())
     menu.addAction(undo_action)
 
-    redo_action = QAction(QIcon("assets/redo.svg"), "Redo", manager)
-    redo_action.setIconVisibleInMenu(False)
+    redo_action = QAction(qta.icon("fa5s.redo", color="#555555"), "Redo", manager)
+    redo_action.setIconVisibleInMenu(True)
     redo_action.setShortcut("Ctrl+Y")
     redo_action.triggered.connect(editor.redo)
     redo_action.setEnabled(editor.document().isRedoAvailable())
@@ -30,20 +31,22 @@ def show_editor_context_menu(manager, pos, editor):
 
     menu.addSeparator()
 
-    cut_action = QAction("Cut", manager)
+    cut_action = QAction(qta.icon("fa5s.cut", color="#555555"), "Cut", manager)
+    cut_action.setIconVisibleInMenu(True)
     cut_action.setShortcut("Ctrl+X")
     cut_action.triggered.connect(editor.cut)
     cut_action.setEnabled(editor.textCursor().hasSelection())
     menu.addAction(cut_action)
 
-    copy_action = QAction("Copy", manager)
+    copy_action = QAction(qta.icon("fa5s.copy", color="#555555"), "Copy", manager)
+    copy_action.setIconVisibleInMenu(True)
     copy_action.setShortcut("Ctrl+C")
     copy_action.triggered.connect(editor.copy)
     copy_action.setEnabled(editor.textCursor().hasSelection())
     menu.addAction(copy_action)
 
-    paste_action = QAction(QIcon("assets/paste.svg"), "Paste", manager)
-    paste_action.setIconVisibleInMenu(False)
+    paste_action = QAction(qta.icon("fa5s.paste", color="#555555"), "Paste", manager)
+    paste_action.setIconVisibleInMenu(True)
     paste_action.setShortcut("Ctrl+V")
     paste_action.triggered.connect(editor.paste)
     clipboard = QApplication.clipboard()

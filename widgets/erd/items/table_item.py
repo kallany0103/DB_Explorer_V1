@@ -44,8 +44,10 @@ class ERDTableItem(QGraphicsRectItem):
         def col_sort_key(c):
             # Priority: PK (0), FK (1), Other (2)
             p = 2
-            if c.get('pk'): p = 0
-            elif c.get('fk'): p = 1
+            if c.get('pk'):
+                p = 0
+            elif c.get('fk'):
+                p = 1
             return (p, c['name'])
             
         self.columns.sort(key=col_sort_key)

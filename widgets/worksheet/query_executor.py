@@ -63,7 +63,7 @@ def _is_stale_query_signal(manager, signals, target_tab):
     return False
 
 
-def on_query_finished_signal(manager, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+def on_query_finished_signal(manager, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query):
     signals = manager.sender()
     target_tab = getattr(signals, "_target_tab", manager.tab_widget.currentWidget())
     if _is_stale_query_signal(manager, signals, target_tab):
@@ -81,6 +81,7 @@ def on_query_finished_signal(manager, conn_data, query, results, columns, row_co
         query,
         results,
         columns,
+        column_specs,
         row_count,
         elapsed_time,
         is_select_query,
