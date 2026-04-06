@@ -4,23 +4,16 @@
 from PySide6.QtCore import QObject, Signal
 
 class ProcessSignals(QObject):
-    started = Signal(str, dict)
+    started = Signal(str, object)
     finished = Signal(str, str, float, int)
     error = Signal(str, str)
       
 class QuerySignals(QObject):
-    finished = Signal(dict, str, list, list, int, float, bool)  
-    # conn_data, query, results, columns, row_count, elapsed_time, is_select_query
+    finished = Signal(object, str, list, list, list, int, float, bool)
+    # conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query
 
-    error = Signal(dict, str, int, float, str)  
+    error = Signal(object, str, int, float, str)  
     # conn_data, query, row_count, elapsed_time, error_message
-
-class MetadataSignals(QObject):
-    finished = Signal(dict, list, str)
-    # metadata_dict, original_columns, table_name
-    
-    error = Signal(str)
-    # error_message
 
 
 def _as_dict(value):
@@ -78,12 +71,13 @@ def emit_process_error(signals, process_id, error_message):
     signals.error.emit(_as_str(process_id), _as_str(error_message))
 
 
-def emit_query_finished(signals, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+def emit_query_finished(signals, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query):
     signals.finished.emit(
         _as_dict(conn_data),
         _as_str(query),
         _as_list(results),
         _as_list(columns),
+        _as_list(column_specs),
         _as_int(row_count),
         _as_float(elapsed_time),
         _as_bool(is_select_query),
@@ -98,11 +92,3 @@ def emit_query_error(signals, conn_data, query, row_count, elapsed_time, error_m
         _as_float(elapsed_time),
         _as_str(error_message),
     )
-
-
-def emit_metadata_finished(signals, metadata_dict, original_columns, table_name):
-    signals.finished.emit(_as_dict(metadata_dict), _as_list(original_columns), _as_str(table_name))
-
-
-def emit_metadata_error(signals, error_message):
-    signals.error.emit(_as_str(error_message))

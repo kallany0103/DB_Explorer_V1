@@ -38,6 +38,7 @@ __all__ = [
     "create_sqlite_connection",
     "create_postgres_connection",
     "create_oracle_connection",
+    "create_servicenow_connection",
     "resource_path",
     "DB_FILE",
     "get_all_connections_from_db",

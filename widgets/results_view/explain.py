@@ -13,12 +13,11 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
     QHeaderView, QLabel, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem,
-    QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem,
-    QGraphicsTextItem, QGraphicsLineItem, QToolBar, QPushButton, QFrame,
-    QProgressBar, QStyledItemDelegate, QStyle, QStyleOptionProgressBar, QApplication
+    QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, QToolBar, QPushButton, QFrame,
+    QStyledItemDelegate, QStyle, QStyleOptionProgressBar, QApplication
 )
-from PySide6.QtCore import Qt, QRectF, QPointF, Signal
-from PySide6.QtGui import QPen, QBrush, QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import Qt, QRectF, Signal
+from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPixmap
 
 
 class AnalysisItemDelegate(QStyledItemDelegate):
@@ -298,7 +297,8 @@ class ExplainVisualizer(QWidget):
             try:
                 if float(rows_x) > 1.0:
                     item.setForeground(4, QBrush(QColor(180, 120, 0)))
-            except: pass
+            except (TypeError, ValueError):
+                pass
         
         current_row = row_num
         if "Plans" in plan_node:
@@ -321,7 +321,8 @@ class ExplainVisualizer(QWidget):
                     max_excl = max(max_excl, excl)
                 if incl:
                     max_incl = max(max_incl, incl)
-            except: pass
+            except (TypeError, ValueError):
+                pass
             for i in range(item.childCount()):
                 find_max(item.child(i))
                 
@@ -435,8 +436,10 @@ class ExplainVisualizer(QWidget):
         
         # Determine direction
         rows_x_direction = "none"
-        if rows_x > 1: rows_x_direction = "underestimation" # Plan was lower than actual
-        elif rows_x < 1 and rows_x > 0: rows_x_direction = "overestimation" 
+        if rows_x > 1:
+            rows_x_direction = "underestimation" # Plan was lower than actual
+        elif rows_x < 1 and rows_x > 0:
+            rows_x_direction = "overestimation"
         
         node["rowsx"] = rows_x
         node["rowsx_direction"] = rows_x_direction
@@ -463,7 +466,8 @@ class ExplainVisualizer(QWidget):
         self.details_container.show()
         row = 0
         for key, value in plan_node.items():
-            if key == "Plans": continue
+            if key == "Plans":
+                continue
             self.details_table.insertRow(row)
             self.details_table.setItem(row, 0, QTableWidgetItem(str(key)))
             self.details_table.setItem(row, 1, QTableWidgetItem(str(value)))
@@ -509,7 +513,8 @@ class PlanNodeItem(QGraphicsItem):
         # Set Tooltip
         relation = plan_node.get("Relation Name")
         tooltip = f"<b>{self.node_type}</b><br/>"
-        if relation: tooltip += f"Relation: {relation}<br/>"
+        if relation:
+            tooltip += f"Relation: {relation}<br/>"
         tooltip += f"Cost: {self.total_cost}<br/>"
         actual_rows = plan_node.get("Actual Rows")
         if actual_rows is not None:
@@ -605,7 +610,7 @@ class ExplainGraphView(QGraphicsView):
         for i, child in enumerate(child_plans):
             child_x = start_x + i * self.node_spacing_x
             child_y = y + self.node_spacing_y
-            child_item = self._draw_plan_recursive(child, child_x, child_y)
+            self._draw_plan_recursive(child, child_x, child_y)
             
             # Draw line/arrow from parent to child (bottom of parent to top of child)
             line = QGraphicsLineItem(x, y + 80, child_x, child_y)

@@ -1,19 +1,16 @@
 import qtawesome as qta
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QMessageBox,
-    QMenu, QComboBox, QToolButton, QStackedWidget, QTextEdit,
-    QLabel, QPushButton, QAbstractItemView,
-    QButtonGroup, QFrame, QTreeView, QGroupBox, QTabWidget
+    QWidget, QTextEdit,
+    QFrame
 )
 from PySide6.QtCore import (
-    Qt, QTimer, QSize, QEvent, QRect
+    QRect
 )
 from PySide6.QtGui import (
-    QAction, QFont, QIcon, QKeySequence, QShortcut
+    QIcon
 )
 
-import db
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.editor_actions import (
     format_sql_text as format_sql_text_action,
@@ -103,15 +100,16 @@ class WorksheetManager(QWidget):
     def _start_query_worker(self, current_tab, conn_data, query, output_mode="current", output_tab_index=None):
         return start_query_worker(self, current_tab, conn_data, query, output_mode, output_tab_index)
 
-    def _on_query_finished_signal(self, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
-        on_query_finished_signal(self, conn_data, query, results, columns, row_count, elapsed_time, is_select_query)
+    def _on_query_finished_signal(self, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query):
+        on_query_finished_signal(self, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query)
 
     def _on_query_error_signal(self, conn_data, query, row_count, elapsed_time, error_message):
         on_query_error_signal(self, conn_data, query, row_count, elapsed_time, error_message)
 
     def _get_current_editor(self):
         current_tab = self.tab_widget.currentWidget()
-        if not current_tab: return None
+        if not current_tab:
+            return None
         return current_tab.findChild(CodeEditor, "query_editor")
 
 # {mitayan}
@@ -268,7 +266,7 @@ class WorksheetManager(QWidget):
 
     # --- Delegated Result Methods ---
 
-    def handle_query_result(self, target_tab, output_mode, output_tab_index, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
+    def handle_query_result(self, target_tab, output_mode, output_tab_index, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query):
         if target_tab in self.tab_timers:
             self.tab_timers[target_tab]["timer"].stop()
             self.tab_timers[target_tab]["timeout_timer"].stop()
@@ -281,6 +279,7 @@ class WorksheetManager(QWidget):
                 query,
                 results,
                 columns,
+                column_specs,
                 row_count,
                 elapsed_time,
                 is_select_query,

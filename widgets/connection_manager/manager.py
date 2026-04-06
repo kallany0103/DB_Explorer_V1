@@ -3,7 +3,6 @@
 Package-native implementation used as the primary ConnectionManager entrypoint.
 """
 
-import datetime
 
 import qtawesome as qta
 # from PyQt6.QtCore import Qt, QModelIndex

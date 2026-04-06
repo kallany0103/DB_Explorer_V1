@@ -208,12 +208,6 @@ def update_connection_group(group_id, name):
         c.execute("UPDATE usf_connection_groups SET name = ? WHERE id = ?", (name, group_id))
         conn.commit()
 
-def update_connection_group(group_id, name):
-    with sqlite.connect(DB_FILE) as conn:
-        c = conn.cursor()
-        c.execute("UPDATE usf_connection_groups SET name = ? WHERE id = ?", (name, group_id))
-        conn.commit()
-
 def delete_connection_group(group_id):
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()

@@ -1,4 +1,5 @@
 import os
+import qtawesome as qta
 
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QFont, QIcon, QMovie
@@ -23,6 +24,7 @@ from widgets.results_view.processes import create_processes_view
 
 
 def create_results_ui(manager, tab_content):
+    tab_content._results_manager = manager
     results_container = QWidget()
     results_container.setMinimumHeight(30)
     results_layout = QVBoxLayout(results_container)
@@ -92,18 +94,20 @@ def create_results_ui(manager, tab_content):
     )
 
     add_row_btn = QPushButton()
-    add_row_btn.setIcon(QIcon("assets/row-plus.svg"))
+    add_row_btn.setIcon(qta.icon("ri.play-list-add-fill", color="#555555"))
     add_row_btn.setIconSize(QSize(16, 16))
     add_row_btn.setFixedSize(30, 30)
     add_row_btn.setToolTip("Add new row")
+    add_row_btn.setObjectName("add_row_btn")
     add_row_btn.setStyleSheet(btn_style_bottom)
     add_row_btn.clicked.connect(manager.add_empty_row)
 
     save_row_btn = QPushButton()
-    save_row_btn.setIcon(QIcon("assets/save.svg"))
+    save_row_btn.setIcon(qta.icon("fa5s.save", color="#555555"))
     save_row_btn.setIconSize(QSize(16, 16))
     save_row_btn.setFixedSize(30, 30)
     save_row_btn.setToolTip("Save new row")
+    save_row_btn.setObjectName("save_row_btn")
     save_row_btn.setStyleSheet(btn_style_bottom)
     results_info_layout.addWidget(add_row_btn)
     results_info_layout.addWidget(save_row_btn)
@@ -111,22 +115,22 @@ def create_results_ui(manager, tab_content):
     save_row_btn.clicked.connect(manager.save_new_row)
 
     copy_btn = QToolButton()
-    copy_btn.setIcon(QIcon("assets/copy.svg"))
-    copy_btn.setIconSize(QSize(19, 19))
+    copy_btn.setIcon(qta.icon("fa5s.copy", color="#555555"))
+    copy_btn.setIconSize(QSize(16, 16))
     copy_btn.setFixedSize(30, 30)
     copy_btn.setToolTip("Copy selected cells (Ctrl+C)")
     copy_btn.setStyleSheet(btn_style_bottom)
 
     paste_btn = QToolButton()
-    paste_btn.setIcon(QIcon("assets/paste.svg"))
-    paste_btn.setIconSize(QSize(19, 19))
+    paste_btn.setIcon(qta.icon("fa5s.paste", color="#555555"))
+    paste_btn.setIconSize(QSize(16, 16))
     paste_btn.setFixedSize(30, 30)
     paste_btn.setToolTip("Paste to editor")
     paste_btn.setStyleSheet(btn_style_bottom)
     paste_btn.clicked.connect(manager.paste_to_editor)
 
     delete_row_btn = QPushButton()
-    delete_row_btn.setIcon(QIcon("assets/trash.svg"))
+    delete_row_btn.setIcon(qta.icon("fa5.trash-alt", color="#dc3545"))
     delete_row_btn.setIconSize(QSize(16, 16))
     delete_row_btn.setFixedSize(30, 30)
     delete_row_btn.setToolTip("Delete selected row(s)")
@@ -140,7 +144,7 @@ def create_results_ui(manager, tab_content):
     results_info_layout.addWidget(paste_btn)
 
     download_btn = QPushButton()
-    download_btn.setIcon(QIcon("assets/export.svg"))
+    download_btn.setIcon(qta.icon("fa5s.file-download", color="#555555"))
     download_btn.setIconSize(QSize(16, 16))
     download_btn.setFixedSize(30, 30)
     download_btn.setToolTip("Download query result")
@@ -163,7 +167,7 @@ def create_results_ui(manager, tab_content):
 
     table_search_btn = QToolButton()
     table_search_btn.setObjectName("table_search_btn")
-    table_search_btn.setIcon(QIcon(icon_path if os.path.exists(icon_path) else ""))
+    table_search_btn.setIcon(qta.icon("fa5s.search", color="#555555"))
     table_search_btn.setFixedSize(30, 30)
     table_search_btn.setToolTip("Search in Results")
     table_search_btn.setStyleSheet(
@@ -212,7 +216,7 @@ def create_results_ui(manager, tab_content):
     results_info_layout.addWidget(rows_info_label)
 
     rows_setting_btn = QToolButton()
-    rows_setting_btn.setIcon(QIcon("assets/list-details.svg"))
+    rows_setting_btn.setIcon(qta.icon("fa5s.list-ul", color="#555555"))
     rows_setting_btn.setIconSize(QSize(16, 16))
     rows_setting_btn.setFixedSize(28, 28)
     rows_setting_btn.setToolTip("Edit Limit/Offset")

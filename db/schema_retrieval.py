@@ -1,5 +1,3 @@
-import sqlite3
-import psycopg2
 from db.db_connections import create_sqlite_connection, create_postgres_connection
 
 def get_sqlite_schema(db_path):

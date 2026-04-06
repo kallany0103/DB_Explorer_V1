@@ -1,12 +1,10 @@
 # table_properties
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QTabWidget, QWidget, QTableWidget, QTableWidgetItem,
-    QAbstractItemView, QHBoxLayout, QPushButton, QMessageBox, QInputDialog, QFormLayout, QLabel, QComboBox, QCheckBox, 
+    QDialog, QVBoxLayout, QTabWidget, QWidget, QAbstractItemView, QHBoxLayout, QPushButton, QMessageBox, QFormLayout, QLabel, QComboBox, QCheckBox, 
     QLineEdit, QTextEdit, QGroupBox, QDialogButtonBox, QFrame, QSizePolicy, QTableView, QHeaderView, QStyle )
 from PySide6.QtGui import (
-    QAction, QIcon, QStandardItemModel, QStandardItem, QFont, QMovie, QDesktopServices, QColor, QBrush, QPainter,
-    QTextFormat, QPolygon
+    QStandardItemModel, QStandardItem, QColor, QBrush
 )
 from functools import partial
 from PySide6.QtCore import Qt

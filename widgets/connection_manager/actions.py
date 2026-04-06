@@ -3,7 +3,6 @@ import os
 import uuid
 
 import db
-import psycopg2
 # from PyQt6.QtGui import QStandardItemModel, QStandardItem
 # from PyQt6.QtWidgets import (
 #     QApplication,
@@ -23,7 +22,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
-    QInputDialog,
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
@@ -68,8 +66,8 @@ class ConnectionActions:
 
         results_manager = self.manager.main_window.results_manager
         signals.finished.connect(
-            lambda cd, q, res, cols, rc, et, isq: results_manager.handle_query_result(
-                current_tab, cd, q, res, cols, rc, et, isq
+            lambda cd, q, res, cols, specs, rc, et, isq: results_manager.handle_query_result(
+                current_tab, cd, q, res, cols, specs, rc, et, isq
             )
         )
         signals.error.connect(self.handle_count_error)
@@ -331,7 +329,7 @@ class ConnectionActions:
             if message_view and results_stack:
                 results_stack.setCurrentIndex(1)
 
-                msg = f'CREATE TABLE\n\nQuery returned successfully.'
+                msg = 'CREATE TABLE\n\nQuery returned successfully.'
                 message_view.setPlainText(msg)
 
                 sb = message_view.verticalScrollBar()
@@ -457,7 +455,7 @@ class ConnectionActions:
 
             if message_view and results_stack:
                 results_stack.setCurrentIndex(1)
-                msg = f"CREATE VIEW\n\nQuery returned successfully."
+                msg = "CREATE VIEW\n\nQuery returned successfully."
                 message_view.setPlainText(msg)
 
                 sb = message_view.verticalScrollBar()
@@ -547,7 +545,7 @@ class ConnectionActions:
         full_process_id = str(uuid.uuid4())
         short_id = full_process_id[:8]
 
-        def on_data_fetched_for_export(_conn_data, _query, results, columns, row_count, _elapsed_time, _is_select_query):
+        def on_data_fetched_for_export(_conn_data, _query, results, columns, _column_specs, row_count, _elapsed_time, _is_select_query):
             self.manager.status_message_label.setText("Data fetched. Starting export process...")
             model = QStandardItemModel()
             model.setColumnCount(len(columns))

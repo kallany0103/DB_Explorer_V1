@@ -2,7 +2,6 @@ import os
 import uuid
 import datetime
 import re
-import sqlite3 as sqlite
 import copy
 from numbers import Number
 
@@ -10,8 +9,7 @@ from PySide6.QtWidgets import (
     QTableView, QMessageBox, QMenu, QComboBox,
     QDialog, QToolButton, QStackedWidget,
     QWidget, QLabel, QPushButton, QTextEdit,
-    QFormLayout, QSpinBox, QDialogButtonBox,
-    QVBoxLayout, QHBoxLayout,
+    QFormLayout, QSpinBox, QVBoxLayout, QHBoxLayout,
 )
 from PySide6.QtCore import (
     Qt, QObject, QEvent
@@ -20,7 +18,7 @@ from PySide6.QtGui import (
     QAction
 )
 
-import db
+from db.query_context import resolve_writable_table_context
 import widgets.results_view.clipboard as clipboard
 import widgets.results_view.output_tabs as output_tabs
 import widgets.results_view.processes as processes
@@ -126,6 +124,10 @@ class ResultsManager(QObject):
         return str(status_text or "").strip().upper()
 
     def _extract_query_table_name(self, query):
+        table_context = resolve_writable_table_context(query)
+        if table_context:
+            return table_context.get("real_table_name")
+
         match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query or "", re.IGNORECASE)
         if not match:
             return None
@@ -180,6 +182,20 @@ class ResultsManager(QObject):
 
     def cleanup_tab_resources(self, tab_content):
         output_tabs.stop_all_chunk_loaders_for_tab(self, tab_content)
+
+    def sync_row_action_state(self, tab_content=None):
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+
+        table_view = self._get_result_table_for_tab(target_tab)
+        output_state = table_view.property("output_state") if table_view else {}
+        is_enabled = bool((output_state or {}).get("is_editable"))
+
+        for object_name in ("add_row_btn", "save_row_btn", "delete_row_btn"):
+            button = target_tab.findChild(QWidget, object_name)
+            if button:
+                button.setEnabled(is_enabled)
 
     def _get_process_status_meta(self, status_text):
         return processes.get_process_status_meta(self, status_text)
@@ -326,24 +342,19 @@ class ResultsManager(QObject):
             self.status.showMessage("Messages cleared.", 2000)
 
 
-    def handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query, output_mode="current", output_tab_index=None):
-        query_handler.handle_query_result(self, target_tab, conn_data, query, results, columns, row_count, elapsed_time, is_select_query, output_mode, output_tab_index)
+    def handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode="current", output_tab_index=None):
+        query_handler.handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode, output_tab_index)
 
     def handle_cell_edit(self, item, tab, table_view=None):
         query_handler.handle_cell_edit(self, item, tab, table_view)
 
-    def on_metadata_ready(self, model, metadata_dict, original_columns, table_name):
-        query_handler.on_metadata_ready(self, model, metadata_dict, original_columns, table_name)
-
     def _compact_data_type_label(self, data_type):
         return query_handler.compact_data_type_label(self, data_type)
 
-    def on_metadata_error(self, target_tab, error_message):
-        query_handler.on_metadata_error(self, target_tab, error_message)
-
 
     def stop_spinner(self, target_tab, success=True, target_index=0):
-        if not target_tab: return
+        if not target_tab:
+            return
         stacked_widget = target_tab.findChild(QStackedWidget, "results_stacked_widget")
         results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
         process_filter_bar = target_tab.findChild(QWidget, "processFilterBar")
@@ -367,6 +378,7 @@ class ResultsManager(QObject):
                         else:
                             # Hide toolbar if no results table is present or being shown
                             results_info_bar.hide()
+                        self.sync_row_action_state(target_tab)
                         process_filter_bar.hide()
                     elif target_index == 3:
                         results_info_bar.hide()
@@ -399,8 +411,8 @@ class ResultsManager(QObject):
            page_label.setText("Page 1")
            return
 
-           current_page = (offset_val // limit_val) + 1
-           page_label.setText(f"Page {current_page}")
+        current_page = (offset_val // limit_val) + 1
+        page_label.setText(f"Page {current_page}")
 
 
 
@@ -501,60 +513,6 @@ class ResultsManager(QObject):
     def refresh_processes_view(self):
         processes.refresh_processes_view(self)
         
-
-    def get_table_column_metadata(self, conn_data, table_name):
-      """
-        Returns a list of column headers with pgAdmin-style info like:
-        emp_id [PK] integer, emp_name character varying(100)
-        Uses create_postgres_connection() for consistent DB connection handling.
-      """
-      headers = []
-      conn = None
-      try:
-        # ✅ Use your reusable connection function
-        conn = db.create_postgres_connection(
-            host=conn_data["host"],
-            port=conn_data["port"],
-            database=conn_data["database"],
-            user=conn_data["user"],
-            password=conn_data["password"]
-        )
-        if not conn:
-            print("Failed to establish connection for metadata fetch.")
-            return []
-
-        cur = conn.cursor()
-        # NOTE: Using a simple query for metadata. 
-        # In worksheet.py, a complex query was used. 
-        # I copied the valid logic from there.
-        cur.execute("""
-            SELECT
-                a.attname AS column_name,
-                format_type(a.atttypid, a.atttypmod) AS data_type,
-                CASE WHEN ct.contype = 'p' THEN '[PK]'
-                     WHEN ct.contype = 'f' THEN '[FK]'
-                     ELSE ''
-                END AS constraint_type
-            FROM pg_attribute a
-            JOIN pg_class c ON a.attrelid = c.oid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_constraint ct 
-              ON ct.conrelid = c.oid 
-             AND a.attnum = ANY(ct.conkey)
-            WHERE c.relname = %s 
-              AND a.attnum > 0 
-              AND NOT a.attisdropped
-            ORDER BY a.attnum;
-        """, (table_name,))
-        rows = cur.fetchall()
-        for col, dtype, constraint in rows:
-            headers.append(f"{col} {constraint} {dtype}".strip())
-      except Exception as e:
-        print(f"Metadata fetch error for table '{table_name}': {e}")
-      finally:
-        if conn:
-            conn.close()
-      return headers
 
     def get_current_tab_processes_model(self):
         return processes.get_current_tab_processes_model(self)

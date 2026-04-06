@@ -86,10 +86,14 @@ class ERDView(QGraphicsView):
         # Arrow Keys (Nudge 20px)
         if event.key() in [Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right]:
             dx, dy = 0, 0
-            if event.key() == Qt.Key.Key_Left: dx = -20
-            elif event.key() == Qt.Key.Key_Right: dx = 20
-            elif event.key() == Qt.Key.Key_Up: dy = -20
-            elif event.key() == Qt.Key.Key_Down: dy = 20
+            if event.key() == Qt.Key.Key_Left:
+                dx = -20
+            elif event.key() == Qt.Key.Key_Right:
+                dx = 20
+            elif event.key() == Qt.Key.Key_Up:
+                dy = -20
+            elif event.key() == Qt.Key.Key_Down:
+                dy = 20
             
             moved = False
             items_to_move = []

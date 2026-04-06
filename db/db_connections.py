@@ -4,7 +4,6 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
-import datetime
 import cdata.servicenow as sn
 
 def resource_path(relative_path):

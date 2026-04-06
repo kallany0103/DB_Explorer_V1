@@ -1,15 +1,15 @@
 import re
 import datetime
-from functools import partial
 
 import sqlparse
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QTimer
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QLabel, QLineEdit, QStackedWidget, QTextEdit, QToolButton, QWidget, QTabWidget, QTableView
+from PySide6.QtWidgets import QAbstractItemView, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QToolButton, QWidget, QTabWidget, QTableView
 
+from db.query_context import resolve_writable_table_context
 from widgets.results_view.explain import ExplainVisualizer
 from widgets.results_view.perf_metrics import perf_elapsed_ms, perf_record, perf_take, perf_now
-from workers import FetchMetadataWorker, MetadataSignals
+from widgets.results_view.value_state import display_cell_text, editor_text_from_raw, values_equal_for_editor
 
 
 DEFAULT_CHUNK_PROFILES = [
@@ -104,11 +104,15 @@ def _make_row_items(row, columns, pk_indices):
 
     items = []
     for col_idx, cell in enumerate(row):
-        item = QStandardItem(str(cell))
+        item = QStandardItem()
+        item.setData(display_cell_text(cell), Qt.ItemDataRole.DisplayRole)
+        item.setData(editor_text_from_raw(cell), Qt.ItemDataRole.EditRole)
         edit_data = {
             "pk_col": pk_col_name,
             "pk_val": pk_val,
             "orig_val": cell,
+            "raw_val": cell,
+            "is_db_null": cell is None,
             "col_name": columns[col_idx],
         }
         item.setData(edit_data, Qt.ItemDataRole.UserRole)
@@ -157,6 +161,37 @@ def _is_table_visible_in_active_output_tab(table_view, target_tab):
     return active_table is table_view
 
 
+def _header_suffix_for_spec(spec):
+    if spec.get("pk"):
+        return " [PK]"
+    if spec.get("fk"):
+        return " [FK]"
+    if spec.get("nullable") is False:
+        return " *"
+    return ""
+
+
+def _build_header_text(manager, column_name, spec):
+    suffix = _header_suffix_for_spec(spec)
+    data_type = spec.get("data_type") or ""
+    compact_dtype = compact_data_type_label(manager, data_type)
+    if compact_dtype:
+        return f"{column_name}{suffix}\n{compact_dtype}"
+    return f"{column_name}{suffix}"
+
+
+def _set_row_action_state(target_tab, is_enabled):
+    manager = getattr(target_tab, "_results_manager", None)
+    if manager:
+        manager.sync_row_action_state(target_tab)
+        return
+
+    for object_name in ("add_row_btn", "save_row_btn", "delete_row_btn"):
+        button = target_tab.findChild(QPushButton, object_name)
+        if button:
+            button.setEnabled(bool(is_enabled))
+
+
 def toggle_table_search(manager):
     tab = manager.tab_widget.currentWidget()
     if not tab:
@@ -178,6 +213,7 @@ def handle_query_result(
     query,
     results,
     columns,
+    column_specs,
     row_count,
     elapsed_time,
     is_select_query,
@@ -283,24 +319,23 @@ def handle_query_result(
     if not is_structural and (is_select or (columns and len(columns) > 0)):
         final_tab_index = 0
         output_state["column_names"] = list(columns)
+        output_state["column_specs"] = list(column_specs)
         output_state["modified_coords"] = set()
         output_state["new_row_index"] = None
 
-        match = re.search(r"FROM\s+([\"\[\]\w\.]+)", query, re.IGNORECASE)
-        if match:
-            extracted_table = match.group(1)
-            output_state["table_name"] = extracted_table.replace('"', "").replace("[", "").replace("]", "")
-            if "." in output_state["table_name"]:
-                parts = output_state["table_name"].split(".")
-                output_state["schema_name"] = parts[0]
-                output_state["real_table_name"] = parts[1]
-            else:
-                output_state["schema_name"] = None
-                output_state["real_table_name"] = output_state["table_name"]
-        else:
-            output_state["table_name"] = None
-            output_state["real_table_name"] = None
-            output_state["schema_name"] = None
+        table_context = resolve_writable_table_context(query)
+        output_state["table_name"] = None
+        output_state["qualified_table_name"] = None
+        output_state["real_table_name"] = None
+        output_state["schema_name"] = None
+        output_state["is_editable"] = False
+
+        if table_context:
+            output_state["table_name"] = table_context["table_name"]
+            output_state["qualified_table_name"] = table_context["qualified_table_name"]
+            output_state["real_table_name"] = table_context["real_table_name"]
+            output_state["schema_name"] = table_context["schema_name"]
+            output_state["is_editable"] = True
 
         current_offset = getattr(target_tab, "current_offset", 0)
         if rows_info_label:
@@ -318,32 +353,22 @@ def handle_query_result(
         model = QStandardItemModel(table_view)
         model.setColumnCount(len(columns))
 
-        headers = [str(col) for col in columns]
-        pk_indices = []
-        if columns and any(x in columns[0].lower() for x in ["id", "uuid", "pk"]):
+        pk_indices = [idx for idx, spec in enumerate(column_specs) if spec.get("pk")]
+        if not pk_indices and columns and any(x in columns[0].lower() for x in ["id", "uuid", "pk"]):
             pk_indices.append(0)
 
-        for col_idx, header_text in enumerate(headers):
+        for col_idx, col_name in enumerate(columns):
+            spec = column_specs[col_idx] if col_idx < len(column_specs) else {}
+            dtype = spec.get("data_type") or ""
+            header_text = _build_header_text(manager, str(col_name), spec)
             model.setHeaderData(col_idx, Qt.Orientation.Horizontal, header_text)
+            if dtype:
+                model.setHeaderData(col_idx, Qt.Orientation.Horizontal, str(dtype), Qt.ItemDataRole.ToolTipRole)
 
         total_rows = len(results)
         profile_initial_rows, profile_batch_rows = _resolve_chunk_profile(total_rows, manager)
         initial_rows = min(total_rows, profile_initial_rows)
         _append_rows_batch(model, results, columns, pk_indices, 0, initial_rows)
-
-        pending_table_name = output_state.get("real_table_name")
-        if pending_table_name and hasattr(manager, "main_window"):
-            metadata_signals = MetadataSignals()
-            metadata_signals.finished.connect(partial(manager.on_metadata_ready, model))
-            metadata_signals.error.connect(partial(manager.on_metadata_error, target_tab))
-
-            worker = FetchMetadataWorker(
-                conn_data,
-                pending_table_name,
-                columns,
-                metadata_signals,
-            )
-            manager.main_window.thread_pool.start(worker)
 
         proxy_model = output_state.get("cached_proxy_model")
         if proxy_model is None:
@@ -354,11 +379,16 @@ def handle_query_result(
 
         proxy_model.setSourceModel(model)
         table_view.setModel(proxy_model)
+        if output_state["is_editable"]:
+            table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
+        else:
+            table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         search_box = target_tab.findChild(QLineEdit, "table_search_box")
         if search_box and search_box.text():
             proxy_model.setFilterFixedString(search_box.text())
 
         table_view.setProperty("output_state", output_state)
+        _set_row_action_state(target_tab, output_state["is_editable"])
         current_output_index = output_tab_index
         if current_output_index is None:
             current_output_index = resolved_output_index
@@ -439,6 +469,14 @@ def handle_query_result(
         final_tab_index = 1
 
         table_view.setModel(QStandardItemModel(table_view))
+        table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        output_state["table_name"] = None
+        output_state["qualified_table_name"] = None
+        output_state["real_table_name"] = None
+        output_state["schema_name"] = None
+        output_state["is_editable"] = False
+        table_view.setProperty("output_state", output_state)
+        _set_row_action_state(target_tab, False)
         should_refresh_tree = False
 
         def format_time_pgadmin(s):
@@ -518,7 +556,8 @@ def handle_cell_edit(manager, item, tab, table_view=None):
         return
 
     orig_val = edit_data.get("orig_val")
-    new_val = item.text()
+    new_val = item.data(Qt.ItemDataRole.EditRole)
+    new_val = "" if new_val is None else str(new_val)
 
     if table_view is None:
         table_view = manager._get_result_table_for_tab(tab)
@@ -530,9 +569,7 @@ def handle_cell_edit(manager, item, tab, table_view=None):
         modified_coords = set()
         output_state["modified_coords"] = modified_coords
 
-    val_changed = str(orig_val) != str(new_val)
-    if str(orig_val) == "None" and new_val == "":
-        val_changed = False
+    val_changed = not values_equal_for_editor(orig_val, new_val)
 
     row, col = item.row(), item.column()
 
@@ -546,38 +583,6 @@ def handle_cell_edit(manager, item, tab, table_view=None):
             modified_coords.remove((row, col))
 
     table_view.setProperty("output_state", output_state)
-
-
-def on_metadata_ready(manager, model, metadata_dict, original_columns, table_name):
-    try:
-        if not model:
-            return
-
-        pk_indices = []
-
-        for idx, col in enumerate(original_columns):
-            col_lower = col.lower()
-            meta = metadata_dict.get(col_lower, {})
-
-            suffix = ""
-            if meta.get("pk"):
-                if meta.get("is_serial"):
-                    suffix = " [Serial PK]"
-                else:
-                    suffix = " [PK]"
-                pk_indices.append(idx)
-            elif meta.get("nullable") is False:
-                suffix = " *"
-
-            data_type = meta.get("data_type", "")
-            compact_type = compact_data_type_label(manager, data_type)
-            header_text = f"{col}{suffix}\n{compact_type}" if compact_type else f"{col}{suffix}"
-            model.setHeaderData(idx, Qt.Orientation.Horizontal, header_text)
-            if data_type:
-                model.setHeaderData(idx, Qt.Orientation.Horizontal, str(data_type), Qt.ItemDataRole.ToolTipRole)
-
-    except Exception as e:
-        print(f"Error updating metadata headers: {e}")
 
 
 def compact_data_type_label(manager, data_type):
@@ -608,7 +613,3 @@ def compact_data_type_label(manager, data_type):
         compact = f"{compact[:19]}…"
 
     return compact
-
-
-def on_metadata_error(manager, target_tab, error_message):
-    print(f"Metadata fetch error for {target_tab}: {error_message}")

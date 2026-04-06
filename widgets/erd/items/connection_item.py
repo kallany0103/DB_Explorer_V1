@@ -1,6 +1,6 @@
 import math
 from PySide6.QtWidgets import QGraphicsPathItem, QGraphicsItem, QStyle, QMenu
-from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath
+from PySide6.QtGui import QPen, QBrush, QColor, QPainterPath
 from PySide6.QtCore import Qt, QPointF
 from widgets.erd.routing import ERDConnectionPathPlanner
 from widgets.erd.commands import ChangeRelationTypeCommand
