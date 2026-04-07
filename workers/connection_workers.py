@@ -1,0 +1,92 @@
+import os
+import sqlite3 as sqlite
+
+import psycopg2
+from PySide6.QtCore import QObject, QRunnable, Signal
+
+
+class SchemaWorkerSignals(QObject):
+    finished = Signal(dict)
+    error = Signal(str)
+
+
+class SQLiteSchemaWorker(QRunnable):
+    def __init__(self, conn_data):
+        super().__init__()
+        self.conn_data = conn_data
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        db_path = self.conn_data.get("db_path")
+        if not db_path or not os.path.exists(db_path):
+            self.signals.error.emit(f"SQLite DB path not found: {db_path}")
+            return
+
+        conn = None
+        try:
+            conn = sqlite.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name, type FROM sqlite_master "
+                "WHERE type IN ('table', 'view') "
+                "AND name NOT LIKE 'sqlite_%' "
+                "ORDER BY type, name;"
+            )
+            rows = cursor.fetchall()
+            self.signals.finished.emit({"conn_data": self.conn_data, "rows": rows})
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
+        finally:
+            if conn:
+                conn.close()
+
+
+class PostgresSchemaWorker(QRunnable):
+    def __init__(self, conn_data):
+        super().__init__()
+        self.conn_data = conn_data
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        conn = None
+        try:
+            conn = psycopg2.connect(
+                host=self.conn_data["host"],
+                database=self.conn_data["database"],
+                user=self.conn_data["user"],
+                password=self.conn_data["password"],
+                port=int(self.conn_data["port"]),
+            )
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT schema_name FROM information_schema.schemata "
+                "WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') "
+                "ORDER BY schema_name;"
+            )
+            schemas = [row[0] for row in cursor.fetchall()]
+            self.signals.finished.emit({"conn_data": self.conn_data, "schemas": schemas})
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
+        finally:
+            if conn:
+                conn.close()
+
+
+class CsvSchemaWorker(QRunnable):
+    def __init__(self, conn_data):
+        super().__init__()
+        self.conn_data = conn_data
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        folder_path = self.conn_data.get("db_path")
+        if not folder_path or not os.path.exists(folder_path):
+            self.signals.error.emit(f"CSV folder not found: {folder_path}")
+            return
+
+        try:
+            csv_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".csv")]
+            csv_files.sort()
+            self.signals.finished.emit({"conn_data": self.conn_data, "files": csv_files})
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
