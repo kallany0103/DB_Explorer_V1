@@ -36,6 +36,12 @@ from widgets.connection_manager.scripting import ScriptGenerator
 from widgets.connection_manager.actions import ConnectionActions
 from widgets.connection_manager.dialogs import ConnectionDialogs
 from widgets.connection_manager.context_menus import ContextMenuHandler
+from widgets.connection_manager.spinner import ConnectionSpinner
+from workers.connection_workers import (
+    CsvSchemaWorker,
+    PostgresSchemaWorker,
+    SQLiteSchemaWorker,
+)
 
 
 class ConnectionManager(QWidget):
@@ -57,6 +63,9 @@ class ConnectionManager(QWidget):
         self.connection_actions = ConnectionActions(self)
         self.connection_dialogs = ConnectionDialogs(self)
         self.context_menu_handler = ContextMenuHandler(self)
+        self._spinner = ConnectionSpinner(self)
+        self._active_schema_workers = []
+        self._schema_load_token = 0
 
         self.erd_icon_key = "fa6s.sitemap"
         self.erd_icon_fallback_key = "fa5s.project-diagram"
@@ -302,13 +311,16 @@ class ConnectionManager(QWidget):
         connection_type_name = connection_type.text().lower()
         if "postgres" in connection_type_name and conn_data.get("host"):
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
-            self.load_postgres_schema(conn_data)
+            worker = PostgresSchemaWorker(conn_data)
+            self._start_schema_load(item, worker, self.schema_loader.populate_postgres_schema)
         elif "sqlite" in connection_type_name and conn_data.get("db_path"):
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
-            self.load_sqlite_schema(conn_data)
+            worker = SQLiteSchemaWorker(conn_data)
+            self._start_schema_load(item, worker, self.schema_loader.populate_sqlite_schema)
         elif "csv" in connection_type_name and conn_data.get("db_path"):
             self.status.showMessage(f"Loading CSV folder for {conn_data.get('name')}...", 3000)
-            self.load_csv_schema(conn_data)
+            worker = CsvSchemaWorker(conn_data)
+            self._start_schema_load(item, worker, self.schema_loader.populate_csv_schema)
         elif "servicenow" in connection_type_name:
             self.status.showMessage(f"Loading ServiceNow schema for {conn_data.get('name')}...", 3000)
             self.load_servicenow_schema(conn_data)
@@ -317,6 +329,38 @@ class ConnectionManager(QWidget):
             QMessageBox.information(self, "Not Supported", "Connecting to Oracle databases is not supported in this version.")
         else:
             self.status.showMessage("Unknown connection type.", 3000)
+
+    def _start_schema_load(self, item, worker, populate_fn):
+        self._schema_load_token += 1
+        current_token = self._schema_load_token
+        self._spinner.start(item)
+        self._active_schema_workers.append(worker)
+
+        def _remove_worker():
+            if worker in self._active_schema_workers:
+                self._active_schema_workers.remove(worker)
+
+        def on_finished(data):
+            _remove_worker()
+            if current_token == self._schema_load_token:
+                self._spinner.stop()
+                self.schema_tree.repaint()
+                try:
+                    populate_fn(data)
+                except Exception as exc:
+                    self.status.showMessage(f"Error populating schema: {exc}", 5000)
+                    self.show_error_popup(f"Failed to populate schema:\n{exc}")
+
+        def on_error(message):
+            _remove_worker()
+            if current_token == self._schema_load_token:
+                self._spinner.stop()
+            self.status.showMessage(f"Error loading schema: {message}", 5000)
+            self.show_error_popup(f"Failed to load schema:\n{message}")
+
+        worker.signals.finished.connect(on_finished)
+        worker.signals.error.connect(on_error)
+        self.thread_pool.start(worker)
 
     def item_double_clicked(self, proxy_index: QModelIndex):
         source_index = self.proxy_model.mapToSource(proxy_index)

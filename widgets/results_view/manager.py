@@ -15,7 +15,7 @@ from PySide6.QtCore import (
     Qt, QObject, QEvent
 )
 from PySide6.QtGui import (
-    QAction,QIcon
+    QAction
 )
 
 from db.query_context import resolve_writable_table_context
