@@ -119,7 +119,7 @@ class ExportDialog(QDialog):
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowSystemMenuHint)
+
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         
         main_layout = QVBoxLayout(self)

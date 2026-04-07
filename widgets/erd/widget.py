@@ -38,7 +38,7 @@ class SQLPreviewDialog(QDialog):
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowSystemMenuHint)
+
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.resize(800, 600)
         
