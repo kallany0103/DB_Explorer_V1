@@ -24,13 +24,6 @@ from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (
     QWidget,
     QMessageBox,
-    QDialog,
-    QVBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QHBoxLayout,
-    QFormLayout,
 )
 
 import db
@@ -269,7 +262,7 @@ class ConnectionManager(QWidget):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.CustomizeWindowHint)
-        msg.setWindowFlags(msg.windowFlags() & ~Qt.WindowType.WindowSystemMenuHint)
+
         msg.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         reply = msg.exec()
         if reply == QMessageBox.StandardButton.Yes:
@@ -438,69 +431,5 @@ class ConnectionManager(QWidget):
             }
             """
 
-    def add_connection_type_dialog(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("New Connection Type")
-        dialog.resize(460, 260)
-        dialog.setWindowFlags(
-            Qt.WindowType.Dialog | 
-            Qt.WindowType.WindowTitleHint | 
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.CustomizeWindowHint
-        )
-        dialog.setFixedSize(460, 300)
-        dialog.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        dialog.setStyleSheet(self._get_dialog_style())
-
-        dialog_layout = QVBoxLayout(dialog)
-        dialog_layout.setContentsMargins(22, 20, 22, 18)
-        dialog_layout.setSpacing(14)
-
-        title_label = QLabel("Add Connection Type")
-        title_label.setObjectName("dialogTitle")
-        subtitle_label = QLabel("Define a new category for your database connections.")
-        subtitle_label.setObjectName("dialogSubtitle")
-        
-        Name_Input = QLineEdit()
-        Name_Input.setPlaceholderText("Display Name")
-        
-        Type_Input = QLineEdit()
-        Type_Input.setPlaceholderText("Type (e.g. SQLITE)")
-
-        save_btn = QPushButton("Add Type")
-        save_btn.setObjectName("primaryButton")
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
-        
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(save_btn)
-
-        form = QFormLayout()
-        form.addRow("Name:", Name_Input)
-        form.addRow("Type:", Type_Input)
-
-        dialog_layout.addWidget(title_label)
-        dialog_layout.addWidget(subtitle_label)
-        dialog_layout.addLayout(form)
-        dialog_layout.addLayout(button_layout)
-
-        cancel_btn.clicked.connect(dialog.reject)
-        
-        def _on_save():
-            Name = Name_Input.text().strip()
-            Type = Type_Input.text().strip().upper()
-            if not Name or not Type:
-                QMessageBox.warning(dialog, "Missing Info", "Both Name and Code are required.")
-                return
-            try:
-                db.add_connection_type(Name, Type)
-                dialog.accept()
-                self.load_data()
-                self.status.showMessage(f"Connection type '{Name}' added.", 3000)
-            except Exception as e:
-                QMessageBox.critical(dialog, "Error", f"Failed to add connection type:\n{e}")
-
-        save_btn.clicked.connect(_on_save)
-        dialog.exec()
+    def add_connection_flow(self):
+        self.connection_dialogs.add_new_connection_flow()

@@ -361,7 +361,7 @@ def add_tab(manager):
             background: #e9eef5;
         }
     """
-    copy_history_btn = QPushButton(qta.icon("fa5.copy", color="#555555"), "Copy")
+    copy_history_btn = QPushButton(qta.icon("fa5s.copy", color="#555555"), "Copy")
     copy_to_edit_btn = QPushButton(qta.icon("fa5s.external-link-alt", color="#555555"), "Copy to Editor")
     remove_history_btn = QPushButton("Remove")
     remove_all_history_btn = QPushButton("Remove All")

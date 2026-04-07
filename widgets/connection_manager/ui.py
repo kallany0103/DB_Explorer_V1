@@ -104,7 +104,7 @@ class ConnectionUI:
         self.add_new_type_btn = QToolButton()
         self.add_new_type_btn.setFixedSize(24, 24)
         self.add_new_type_btn.setIconSize(QSize(16, 16))
-        self.add_new_type_btn.setToolTip("Add New Connection Type")
+        self.add_new_type_btn.setToolTip("Add New Connection")
         self.add_new_type_btn.setIcon(QIcon("assets/plus.svg"))
         self.add_new_type_btn.setStyleSheet("""
             QToolButton {
@@ -119,7 +119,7 @@ class ConnectionUI:
                 background-color: #B8BEC6;
             }
         """)
-        self.add_new_type_btn.clicked.connect(self.manager.add_connection_type_dialog)
+        self.add_new_type_btn.clicked.connect(self.manager.add_connection_flow)
 
         object_explorer_header_layout.addStretch()
         object_explorer_header_layout.addWidget(self.manager.explorer_search_container)

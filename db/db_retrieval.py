@@ -129,3 +129,19 @@ def normalize_type(raw_type: str) -> str:
             return t.replace(key, mapping[key]).upper()
             
     return raw_type.upper()
+
+def get_connection_types():
+    """Returns all available connection types."""
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, code, name FROM usf_connection_types ORDER BY name")
+        rows = c.fetchall()
+        return [{"id": r[0], "code": r[1], "name": r[2]} for r in rows]
+
+def get_groups_by_type(type_id):
+    """Returns all connection groups for a specific connection type."""
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, name FROM usf_connection_groups WHERE connection_type_id = ? ORDER BY name", (type_id,))
+        rows = c.fetchall()
+        return [{"id": r[0], "name": r[1]} for r in rows]

@@ -19,7 +19,7 @@ class CreateViewDialog(QDialog):
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowSystemMenuHint)
+
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         
         layout = QVBoxLayout(self)

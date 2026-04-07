@@ -24,7 +24,7 @@ class ColumnEditDialog(QDialog):
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowSystemMenuHint)
+
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.setMinimumWidth(400)
 
@@ -98,7 +98,7 @@ class TablePropertiesDialog(QDialog):
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowSystemMenuHint)
+
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.setMinimumSize(850, 600)
 

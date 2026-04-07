@@ -103,12 +103,13 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, db_path = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, db_path = ?
                 WHERE id = ?
                 """,
                 (
                     data.get("name"),
                     data.get("short_name"),
+                    data.get("connection_group_id"),
                     data.get("db_path"),
                     data.get("id")
                 )
@@ -119,12 +120,13 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, instance_url = ?, "user" = ?, password = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, instance_url = ?, "user" = ?, password = ?
                 WHERE id = ?
                 """,
                 (
                     data.get("name"),
                     data.get("short_name"),
+                    data.get("connection_group_id"),
                     data.get("instance_url"),
                     data.get("user"),
                     data.get("password"),
@@ -137,12 +139,13 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?
                 WHERE id = ?
                 """,
                 (
                     data.get("name"),
                     data.get("short_name"),
+                    data.get("connection_group_id"),
                     data.get("host"),
                     data.get("database"),
                     data.get("user"),

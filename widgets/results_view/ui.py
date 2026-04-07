@@ -130,7 +130,7 @@ def create_results_ui(manager, tab_content):
     paste_btn.clicked.connect(manager.paste_to_editor)
 
     delete_row_btn = QPushButton()
-    delete_row_btn.setIcon(qta.icon("fa5.trash-alt", color="#dc3545"))
+    delete_row_btn.setIcon(qta.icon("fa5s.trash-alt", color="#dc3545"))
     delete_row_btn.setIconSize(QSize(16, 16))
     delete_row_btn.setFixedSize(30, 30)
     delete_row_btn.setToolTip("Delete selected row(s)")
