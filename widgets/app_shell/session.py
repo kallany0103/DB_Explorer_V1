@@ -83,7 +83,15 @@ def restore_main_window_session(main_window, session_file):
                 rows_limit_combo.blockSignals(True)
                 limit_str = str(limit_val) if limit_val > 0 else "No Limit"
                 if rows_limit_combo.findText(limit_str) == -1:
-                    rows_limit_combo.addItem(limit_str)
+                    insert_idx = 1
+                    for i in range(1, rows_limit_combo.count()):
+                        try:
+                            if limit_val < int(rows_limit_combo.itemText(i)):
+                                break
+                        except ValueError:
+                            pass
+                        insert_idx += 1
+                    rows_limit_combo.insertItem(insert_idx, limit_str)
                 rows_limit_combo.setCurrentText(limit_str)
                 rows_limit_combo.blockSignals(False)
 

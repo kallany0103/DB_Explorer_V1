@@ -110,19 +110,20 @@ class TreeHelpers:
         icon_path = icon_map.get(code, "assets/database.svg")
         item.setIcon(QIcon(icon_path))
 
+
     def save_tree_expansion_state(self):
         saved_paths = []
-        model = self.manager.model
+        proxy = self.manager.proxy_model
         tree = self.manager.tree
 
-        for row in range(model.rowCount()):
-            type_index = model.index(row, 0)
-            if tree.isExpanded(type_index):
-                type_name = type_index.data(Qt.ItemDataRole.DisplayRole)
+        for row in range(proxy.rowCount()):
+            proxy_index = proxy.index(row, 0)
+            if tree.isExpanded(proxy_index):
+                type_name = proxy_index.data(Qt.ItemDataRole.DisplayRole)
                 saved_paths.append((type_name, None))
 
-                for group_row in range(model.rowCount(type_index)):
-                    group_index = model.index(group_row, 0, type_index)
+                for group_row in range(proxy.rowCount(proxy_index)):
+                    group_index = proxy.index(group_row, 0, proxy_index)
                     if tree.isExpanded(group_index):
                         group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
                         saved_paths.append((type_name, group_name))
@@ -133,24 +134,27 @@ class TreeHelpers:
         if not hasattr(self.manager, '_saved_tree_paths') or not self.manager._saved_tree_paths:
             return
 
-        model = self.manager.model
+        proxy = self.manager.proxy_model
         tree = self.manager.tree
 
-        for row in range(model.rowCount()):
-            type_index = model.index(row, 0)
-            type_name = type_index.data(Qt.ItemDataRole.DisplayRole)
+        tree.setUpdatesEnabled(False)
+        try:
+            for row in range(proxy.rowCount()):
+                proxy_index = proxy.index(row, 0)
+                type_name = proxy_index.data(Qt.ItemDataRole.DisplayRole)
 
-            if (type_name, None) in self.manager._saved_tree_paths:
-                tree.expand(type_index)
+                if (type_name, None) in self.manager._saved_tree_paths:
+                    tree.expand(proxy_index)
 
-            for group_row in range(model.rowCount(type_index)):
-                group_index = model.index(group_row, 0, type_index)
-                group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
+                    for group_row in range(proxy.rowCount(proxy_index)):
+                        group_index = proxy.index(group_row, 0, proxy_index)
+                        group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
 
-                if (type_name, group_name) in self.manager._saved_tree_paths:
-                    tree.expand(group_index)
-
-        self.manager._saved_tree_paths = []
+                        if (type_name, group_name) in self.manager._saved_tree_paths:
+                            tree.expand(group_index)
+        finally:
+            tree.setUpdatesEnabled(True)
+            self.manager._saved_tree_paths = []
 
     def get_item_depth(self, item):
         depth = 0

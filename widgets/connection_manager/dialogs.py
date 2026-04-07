@@ -256,6 +256,26 @@ class ConnectionDialogs:
     def __init__(self, manager):
         self.manager = manager
 
+    def _reload_and_expand_group(self, parent_item):
+        type_item = parent_item.parent()
+        type_name = type_item.text() if type_item else None
+        group_name = parent_item.text()
+
+        self.manager._save_tree_expansion_state()
+        
+        if type_name and group_name:
+            if not hasattr(self.manager, '_saved_tree_paths'):
+                self.manager._saved_tree_paths = []
+            if (type_name, None) not in self.manager._saved_tree_paths:
+                self.manager._saved_tree_paths.append((type_name, None))
+            if (type_name, group_name) not in self.manager._saved_tree_paths:
+                self.manager._saved_tree_paths.append((type_name, group_name))
+
+        self.manager.load_data()
+        self.manager._restore_tree_expansion_state()
+        self.manager.refresh_all_comboboxes()
+
+
     def show_connection_details(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         if not conn_data:
@@ -596,10 +616,7 @@ class ConnectionDialogs:
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                self.manager.refresh_all_comboboxes()
+                self._reload_and_expand_group(parent_item)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save PostgreSQL connection:\n{e}")
 
@@ -614,10 +631,7 @@ class ConnectionDialogs:
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                self.manager.refresh_all_comboboxes()
+                self._reload_and_expand_group(parent_item)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save SQLite connection:\n{e}")
 
@@ -632,10 +646,7 @@ class ConnectionDialogs:
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                self.manager.refresh_all_comboboxes()
+                self._reload_and_expand_group(parent_item)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save Oracle connection:\n{e}")
 
@@ -727,10 +738,7 @@ class ConnectionDialogs:
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                self.manager.refresh_all_comboboxes()
+                self._reload_and_expand_group(parent_item)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save ServiceNow connection:\n{e}")
 
@@ -767,10 +775,7 @@ class ConnectionDialogs:
             data = dialog.getData()
             try:
                 db.add_connection(data, connection_group_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                self.manager.refresh_all_comboboxes()
+                self._reload_and_expand_group(parent_item)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save CSV connection:\n{e}")
 

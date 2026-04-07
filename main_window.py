@@ -28,11 +28,6 @@ from widgets.app_shell import (
 )
 
 
-
-
-
-
-
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
     def __init__(self):
