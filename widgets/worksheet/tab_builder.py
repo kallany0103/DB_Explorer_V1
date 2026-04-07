@@ -133,7 +133,8 @@ def add_tab(manager):
 
     edit_btn = QToolButton()
     edit_btn.setText("Edit")
-    edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+    edit_btn.setIcon(qta.icon("fa5s.edit"))
+    edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     edit_btn.setFixedHeight(30)
     edit_btn.setFixedWidth(85)
     edit_btn.setStyleSheet(
@@ -165,8 +166,11 @@ def add_tab(manager):
     def add_menu_action(text, shortcut=None, icon=None, func=None):
         action = QAction(text, manager)
         if icon:
-            action.setIcon(QIcon(icon))
-            action.setIconVisibleInMenu(False)
+            if isinstance(icon, str):
+                action.setIcon(QIcon(icon))
+            else:
+                action.setIcon(icon)
+            action.setIconVisibleInMenu(True)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         if func:
@@ -174,14 +178,23 @@ def add_tab(manager):
         edit_menu.addAction(action)
         return action
 
+    add_menu_action("Undo", "Ctrl+Z", qta.icon("fa5s.undo", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().undo())
+    add_menu_action("Redo", "Ctrl+Y", qta.icon("fa5s.redo", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().redo())
+    edit_menu.addSeparator()
+    add_menu_action("Cut", "Ctrl+X", qta.icon("fa5s.cut", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().cut())
+    add_menu_action("Copy", "Ctrl+C", qta.icon("fa5s.copy", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().copy())
+    add_menu_action("Paste", "Ctrl+V", qta.icon("fa5s.paste", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().paste())
+    add_menu_action("Select All", "Ctrl+A", None, lambda: manager._get_current_editor() and manager._get_current_editor().selectAll())
+    edit_menu.addSeparator()
+
     add_menu_action("Find", "Ctrl+F", "assets/search.svg", lambda: manager.open_find_dialog(False))
     add_menu_action("Replace", "Ctrl+Alt+F", "assets/refresh.svg", lambda: manager.open_find_dialog(True))
-    add_menu_action("Go to Line/Column", "Ctrl+L", None, manager.go_to_line)
+    add_menu_action("Go to Line/Column", "Ctrl+L", qta.icon("fa5s.arrow-right", color="#555"), manager.go_to_line)
     edit_menu.addSeparator()
-    add_menu_action("Indent Selection", "Tab", None, lambda: manager._get_current_editor() and manager._get_current_editor().indent_selection())
-    add_menu_action("Unindent Selection", "Shift+Tab", None, lambda: manager._get_current_editor() and manager._get_current_editor().unindent_selection())
-    add_menu_action("Toggle Comment", "Ctrl+/", None, lambda: manager._get_current_editor() and manager._get_current_editor().toggle_comment())
-    add_menu_action("Toggle Case of Selected Text", "Ctrl+Shift+U", None, lambda: manager._get_current_editor() and manager._get_current_editor().toggle_case())
+    add_menu_action("Indent Selection", "Tab", qta.icon("fa5s.indent", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().indent_selection())
+    add_menu_action("Unindent Selection", "Shift+Tab", qta.icon("fa5s.outdent", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().unindent_selection())
+    add_menu_action("Toggle Comment", "Ctrl+/", qta.icon("fa5s.comment-slash", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().toggle_comment())
+    add_menu_action("Toggle Case of Selected Text", "Ctrl+Shift+U", qta.icon("fa5s.font", color="#555"), lambda: manager._get_current_editor() and manager._get_current_editor().toggle_case())
     edit_menu.addSeparator()
     add_menu_action("Clear Query", "Ctrl+Alt+L", "assets/delete_icon.png", manager.clear_query_text)
     add_menu_action("Format SQL", "Ctrl+K", "assets/format_icon.png", manager.format_sql_text)
@@ -204,7 +217,7 @@ def add_tab(manager):
     rows_limit_combo = QComboBox()
     rows_limit_combo.setObjectName("rows_limit_combo")
     rows_limit_combo.setEditable(False)
-    rows_limit_combo.addItems(["No Limit", "1000", "500", "100"])
+    rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
     rows_limit_combo.setCurrentText("No Limit")
     rows_limit_combo.setFixedWidth(90)
     rows_limit_combo.setFixedHeight(30)

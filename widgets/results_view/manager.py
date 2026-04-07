@@ -9,13 +9,13 @@ from PySide6.QtWidgets import (
     QTableView, QMessageBox, QMenu, QComboBox,
     QDialog, QToolButton, QStackedWidget,
     QWidget, QLabel, QPushButton, QTextEdit,
-    QFormLayout, QSpinBox, QVBoxLayout, QHBoxLayout,
+    QFormLayout, QSpinBox, QVBoxLayout, QHBoxLayout
 )
 from PySide6.QtCore import (
     Qt, QObject, QEvent
 )
 from PySide6.QtGui import (
-    QAction
+    QAction,QIcon
 )
 
 from db.query_context import resolve_writable_table_context
@@ -527,8 +527,9 @@ class ResultsManager(QObject):
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowMinMaxButtonsHint)
+        # dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowMinMaxButtonsHint)
         dialog.setFixedSize(340, 160)
+        # dialog.setWindowIcon(QIcon()) 
         
         # Apply the connection dialog styles
         dialog.setStyleSheet("""
@@ -635,9 +636,17 @@ class ResultsManager(QObject):
                 rows_limit_combo.blockSignals(True)
                 limit_str = str(new_limit) if new_limit > 0 else "No Limit"
                 
-                # If custom limit not in the list, add it
+                # If custom limit not in the list, add it numerically
                 if rows_limit_combo.findText(limit_str) == -1:
-                    rows_limit_combo.addItem(limit_str)
+                    insert_idx = 1
+                    for i in range(1, rows_limit_combo.count()):
+                        try:
+                            if new_limit < int(rows_limit_combo.itemText(i)):
+                                break
+                        except ValueError:
+                            pass
+                        insert_idx += 1
+                    rows_limit_combo.insertItem(insert_idx, limit_str)
                 
                 rows_limit_combo.setCurrentText(limit_str)
                 rows_limit_combo.blockSignals(False)
