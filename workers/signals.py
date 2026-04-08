@@ -55,40 +55,55 @@ def emit_process_started(signals, process_id, data):
     normalized_process_id = _as_str(process_id or normalized_data.get("pid"))
     payload = dict(normalized_data)
     payload["pid"] = normalized_process_id
-    signals.started.emit(normalized_process_id, payload)
+    try:
+        signals.started.emit(normalized_process_id, payload)
+    except RuntimeError:
+        pass
 
 
 def emit_process_finished(signals, process_id, message, time_taken, row_count):
-    signals.finished.emit(
-        _as_str(process_id),
-        _as_str(message),
-        _as_float(time_taken),
-        _as_int(row_count),
-    )
+    try:
+        signals.finished.emit(
+            _as_str(process_id),
+            _as_str(message),
+            _as_float(time_taken),
+            _as_int(row_count),
+        )
+    except RuntimeError:
+        pass
 
 
 def emit_process_error(signals, process_id, error_message):
-    signals.error.emit(_as_str(process_id), _as_str(error_message))
+    try:
+        signals.error.emit(_as_str(process_id), _as_str(error_message))
+    except RuntimeError:
+        pass
 
 
 def emit_query_finished(signals, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query):
-    signals.finished.emit(
-        _as_dict(conn_data),
-        _as_str(query),
-        _as_list(results),
-        _as_list(columns),
-        _as_list(column_specs),
-        _as_int(row_count),
-        _as_float(elapsed_time),
-        _as_bool(is_select_query),
-    )
+    try:
+        signals.finished.emit(
+            _as_dict(conn_data),
+            _as_str(query),
+            _as_list(results),
+            _as_list(columns),
+            _as_list(column_specs),
+            _as_int(row_count),
+            _as_float(elapsed_time),
+            _as_bool(is_select_query),
+        )
+    except RuntimeError:
+        pass
 
 
 def emit_query_error(signals, conn_data, query, row_count, elapsed_time, error_message):
-    signals.error.emit(
-        _as_dict(conn_data),
-        _as_str(query),
-        _as_int(row_count),
-        _as_float(elapsed_time),
-        _as_str(error_message),
-    )
+    try:
+        signals.error.emit(
+            _as_dict(conn_data),
+            _as_str(query),
+            _as_int(row_count),
+            _as_float(elapsed_time),
+            _as_str(error_message),
+        )
+    except RuntimeError:
+        pass

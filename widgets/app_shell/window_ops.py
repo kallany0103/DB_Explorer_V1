@@ -25,17 +25,18 @@ def close_all_tabs(main_window):
 
 
 def close_tab(main_window, index):
+    wm = main_window.worksheet_manager
     tab = main_window.tab_widget.widget(index)
-    if tab in main_window.running_queries:
-        main_window.running_queries[tab].cancel()
-        del main_window.running_queries[tab]
-        if not main_window.running_queries:
+    if tab in wm.running_queries:
+        wm.running_queries[tab].cancel()
+        del wm.running_queries[tab]
+        if not wm.running_queries:
             main_window.cancel_action.setEnabled(False)
-    if tab in main_window.tab_timers:
-        main_window.tab_timers[tab]["timer"].stop()
-        if "timeout_timer" in main_window.tab_timers[tab]:
-            main_window.tab_timers[tab]["timeout_timer"].stop()
-        del main_window.tab_timers[tab]
+    if tab in wm.tab_timers:
+        wm.tab_timers[tab]["timer"].stop()
+        if "timeout_timer" in wm.tab_timers[tab]:
+            wm.tab_timers[tab]["timeout_timer"].stop()
+        del wm.tab_timers[tab]
     if main_window.tab_widget.count() > 1:
         main_window.tab_widget.removeTab(index)
         main_window.renumber_tabs()

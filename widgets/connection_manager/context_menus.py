@@ -106,7 +106,7 @@ class ContextMenuHandler:
             menu.addAction(delete_action)
 
             menu.addSeparator()
-            erd_action = QAction("Generate ERD", self.manager)
+            erd_action = QAction("ERD for Database", self.manager)
             erd_action.triggered.connect(lambda: self.manager.generate_erd(item))
             menu.addAction(erd_action)
 
@@ -191,9 +191,9 @@ class ContextMenuHandler:
             menu.addAction(properties_action)
 
             menu.addSeparator()
-            # erd_action = QAction("Generate ERD", self.manager)
-            # erd_action.triggered.connect(lambda: self.manager.generate_erd_for_item(item_data, display_name))
-            # menu.addAction(erd_action)
+            erd_action = QAction("ERD for Table", self.manager)
+            erd_action.triggered.connect(lambda: self.manager.generate_erd_for_item(item_data, display_name))
+            menu.addAction(erd_action)
 
             menu.addSeparator()
             scripts_menu = menu.addMenu("Scripts")
@@ -303,9 +303,9 @@ class ContextMenuHandler:
                 import_fdw_action.triggered.connect(lambda: self.manager.connection_actions.import_foreign_schema_dialog(item_data))
                 menu.addAction(import_fdw_action)
 
-                # erd_action = QAction("Generate ERD", self.manager)
-                # erd_action.triggered.connect(lambda: self.manager.generate_erd_for_item(item_data, f"Schema: {schema_name}"))
-                # menu.addAction(erd_action)
+                erd_action = QAction("ERD for Schema", self.manager)
+                erd_action.triggered.connect(lambda: self.manager.generate_erd_for_item(item_data, f"Schema: {schema_name}"))
+                menu.addAction(erd_action)
 
                 menu.addSeparator()
 
