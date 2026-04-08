@@ -68,9 +68,11 @@ class PostgresSchemaWorker(QRunnable):
             )
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT schema_name FROM information_schema.schemata "
-                "WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') "
-                "ORDER BY schema_name;"
+                "SELECT nspname FROM pg_namespace "
+                "WHERE nspname NOT LIKE 'pg_temp_%' "
+                "AND nspname NOT LIKE 'pg_toast_temp_%' "
+                "AND nspname != 'information_schema' "
+                "ORDER BY nspname;"
             )
             schemas = [row[0] for row in cursor.fetchall()]
             try:

@@ -345,6 +345,34 @@ class ResultsManager(QObject):
     def handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode="current", output_tab_index=None):
         query_handler.handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode, output_tab_index)
 
+    def add_connection_notification(self, conn_name):
+        from widgets.results_view.notifications import add_connection_event
+        from PySide6.QtWidgets import QTreeView, QStackedWidget, QPushButton, QWidget
+        target_tab = self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+            
+        notif_view = target_tab.findChild(QTreeView, "notification_list_view")
+        if notif_view:
+            add_connection_event(notif_view, conn_name)
+            
+            # Auto switch to Notification tab
+            results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
+            if results_stack:
+                results_stack.setCurrentIndex(2)
+                
+                # Update button states in Header
+                header = target_tab.findChild(QWidget, "resultsHeader")
+                if header:
+                    btns = header.findChildren(QPushButton)
+                    for btn in btns:
+                        if "Notification" in btn.text():
+                            btn.setChecked(True)
+                        elif any(x in btn.text() for x in ["Output", "Message", "Process", "Explain"]):
+                            btn.setChecked(False)
+
+
+
     def handle_cell_edit(self, item, tab, table_view=None):
         query_handler.handle_cell_edit(self, item, tab, table_view)
 

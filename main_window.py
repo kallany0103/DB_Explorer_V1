@@ -4,7 +4,7 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer
 from PySide6.QtGui import QIcon
-from widgets import NotificationManager, ConnectionManager, WorksheetManager, ResultsManager
+from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
@@ -59,10 +59,8 @@ class MainWindow(QMainWindow):
         self._create_actions()
         self._create_menu()
 
-        # 4. Initialize Notification Manager (needed by ConnectionManager)
-        self.notification_manager = NotificationManager(self)
+        # 4. --- Initialize Managers ---
 
-        # 5. --- Initialize Managers ---
         self.connection_manager = ConnectionManager(self)
         self.results_manager = ResultsManager(self)
         self.worksheet_manager = WorksheetManager(self)

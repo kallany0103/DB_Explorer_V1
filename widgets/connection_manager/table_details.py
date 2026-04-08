@@ -15,12 +15,15 @@ class TableDetailsLoader:
 
     def load_tables_on_expand(self, index):
         item = self.manager.schema_model.itemFromIndex(index)
-
-        if not item or (item.rowCount() > 0 and item.child(0).text() != "Loading..."):
+        if not item:
             return
 
         item_data = item.data(Qt.ItemDataRole.UserRole)
         if not item_data:
+            return
+
+        is_group = item_data.get('type') == 'schema_group' or item_data.get('type', '').endswith('_root')
+        if not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
 
         db_type = item_data.get('db_type')
@@ -190,13 +193,14 @@ class TableDetailsLoader:
                 try:
                     cursor = self.manager.pg_conn.cursor()
                     if group_name in ["Tables", "Views", "Foreign Tables"]:
-                        target_type = {
-                            "Tables": "BASE TABLE",
-                            "Views": "VIEW",
-                            "Foreign Tables": "FOREIGN TABLE"
-                        }.get(group_name)
-
-                        cursor.execute("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = %s AND table_type = %s ORDER BY table_name;", (schema_name, target_type))
+                        relkind = {'Tables': 'r', 'Views': 'v', 'Foreign Tables': 'f'}.get(group_name)
+                        cursor.execute("""
+                            SELECT c.relname, %s
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            WHERE n.nspname = %s AND c.relkind = %s
+                            ORDER BY 1;
+                        """, (group_name, schema_name, relkind))
                         tables = cursor.fetchall()
                         for (table_name, table_type) in tables:
                             table_item = QStandardItem(table_name)
