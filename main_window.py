@@ -3,6 +3,7 @@
 #from PyQt6.QtCore import Qt, QSize, QThreadPool, QTimer
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer
+from PySide6.QtGui import QIcon
 from widgets import NotificationManager, ConnectionManager, WorksheetManager, ResultsManager
 from widgets.app_shell import (
     build_main_window_actions,
@@ -35,11 +36,10 @@ class MainWindow(QMainWindow):
         self.SESSION_FILE = "session_state.json"
 
         self.setWindowTitle("Universal SQL Client")
+        self.setWindowIcon(QIcon("assets/sql_icon.svg"))
         self.setGeometry(100, 100, 1200, 800)
 
         self.thread_pool = QThreadPool.globalInstance()
-        self.tab_timers = {}
-        self.running_queries = {}
         self._saved_tree_paths = []
 
         # 1. Initialize Status Bar (needed by managers)
@@ -328,9 +328,35 @@ class MainWindow(QMainWindow):
         
 
     def closeEvent(self, event):
-        """Save session state on close."""
-        save_main_window_session(self, self.SESSION_FILE)
-        event.accept()
+        """Confirm exit and save session state."""
+        active_queries = len(self.worksheet_manager.running_queries)
+        
+        if active_queries > 0:
+            msg = f"There are {active_queries} active queries running.\n\nAre you sure you want to quit and cancel them?"
+        else:
+            msg = "Are you sure you want to exit the application?"
+
+        reply = QMessageBox.question(
+            self, 
+            "Confirm Exit", 
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            save_main_window_session(self, self.SESSION_FILE)
+            
+            # Cancel all running queries before exit
+            for tab, runner in list(self.worksheet_manager.running_queries.items()):
+                try:
+                    runner.cancel()
+                except Exception:
+                    pass
+                    
+            event.accept()
+        else:
+            event.ignore()
 
     def restore_session_state(self):
         """Restore tabs and connections from saved session."""
