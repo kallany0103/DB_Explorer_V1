@@ -24,36 +24,44 @@ class ChangeRelationTypeCommand(QUndoCommand):
         self.new_type = new_type
 
     def undo(self):
-        self.item.relation_type = self.old_type
-        self._update_item()
+        self.item._apply_relation_type(self.old_type)
 
     def redo(self):
-        self.item.relation_type = self.new_type
-        self._update_item()
-
-    def _update_item(self):
-        rel_info = self.item.RELATION_TYPES[self.item.relation_type]
-        self.item.cardinality_label = rel_info['label']
-        self.item.tooltip_text = (
-            f"<b>{self.item.cardinality_label}</b><br/>"
-            f"<code>{self.item.source_item.table_name}.{self.item.source_col}</code> → "
-            f"<code>{self.item.target_item.table_name}.{self.item.target_col}</code>"
-        )
-        self.item.setToolTip(self.item.tooltip_text)
-        self.item.is_unique = self.item.relation_type in ('one-to-one',)
-        self.item.prepareGeometryChange()
-        self.item.update()
+        self.item._apply_relation_type(self.new_type)
 
 class DeleteItemCommand(QUndoCommand):
-    """Records item removal + re-insertion."""
+    """Records connection removal + re-insertion with full undo/redo support.
+
+    Qt's undo framework calls redo() immediately when the command is pushed onto
+    the stack, so the actual scene removal happens inside redo(), not __init__.
+    undo() reverses that by re-adding each connection and restoring the endpoint
+    table's .connections lists so hover-highlights and routing continue to work.
+    """
     def __init__(self, scene, items_to_delete):
-        super().__init__("Delete Items")
+        super().__init__(f"Delete {len(items_to_delete)} Connection(s)")
         self.scene = scene
-        self.items_to_delete = items_to_delete
-        self.connections = [] # We need to handle connections properly if deleting tables
-        
+        # Take a snapshot — the list passed in may be mutated by the caller.
+        self.items_to_delete = list(items_to_delete)
+
     def undo(self):
-        pass
+        """Re-add all deleted connections back to the scene."""
+        for item in self.items_to_delete:
+            self.scene.addItem(item)
+            # Restore this connection in both endpoint tables' lists so that
+            # hover-highlight and anchor/routing logic work correctly.
+            if item not in item.source_item.connections:
+                item.source_item.connections.append(item)
+            if item not in item.target_item.connections:
+                item.target_item.connections.append(item)
+            # Force the path to redraw from current table positions.
+            item.updatePath()
 
     def redo(self):
-        pass
+        """Remove all connections from the scene."""
+        for item in self.items_to_delete:
+            # Clean up endpoint table connection lists first.
+            if item in item.source_item.connections:
+                item.source_item.connections.remove(item)
+            if item in item.target_item.connections:
+                item.target_item.connections.remove(item)
+            self.scene.removeItem(item)
