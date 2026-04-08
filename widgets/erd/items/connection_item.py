@@ -237,32 +237,35 @@ class ERDConnectionItem(QGraphicsPathItem):
             draw_crows_foot(0, 12, 6)
             draw_circle(16)
 
+    def _apply_relation_type(self, type_key):
+        """Applies a relationship type locally and re-renders."""
+        self.relation_type = type_key
+        rel_info = self.RELATION_TYPES[type_key]
+
+        # Update cardinality label and tooltip
+        self.cardinality_label = rel_info['label']
+        self.tooltip_text = (
+            f"<b>{self.cardinality_label}</b><br/>"
+            f"<code>{self.source_item.table_name}.{self.source_col}</code> → "
+            f"<code>{self.target_item.table_name}.{self.target_col}</code>"
+        )
+        self.setToolTip(self.tooltip_text)
+
+        # Update marker drawing logic
+        self.is_unique = type_key in ('one-to-one',)
+        self.prepareGeometryChange()
+        self.update()
+
     def set_relation_type(self, type_key):
         """Changes the relationship type and updates the visual."""
         if type_key not in self.RELATION_TYPES or type_key == self.relation_type:
             return
             
         if self.scene() and hasattr(self.scene(), 'undo_stack'):
-            
             cmd = ChangeRelationTypeCommand(self, self.relation_type, type_key)
             self.scene().undo_stack.push(cmd)
         else:
-            self.relation_type = type_key
-            rel_info = self.RELATION_TYPES[type_key]
-    
-            # Update cardinality label and tooltip
-            self.cardinality_label = rel_info['label']
-            self.tooltip_text = (
-                f"<b>{self.cardinality_label}</b><br/>"
-                f"<code>{self.source_item.table_name}.{self.source_col}</code> → "
-                f"<code>{self.target_item.table_name}.{self.target_col}</code>"
-            )
-            self.setToolTip(self.tooltip_text)
-    
-            # Update marker drawing logic
-            self.is_unique = type_key in ('one-to-one',)
-            self.prepareGeometryChange()
-            self.update()
+            self._apply_relation_type(type_key)
 
     def contextMenuEvent(self, event):
         """Right-click context menu to change relationship type."""

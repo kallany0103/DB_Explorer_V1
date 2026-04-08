@@ -329,6 +329,8 @@ class ERDTableItem(QGraphicsRectItem):
                 conn.updatePath()
             if self.scene() and hasattr(self.scene(), 'update_scene_rect'):
                 self.scene().update_scene_rect()
+            if self.scene() and hasattr(self.scene(), '_router_cache'):
+                self.scene()._router_cache = None
         return super().itemChange(change, value)
 
     def get_column_anchor_pos(self, column_name, side="left"):

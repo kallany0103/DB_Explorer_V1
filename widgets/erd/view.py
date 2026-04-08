@@ -2,6 +2,8 @@
 # from PyQt6.QtCore import pyqtSignal, Qt, QPointF, QTimeLine
 # from PyQt6.QtGui import QPainter, QTransform
 
+import copy
+
 from PySide6.QtWidgets import QGraphicsView, QFrame
 from PySide6.QtCore import Signal, Qt, QPointF, QTimeLine
 from PySide6.QtGui import QPainter, QTransform
@@ -103,7 +105,6 @@ class ERDView(QGraphicsView):
                     moved = True
             
             if moved and hasattr(self.scene(), "undo_stack"):
-                
                 self.scene().undo_stack.beginMacro("Nudge Tables")
                 for item, old_pos, new_pos in items_to_move:
                     cmd = MoveTableCommand(item, old_pos, new_pos)
@@ -125,9 +126,14 @@ class ERDView(QGraphicsView):
             elif event.key() == Qt.Key.Key_0:
                 if self._zoom_anim.state() == QTimeLine.State.Running:
                     self._zoom_anim.stop()
-                self.setTransform(QTransform()) # reset 100%
-                self._target_scale = 1.0
-                self.viewport_changed.emit()
+                # Delegate to parent widget's fit-to-screen if available
+                parent_widget = self.parent()
+                if parent_widget is not None and hasattr(parent_widget, '_zoom_to_fit'):
+                    parent_widget._zoom_to_fit()
+                else:
+                    self.setTransform(QTransform())
+                    self._target_scale = 1.0
+                    self.viewport_changed.emit()
                 event.accept()
                 return
             elif event.key() == Qt.Key.Key_D:
@@ -179,7 +185,7 @@ class ERDView(QGraphicsView):
                 counter += 1
                 
             
-            new_item = ERDTableItem(new_name, item.columns.copy(), item.schema_name)
+            new_item = ERDTableItem(new_name, copy.deepcopy(item.columns), item.schema_name)
             self.scene().addItem(new_item)
             
             full_name = f"{new_item.schema_name or 'public'}.{new_item.table_name}"

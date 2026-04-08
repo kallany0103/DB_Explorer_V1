@@ -16,7 +16,7 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QFileDialog, QMessageBox, QDialog,
-    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit
+    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog
 )
 from PySide6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
 from PySide6.QtCore import Qt, QSize, QRectF, QTimer, QPointF
@@ -67,7 +67,7 @@ class SQLPreviewDialog(QDialog):
 
 
 
-def generate_sql_script(schema_data):
+def generate_sql_script(schema_data, dialect="postgresql"):
     """
     Generates an SQL script for the given schema data.
     Returns the SQL script as a string.
@@ -78,7 +78,10 @@ def generate_sql_script(schema_data):
         quoted = []
         for p in parts:
             p2 = p.replace('"', '""')
-            quoted.append(f'"{p2}"')
+            if dialect == "sqlite":
+                quoted.append(f'"{p2}"')
+            else:
+                quoted.append(f'"{p2}"')
         return '.'.join(quoted)
 
     def quote_default(dval):
@@ -129,18 +132,25 @@ def generate_sql_script(schema_data):
         "-- ===========================================================================",
         "-- ENTERPRISE DATA MODEL EXPORT",
         f"-- Generated on: {gen_time}",
-        "-- Engine: PostgreSQL / Standard SQL Compatibility",
+        f"-- Engine: {dialect.capitalize()} / Standard SQL Compatibility",
         "-- Description: ",
-        "-- ===========================================================================\n",
-        "BEGIN TRANSACTION;\n"
+        "-- ===========================================================================\n"
     ]
+    if dialect in ["postgresql", "sqlite"]:
+        sql_lines.append("BEGIN TRANSACTION;\n")
+    else:
+        sql_lines.append("BEGIN;\n")
 
     for full_table_name in ordered_tables:
         info = schema_data[full_table_name]
-        schema = info.get('schema', 'public')
+        
+        schema = info.get('schema', 'public') if dialect == "postgresql" else None
         table_name = info.get('table', full_table_name.split('.')[-1])
 
-        sql_lines.append(f"CREATE TABLE IF NOT EXISTS {quote_ident(schema)}.{quote_ident(table_name)}")
+        if schema:
+            sql_lines.append(f"CREATE TABLE IF NOT EXISTS {quote_ident(schema)}.{quote_ident(table_name)}")
+        else:
+            sql_lines.append(f"CREATE TABLE IF NOT EXISTS {quote_ident(table_name)}")
         sql_lines.append("(")
 
         col_lines = []
@@ -155,34 +165,54 @@ def generate_sql_script(schema_data):
             if is_pk:
                 pk_cols.append(col_name)       
                 if "int" in data_type:  #need to resolve this better, but for now we assume any int PK is serial
-                    data_type = "serial"
+                    if dialect == "postgresql":
+                        data_type = "serial"
+                    elif dialect == "sqlite":
+                        data_type = "integer" # SQLite requires exactly 'integer' for autoincrement
 
             # Normalize varchar/text types
             if "varchar" in data_type or "varying" in data_type or "text" in data_type:
                 if "(" not in data_type and "text" not in data_type:
                     data_type = "character varying(255)"
-                data_type += ' COLLATE pg_catalog."default"'
+                if dialect == "postgresql":
+                    data_type += ' COLLATE pg_catalog."default"'
 
             col_def = f"    {quote_ident(col_name)} {data_type}"
-            if col.get('nullable') is False or is_pk:
+            
+            # For SQLite inline PK
+            is_sqlite_inline_pk = False
+            if dialect == "sqlite" and is_pk and len([c for c in info['columns'] if c.get('pk')]) == 1 and data_type == "integer":
+                is_sqlite_inline_pk = True
+
+            if col.get('nullable') is False or (is_pk and not is_sqlite_inline_pk):
                 col_def += " NOT NULL"
+                
+            if is_sqlite_inline_pk:
+                col_def += " PRIMARY KEY AUTOINCREMENT"
+
             if 'default' in col and col.get('default') is not None:
                 col_def += f" DEFAULT {quote_default(col['default'])}"
 
             col_lines.append(col_def)
 
         if pk_cols:
-            pk_name = f"{table_name}_pkey"
-            pk_cols_q = ', '.join(quote_ident(c) for c in pk_cols)
-            col_lines.append(f"    CONSTRAINT {quote_ident(pk_name)} PRIMARY KEY ({pk_cols_q})")
+            sqlite_has_inline_pk = (dialect == "sqlite" and len(pk_cols) == 1 and any(c['name'] == pk_cols[0] and "int" in c['type'].lower() for c in info['columns']))
+            if not sqlite_has_inline_pk:
+                pk_name = f"{table_name}_pkey"
+                pk_cols_q = ', '.join(quote_ident(c) for c in pk_cols)
+                col_lines.append(f"    CONSTRAINT {quote_ident(pk_name)} PRIMARY KEY ({pk_cols_q})")
 
         for fk in info.get('foreign_keys', []):
             fk_name = fk.get('name', f"fk_{table_name}_{fk['from']}")
-            target_schema = schema_data.get(fk['table'], {}).get('schema', 'public')
+            target_info = schema_data.get(fk['table'], {})
+            target_schema = target_info.get('schema', 'public') if dialect == "postgresql" else None
             target_table = fk['table'].split('.')[-1]
+            
+            target_ref = f"{quote_ident(target_schema)}.{quote_ident(target_table)}" if target_schema else f"{quote_ident(target_table)}"
+            
             col_lines.append(
                 f"    CONSTRAINT {quote_ident(fk_name)} FOREIGN KEY ({quote_ident(fk['from'])}) "
-                f"REFERENCES {quote_ident(target_schema)}.{quote_ident(target_table)}({quote_ident(fk['to'])})"
+                f"REFERENCES {target_ref}({quote_ident(fk['to'])})"
             )
 
         sql_lines.append(",\n".join(col_lines))
@@ -278,7 +308,7 @@ class ERDWidget(QWidget):
         
         reset_zoom_action = QAction(qta.icon('fa5s.expand-arrows-alt', color='#555555'), "Zoom to Fit", self)
         reset_zoom_action.setShortcut("Ctrl+0")
-        reset_zoom_action.triggered.connect(lambda: self.view.setTransform(QTransform()))
+        reset_zoom_action.triggered.connect(self._zoom_to_fit)
         self.toolbar.addAction(reset_zoom_action)
         
         self.toolbar.addSeparator()
@@ -420,6 +450,14 @@ class ERDWidget(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
 
+    def _zoom_to_fit(self):
+        """Fit the entire diagram into the current viewport, keeping aspect ratio."""
+        rect = self.scene.itemsBoundingRect()
+        if not rect.isNull():
+            padded = rect.adjusted(-50, -50, 50, 50)
+            self.view.fitInView(padded, Qt.AspectRatioMode.KeepAspectRatio)
+            self.view.viewport_changed.emit()
+
     def _center_view_deferred(self):
         if self.scene.items():
             rect = self.scene.itemsBoundingRect()
@@ -466,9 +504,12 @@ class ERDWidget(QWidget):
         """
         Generates the SQL script and displays it in a preview dialog.
         """
-        sql_script = generate_sql_script(self.schema_data)
-        dialog = SQLPreviewDialog(sql_script, self)
-        dialog.exec()
+        dialects = ["postgresql", "sqlite", "generic"]
+        dialect, ok = QInputDialog.getItem(self, "Select SQL Dialect", "Select target dialect:", dialects, 0, False)
+        if ok and dialect:
+            sql_script = generate_sql_script(self.schema_data, dialect=dialect)
+            dialog = SQLPreviewDialog(sql_script, self)
+            dialog.exec()
 
     def load_schema(self):
         # Color palette for Subject Areas (Subject Area Highlighting)
