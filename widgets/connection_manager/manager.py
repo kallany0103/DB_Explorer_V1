@@ -53,9 +53,9 @@ class ConnectionManager(QWidget):
         self.status = main_window.status
         self.status_message_label = main_window.status_message_label
         self.thread_pool = main_window.thread_pool
-        self.notification_manager = main_window.notification_manager
 
         self.tree_helpers = TreeHelpers(self)
+
         self.connection_ui = ConnectionUI(self)
         self.schema_loader = SchemaLoader(self)
         self.table_details_loader = TableDetailsLoader(self)
@@ -309,6 +309,10 @@ class ConnectionManager(QWidget):
             return
 
         connection_type_name = connection_type.text().lower()
+        conn_name = item.text()
+        if hasattr(self.main_window, "results_manager"):
+            self.main_window.results_manager.add_connection_notification(conn_name)
+
         if "postgres" in connection_type_name and conn_data.get("host"):
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
             worker = PostgresSchemaWorker(conn_data)
@@ -322,8 +326,9 @@ class ConnectionManager(QWidget):
             worker = CsvSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_csv_schema)
         elif "servicenow" in connection_type_name:
-            self.status.showMessage(f"Loading ServiceNow schema for {conn_data.get('name')}...", 3000)
+            self.status.showMessage(f"Loading ServiceNow schema for {conn_name}...", 3000)
             self.load_servicenow_schema(conn_data)
+
         elif "oracle" in connection_type_name:
             self.status.showMessage("Oracle connections are not currently supported.", 5000)
             QMessageBox.information(self, "Not Supported", "Connecting to Oracle databases is not supported in this version.")

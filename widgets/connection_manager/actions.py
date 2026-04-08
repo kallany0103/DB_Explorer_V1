@@ -48,7 +48,9 @@ class ConnectionActions:
         conn_data['code'] = (conn_data.get('code') or db_type or '').upper()
 
         if db_type == 'postgres':
-            query = f'SELECT COUNT(*) FROM "{item_data.get("schema_name")}"."{table_name}";'
+            schema = item_data.get("schema_name", "public")
+            schema_quoted = f'"{schema}"' if any(c.isupper() for c in schema) else schema
+            query = f'SELECT COUNT(*) FROM {schema_quoted}.{table_name};'
         elif db_type == 'csv':
             query = f'SELECT COUNT(*) FROM [{table_name}]'
         else:
@@ -74,9 +76,10 @@ class ConnectionActions:
         self.manager.thread_pool.start(runnable)
 
     def handle_count_error(self, error_message):
-        self.manager.notification_manager.show_message(
-            f"Error: {error_message}", is_error=True)
+        self.manager.status.showMessage(f"Error: {error_message}", 5000)
+        self.manager.show_error_popup(f"Failed to count rows:\n{error_message}")
         self.manager.status_message_label.setText("Failed to count rows.")
+
 
     def open_query_tool_for_table(self, item_data, table_name):
         if not item_data:
@@ -124,8 +127,10 @@ class ConnectionActions:
         code = conn_data.get('code')
         if code == 'POSTGRES':
             schema = item_data.get("schema_name", "public")
-            new_tab.table_name = f'{schema}.{table_name}'
-            query = f'SELECT * FROM {schema}.{table_name};'
+            # If schema contains uppercase, quote it, otherwise no quotes
+            schema_quoted = f'"{schema}"' if any(c.isupper() for c in schema) else schema
+            new_tab.table_name = f'{schema_quoted}.{table_name}'
+            query = f'SELECT * FROM {schema_quoted}.{table_name};'
         elif code == 'SQLITE':
             new_tab.table_name = f'{table_name}'
             query = f'SELECT * FROM {table_name};'
@@ -228,7 +233,8 @@ class ConnectionActions:
             sql = ""
             if db_type == 'postgres':
                 conn = db.create_postgres_connection(conn_data)
-                full_name = f'"{schema_name}"."{real_table_name}"' if schema_name else f'"{real_table_name}"'
+                schema_quoted = f'"{schema_name}"' if schema_name and any(c.isupper() for c in schema_name) else schema_name
+                full_name = f'{schema_quoted}.{real_table_name}' if schema_quoted else f'{real_table_name}'
                 drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
                 sql = f"{drop_cmd} {full_name};"
             elif db_type == 'sqlite':
@@ -535,8 +541,8 @@ class ConnectionActions:
         code = conn_data.get('code')
 
         if code == 'POSTGRES':
-            schema_name = item_data.get("schema_name", "public")
-            query = f'SELECT * FROM "{schema_name}"."{table_name}"'
+            schema_quoted = f'"{schema_name}"' if any(c.isupper() for c in schema_name) else schema_name
+            query = f'SELECT * FROM {schema_quoted}.{table_name}'
             object_name = f"{schema_name}.{table_name}"
         else:
             query = f'SELECT * FROM "{table_name}"'
