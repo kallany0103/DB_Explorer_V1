@@ -3,20 +3,6 @@ import os
 import uuid
 
 import db
-# from PyQt6.QtGui import QStandardItemModel, QStandardItem
-# from PyQt6.QtWidgets import (
-#     QApplication,
-#     QComboBox,
-#     QDialog,
-#     QInputDialog,
-#     QMessageBox,
-#     QPushButton,
-#     QPlainTextEdit,
-#     QStackedWidget,
-#     QTextEdit,
-#     QWidget,
-# )
-
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
     QApplication,
@@ -49,7 +35,7 @@ class ConnectionActions:
 
         if db_type == 'postgres':
             schema = item_data.get("schema_name", "public")
-            schema_quoted = f'"{schema}"' if any(c.isupper() for c in schema) else schema
+            schema_quoted = f'"{schema}"'
             query = f'SELECT COUNT(*) FROM {schema_quoted}.{table_name};'
         elif db_type == 'csv':
             query = f'SELECT COUNT(*) FROM [{table_name}]'
@@ -127,8 +113,7 @@ class ConnectionActions:
         code = conn_data.get('code')
         if code == 'POSTGRES':
             schema = item_data.get("schema_name", "public")
-            # If schema contains uppercase, quote it, otherwise no quotes
-            schema_quoted = f'"{schema}"' if any(c.isupper() for c in schema) else schema
+            schema_quoted = f'"{schema}"'
             new_tab.table_name = f'{schema_quoted}.{table_name}'
             query = f'SELECT * FROM {schema_quoted}.{table_name};'
         elif code == 'SQLITE':
@@ -160,50 +145,12 @@ class ConnectionActions:
             self.manager.tab_widget.setCurrentWidget(new_tab)
             self.manager.execute_query(conn_data, query)
 
-    # def create_fdw_template(self, item_data):
-    #     sql = "CREATE FOREIGN DATA WRAPPER fdw_name\n    HANDLER handler_function\n    VALIDATOR validator_function;"
-    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
-
-    # def create_foreign_server_template(self, item_data):
-    #     fdw_name = item_data.get('fdw_name', 'fdw_name')
-    #     sql = f"CREATE SERVER server_name\n    FOREIGN DATA WRAPPER {fdw_name}\n    OPTIONS (host '127.0.0.1', port '5432', dbname 'remote_db');"
-    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
-
-    # def create_user_mapping_template(self, item_data):
-    #     srv_name = item_data.get('server_name', 'server_name')
-    #     sql = f"CREATE USER MAPPING FOR current_user\n    SERVER {srv_name}\n    OPTIONS (user 'remote_user', password 'password');"
-    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
-
-    # def import_foreign_schema_dialog(self, item_data):
-    #     schema_name = item_data.get('schema_name', 'public')
-    #     sql = f"IMPORT FOREIGN SCHEMA remote_schema\n    FROM SERVER foreign_server\n    INTO \"{schema_name}\";"
-    #     self.manager.script_generator.open_script_in_editor(item_data, sql)
-
     def show_table_properties(self, item_data, table_name):
         if not item_data:
             return
 
         dialog = TablePropertiesDialog(item_data, table_name, self.manager)
         dialog.show()
-
-    # def execute_simple_sql(self, item_data, sql):
-    #     conn_data = item_data.get('conn_data')
-    #     try:
-    #         conn = psycopg2.connect(
-    #             host=conn_data.get("host"),
-    #             port=conn_data.get("port"),
-    #             database=conn_data.get("database"),
-    #             user=conn_data.get("user"),
-    #             password=conn_data.get("password")
-    #         )
-    #         conn.autocommit = True
-    #         cursor = conn.cursor()
-    #         cursor.execute(sql)
-    #         self.manager.status.showMessage("Operation successful.", 3000)
-    #         self.manager.refresh_object_explorer()
-    #         conn.close()
-    #     except Exception as e:
-    #         QMessageBox.critical(self.manager, "SQL Error", str(e))
 
     def delete_table(self, item_data, table_name):
         if not item_data:
@@ -233,7 +180,7 @@ class ConnectionActions:
             sql = ""
             if db_type == 'postgres':
                 conn = db.create_postgres_connection(conn_data)
-                schema_quoted = f'"{schema_name}"' if schema_name and any(c.isupper() for c in schema_name) else schema_name
+                schema_quoted = f'"{schema_name}"' if schema_name else ""
                 full_name = f'{schema_quoted}.{real_table_name}' if schema_quoted else f'{real_table_name}'
                 drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
                 sql = f"{drop_cmd} {full_name};"
@@ -541,7 +488,8 @@ class ConnectionActions:
         code = conn_data.get('code')
 
         if code == 'POSTGRES':
-            schema_quoted = f'"{schema_name}"' if any(c.isupper() for c in schema_name) else schema_name
+            schema_name = item_data.get('schema_name', 'public')
+            schema_quoted = f'"{schema_name}"'
             query = f'SELECT * FROM {schema_quoted}.{table_name}'
             object_name = f"{schema_name}.{table_name}"
         else:

@@ -355,21 +355,7 @@ class ResultsManager(QObject):
         notif_view = target_tab.findChild(QTreeView, "notification_list_view")
         if notif_view:
             add_connection_event(notif_view, conn_name)
-            
-            # Auto switch to Notification tab
-            results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
-            if results_stack:
-                results_stack.setCurrentIndex(2)
-                
-                # Update button states in Header
-                header = target_tab.findChild(QWidget, "resultsHeader")
-                if header:
-                    btns = header.findChildren(QPushButton)
-                    for btn in btns:
-                        if "Notification" in btn.text():
-                            btn.setChecked(True)
-                        elif any(x in btn.text() for x in ["Output", "Message", "Process", "Explain"]):
-                            btn.setChecked(False)
+            # Auto switch removed per user request
 
 
 

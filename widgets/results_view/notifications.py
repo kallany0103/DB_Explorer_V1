@@ -9,18 +9,16 @@ def create_notification_view():
     tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
     tree.setRootIsDecorated(False)
-    tree.setAlternatingRowColors(True)
+    tree.setAlternatingRowColors(False)
+    tree.setIndentation(0)
     
-    model = QStandardItemModel(0, 2)
-    model.setHorizontalHeaderLabels(["Active Connection", "Connection Time"])
+    # Hide header
+    tree.header().hide()
+    
+    model = QStandardItemModel(0, 1)
     tree.setModel(model)
     
-    header = tree.header()
-    header.setFixedHeight(30)
-    header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-    header.resizeSection(1, 160)
-    header.setStretchLastSection(False)
+    tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
     
     tree.setStyleSheet(
         """
@@ -28,23 +26,12 @@ def create_notification_view():
                 border: none;
                 background-color: #ffffff;
                 alternate-background-color: #f8f9fa;
-                font-size: 9pt;
+                font-size: 8pt;
                 color: #333333;
             }
             QTreeView::item {
-                padding: 4px 8px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QHeaderView::section {
-                background-color: #9FA6AF;
-                color: #ffffff;
-                padding: 2px 8px;
-                border: none;
-                border-right: 1px solid #B8BEC6;
-                border-bottom: 1px solid #8B929B;
-                font-weight: bold;
-                font-size: 9pt;
-                text-align: left;
+                padding: 10px 12px;
+                border-bottom: 1px solid #eef0f2;
             }
         """
     )
@@ -56,23 +43,28 @@ def add_connection_event(tree_view, conn_name):
     if not isinstance(model, QStandardItemModel):
         return
         
-    secondary_color = QColor("#888888")
+    secondary_color = QColor("#111111")
+    success_color = QColor("#111111") 
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
     
-    # Mark all existing connections as deactivated
+    # Update existing (Live) connections
     for row in range(model.rowCount()):
         item = model.item(row, 0)
-        if item and item.text().startswith("Connected:"):
-            old_text = item.text().replace("Connected:", "").strip()
-            item.setText(f"Deactivated: {old_text}")
-            item.setForeground(secondary_color)
-            
-            time_item = model.item(row, 1)
-            if time_item:
-                time_item.setForeground(secondary_color)
+        if item and "(Live)" in item.text():
+            # Extract start time from current text
+            # Format was: Name (Live)\nActive: [start_time]...
+            text_lines = item.text().split("\n")
+            if len(text_lines) >= 1:
+                clean_name = text_lines[0].replace("(Live)", "").strip()
+                start_time_line = text_lines[1] if len(text_lines) > 1 else "Active: Unknown"
+                
+                new_text = f"{clean_name} (Off)\n{start_time_line} | Deactive: {now_str}"
+                item.setText(new_text)
+                item.setForeground(secondary_color)
 
-    # Add new active connection record
-    time_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    # Add new active record
+    new_text = f"{conn_name} (Live)\nActive: {now_str}"
+    conn_item = QStandardItem(new_text)
+    conn_item.setForeground(success_color)
     
-    conn_item = QStandardItem(f"Connected: {conn_name}")
-    time_item = QStandardItem(time_str)
-    model.insertRow(0, [conn_item, time_item])
+    model.insertRow(0, [conn_item])
