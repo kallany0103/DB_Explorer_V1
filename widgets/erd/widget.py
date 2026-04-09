@@ -779,8 +779,9 @@ class ERDWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save ERD: {str(e)}")
 
-    def load_erd_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open ERD State", "", "ERD Files (*.erd)")
+    def load_erd_file(self, file_path=None):
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(self, "Open ERD State", "", "ERD Files (*.erd)")
         if not file_path:
             return
             

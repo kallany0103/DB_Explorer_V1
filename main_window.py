@@ -1,9 +1,10 @@
 # main_window.py
 #from PyQt6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
 #from PyQt6.QtCore import Qt, QSize, QThreadPool, QTimer
-from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel
-from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel, QMenu
+from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint
+from PySide6.QtGui import QIcon, QAction
+import qtawesome as qta
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.app_shell import (
     build_main_window_actions,
@@ -85,11 +86,51 @@ class MainWindow(QMainWindow):
         self.main_splitter.addWidget(self.tab_widget)
 
         # 6. Additional UI for Tab Widget
-        add_tab_btn = QPushButton("New")
+        add_tab_btn = QPushButton("New ")
         add_tab_btn.setObjectName("add_tab_btn")
         add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_tab_btn.setToolTip("New Worksheet (Alt+Ctrl+S)")
-        add_tab_btn.clicked.connect(self.add_tab)
+        add_tab_btn.setIcon(qta.icon('fa5s.caret-down', color='#1f2937'))
+        add_tab_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        add_tab_btn.setToolTip("New Tab Options")
+        
+        # Create Dropdown Menu
+        new_tab_menu = QMenu(self)
+        new_tab_menu.setObjectName("new_tab_menu")
+        new_tab_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        action_new_worksheet = QAction(qta.icon('mdi.database-edit', scale_factor=1.3), "New Worksheet", self)
+        action_new_worksheet.setShortcut("Alt+Ctrl+S")
+        action_new_worksheet.triggered.connect(self.add_tab)
+        
+        action_new_erd = QAction(qta.icon('fa6s.sitemap'), "New ERD", self)
+        action_new_erd.triggered.connect(self.add_erd_tab)
+        
+        new_tab_menu.addAction(action_new_worksheet)
+        new_tab_menu.addAction(action_new_erd)
+        
+        # Style for the dropdown menu
+        new_tab_menu.setStyleSheet("""
+            QMenu#new_tab_menu {
+                background-color: #FFFFFF;
+                border: 1px solid #B8BEC6;
+                border-radius: 4px;
+                padding: 4px 0px 4px 4px;
+            }
+            QMenu#new_tab_menu::item {
+                padding: 6px 24px 6px 4px;
+                color: #1f2937;
+                font-size: 9pt;
+            }
+            QMenu#new_tab_menu::item:selected {
+                background-color: #E8E8E8;
+                color: #000000;
+            }
+        """)
+
+        def show_new_tab_menu():
+            new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(0, add_tab_btn.height() + 2)))
+
+        add_tab_btn.clicked.connect(show_new_tab_menu)
         
         # Tab-integrated neutral style
         add_tab_btn.setStyleSheet("""
@@ -129,6 +170,15 @@ class MainWindow(QMainWindow):
 
     def add_tab(self):
         return self.worksheet_manager.add_tab()
+
+    def add_erd_tab(self):
+        from widgets.erd.widget import ERDWidget
+        erd_widget = ERDWidget({})
+        tab_title = f"ERD Tab {self.tab_widget.count() + 1}"
+        index = self.tab_widget.addTab(erd_widget, tab_title)
+        self.tab_widget.setTabIcon(index, qta.icon('fa6s.sitemap'))
+        self.tab_widget.setCurrentIndex(index)
+        self.renumber_tabs()
 
     def renumber_tabs(self):
         self.worksheet_manager.renumber_tabs()
