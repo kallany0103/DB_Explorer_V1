@@ -69,8 +69,7 @@ class PostgresSchemaWorker(QRunnable):
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT nspname FROM pg_namespace "
-                "WHERE nspname NOT LIKE 'pg_temp_%' "
-                "AND nspname NOT LIKE 'pg_toast_temp_%' "
+                "WHERE nspname NOT LIKE 'pg_%' "
                 "AND nspname != 'information_schema' "
                 "ORDER BY nspname;"
             )
