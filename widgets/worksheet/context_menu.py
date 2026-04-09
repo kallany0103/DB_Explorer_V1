@@ -8,9 +8,9 @@ def show_editor_context_menu(manager, pos, editor):
     menu.setStyleSheet(
         """
             QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
-            QMenu::item { padding: 5px 25px 5px 25px; font-size: 10pt; color: #333333; }
+            QMenu::item { padding: 4px; spacing: 4px; font-size: 10pt; color: #333333; }
             QMenu::item:selected { background-color: #e8eaed; color: #000000; }
-            QMenu::icon { padding-left: 5px; }
+            QMenu::icon { padding: 4px; }
             QMenu::separator { height: 1px; background: #eeeeee; margin: 4px 0px; }
         """
     )

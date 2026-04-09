@@ -26,19 +26,28 @@ class FindReplaceDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Find and Replace")
         self.setWindowFlags(
-            Qt.WindowType.Dialog | 
-            Qt.WindowType.WindowStaysOnTopHint | 
-            Qt.WindowType.WindowTitleHint | 
+            Qt.WindowType.Dialog |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.WindowTitleHint |
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.CustomizeWindowHint
         )
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMinMaxButtonsHint)
         self.setModal(False)
-        self.resize(350, 180)
+        self.resize(380, 250)
+        self._apply_styles()
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Title/Header
+        header_title = QLabel("Find and Replace")
+        header_title.setObjectName("dialogTitle")
+        layout.addWidget(header_title)
 
         grid_layout = QGridLayout()
+        grid_layout.setVerticalSpacing(10)
+        grid_layout.setHorizontalSpacing(10)
 
         self.find_label = QLabel("Find:")
         self.find_input = QLineEdit()
@@ -61,11 +70,17 @@ class FindReplaceDialog(QDialog):
         layout.addLayout(options_layout)
 
         btn_layout = QGridLayout()
+        btn_layout.setSpacing(8)
 
         self.btn_find_next = QPushButton("Find Next")
         self.btn_find_prev = QPushButton("Find Previous")
         self.btn_replace = QPushButton("Replace")
         self.btn_replace_all = QPushButton("Replace All")
+        
+        self.btn_find_next.setObjectName("secondaryButton")
+        self.btn_find_prev.setObjectName("secondaryButton")
+        self.btn_replace.setObjectName("secondaryButton")
+        self.btn_replace_all.setObjectName("secondaryButton")
 
         btn_layout.addWidget(self.btn_find_next, 0, 0)
         btn_layout.addWidget(self.btn_find_prev, 0, 1)
@@ -73,11 +88,70 @@ class FindReplaceDialog(QDialog):
         btn_layout.addWidget(self.btn_replace_all, 1, 1)
 
         layout.addLayout(btn_layout)
+        
+        # Bottom Close Button (matches primary style as it's the main exit)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.setObjectName("primaryButton")
+        layout.addWidget(self.btn_close)
 
         self.btn_find_next.clicked.connect(self.on_find_next)
         self.btn_find_prev.clicked.connect(self.on_find_prev)
         self.btn_replace.clicked.connect(self.on_replace)
         self.btn_replace_all.clicked.connect(self.on_replace_all)
+        self.btn_close.clicked.connect(self.close)
+
+    def _apply_styles(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f6f8fb;
+            }
+            QLabel#dialogTitle {
+                font-size: 16px;
+                font-weight: 600;
+                color: #1f2937;
+                margin-bottom: 5px;
+            }
+            QLabel {
+                color: #374151;
+                font-size: 9pt;
+            }
+            QLineEdit {
+                min-height: 28px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background: white;
+                padding: 2px 8px;
+                color: #1f2937;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0078d4;
+            }
+            QCheckBox {
+                color: #374151;
+                font-size: 9pt;
+            }
+            QPushButton {
+                min-height: 30px;
+                padding: 2px 12px;
+                border: 1px solid #c4c9d4;
+                background-color: #eef1f6;
+                color: #1f2937;
+                border-radius: 4px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #e3e8f2;
+            }
+            QPushButton#primaryButton {
+                border: 1px solid #006cbe;
+                background-color: #0078d4;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            QPushButton#primaryButton:hover {
+                background-color: #006cbe;
+            }
+        """)
 
     def on_find_next(self):
         text = self.find_input.text()
