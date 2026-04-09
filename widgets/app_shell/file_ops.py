@@ -7,30 +7,44 @@ from widgets.worksheet.editor_actions import FindReplaceDialog
 
 
 def open_sql_file(main_window):
-    editor = main_window._get_current_editor()
+    file_name, _ = QFileDialog.getOpenFileName(
+        main_window, 
+        "Open File", 
+        "", 
+        "Supported Files (*.sql *.erd);;SQL Files (*.sql);;ERD Files (*.erd);;All Files (*)"
+    )
+    if not file_name:
+        return
 
-    if not editor:
+    if file_name.endswith('.erd'):
+        main_window.add_erd_tab()
         current_tab = main_window.tab_widget.currentWidget()
-        if not current_tab:
-            main_window.add_tab()
-            current_tab = main_window.tab_widget.currentWidget()
-        editor_stack = current_tab.findChild(QStackedWidget, "editor_stack")
-        if editor_stack and editor_stack.currentIndex() != 0:
-            editor_stack.setCurrentIndex(0)
-            query_view_btn = current_tab.findChild(QPushButton, "Query")
-            history_view_btn = current_tab.findChild(QPushButton, "Query History")
-            if query_view_btn:
-                query_view_btn.setChecked(True)
-            if history_view_btn:
-                history_view_btn.setChecked(False)
-
+        if hasattr(current_tab, "load_erd_file"):
+            current_tab.load_erd_file(file_name)
+        main_window.status.showMessage(f"ERD File opened: {file_name}", 3000)
+    else:
         editor = main_window._get_current_editor()
-        if not editor:
-            QMessageBox.warning(main_window, "Error", "Could not find a query editor to open the file into.")
-            return
 
-    file_name, _ = QFileDialog.getOpenFileName(main_window, "Open SQL File", "", "SQL Files (*.sql);;All Files (*)")
-    if file_name:
+        if not editor:
+            current_tab = main_window.tab_widget.currentWidget()
+            if not current_tab:
+                main_window.add_tab()
+                current_tab = main_window.tab_widget.currentWidget()
+            editor_stack = current_tab.findChild(QStackedWidget, "editor_stack")
+            if editor_stack and editor_stack.currentIndex() != 0:
+                editor_stack.setCurrentIndex(0)
+                query_view_btn = current_tab.findChild(QPushButton, "Query")
+                history_view_btn = current_tab.findChild(QPushButton, "Query History")
+                if query_view_btn:
+                    query_view_btn.setChecked(True)
+                if history_view_btn:
+                    history_view_btn.setChecked(False)
+
+            editor = main_window._get_current_editor()
+            if not editor:
+                QMessageBox.warning(main_window, "Error", "Could not find a query editor to open the file into.")
+                return
+
         try:
             with open(file_name, "r", encoding="utf-8") as f:
                 content = f.read()
