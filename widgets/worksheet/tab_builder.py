@@ -157,8 +157,9 @@ def add_tab(manager):
     edit_menu.setStyleSheet(
         """
             QMenu { background-color: #ffffff; border: 1px solid #b9b9b9; }
-            QMenu::item { padding: 5px 20px 5px 10px; min-width: 250px; }
+            QMenu::item { padding: 4px 20px 4px 4px; spacing: 4px; min-width: 250px; }
             QMenu::item:selected { background-color: #e8e8e8; color: #333333; }
+            QMenu::icon { padding: 4px; }
             QMenu::separator { height: 1px; background: #eeeeee; margin: 2px 0px; }
         """
     )
