@@ -6,13 +6,19 @@ import db
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
     QStackedWidget,
     QTextEdit,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -552,3 +558,154 @@ class ConnectionActions:
         )
 
         self.manager.thread_pool.start(query_runnable)
+
+    # =========================================================================
+    # Create Schema (PostgreSQL)
+    # =========================================================================
+
+    def open_create_schema_dialog(self, item_data):
+        """Open a pgAdmin-style dialog to CREATE SCHEMA on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get("conn_data")
+        db_type   = item_data.get("db_type", "")
+
+        if db_type != "postgres" or not conn_data:
+            QMessageBox.warning(
+                self.manager,
+                "Not Supported",
+                "Create Schema is only supported for PostgreSQL connections.",
+            )
+            return
+
+        # --- Fetch existing users/roles for the Owner dropdown ---
+        existing_roles = []
+        try:
+            conn   = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT rolname FROM pg_roles WHERE rolcanlogin ORDER BY rolname;"
+            )
+            existing_roles = [row[0] for row in cursor.fetchall()]
+            conn.close()
+        except Exception:
+            pass  # Owner field will just be an empty text input
+
+        # ==================================================================
+        # Build dialog
+        # ==================================================================
+        dialog = QDialog(self.manager)
+        dialog.setWindowTitle("Create Schema")
+        dialog.setFixedSize(460, 260)
+        dialog.setWindowFlags(
+            dialog.windowFlags()
+            & ~dialog.windowFlags()
+            | 0  # reset
+        )
+        from PySide6.QtCore import Qt
+        dialog.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.CustomizeWindowHint
+        )
+        dialog.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        dialog.setStyleSheet(self.manager._get_dialog_style())
+
+        # --- Widgets ---
+        title_lbl = QLabel("Create Schema")
+        title_lbl.setObjectName("dialogTitle")
+
+        subtitle_lbl = QLabel(
+            f"Create a new schema in <b>{conn_data.get('name', 'database')}</b>."
+        )
+        subtitle_lbl.setObjectName("dialogSubtitle")
+        subtitle_lbl.setTextFormat(Qt.TextFormat.RichText)
+
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("my_schema")
+
+        owner_input = QComboBox() if existing_roles else QLineEdit()
+        if existing_roles:
+            owner_input.addItem("")          # empty = no AUTHORIZATION clause
+            owner_input.addItems(existing_roles)
+            owner_input.setEditable(True)
+        else:
+            owner_input.setPlaceholderText("(optional) owner role")
+
+        if_not_exists_chk = QCheckBox("IF NOT EXISTS  (skip if schema already exists)")
+
+        save_btn   = QPushButton("Create")
+        save_btn.setObjectName("primaryButton")
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+
+        # --- Layout ---
+        form = QFormLayout()
+        form.setSpacing(10)
+        form.addRow("Name:",  name_input)
+        form.addRow("Owner:", owner_input)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(save_btn)
+
+        main_layout = QVBoxLayout(dialog)
+        main_layout.setContentsMargins(22, 20, 22, 18)
+        main_layout.setSpacing(14)
+        main_layout.addWidget(title_lbl)
+        main_layout.addWidget(subtitle_lbl)
+        main_layout.addLayout(form)
+        main_layout.addWidget(if_not_exists_chk)
+        main_layout.addStretch()
+        main_layout.addLayout(btn_row)
+
+        cancel_btn.clicked.connect(dialog.reject)
+
+        def _on_create():
+            schema_name = name_input.text().strip()
+            if not schema_name:
+                QMessageBox.warning(dialog, "Missing Info", "Schema name is required.")
+                return
+
+            if isinstance(owner_input, QComboBox):
+                owner = owner_input.currentText().strip()
+            else:
+                owner = owner_input.text().strip()
+
+            if_ne = if_not_exists_chk.isChecked()
+
+            # Build SQL
+            clause  = "IF NOT EXISTS " if if_ne else ""
+            auth    = f" AUTHORIZATION \"{owner}\"" if owner else ""
+            sql     = f'CREATE SCHEMA {clause}"{schema_name}"{auth};'
+
+            try:
+                conn   = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                dialog.accept()
+
+                self.manager.status.showMessage(
+                    f"Schema '{schema_name}' created successfully.", 4000
+                )
+                self.manager.status_message_label.setText(
+                    f"Schema '{schema_name}' created."
+                )
+
+                # Reload the schema tree
+                self.manager.schema_loader.load_postgres_schema(conn_data)
+
+            except Exception as exc:
+                QMessageBox.critical(
+                    dialog, "Error", f"Failed to create schema:\n{exc}"
+                )
+
+        save_btn.clicked.connect(_on_create)
+        name_input.returnPressed.connect(_on_create)
+        dialog.exec()
