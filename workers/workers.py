@@ -3,7 +3,7 @@ import os
 import time
 import pandas as pd
 import re
-import cdata.csv as mod  # CData CSV connector
+# import cdata.csv as mod # Removed direct import, use db.create_csv_connection instead
 #from PyQt6.QtCore import QRunnable, Qt
 from PySide6.QtCore import QRunnable, Qt
 import db
@@ -70,8 +70,7 @@ class RunnableExport(QRunnable):
                 schema_name = self.item_data.get("schema_name")
                 query = f'SELECT * FROM "{schema_name}"."{self.table_name}"'
             elif code == 'CSV':
-                 folder_path = conn_data.get("db_path")
-                 conn = mod.connect(f"URI={folder_path};")
+                 conn = db.create_csv_connection(conn_data)
                  query = f'SELECT * FROM [{self.table_name}]'
             else:
                  raise ValueError(f"Unsupported database type: {code}")
@@ -249,11 +248,8 @@ class RunnableQuery(QRunnable):
                 cursor = conn.cursor()
                 cursor.execute(self.query)
             elif code == "CSV":
-                folder_path = self.conn_data.get("db_path")
-                if not folder_path:
-                    raise ValueError("CSV folder path missing.")
-                self.query = transform_csv_query(self.query, folder_path)
-                conn = mod.connect(f"URI={folder_path};")
+                self.query = transform_csv_query(self.query, self.conn_data.get("db_path"))
+                conn = db.create_csv_connection(self.conn_data)
                 if not conn:
                     raise ConnectionError("Failed to connect to CSV data source")
                 cursor = conn.cursor()

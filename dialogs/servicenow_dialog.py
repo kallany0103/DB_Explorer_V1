@@ -3,7 +3,7 @@ import os
 from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout,
     QPushButton, QHBoxLayout, QVBoxLayout,
-    QMessageBox, QLabel, QComboBox, QInputDialog, QWidget
+    QMessageBox, QLabel, QComboBox, QInputDialog, QWidget, QApplication
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
@@ -212,9 +212,28 @@ class ServiceNowConnectionDialog(QDialog):
         self._password_action.setIcon(self._eye_off_icon if self._password_visible else self._eye_icon)
 
     def _test_connection(self):
-        # Implementation for testing ServiceNow connection
-        # (This usually involves a basic REST API call to verify credentials)
-        QMessageBox.information(self, "Test", "ServiceNow testing logic goes here.")
+        conn_data = self.getData()
+        if not conn_data.get("instance_url"):
+            QMessageBox.warning(self, "Validation", "Please provide an instance URL.")
+            return
+
+        self.test_btn.setEnabled(False)
+        self.test_btn.setText("Testing...")
+        QApplication.processEvents()
+
+        try:
+            conn = db.create_servicenow_connection(conn_data)
+            if conn:
+                QMessageBox.information(self, "Success", "Connection successful!")
+                conn.close()
+            else:
+                # Capture the potential error if possible, but create_servicenow_connection returns None
+                QMessageBox.critical(self, "Error", "Failed to connect to ServiceNow. Please check your credentials and instance URL.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
+        finally:
+            self.test_btn.setEnabled(True)
+            self.test_btn.setText("Test Connection")
 
     def _on_save(self):
         if not self.name_input.text().strip():

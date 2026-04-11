@@ -4,7 +4,8 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
-import cdata.servicenow as sn
+import cdata.servicenow as sn_driver
+import cdata.csv as csv_driver
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and PyInstaller."""
@@ -68,14 +69,30 @@ def create_servicenow_connection(conn_data):
         conn_str = (
             f"User={conn_data['user']};"
             f"Password={conn_data['password']};"
-            f"Url={conn_data['instance_url']};"
+            f"URL={conn_data['instance_url']};"
             f"AuthScheme=Basic;"
-            # f"ReadOnly=True"
         )
 
-        conn = sn.connect(conn_str)
+        conn = sn_driver.connect(conn_str)
         return conn
 
     except Exception as e:
         print(f"ServiceNow connection error: {e}")
+        return None
+
+def create_csv_connection(conn_data):
+    """Establishes a connection to a CSV file using CData CSV driver."""
+    try:
+        if not conn_data.get("db_path"):
+            raise ValueError("Missing db_path in conn_data")
+            
+        # If it's a directory, CData CSV driver treats it as a database of CSV files
+        # If it's a file, it treats it as a single table
+        path = conn_data['db_path']
+        
+        conn_str = f"URI={path};"
+        conn = csv_driver.connect(conn_str)
+        return conn
+    except Exception as e:
+        print(f"CSV connection error: {e}")
         return None

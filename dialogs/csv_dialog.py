@@ -1,7 +1,7 @@
 # dialogs/csv_dialog.py
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, 
-    QPushButton, QHBoxLayout, QFileDialog, QMessageBox, QLabel, QComboBox, QInputDialog, QWidget
+    QPushButton, QHBoxLayout, QFileDialog, QMessageBox, QLabel, QComboBox, QInputDialog, QWidget, QApplication
 )
 from PySide6.QtCore import Qt
 import db
@@ -133,18 +133,22 @@ class CSVConnectionDialog(QDialog):
         path_container = QHBoxLayout()
         path_container.setSpacing(10)
         self.path_input = QLineEdit()
-        self.path_input.setPlaceholderText("Path to .csv file")
+        self.path_input.setPlaceholderText("Path to folder containing CSV files")
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self._browse_csv)
         path_container.addWidget(self.path_input)
         path_container.addWidget(browse_btn)
-        form_layout.addRow("CSV File Path:", path_container)
+        form_layout.addRow("CSV Folder Path:", path_container)
 
         main_layout.addLayout(form_layout)
 
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
+        
+        self.test_btn = QPushButton("Test Connection")
+        self.test_btn.setObjectName("secondaryButton")
+        self.test_btn.clicked.connect(self._test_connection)
         
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("secondaryButton")
@@ -154,6 +158,7 @@ class CSVConnectionDialog(QDialog):
         self.save_btn.setObjectName("primaryButton")
         self.save_btn.clicked.connect(self._on_save)
         
+        button_layout.addWidget(self.test_btn)
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(self.save_btn)
         main_layout.addLayout(button_layout)
@@ -162,6 +167,29 @@ class CSVConnectionDialog(QDialog):
             self.name_input.setText(conn_data.get("name", ""))
             self.short_name_input.setText(conn_data.get("short_name", ""))
             self.path_input.setText(conn_data.get("db_path", ""))
+
+    def _test_connection(self):
+        conn_data = self.getData()
+        if not conn_data.get("db_path"):
+            QMessageBox.warning(self, "Validation", "Please select a CSV file or folder.")
+            return
+
+        self.test_btn.setEnabled(False)
+        self.test_btn.setText("Testing...")
+        QApplication.processEvents()
+
+        try:
+            conn = db.create_csv_connection(conn_data)
+            if conn:
+                QMessageBox.information(self, "Success", "Connection successful!")
+                conn.close()
+            else:
+                QMessageBox.critical(self, "Error", "Failed to connect to CSV. Please check the path.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Connection failed: {str(e)}")
+        finally:
+            self.test_btn.setEnabled(True)
+            self.test_btn.setText("Test Connection")
 
     def _populate_groups(self):
         self.group_combo.clear()
@@ -182,11 +210,11 @@ class CSVConnectionDialog(QDialog):
                 QMessageBox.critical(self, "Error", f"Failed to create group: {e}")
 
     def _browse_csv(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select CSV File", "", "CSV Files (*.csv);;All Files (*)"
+        folder_path = QFileDialog.getExistingDirectory(
+            self, "Select CSV Folder (Directory containing .csv files)"
         )
-        if file_path:
-            self.path_input.setText(file_path)
+        if folder_path:
+            self.path_input.setText(folder_path)
 
     def _on_save(self):
         if not self.name_input.text().strip():
