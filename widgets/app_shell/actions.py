@@ -1,5 +1,5 @@
-#from PyQt6.QtGui import QAction, QIcon
 from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt
 import qtawesome as qta
 
 
@@ -74,8 +74,9 @@ def build_main_window_actions(main_window):
     main_window.select_all_action.setShortcut("Ctrl+A")
     main_window.select_all_action.triggered.connect(main_window.select_all_text)
 
-    main_window.clear_all_action = QAction(QIcon("assets/trash.svg"), "Clear All", main_window)
+    main_window.clear_all_action = QAction(qta.icon("fa5s.trash-alt", color="#d93025"), "Clear All", main_window)
     main_window.clear_all_action.setShortcut("F7")
+    main_window.clear_all_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.clear_all_action.triggered.connect(main_window.clear_query_text)
 
     main_window.goto_line_action = QAction(QIcon("assets/goto_line.svg"), "Goto Line", main_window)
@@ -83,19 +84,19 @@ def build_main_window_actions(main_window):
     main_window.goto_line_action.triggered.connect(main_window.goto_line)
 
     main_window.comment_block_action = QAction(QIcon("assets/comment.svg"), "Comment Block", main_window)
-    main_window.comment_block_action.setShortcut("Ctrl+B")
+    main_window.comment_block_action.setShortcut("Ctrl+/")
     main_window.comment_block_action.triggered.connect(main_window.comment_block)
 
     main_window.uncomment_block_action = QAction(QIcon("assets/uncomment.svg"), "Uncomment Block", main_window)
-    main_window.uncomment_block_action.setShortcut("Ctrl+Shift+B")
+    main_window.uncomment_block_action.setShortcut("Ctrl+Shift+/")
     main_window.uncomment_block_action.triggered.connect(main_window.uncomment_block)
 
     main_window.upper_case_action = QAction(QIcon("assets/uppercase.svg"), "Upper Case", main_window)
-    main_window.upper_case_action.setShortcut("Ctrl+U")
+    main_window.upper_case_action.setShortcut("Ctrl+Shift+U")
     main_window.upper_case_action.triggered.connect(main_window.upper_case_text)
 
     main_window.lower_case_action = QAction(QIcon("assets/lowercase.svg"), "Lower Case", main_window)
-    main_window.lower_case_action.setShortcut("Ctrl+L")
+    main_window.lower_case_action.setShortcut("Ctrl+Shift+L")
     main_window.lower_case_action.triggered.connect(main_window.lower_case_text)
 
     main_window.initial_caps_action = QAction("Initial Caps", main_window)
@@ -135,9 +136,18 @@ def build_main_window_actions(main_window):
     main_window.format_sql_action.setShortcut("Ctrl+Shift+F")
     main_window.format_sql_action.triggered.connect(main_window.format_sql_text)
 
-    main_window.clear_query_action = QAction(QIcon("assets/delete_icon.png"), "Clear Query", main_window)
-    main_window.clear_query_action.setShortcut("Ctrl+Shift+c")
+    main_window.clear_query_action = QAction(qta.icon("fa5s.eraser", color="#555555"), "Clear Query", main_window)
+    main_window.clear_query_action.setShortcuts(["Ctrl+Shift+C", "Ctrl+Alt+L", "F7"])
+    main_window.clear_query_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.clear_query_action.triggered.connect(main_window.clear_query_text)
+
+    main_window.find_action = QAction(qta.icon("fa5s.search", color="#555555"), "Find...", main_window)
+    main_window.find_action.setShortcut("Ctrl+F")
+    main_window.find_action.triggered.connect(lambda: main_window.open_find_dialog(False))
+
+    main_window.replace_action = QAction(qta.icon("fa5s.sync-alt", color="#555555"), "Replace...", main_window)
+    main_window.replace_action.setShortcut("Ctrl+H")
+    main_window.replace_action.triggered.connect(lambda: main_window.open_find_dialog(True))
 
     main_window.create_table_action = QAction(QIcon("assets/table.svg"), "Table...", main_window)
     main_window.create_table_action.triggered.connect(main_window._create_table_from_menu)
