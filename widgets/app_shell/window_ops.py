@@ -45,15 +45,20 @@ def close_tab(main_window, index):
 
 
 def restore_tool(main_window):
-    main_window.main_splitter.setSizes([280, 920])
-    main_window.left_vertical_splitter.setSizes([240, 360])
-    current_tab = main_window.tab_widget.currentWidget()
-    if current_tab:
-        tab_splitter = current_tab.findChild(QSplitter, "tab_vertical_splitter")
-        if tab_splitter:
-            tab_splitter.setSizes([300, 300])
-    main_window.status.showMessage("Layout restored to defaults.", 3000)
-
+    try:
+        main_window.main_splitter.setSizes([280, 920])
+        if hasattr(main_window, 'connection_manager') and hasattr(main_window.connection_manager, 'vertical_splitter'):
+            main_window.connection_manager.vertical_splitter.setSizes([240, 360])
+        current_tab = main_window.tab_widget.currentWidget()
+        if current_tab:
+            tab_splitter = current_tab.findChild(QSplitter, "tab_vertical_splitter")
+            if tab_splitter:
+                tab_splitter.setSizes([300, 300])
+        main_window.status.showMessage("Layout restored to defaults.", 3000)
+    except Exception as e:
+        main_window.status.showMessage(f"Error restoring layout: {e}", 5000)
+        import traceback
+        traceback.print_exc()
 
 def toggle_maximize(main_window):
     if main_window.isMaximized():

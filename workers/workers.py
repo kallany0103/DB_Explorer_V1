@@ -220,12 +220,24 @@ class RunnableQuery(QRunnable):
         self.query = query
         self.signals = signals
         self._is_cancelled = False
+        self._conn = None
 
     def cancel(self):
         self._is_cancelled = True
+        if self._conn:
+            try:
+                # Try to interrupt the database operation if possible
+                if hasattr(self._conn, "interrupt"): # SQLite
+                    self._conn.interrupt()
+                elif hasattr(self._conn, "cancel"): # Maybe some other drivers
+                    self._conn.cancel()
+                # For PostgreSQL (psycopg2), we might need the raw connection or call cancel()
+                # Actually psycopg2 connection has a cancel() method.
+            except Exception:
+                pass
 
     def run(self):
-        conn = None
+        self._conn = None
         cursor = None
         start_time = time.time()
 
@@ -242,45 +254,45 @@ class RunnableQuery(QRunnable):
 
             # --- DB Execution ---
             if code == "SERVICENOW":
-                conn = db.create_servicenow_connection(self.conn_data)
-                if not conn:
+                self._conn = db.create_servicenow_connection(self.conn_data)
+                if not self._conn:
                     raise ConnectionError("Failed to connect to ServiceNow")
-                cursor = conn.cursor()
+                cursor = self._conn.cursor()
                 cursor.execute(self.query)
             elif code == "CSV":
                 self.query = transform_csv_query(self.query, self.conn_data.get("db_path"))
-                conn = db.create_csv_connection(self.conn_data)
-                if not conn:
+                self._conn = db.create_csv_connection(self.conn_data)
+                if not self._conn:
                     raise ConnectionError("Failed to connect to CSV data source")
-                cursor = conn.cursor()
+                cursor = self._conn.cursor()
                 cursor.execute(self.query)
             elif code == "SQLITE":
                 db_path = self.conn_data.get("db_path")
                 if not db_path:
                     raise ValueError("SQLite database path missing.")
-                conn = db.create_sqlite_connection(db_path)
-                if not conn:
+                self._conn = db.create_sqlite_connection(db_path)
+                if not self._conn:
                     raise ConnectionError("Failed to connect to SQLite database")
-                cursor = conn.cursor()
+                cursor = self._conn.cursor()
                 cursor.execute(self.query)
             elif code == "POSTGRES":
-                conn = db.create_postgres_connection(
+                self._conn = db.create_postgres_connection(
                     host=self.conn_data["host"],
                     database=self.conn_data["database"],
                     user=self.conn_data["user"],
                     password=self.conn_data["password"],
                     port=int(self.conn_data["port"]) if self.conn_data.get("port") else 5432
                 )
-                if not conn:
+                if not self._conn:
                     raise ConnectionError("Failed to connect to PostgreSQL database")
-                cursor = conn.cursor()
+                cursor = self._conn.cursor()
                 cursor.execute(self.query)
             else:
                 if self.conn_data.get("db_path"):
-                    conn = db.create_sqlite_connection(self.conn_data["db_path"])
-                    if not conn:
+                    self._conn = db.create_sqlite_connection(self.conn_data["db_path"])
+                    if not self._conn:
                         raise ConnectionError("Failed to connect to SQLite database")
-                    cursor = conn.cursor()
+                    cursor = self._conn.cursor()
                     cursor.execute(self.query)
                 else:
                     raise ValueError(f"Unsupported database type: {code}")
@@ -295,7 +307,7 @@ class RunnableQuery(QRunnable):
             if cursor.description:
                 columns, column_specs = resolve_column_specs(
                     code,
-                    conn,
+                    self._conn,
                     self.conn_data,
                     self.query,
                     cursor.description,
@@ -310,8 +322,8 @@ class RunnableQuery(QRunnable):
             # Commit only for mutation queries that didn't automatically commit
             q_lower = self.query.lower().strip()
             is_mutation = any(q_lower.startswith(x) for x in ["insert", "update", "delete", "create", "drop", "alter", "truncate"])
-            if is_mutation and conn:
-                conn.commit()
+            if is_mutation and self._conn:
+                self._conn.commit()
 
             conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
             emit_query_finished(
@@ -327,9 +339,9 @@ class RunnableQuery(QRunnable):
             )
         except Exception as e:
             if not self._is_cancelled:
-                if conn:
+                if self._conn:
                     try:
-                        conn.rollback()
+                        self._conn.rollback()
                     except Exception:
                         pass
                 elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
@@ -339,7 +351,8 @@ class RunnableQuery(QRunnable):
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            if self._conn:
+                self._conn.close()
+                self._conn = None
 
 

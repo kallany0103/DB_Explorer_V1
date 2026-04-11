@@ -30,10 +30,12 @@ def build_main_window_actions(main_window):
 
     main_window.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", main_window)
     main_window.execute_action.setShortcuts(["Ctrl+Enter", "Ctrl+RETURN"])
+    main_window.execute_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.execute_action.triggered.connect(main_window.execute_query)
 
     main_window.execute_new_tab_action = QAction(QIcon("assets/execute_icon.png"), "Execute in New Output Tab", main_window)
-    main_window.execute_new_tab_action.setShortcut("Ctrl+Shift+Enter")
+    main_window.execute_new_tab_action.setShortcuts(["Ctrl+Shift+Enter", "Ctrl+Shift+RETURN"])
+    main_window.execute_new_tab_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.execute_new_tab_action.triggered.connect(main_window.execute_query_in_new_output_tab)
 
     main_window.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", main_window)
@@ -47,6 +49,8 @@ def build_main_window_actions(main_window):
     main_window.explain_plan_action.triggered.connect(main_window.explain_plan_query)
 
     main_window.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", main_window)
+    main_window.cancel_action.setShortcut("Alt+End")
+    main_window.cancel_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.cancel_action.triggered.connect(main_window.cancel_current_query)
     main_window.cancel_action.setEnabled(False)
 
@@ -105,12 +109,17 @@ def build_main_window_actions(main_window):
 
     main_window.query_tool_action = QAction(QIcon("assets/sql_sheet_plus.svg"), "Query Tool", main_window)
     main_window.query_tool_action.setShortcut("Ctrl+T")
+    main_window.query_tool_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.query_tool_action.triggered.connect(main_window.add_tab)
 
     main_window.restore_action = QAction("Restore Layout", main_window)
+    main_window.restore_action.setShortcut("Ctrl+Shift+L")
+    main_window.restore_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.restore_action.triggered.connect(main_window.restore_tool)
 
     main_window.refresh_action = QAction("Refresh Explorer", main_window)
+    main_window.refresh_action.setShortcuts(["F5", "Ctrl+R"])
+    main_window.refresh_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.refresh_action.triggered.connect(main_window.refresh_object_explorer)
 
     main_window.minimize_action = QAction("Minimize", main_window)
@@ -118,6 +127,7 @@ def build_main_window_actions(main_window):
     main_window.minimize_action.triggered.connect(main_window.showMinimized)
 
     main_window.zoom_action = QAction("Zoom", main_window)
+    main_window.zoom_action.setShortcut("F11")
     main_window.zoom_action.triggered.connect(main_window.toggle_maximize)
 
     main_window.sqlite_help_action = QAction("SQLite Website", main_window)
@@ -137,7 +147,7 @@ def build_main_window_actions(main_window):
     main_window.format_sql_action.triggered.connect(main_window.format_sql_text)
 
     main_window.clear_query_action = QAction(qta.icon("fa5s.eraser", color="#555555"), "Clear Query", main_window)
-    main_window.clear_query_action.setShortcuts(["Ctrl+Shift+C", "Ctrl+Alt+L", "F7"])
+    main_window.clear_query_action.setShortcuts(["Ctrl+Shift+C", "F7"])
     main_window.clear_query_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.clear_query_action.triggered.connect(main_window.clear_query_text)
 
