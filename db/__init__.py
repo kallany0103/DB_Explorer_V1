@@ -3,9 +3,17 @@ from db.db_connections import (
     create_postgres_connection,
     create_oracle_connection,
     create_servicenow_connection,
+    create_csv_connection,
     resource_path,
     DB_FILE,
 )
+
+# Aliases
+csv_connection = create_csv_connection
+servicenow_connection = create_servicenow_connection
+postgres_connection = create_postgres_connection
+sqlite_connection = create_sqlite_connection
+oracle_connection = create_oracle_connection
 
 from db.db_retrieval import (
     get_all_connections_from_db,
@@ -39,6 +47,7 @@ __all__ = [
     "create_postgres_connection",
     "create_oracle_connection",
     "create_servicenow_connection",
+    "create_csv_connection",
     "resource_path",
     "DB_FILE",
     "get_all_connections_from_db",
@@ -58,4 +67,9 @@ __all__ = [
     "delete_connection_group",
     "update_connection_type",
     "delete_connection_type",
+    "csv_connection",
+    "servicenow_connection",
+    "postgres_connection",
+    "sqlite_connection",
+    "oracle_connection",
 ]

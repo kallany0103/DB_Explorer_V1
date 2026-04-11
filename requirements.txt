@@ -6,5 +6,5 @@ pandas
 Pyside6
 qtawesome>=1.4.0
 openpyxl
-cdata_servicenow_connector-25.0.9440-cp311-cp311-win_amd64.whl
-cdata_csv_connector-25.0.9440-cp311-cp311-win_amd64.whl
+drivers/windows/x64/cdata_servicenow_connector-25.0.9539-cp311-cp311-win_amd64.whl
+drivers/windows/x64/cdata_csv_connector-25.0.9539-cp311-cp311-win_amd64.whl
