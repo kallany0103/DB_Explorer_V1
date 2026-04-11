@@ -50,7 +50,9 @@ class SchemaMenuBuilder:
         is_language         = table_type == "LANGUAGE"
         is_extension        = table_type == "EXTENSION"
 
-        if is_table_or_view:
+        if node_type == "schema_group":
+            self._schema_group_menu(menu, item, item_data, index)
+        elif is_table_or_view:
             self._table_menu(menu, item, item_data, db_type)
         elif is_sequence:
             self._sequence_menu(menu, item, item_data)
@@ -62,8 +64,6 @@ class SchemaMenuBuilder:
             self._extension_menu(menu, item, item_data)
         elif is_schema:
             self._schema_node_menu(menu, item, item_data, db_type, schema_name)
-        elif node_type == "schema_group":
-            self._schema_group_menu(menu, item, item_data, index)
         elif node_type == "language_root":
             self._language_root_menu(menu, item_data, index)
         elif node_type == "extension_root":
@@ -166,17 +166,20 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         if db_type in ("postgres", "sqlite"):
-            act = action(self.manager, "Create Table...", "mdi.table-plus")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_create_table_template(item_data)
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Create View...", "mdi.eye-plus-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_create_view_template(item_data)
-            )
-            menu.addAction(act)
+            if is_view:
+                # Right-clicking a View → only offer Create View
+                act = action(self.manager, "Create View...", "mdi.eye-plus-outline")
+                act.triggered.connect(
+                    lambda: self.manager.connection_actions.open_create_view_template(item_data)
+                )
+                menu.addAction(act)
+            else:
+                # Right-clicking a Table → only offer Create Table
+                act = action(self.manager, "Create Table...", "mdi.table-plus")
+                act.triggered.connect(
+                    lambda: self.manager.connection_actions.open_create_table_template(item_data)
+                )
+                menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -186,7 +189,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub(f"drop_{label.lower()}_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
+        )
         menu.addAction(act)
 
     # =========================================================================
@@ -213,16 +218,22 @@ class SchemaMenuBuilder:
         create_sub.addAction(act)
 
         act = action(self.manager, "Schema...", "mdi.folder-plus-outline")
-        act.triggered.connect(stub("create_schema"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_create_schema_dialog(item_data)
+        )
         create_sub.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
-        act.triggered.connect(stub("drop_schema"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_schema(item_data, schema_name)
+        )
         menu.addAction(act)
 
         act = action(self.manager, "Drop (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_schema_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_schema(item_data, schema_name, cascade=True)
+        )
         menu.addAction(act)
 
         menu.addSeparator()
@@ -345,7 +356,6 @@ class SchemaMenuBuilder:
             "Materialized Views":   ("Create Materialized View...", "mdi.eye-settings-outline"),
             "Procedures":           ("Create Procedure...",          "mdi.cog-play-outline"),
             "Sequences":            ("Create Sequence...",           "mdi.numeric-1-box-multiple-outline"),
-            "Indexes":              ("Create Index...",              "mdi.database-arrow-up-outline"),
             "Aggregates":           ("Create Aggregate...",          "mdi.sigma"),
             "Collations":           ("Create Collation...",          "mdi.sort-alphabetical-ascending"),
             "Domains":              ("Create Domain...",             "mdi.shape-outline"),

@@ -210,13 +210,18 @@ class ExplorerMenuBuilder:
         object_label = "View" if is_view else "Table"
 
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
-        act = action(self.manager, "Table...", "mdi.table-plus")
-        act.triggered.connect(stub("create_table"))
-        create_sub.addAction(act)
-
-        act = action(self.manager, "View...", "mdi.eye-plus-outline")
-        act.triggered.connect(stub("create_view"))
-        create_sub.addAction(act)
+        if is_view:
+            act = action(self.manager, "View...", "mdi.eye-plus-outline")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_create_view_template(item_data)
+            )
+            create_sub.addAction(act)
+        else:
+            act = action(self.manager, "Table...", "mdi.table-plus")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_create_table_template(item_data)
+            )
+            create_sub.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -226,7 +231,9 @@ class ExplorerMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Drop (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_table(item_data, item.text(), cascade=True)
+        )
         menu.addAction(act)
 
         menu.addSeparator()

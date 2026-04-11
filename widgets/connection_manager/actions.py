@@ -151,6 +151,43 @@ class ConnectionActions:
             self.manager.tab_widget.setCurrentWidget(new_tab)
             self.manager.execute_query(conn_data, query)
 
+    def _notify_deletion_success(self, object_name, object_type, sql, conn_data):
+        """Standard notification after successful deletion of an object."""
+        self.manager.status.showMessage(f"{object_type} '{object_name}' deleted.", 4000)
+        self.manager.status_message_label.setText(f"{object_type} '{object_name}' deleted.")
+
+        current_tab = self.manager.tab_widget.currentWidget()
+        if not current_tab:
+            self.manager.add_tab()
+            current_tab = self.manager.tab_widget.currentWidget()
+
+        if current_tab:
+            from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QStackedWidget
+            message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+            if not message_view:
+                message_view = current_tab.findChild(QTextEdit, "message_view")
+            results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+
+            if message_view and results_stack:
+                results_stack.setCurrentIndex(1)
+                msg = f"{sql}\n\nQuery returned successfully."
+                message_view.setPlainText(msg)
+
+                # Focus the message view
+                from PySide6.QtWidgets import QWidget
+                header = current_tab.findChild(QWidget, "resultsHeader")
+                if header:
+                    from PySide6.QtWidgets import QPushButton
+                    buttons = header.findChildren(QPushButton)
+                    if len(buttons) >= 2:
+                        buttons[0].setChecked(False)
+                        buttons[1].setChecked(True)
+
+        # Refresh both trees
+        self.manager.refresh_object_explorer()
+        if conn_data and conn_data.get('db_type') == 'postgres':
+            self.manager.schema_loader.load_postgres_schema(conn_data)
+
     def show_table_properties(self, item_data, table_name):
         if not item_data:
             return
@@ -158,7 +195,7 @@ class ConnectionActions:
         dialog = TablePropertiesDialog(item_data, table_name, self.manager)
         dialog.show()
 
-    def delete_table(self, item_data, table_name):
+    def delete_table(self, item_data, table_name, cascade=False):
         if not item_data:
             return
 
@@ -170,11 +207,16 @@ class ConnectionActions:
 
         is_view = "VIEW" in table_type
         object_type = "View" if is_view else "Table"
+        
+        confirm_msg = f"Are you sure you want to delete {object_type.lower()} '{table_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
 
         reply = QMessageBox.question(
             self.manager,
             f'Confirm Delete {object_type}',
-            f"Are you sure you want to delete {object_type.lower()} '{table_name}'? This action cannot be undone.",
+            confirm_msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
@@ -189,7 +231,8 @@ class ConnectionActions:
                 schema_quoted = f'"{schema_name}"' if schema_name else ""
                 full_name = f'{schema_quoted}.{real_table_name}' if schema_quoted else f'{real_table_name}'
                 drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
-                sql = f"{drop_cmd} {full_name};"
+                cascade_cmd = " CASCADE" if cascade else ""
+                sql = f"{drop_cmd} {full_name}{cascade_cmd};"
             elif db_type == 'sqlite':
                 conn = db.create_sqlite_connection(conn_data.get('db_path'))
                 drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
@@ -198,30 +241,9 @@ class ConnectionActions:
                 folder_path = conn_data.get("db_path")
                 file_path = os.path.join(folder_path, real_table_name)
                 if os.path.exists(file_path):
+                    import os
                     os.remove(file_path)
-                    success_msg = f"CSV file '{table_name}' deleted successfully."
-                    self.manager.status.showMessage(success_msg, 5000)
-                    QMessageBox.information(self.manager, "Success", success_msg)
-
-                    current_tab = self.manager.tab_widget.currentWidget()
-                    if current_tab:
-                        message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                        if not message_view:
-                            message_view = current_tab.findChild(QTextEdit, "message_view")
-                        results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                        if message_view and results_stack:
-                            results_stack.setCurrentIndex(1)
-                            msg = f'OS.REMOVE("{file_path}")\n\n{success_msg}'
-                            message_view.setPlainText(msg)
-
-                            header = current_tab.findChild(QWidget, "resultsHeader")
-                            if header:
-                                buttons = header.findChildren(QPushButton)
-                                if len(buttons) >= 2:
-                                    buttons[0].setChecked(False)
-                                    buttons[1].setChecked(True)
-
-                    self.manager.refresh_object_explorer()
+                    self._notify_deletion_success(table_name, object_type, f"OS.REMOVE(\"{file_path}\")", conn_data)
                     return
                 raise Exception(f"File not found: {file_path}")
 
@@ -231,32 +253,52 @@ class ConnectionActions:
                 conn.commit()
                 conn.close()
 
-                success_msg = f"{object_type} '{table_name}' deleted successfully."
-                self.manager.status.showMessage(success_msg, 5000)
-                QMessageBox.information(self.manager, "Success", success_msg)
-
-                current_tab = self.manager.tab_widget.currentWidget()
-                if current_tab:
-                    message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                    if not message_view:
-                        message_view = current_tab.findChild(QTextEdit, "message_view")
-                    results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-                    if message_view and results_stack:
-                        results_stack.setCurrentIndex(1)
-                        msg = f"{sql}\n\nQuery returned successfully."
-                        message_view.setPlainText(msg)
-
-                        header = current_tab.findChild(QWidget, "resultsHeader")
-                        if header:
-                            buttons = header.findChildren(QPushButton)
-                            if len(buttons) >= 2:
-                                buttons[0].setChecked(False)
-                                buttons[1].setChecked(True)
-
-                self.manager.refresh_object_explorer()
+                self._notify_deletion_success(table_name, object_type, sql, conn_data)
 
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete {object_type.lower()}:\n{e}")
+
+    def delete_schema(self, item_data, schema_name, cascade=False):
+        """Perform DROP SCHEMA or DROP SCHEMA CASCADE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres':
+            QMessageBox.warning(self.manager, "Not Supported", "Drop Schema is only supported for PostgreSQL.")
+            return
+
+        confirm_msg = f"Are you sure you want to delete schema '{schema_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL objects within the schema (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete Schema',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            sql = f'DROP SCHEMA "{schema_name}"{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(schema_name, "Schema", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete schema:\n{e}")
+
 
     def open_create_table_template(self, item_data, table_name=None):
         if not item_data:
@@ -269,53 +311,59 @@ class ConnectionActions:
             QMessageBox.critical(self.manager, "Error", "Connection data is missing!")
             return
 
-        def log_success_to_view(created_table_name):
+    def _notify_creation_success(self, object_name, object_type, conn_data):
+        """Standard notification after successful creation of an object."""
+        self.manager.status.showMessage(f"{object_type} '{object_name}' created.", 4000)
+        self.manager.status_message_label.setText(f"{object_type} '{object_name}' created.")
+
+        current_tab = self.manager.tab_widget.currentWidget()
+        if not current_tab:
+            self.manager.add_tab()
             current_tab = self.manager.tab_widget.currentWidget()
 
-            if not current_tab:
-                self.manager.add_tab()
-                current_tab = self.manager.tab_widget.currentWidget()
-
-            if current_tab:
-                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                if not message_view:
-                    message_view = current_tab.findChild(QTextEdit, "message_view")
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-            else:
-                message_view = None
-                results_stack = None
+        if current_tab:
+            from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QStackedWidget
+            message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+            if not message_view:
+                message_view = current_tab.findChild(QTextEdit, "message_view")
+            results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
 
             if message_view and results_stack:
                 results_stack.setCurrentIndex(1)
-
-                msg = 'CREATE TABLE\n\nQuery returned successfully.'
+                msg = f"CREATE {object_type.upper()}\n\nQuery returned successfully."
                 message_view.setPlainText(msg)
 
-                sb = message_view.verticalScrollBar()
-                sb.setValue(sb.maximum())
-
-                message_view.repaint()
-                QApplication.processEvents()
-
+                # Focus the message view
+                from PySide6.QtWidgets import QWidget
                 header = current_tab.findChild(QWidget, "resultsHeader")
                 if header:
+                    from PySide6.QtWidgets import QPushButton
                     buttons = header.findChildren(QPushButton)
                     if len(buttons) >= 2:
                         buttons[0].setChecked(False)
                         buttons[1].setChecked(True)
 
-                results_info_bar = current_tab.findChild(QWidget, "resultsInfoBar")
-                if results_info_bar:
-                    results_info_bar.hide()
-                    self.manager.status_message_label.setText(f"Table '{created_table_name}' created successfully.")
-                else:
-                    QMessageBox.information(self.manager, "Success", f"Table '{created_table_name}' created successfully!")
+        # Refresh both trees
+        self.manager.refresh_object_explorer()
+        if conn_data and conn_data.get('db_type') == 'postgres':
+            self.manager.schema_loader.load_postgres_schema(conn_data)
+
+    def open_create_table_template(self, item_data, table_name=None):
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if not conn_data:
+            QMessageBox.critical(self.manager, "Error", "Connection data is missing!")
+            return
 
         if db_type == 'postgres':
             try:
                 conn = db.create_postgres_connection(conn_data)
                 cursor = conn.cursor()
-                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
+                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
                 schemas = [row[0] for row in cursor.fetchall()]
                 cursor.execute("SELECT current_user")
                 current_user = cursor.fetchone()[0]
@@ -344,13 +392,11 @@ class ConnectionActions:
                     conn.commit()
                     conn.close()
 
-                    log_success_to_view(data["name"])
-
-                    self.manager.status.showMessage("Refreshing schema...", 2000)
-                    self.manager.refresh_object_explorer()
+                    self._notify_creation_success(data["name"], "Table", conn_data)
 
             except Exception as e:
-                QMessageBox.critical(self.manager, "Connection Error", f"Invalid Connection or SQL: {e}")
+                QMessageBox.critical(self.manager, "Error", f"Failed to create table:\n{e}")
+
 
         elif db_type == 'sqlite':
             try:
@@ -397,47 +443,15 @@ class ConnectionActions:
             QMessageBox.critical(self.manager, "Error", "Connection data is missing!")
             return
 
-        def log_success_to_view(view_name, sql):
-            current_tab = self.manager.tab_widget.currentWidget()
-            if not current_tab:
-                self.manager.add_tab()
-                current_tab = self.manager.tab_widget.currentWidget()
-
-            if current_tab:
-                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
-                if not message_view:
-                    message_view = current_tab.findChild(QTextEdit, "message_view")
-                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
-            else:
-                message_view = None
-                results_stack = None
-
-            if message_view and results_stack:
-                results_stack.setCurrentIndex(1)
-                msg = "CREATE VIEW\n\nQuery returned successfully."
-                message_view.setPlainText(msg)
-
-                sb = message_view.verticalScrollBar()
-                sb.setValue(sb.maximum())
-
-                header = current_tab.findChild(QWidget, "resultsHeader")
-                if header:
-                    buttons = header.findChildren(QPushButton)
-                    if len(buttons) >= 2:
-                        buttons[0].setChecked(False)
-                        buttons[1].setChecked(True)
-
-                self.manager.status_message_label.setText(f"View '{view_name}' created successfully.")
-
         if db_type == 'postgres':
             try:
                 conn = db.create_postgres_connection(conn_data)
                 cursor = conn.cursor()
-                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'")
+                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
                 schemas = [row[0] for row in cursor.fetchall()]
                 conn.close()
 
-                dialog = CreateViewDialog(self.manager, schemas)
+                dialog = CreateViewDialog(self.manager, schemas, db_type="postgres")
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     data = dialog.get_data()
                     sql = f'CREATE OR REPLACE VIEW "{data["schema"]}"."{data["name"]}" AS\n{data["definition"]};'
@@ -448,15 +462,14 @@ class ConnectionActions:
                     conn.commit()
                     conn.close()
 
-                    log_success_to_view(data["name"], sql)
-                    self.manager.refresh_object_explorer()
+                    self._notify_creation_success(data["name"], "View", conn_data)
 
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to create Postgres view:\n{e}")
 
         elif db_type == 'sqlite':
             try:
-                dialog = CreateViewDialog(self.manager, schemas=None)
+                dialog = CreateViewDialog(self.manager, schemas=None, db_type="sqlite")
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     data = dialog.get_data()
                     sql = f'CREATE VIEW "{data["name"]}" AS\n{data["definition"]};'
@@ -467,13 +480,14 @@ class ConnectionActions:
                     conn.commit()
                     conn.close()
 
-                    log_success_to_view(data["name"], sql)
-                    self.manager.refresh_object_explorer()
+                    self._notify_creation_success(data["name"], "View", conn_data)
+
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to create SQLite view:\n{e}")
 
         else:
             QMessageBox.warning(self.manager, "Not Supported", f"Interactive view creation is not supported for {db_type} yet.")
+
 
     def export_schema_table_rows(self, item_data, table_name):
         if not item_data:
@@ -581,16 +595,23 @@ class ConnectionActions:
 
         # --- Fetch existing users/roles for the Owner dropdown ---
         existing_roles = []
+        cur_user       = ""
         try:
             conn   = db.create_postgres_connection(conn_data)
             cursor = conn.cursor()
+            
+            # Get current user for defaulting the owner
+            cursor.execute("SELECT current_user;")
+            cur_user = cursor.fetchone()[0]
+            
+            # Get all login roles
             cursor.execute(
                 "SELECT rolname FROM pg_roles WHERE rolcanlogin ORDER BY rolname;"
             )
             existing_roles = [row[0] for row in cursor.fetchall()]
             conn.close()
         except Exception:
-            pass  # Owner field will just be an empty text input
+            pass  # Owner field will just be an empty text input or standard dropdown
 
         # ==================================================================
         # Build dialog
@@ -631,8 +652,14 @@ class ConnectionActions:
             owner_input.addItem("")          # empty = no AUTHORIZATION clause
             owner_input.addItems(existing_roles)
             owner_input.setEditable(True)
+            
+            # Default to current user if available
+            if cur_user and cur_user in existing_roles:
+                owner_input.setCurrentText(cur_user)
         else:
             owner_input.setPlaceholderText("(optional) owner role")
+            if cur_user:
+                owner_input.setText(cur_user)
 
         if_not_exists_chk = QCheckBox("IF NOT EXISTS  (skip if schema already exists)")
 
