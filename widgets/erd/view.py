@@ -9,7 +9,7 @@ from PySide6.QtCore import Signal, Qt, QPointF, QTimeLine
 from PySide6.QtGui import QPainter, QTransform
 
 
-from widgets.erd.commands import MoveTableCommand
+from widgets.erd.commands import MoveTableCommand, AddTableCommand, AddColumnCommand
 from widgets.erd.items.table_item import ERDTableItem
 
 class ERDView(QGraphicsView):
@@ -17,6 +17,7 @@ class ERDView(QGraphicsView):
 
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
+        self.setAcceptDrops(True)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
@@ -158,6 +159,124 @@ class ERDView(QGraphicsView):
                 self._setup_zoom(1 / 1.25)
         else:
             super().wheelEvent(event)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist"):
+            event.acceptProposedAction()
+        elif event.mimeData().hasFormat("application/x-erd-component"):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist"):
+            event.acceptProposedAction()
+        elif event.mimeData().hasFormat("application/x-erd-component"):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if event.mimeData().hasFormat("application/x-erd-component"):
+            comp_type = event.mimeData().data("application/x-erd-component").data().decode('utf-8')
+            self._handle_component_drop(comp_type, event.position())
+            event.acceptProposedAction()
+            return
+            
+        if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist"):
+            # This is complex because we need the actual item data
+            # ConnectionManager's tree uses a proxy model, and the MIME data 
+            # might not easily give us the UserRole data without some help.
+            
+            # For now, let's try to get it from the ConnectionManager directly 
+            # if we can find it.
+            main_window = self._find_main_window()
+            if main_window:
+                mgr = getattr(main_window, 'connection_manager', None)
+                if mgr:
+                    indices = mgr.schema_tree.selectedIndexes()
+                    if indices:
+                        # We only care about the first one for now
+                        index = indices[0]
+                        item_data = index.data(Qt.ItemDataRole.UserRole)
+                        if item_data and item_data.get("table_name"):
+                            self._handle_table_drop(item_data, event.position())
+                            event.acceptProposedAction()
+                            return
+                        
+        super().dropEvent(event)
+
+    def _find_main_window(self):
+        parent = self.parent()
+        while parent:
+            if parent.__class__.__name__ == "MainWindow":
+                return parent
+            # Some parents might host the manager
+            if hasattr(parent, 'connection_manager'):
+                return parent 
+            parent = parent.parent()
+        return None
+
+    def _handle_table_drop(self, item_data, view_pos):
+        table_name = item_data.get("table_name")
+        schema_name = item_data.get("schema_name")
+        full_name = f"{schema_name}.{table_name}" if schema_name else table_name
+        
+        # Check if already exists
+        if full_name in self.scene().tables:
+            return
+
+        # We need the columns.
+        columns = item_data.get("columns", [])
+        
+        scene_pos = self.mapToScene(view_pos.toPoint())
+        
+        # We need access to the ERDWidget
+        from widgets.erd.widget import ERDWidget
+        widget = self.parent()
+        while widget and not isinstance(widget, ERDWidget):
+            widget = widget.parent()
+
+        if widget:
+            cmd = AddTableCommand(widget, table_name, columns, scene_pos)
+            widget.undo_stack.push(cmd)
+
+    def _handle_component_drop(self, comp_type, view_pos):
+        scene_pos = self.mapToScene(view_pos.toPoint())
+        from widgets.erd.widget import ERDWidget
+        widget = self.parent()
+        while widget and not isinstance(widget, ERDWidget):
+            widget = widget.parent()
+            
+        if not widget:
+            return
+
+        if comp_type == "table":
+            # Just trigger the add_new_table logic
+            # Or better, just add a default table without dialog
+            name = "new_table"
+            counter = 1
+            while f"public.{name}" in self.scene().tables:
+                name = f"new_table_{counter}"
+                counter += 1
+            
+            cmd = AddTableCommand(widget, name, [{"name": "id", "type": "INTEGER", "pk": True}], scene_pos)
+            widget.undo_stack.push(cmd)
+            
+        elif comp_type == "column":
+            # Check if dropped over a table
+            item = self.itemAt(view_pos.toPoint())
+            if isinstance(item, ERDTableItem):
+                col_name = "new_column"
+                counter = 1
+                # Check for existing column names in this table
+                existing_names = [c['name'] for c in item.columns]
+                while col_name in existing_names:
+                    col_name = f"new_column_{counter}"
+                    counter += 1
+                
+                cmd = AddColumnCommand(widget, item, {"name": col_name, "type": "VARCHAR(255)"})
+                widget.undo_stack.push(cmd)
 
     def _duplicate_selected_tables(self):
         # Find which items are selected

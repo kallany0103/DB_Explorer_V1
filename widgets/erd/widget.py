@@ -16,7 +16,7 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QFileDialog, QMessageBox, QDialog,
-    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog
+    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog, QSplitter
 )
 from PySide6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
 from PySide6.QtCore import Qt, QSize, QRectF, QTimer, QPointF
@@ -27,6 +27,9 @@ from widgets.erd.items.connection_item import ERDConnectionItem
 from widgets.erd.scene import ERDScene
 from widgets.erd.view import ERDView
 from widgets.erd.property_panel import PropertyPanel
+from widgets.erd.palette import ERDPalette
+from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
+from widgets.erd.commands import AddTableCommand, AddConnectionCommand
 
 class SQLPreviewDialog(QDialog):
     def __init__(self, sql_text, parent=None):
@@ -225,50 +228,39 @@ class ERDWidget(QWidget):
     def __init__(self, schema_data, parent=None):
         super().__init__(parent)
         self.schema_data = schema_data
+        self.undo_stack = QUndoStack(self)
         self.initUI()
         
     def initUI(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        # Toolbar Container to hold the styled toolbar
-        toolbar_container = QWidget()
-        toolbar_container.setObjectName("erdToolbarContainer")
-        toolbar_container.setStyleSheet("""
-            #erdToolbarContainer {
-                background-color: #f0f0f0;
-                border-bottom: 1px solid #c6c6c6;
-                padding: 0px 6px;
-            }
+        self.toolbar = QToolBar()
+        self.toolbar.setIconSize(QSize(16, 16))
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.toolbar.setStyleSheet("""
             QToolBar {
-                background: transparent;
-                border: none;
+                background-color: #ECEFF3; 
+                border-bottom: 1px solid #C9CFD8; 
                 spacing: 6px;
+                padding: 3px 6px;
             }
             QToolButton {
-                padding: 2px 8px;
-                border: 1px solid #b9b9b9;
-                background-color: #ffffff;
-                border-radius: 4px;
-                font-size: 9pt;
-                color: #333333;
+                padding: 2px 8px; 
+                border: 1px solid #b9b9b9; 
+                background-color: #ffffff; 
+                border-radius: 4px; 
+                min-width: 14px;
+                min-height: 24px;
             }
             QToolButton:hover {
-                background-color: #e8e8e8;
-                border: 1px solid #9c9c9c;
+                background-color: #e8e8e8; 
+                border-color: #9c9c9c;
             }
             QToolButton:pressed {
                 background-color: #dcdcdc;
             }
         """)
-        
-        container_layout = QHBoxLayout(toolbar_container)
-        container_layout.setContentsMargins(6, 3, 6, 3)
-        
-        self.toolbar = QToolBar()
-        self.toolbar.setIconSize(QSize(16, 16))
-        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         
         # Group 1: File Operations
         open_action = QAction(qta.icon('fa5s.folder-open', color='#555555'), "Open ERD (.erd)", self)
@@ -292,7 +284,41 @@ class ERDWidget(QWidget):
         export_pdf = QAction(qta.icon('fa5s.file-pdf', color='#555555'), "Export to PDF", self)
         export_pdf.triggered.connect(lambda: self.save_as_image("pdf"))
         self.toolbar.addAction(export_pdf)
+
+        layout.addWidget(self.toolbar)
         
+        # Scene and View
+        self.scene = ERDScene(self)
+        self.scene.undo_stack = self.undo_stack
+        self.view = ERDView(self.scene, self)
+        
+        # Content Layout
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        
+        # New Slim Palette
+        self.palette = ERDPalette(self)
+        content_layout.addWidget(self.palette)
+        
+        # View Container
+        self.view_container = QWidget()
+        self.view_layout = QVBoxLayout(self.view_container)
+        self.view_layout.setContentsMargins(0, 0, 0, 0)
+        self.view_layout.addWidget(self.view)
+        
+        content_layout.addWidget(self.view_container, 1)
+        
+        layout.addLayout(content_layout)
+        
+        # Floating Property Panel
+        self.property_panel = PropertyPanel(self.view, self.view_container)
+        self.property_panel.hide()
+        
+        self.view_container.installEventFilter(self)
+        
+        self.load_schema()
+        self.auto_layout()
         self.toolbar.addSeparator()
         
         # Group 2: View Controls
@@ -312,8 +338,6 @@ class ERDWidget(QWidget):
         self.toolbar.addAction(reset_zoom_action)
         
         self.toolbar.addSeparator()
-        
-        self.undo_stack = QUndoStack(self)
         
         # Group 3: Auto Align & History
         align_action = QAction(qta.icon('fa5s.th', color='#555555'), "Auto Align", self)
@@ -375,7 +399,7 @@ class ERDWidget(QWidget):
         self.sql_shortcut.triggered.connect(self.generate_forward_sql)
         self.addAction(self.sql_shortcut)
         
-        container_layout.addWidget(self.toolbar)
+        
         # Search Bar (Toggle UI)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search...")
@@ -406,43 +430,16 @@ class ERDWidget(QWidget):
         self.search_btn.setToolTip("Search (Ctrl+F)")
         self.search_btn.clicked.connect(self.toggle_search)
 
-        # Add to toolbar layout BEFORE the stretch
-        container_layout.addWidget(self.search_input)
-        container_layout.addWidget(self.search_btn)
-        
-        container_layout.addStretch()
+        # Add to toolbar
+        self.toolbar.addWidget(self.search_input)
+        self.toolbar.addWidget(self.search_btn)
 
         search_action = QAction(self)
         search_action.setShortcut("Ctrl+F")
         search_action.triggered.connect(self.toggle_search)
         self.addAction(search_action)
 
-        layout.addWidget(toolbar_container)
-        
-        # Scene and View
-        self.scene = ERDScene(self)
-        self.scene.undo_stack = self.undo_stack
-        self.view = ERDView(self.scene, self)
-        
-        # Main Area (No splitters)
-        self.view_container = QWidget()
-        self.view_layout = QVBoxLayout(self.view_container)
-        self.view_layout.setContentsMargins(0, 0, 0, 0)
-        self.view_layout.addWidget(self.view)
-        
-        # Overlay Floating Property Panel
-        self.property_panel = PropertyPanel(self.view, self.view_container)
-        self.property_panel.hide() # Hidden by default
-        
-        # Make the view take all extra space
-        
-        layout.addWidget(self.view_container)
-        
-        # Update layout initially and on resize
-        self.view_container.installEventFilter(self)
-        
-        self.load_schema()
-        self.auto_layout()
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -796,20 +793,57 @@ class ERDWidget(QWidget):
                 self.scene.tables = {}
                 self.load_schema()
                 
-                # Restore positions
                 positions = state.get("positions", {})
-                for full_name, pos_data in positions.items():
+                for full_name, pos in positions.items():
                     if full_name in self.scene.tables:
-                        item = self.scene.tables[full_name]
-                        item.setPos(pos_data["x"], pos_data["y"])
-                        
-
-                # Update bounds and center
-                self.scene.update_scene_rect()
-                if self.scene.items():
-                    QTimer.singleShot(0, self._center_view_deferred)
+                        self.scene.tables[full_name].setPos(pos["x"], pos["y"])
+            
+            self.status_message(f"ERD Loaded: {file_path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load ERD: {str(e)}")
+
+    def add_new_table(self):
+        dialog = TableDesignerDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            name, cols = dialog.get_result()
+            # Default position in the center of the viewport
+            view_center = self.view.mapToScene(self.view.viewport().rect().center())
+            
+            cmd = AddTableCommand(self, name, cols, view_center)
+            self.undo_stack.push(cmd)
+
+    def add_new_relationship(self):
+        if not self.scene.tables:
+            QMessageBox.warning(self, "No Tables", "Add at least two tables to create a relationship.")
+            return
+
+        dialog = RelationDesignerDialog(self, tables=self.scene.tables)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            res = dialog.get_result()
+            cmd = AddConnectionCommand(
+                self, 
+                res['source_table'], res['source_col'],
+                res['target_table'], res['target_col'],
+                res['relation_type']
+            )
+            self.undo_stack.push(cmd)
+
+    def status_message(self, msg):
+        # Notify parent main window if possible
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, 'status'):
+                parent.status.showMessage(msg, 3000)
+                break
+            parent = parent.parent()
+
+    def update_scene_items(self, item_type, attr, value):
+        for item in self.scene.items():
+            if isinstance(item, item_type):
+                setattr(item, attr, value)
+                if hasattr(item, 'update_geometry'):
+                    item.update_geometry()
+                item.update()
 
     def save_as_image(self, ext="png"):
         filter_str = ""
@@ -912,13 +946,3 @@ class ERDWidget(QWidget):
                 # Optional: Select it too
                 self.scene.clearSelection()
                 item.setSelected(True)
-
-    def update_scene_items(self, item_type, attribute, value):
-        """
-        Updates a specific attribute for all items of a given type in the scene.
-        """
-        for item in self.scene.items():
-            if isinstance(item, item_type):
-                setattr(item, attribute, value)
-                item.update_geometry()
-                item.update()

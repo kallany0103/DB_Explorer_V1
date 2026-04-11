@@ -1,4 +1,9 @@
-from db.db_connections import create_sqlite_connection, create_postgres_connection
+from db.db_connections import (
+    create_sqlite_connection, 
+    create_postgres_connection,
+    create_csv_connection,
+    create_servicenow_connection
+)
 
 def get_sqlite_schema(db_path):
     """
@@ -173,4 +178,83 @@ def get_postgres_schema(conn_data, schema_name=None):
     finally:
         conn.close()
         
+    return schema_data
+
+
+def get_csv_schema(conn_info):
+    """
+    Retrieves metadata for CSV files in the specified path.
+    CData CSV driver treats a folder as a database and each file as a table.
+    """
+    schema_data = {}
+    conn = create_csv_connection(conn_info)
+    if not conn:
+        return schema_data
+
+    try:
+        cursor = conn.cursor()
+        # Get tables (CSV files)
+        cursor.execute("SELECT TABLE_NAME FROM sys_tables WHERE TABLE_TYPE='TABLE'")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        for table in tables:
+            # Get columns
+            cursor.execute(f"SELECT COLUMN_NAME, DATA_TYPE FROM sys_tablecolumns WHERE TABLE_NAME='{table}'")
+            columns = []
+            for col_name, data_type in cursor.fetchall():
+                columns.append({
+                    "name": col_name,
+                    "type": data_type,
+                    "pk": False # CSV doesn't have PKs by default
+                })
+            
+            schema_data[table] = {
+                "columns": columns,
+                "foreign_keys": [] # CSV doesn't have FKs
+            }
+    except Exception as e:
+        print(f"Error retrieving CSV schema: {e}")
+    finally:
+        conn.close()
+    return schema_data
+
+
+def get_servicenow_schema(conn_info, table_name=None):
+    """
+    Retrieves metadata for ServiceNow tables.
+    """
+    schema_data = {}
+    conn = create_servicenow_connection(conn_info)
+    if not conn:
+        return schema_data
+
+    try:
+        cursor = conn.cursor()
+        if table_name:
+            tables = [table_name]
+        else:
+            # Limiting to a few common tables to avoid timeout
+            cursor.execute("SELECT TABLE_NAME FROM sys_tables WHERE TABLE_TYPE='TABLE' LIMIT 50")
+            tables = [row[0] for row in cursor.fetchall()]
+
+        for table in tables:
+            # Get columns
+            cursor.execute(f"SELECT COLUMN_NAME, DATA_TYPE, IS_KEY FROM sys_tablecolumns WHERE TABLE_NAME='{table}'")
+            columns = []
+            for col_name, data_type, is_key in cursor.fetchall():
+                columns.append({
+                    "name": col_name,
+                    "type": data_type,
+                    "pk": str(is_key).lower() == 'true'
+                })
+            
+            schema_data[table] = {
+                "table": table,
+                "columns": columns,
+                "foreign_keys": [] 
+            }
+    except Exception as e:
+        print(f"Error retrieving ServiceNow schema: {e}")
+    finally:
+        conn.close()
     return schema_data
