@@ -62,6 +62,7 @@ def build_main_window_menu(main_window):
     window_menu.addAction(main_window.zoom_action)
     window_menu.addSeparator()
     close_action = QAction("Close", main_window)
+    close_action.setShortcut("Alt+F4")
     close_action.triggered.connect(main_window.close)
     window_menu.addAction(close_action)
 

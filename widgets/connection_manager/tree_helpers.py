@@ -130,6 +130,18 @@ class TreeHelpers:
 
         self.manager._saved_tree_paths = saved_paths
 
+        # Save selected connection short_name
+        selection = tree.selectionModel().selectedIndexes()
+        if selection:
+            source_index = proxy.mapToSource(selection[0])
+            item = self.manager.model.itemFromIndex(source_index)
+            if item and self.get_item_depth(item) == 3:
+                self.manager._saved_selection_name = item.text()
+            else:
+                self.manager._saved_selection_name = None
+        else:
+            self.manager._saved_selection_name = None
+
     def restore_tree_expansion_state(self):
         if not hasattr(self.manager, '_saved_tree_paths') or not self.manager._saved_tree_paths:
             return
@@ -152,9 +164,18 @@ class TreeHelpers:
 
                         if (type_name, group_name) in self.manager._saved_tree_paths:
                             tree.expand(group_index)
+                            
+                            if hasattr(self.manager, '_saved_selection_name') and self.manager._saved_selection_name:
+                                for conn_row in range(proxy.rowCount(group_index)):
+                                    conn_index = proxy.index(conn_row, 0, group_index)
+                                    if conn_index.data(Qt.ItemDataRole.DisplayRole) == self.manager._saved_selection_name:
+                                        tree.selectionModel().select(conn_index, tree.selectionModel().SelectionFlag.ClearAndSelect)
+                                        tree.setCurrentIndex(conn_index)
+                                        break
         finally:
             tree.setUpdatesEnabled(True)
             self.manager._saved_tree_paths = []
+            self.manager._saved_selection_name = None
 
     def get_item_depth(self, item):
         depth = 0

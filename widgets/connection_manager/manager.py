@@ -217,11 +217,22 @@ class ConnectionManager(QWidget):
             return True
         return super().eventFilter(obj, event)
 
-    def refresh_object_explorer(self):
-        self._save_tree_expansion_state()
-        self.load_data()
-        self._restore_tree_expansion_state()
-        self.status.showMessage("Object Explorer refreshed.", 3000)
+    def refresh_object_explorer(self, *args, **kwargs):
+        try:
+            self._save_tree_expansion_state()
+            self.load_data()
+            self._restore_tree_expansion_state()
+            
+            # Trigger item_clicked to refresh schema if a connection is selected
+            current_index = self.tree.currentIndex()
+            if current_index.isValid():
+                self.item_clicked(current_index)
+                
+            self.status.showMessage("Object Explorer refreshed.", 3000)
+        except Exception as e:
+            self.status.showMessage(f"Error refreshing explorer: {e}", 5000)
+            import traceback
+            traceback.print_exc()
 
     def toggle_explorer_search(self):
         self.tree_helpers.toggle_explorer_search()

@@ -99,14 +99,21 @@ class MainWindow(QMainWindow):
         new_tab_menu.setCursor(Qt.CursorShape.PointingHandCursor)
         
         action_new_worksheet = QAction(qta.icon('mdi.database-edit', scale_factor=1.3), "New Worksheet", self)
-        action_new_worksheet.setShortcut("Alt+Ctrl+S")
+        action_new_worksheet.setShortcut("Ctrl+N")
+        action_new_worksheet.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_worksheet.triggered.connect(self.add_tab)
         
         action_new_erd = QAction(qta.icon('fa6s.sitemap'), "New ERD", self)
+        action_new_erd.setShortcut("Ctrl+Shift+E")
+        action_new_erd.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_erd.triggered.connect(self.add_erd_tab)
         
         new_tab_menu.addAction(action_new_worksheet)
         new_tab_menu.addAction(action_new_erd)
+        
+        # Explicitly add actions to the window so their shortcuts trigger regardless of whether the dropdown is open
+        self.addAction(action_new_worksheet)
+        self.addAction(action_new_erd)
         
         # Style for the dropdown menu
         new_tab_menu.setStyleSheet("""
@@ -200,8 +207,8 @@ class MainWindow(QMainWindow):
         self.connection_manager._delete_object_from_menu()
 
 
-    def refresh_object_explorer(self):
-        self.connection_manager.refresh_object_explorer()
+    def refresh_object_explorer(self, *args, **kwargs):
+        self.connection_manager.refresh_object_explorer(*args, **kwargs)
 
     def execute_query(self, *args, **kwargs):
         return self.worksheet_manager.execute_query(*args, **kwargs)
@@ -263,7 +270,7 @@ class MainWindow(QMainWindow):
     def format_sql_text(self):
         self.worksheet_manager.format_sql_text()
 
-    def clear_query_text(self):
+    def clear_query_text(self, *args, **kwargs):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
@@ -354,7 +361,7 @@ class MainWindow(QMainWindow):
     # --- WINDOW / HELP / STYLE / SESSION ---
     # =========================================================================
 
-    def restore_tool(self):
+    def restore_tool(self, *args, **kwargs):
         restore_tool(self)
 
 
