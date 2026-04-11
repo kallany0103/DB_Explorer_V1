@@ -159,6 +159,7 @@ class ConnectionUI:
         self.manager.schema_tree.setModel(self.manager.schema_model)
         self.apply_schema_header_style()
         self.manager.schema_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.manager.schema_tree.setDragEnabled(True)
         self.manager.schema_tree.customContextMenuRequested.connect(self.manager.show_schema_context_menu)
         self.manager.schema_tree.doubleClicked.connect(self.manager.schema_item_double_clicked)
         self.manager.schema_tree.setIndentation(15)

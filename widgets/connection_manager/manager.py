@@ -128,6 +128,10 @@ class ConnectionManager(QWidget):
             elif "SQLITE" in db_type_val:
                 sqlite_db_path = conn_info.get("db_path") if isinstance(conn_info, dict) else conn_info
                 full_schema = db.get_sqlite_schema(sqlite_db_path)
+            elif "CSV" in db_type_val:
+                full_schema = db.get_csv_schema(conn_info)
+            elif "SERVICENOW" in db_type_val:
+                full_schema = db.get_servicenow_schema(conn_info, table_name=table_name)
             else:
                 QMessageBox.warning(self, "Not Supported", f"ERD generation is not supported for {db_type_val or 'unknown type'}")
                 return

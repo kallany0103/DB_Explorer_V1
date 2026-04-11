@@ -66,6 +66,7 @@ class ERDTableItem(QGraphicsRectItem):
         return self.rect().adjusted(-2, -2, 2, 2)
         
     def update_geometry(self):
+        self.prepareGeometryChange()
         # Calculate width
         font_header = QFont("Segoe UI", 10, QFont.Weight.Bold)
         fm_header = QFontMetrics(font_header)
@@ -198,7 +199,15 @@ class ERDTableItem(QGraphicsRectItem):
                 if self.show_types:
                     painter.setPen(QPen(QColor("#70757A")))
                     type_text = col.get('type', '')
-                    painter.drawText(col_rect.adjusted(0, 0, -5, 0), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, type_text)
+                    painter.drawText(col_rect.adjusted(0, 0, -20, 0), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, type_text)
+
+                # Draw connection port dot on hovering table
+                if self.isUnderMouse():
+                    port_radius = 4
+                    painter.setBrush(QColor("#1A73E8"))
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.drawEllipse(QRectF(self.width - 12 - port_radius, y + self.row_height/2 - port_radius, port_radius*2, port_radius*2))
+                    painter.drawEllipse(QRectF(12 - port_radius, y + self.row_height/2 - port_radius, port_radius*2, port_radius*2))
 
         # 4. Draw FINAL UNIFORM BORDER (Always on top)
         border_color = QColor("#1A73E8") if (is_selected or self.is_highlighted) else QColor("#D1D1D1")
@@ -224,6 +233,19 @@ class ERDTableItem(QGraphicsRectItem):
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):
+        pos = event.pos()
+        if self.show_columns and self.scene():
+            full_name = f"{self.schema_name or 'public'}.{self.table_name}"
+            for i, col in enumerate(self.columns):
+                y = self.header_height + (i * self.row_height)
+                port_rect_right = QRectF(self.width - 20, y, 20, self.row_height)
+                port_rect_left = QRectF(0, y, 20, self.row_height)
+                if port_rect_right.contains(pos) or port_rect_left.contains(pos):
+                    if hasattr(self.scene(), "start_connection"):
+                        self.scene().start_connection(full_name, col['name'], event.scenePos())
+                        event.accept()
+                        return
+
         super().mousePressEvent(event)
         if self.scene():
             self.scene()._drag_start_positions = {
@@ -231,7 +253,19 @@ class ERDTableItem(QGraphicsRectItem):
                 if isinstance(item, ERDTableItem)
             }
 
+    def mouseMoveEvent(self, event):
+        if self.scene() and hasattr(self.scene(), '_temp_line') and self.scene()._temp_line:
+            self.scene().update_connection_drag(event.scenePos())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event):
+        if self.scene() and hasattr(self.scene(), '_temp_line') and self.scene()._temp_line:
+            self.scene().finish_connection_drag(event.scenePos())
+            event.accept()
+            return
+            
         super().mouseReleaseEvent(event)
         if hasattr(self.scene(), '_drag_start_positions'):
             starts = self.scene()._drag_start_positions

@@ -23,6 +23,8 @@ from db.db_retrieval import (
 from db.schema_retrieval import (
     get_sqlite_schema,
     get_postgres_schema,
+    get_csv_schema,
+    get_servicenow_schema,
 )
 
 from db.db_modifications import (
@@ -62,6 +64,8 @@ __all__ = [
     "delete_all_history",
     "get_sqlite_schema",
     "get_postgres_schema",
+    "get_csv_schema",
+    "get_servicenow_schema",
     "add_connection_type",
     "update_connection_group",
     "delete_connection_group",
