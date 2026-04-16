@@ -223,18 +223,34 @@ class ExplorerMenuBuilder:
             )
             create_sub.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_table(item_data, item.text())
-        )
-        menu.addAction(act)
+        is_group = item_data.get("type") in ("group", "schema_group", "schemas_root")
+        
+        if not is_group:
+            menu.addSeparator()
+            act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.delete_table(item_data, item.text())
+            )
+            menu.addAction(act)
 
-        act = action(self.manager, "Drop (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_table(item_data, item.text(), cascade=True)
-        )
-        menu.addAction(act)
+            act = action(self.manager, "Drop (Cascade)", "mdi.delete-sweep-outline")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.delete_table(item_data, item.text(), cascade=True)
+            )
+            menu.addAction(act)
+        elif item_data.get("type") == "schemas_root":
+            menu.addSeparator()
+            act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
+            )
+            menu.addAction(act)
+
+            act = action(self.manager, "Database Statistics...", "mdi.chart-pie")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_database_statistics_dialog(item_data)
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")

@@ -175,7 +175,7 @@ class SchemaLoader:
             )
             cursor = pg_conn.cursor()
             cursor.execute(
-                "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname;")
+                "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%%' AND nspname != 'information_schema' ORDER BY nspname;")
             schemas = [row[0] for row in cursor.fetchall()]
             pg_conn.close()
             self.populate_postgres_schema({
