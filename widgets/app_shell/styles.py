@@ -62,6 +62,21 @@ def apply_main_window_styles(main_window):
             margin: 0px;
         }}
 
+        QMenu {{
+            background-color: #ffffff;
+            border: 1px solid #D3D8DF;
+            icon-size: 14px;
+        }}
+
+        QMenu::item {{
+            padding: 4px 24px 4px 24px;
+        }}
+
+        QMenu::item:selected {{
+            background-color: #DDE2E8;
+            color: #1f2937;
+        }}
+
         QMenuBar::item:selected {{
         background-color: #DDE2E8;
         color: #1f2937;
