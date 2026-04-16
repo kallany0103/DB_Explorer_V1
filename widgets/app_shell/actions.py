@@ -56,26 +56,32 @@ def build_main_window_actions(main_window):
 
     main_window.undo_action = QAction(qta.icon("fa5s.undo", color="#555555"), "Undo", main_window)
     main_window.undo_action.setShortcut("Ctrl+Z")
+    main_window.undo_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     main_window.undo_action.triggered.connect(main_window.undo_text)
 
     main_window.redo_action = QAction(qta.icon("fa5s.redo", color="#555555"), "Redo", main_window)
     main_window.redo_action.setShortcuts(["Ctrl+Y", "Ctrl+Shift+Z"])
+    main_window.redo_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     main_window.redo_action.triggered.connect(main_window.redo_text)
 
     main_window.cut_action = QAction(qta.icon("fa5s.cut", color="#555555"), "Cut", main_window)
     main_window.cut_action.setShortcut("Ctrl+X")
+    main_window.cut_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     main_window.cut_action.triggered.connect(main_window.cut_text)
 
     main_window.copy_action = QAction(qta.icon("fa5s.copy", color="#555555"), "Copy", main_window)
     main_window.copy_action.setShortcut("Ctrl+C")
+    main_window.copy_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     main_window.copy_action.triggered.connect(main_window.copy_text)
 
     main_window.paste_action = QAction(qta.icon("fa5s.paste", color="#555555"), "Paste", main_window)
     main_window.paste_action.setShortcut("Ctrl+V")
+    main_window.paste_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     main_window.paste_action.triggered.connect(main_window.paste_text)
 
     main_window.select_all_action = QAction(QIcon("assets/select_all.svg"), "Select ALL", main_window)
     main_window.select_all_action.setShortcut("Ctrl+A")
+    main_window.select_all_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     main_window.select_all_action.triggered.connect(main_window.select_all_text)
 
     main_window.clear_all_action = QAction(qta.icon("fa5s.trash-alt", color="#d93025"), "Clear All", main_window)
@@ -113,8 +119,7 @@ def build_main_window_actions(main_window):
     main_window.query_tool_action.triggered.connect(main_window.add_tab)
 
     main_window.restore_action = QAction("Restore Layout", main_window)
-    main_window.restore_action.setShortcut("Ctrl+Shift+L")
-    main_window.restore_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    # Removed setShortcut("Ctrl+Shift+L") to prevent conflict with lowercase action
     main_window.restore_action.triggered.connect(main_window.restore_tool)
 
     main_window.refresh_action = QAction("Refresh Explorer", main_window)
@@ -147,7 +152,7 @@ def build_main_window_actions(main_window):
     main_window.format_sql_action.triggered.connect(main_window.format_sql_text)
 
     main_window.clear_query_action = QAction(qta.icon("fa5s.eraser", color="#555555"), "Clear Query", main_window)
-    main_window.clear_query_action.setShortcuts(["Ctrl+Shift+C", "F7"])
+    main_window.clear_query_action.setShortcuts(["Ctrl+Shift+C"]) # Removed F7 to prevent conflict with clear_all_action
     main_window.clear_query_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.clear_query_action.triggered.connect(main_window.clear_query_text)
 
