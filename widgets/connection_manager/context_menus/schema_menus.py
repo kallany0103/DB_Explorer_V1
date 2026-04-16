@@ -311,12 +311,16 @@ class SchemaMenuBuilder:
         create_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
-        act.triggered.connect(stub("drop_schemas_root"))
+        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
+        )
         menu.addAction(act)
 
-        act = action(self.manager, "Drop (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_schemas_root_cascade"))
+        act = action(self.manager, "Database Statistics...", "mdi.chart-pie")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_database_statistics_dialog(item_data)
+        )
         menu.addAction(act)
 
         menu.addSeparator()
@@ -413,7 +417,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Drop Sequence (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_sequence_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_sequence(item_data, display_name, cascade=True)
+        )
         menu.addAction(act)
 
     # =========================================================================
@@ -446,7 +452,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub(f"drop_{label.lower()}_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_function(item_data, display_name, cascade=True)
+        )
         menu.addAction(act)
 
     # =========================================================================
@@ -471,7 +479,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Drop Language (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_language_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_language(item_data, display_name, cascade=True)
+        )
         menu.addAction(act)
 
     # =========================================================================
@@ -579,7 +589,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Drop Foreign Data Wrapper (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_fdw_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.drop_fdw(item_data, cascade=True)
+        )
         menu.addAction(act)
 
         menu.addSeparator()
@@ -608,7 +620,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Drop Foreign Server (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_foreign_server_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.drop_foreign_server(item_data, cascade=True)
+        )
         menu.addAction(act)
 
     # =========================================================================
@@ -623,5 +637,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Drop User Mapping (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(stub("drop_user_mapping_cascade"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.drop_user_mapping(item_data, cascade=True)
+        )
         menu.addAction(act)

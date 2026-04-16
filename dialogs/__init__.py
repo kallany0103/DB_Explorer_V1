@@ -7,6 +7,8 @@ from dialogs.create_table_dialog import CreateTableDialog
 from dialogs.create_view_dialog import CreateViewDialog
 from dialogs.export_dialog import ExportDialog
 from dialogs.table_properties import TablePropertiesDialog
+from dialogs.search_objects_dialog import SearchObjectsDialog
+from dialogs.database_statistics_dialog import DatabaseStatisticsDialog
 
 __all__ = [
 	"PostgresConnectionDialog",
@@ -18,4 +20,6 @@ __all__ = [
 	"CreateViewDialog",
 	"ExportDialog",
 	"TablePropertiesDialog",
+	"SearchObjectsDialog",
+	"DatabaseStatisticsDialog",
 ]

@@ -22,7 +22,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from dialogs import CreateTableDialog, CreateViewDialog, ExportDialog, TablePropertiesDialog
+from dialogs import (
+    CreateTableDialog, 
+    CreateViewDialog, 
+    ExportDialog, 
+    TablePropertiesDialog,
+    SearchObjectsDialog,
+    DatabaseStatisticsDialog,
+)
 from workers.signals import ProcessSignals, QuerySignals, emit_process_started
 from workers.workers import RunnableExportFromModel, RunnableQuery
 
@@ -229,7 +236,7 @@ class ConnectionActions:
             if db_type == 'postgres':
                 conn = db.create_postgres_connection(conn_data)
                 schema_quoted = f'"{schema_name}"' if schema_name else ""
-                full_name = f'{schema_quoted}.{real_table_name}' if schema_quoted else f'{real_table_name}'
+                full_name = f'{schema_quoted}."{real_table_name}"' if schema_quoted else f'"{real_table_name}"'
                 drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
                 cascade_cmd = " CASCADE" if cascade else ""
                 sql = f"{drop_cmd} {full_name}{cascade_cmd};"
@@ -300,16 +307,269 @@ class ConnectionActions:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete schema:\n{e}")
 
 
-    def open_create_table_template(self, item_data, table_name=None):
+    def delete_sequence(self, item_data, sequence_name, cascade=False):
+        """Perform DROP SEQUENCE or DROP SEQUENCE CASCADE on a PostgreSQL connection."""
         if not item_data:
             return
 
-        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+
+        confirm_msg = f"Are you sure you want to delete sequence '{sequence_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete Sequence',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            schema_quoted = f'"{schema_name}"' if schema_name else ""
+            full_name = f'{schema_quoted}."{sequence_name}"' if schema_quoted else f'"{sequence_name}"'
+            sql = f'DROP SEQUENCE {full_name}{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(sequence_name, "Sequence", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete sequence:\n{e}")
+
+    def delete_function(self, item_data, function_name, cascade=False):
+        """Perform DROP FUNCTION or DROP FUNCTION CASCADE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_type = item_data.get('table_type', 'FUNCTION').upper()
+        label = table_type.lower().capitalize()
+
+        confirm_msg = f"Are you sure you want to delete {label.lower()} '{function_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            f'Confirm Delete {label}',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            schema_quoted = f'"{schema_name}"' if schema_name else ""
+            full_name = f'{schema_quoted}."{function_name}"' if schema_quoted else f'"{function_name}"'
+            sql = f'DROP FUNCTION {full_name}{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(function_name, label, sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete {label.lower()}:\n{e}")
+
+    def delete_language(self, item_data, language_name, cascade=False):
+        """Perform DROP LANGUAGE or DROP LANGUAGE CASCADE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
         conn_data = item_data.get('conn_data')
 
-        if not conn_data:
-            QMessageBox.critical(self.manager, "Error", "Connection data is missing!")
+        confirm_msg = f"Are you sure you want to delete language '{language_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete Language',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
             return
+
+        try:
+            sql = f'DROP LANGUAGE "{language_name}"{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(language_name, "Language", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete language:\n{e}")
+
+    def drop_extension(self, item_data, extension_name, cascade=False):
+        """Perform DROP EXTENSION or DROP EXTENSION CASCADE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+
+        confirm_msg = f"Are you sure you want to delete extension '{extension_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete Extension',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            sql = f'DROP EXTENSION "{extension_name}"{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(extension_name, "Extension", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete extension:\n{e}")
+
+    def drop_fdw(self, item_data, cascade=False):
+        """Perform DROP FOREIGN DATA WRAPPER on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        fdw_name = item_data.get('fdw_name')
+
+        confirm_msg = f"Are you sure you want to delete Foreign Data Wrapper '{fdw_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete FDW',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            sql = f'DROP FOREIGN DATA WRAPPER "{fdw_name}"{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(fdw_name, "Foreign Data Wrapper", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete FDW:\n{e}")
+
+    def drop_foreign_server(self, item_data, cascade=False):
+        """Perform DROP SERVER on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        server_name = item_data.get('server_name')
+
+        confirm_msg = f"Are you sure you want to delete Foreign Server '{server_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete Foreign Server',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            sql = f'DROP SERVER "{server_name}"{" CASCADE" if cascade else ""};'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(server_name, "Foreign Server", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete foreign server:\n{e}")
+
+    def drop_user_mapping(self, item_data, cascade=False):
+        """Perform DROP USER MAPPING on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        user_name = item_data.get('user_name')
+        server_name = item_data.get('server_name')
+
+        confirm_msg = f"Are you sure you want to delete user mapping for '{user_name}' on server '{server_name}'?"
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete User Mapping',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            sql = f'DROP USER MAPPING FOR "{user_name}" SERVER "{server_name}";'
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(f"{user_name} on {server_name}", "User Mapping", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete user mapping:\n{e}")
+
+
 
     def _notify_creation_success(self, object_name, object_type, conn_data):
         """Standard notification after successful creation of an object."""
@@ -736,3 +996,218 @@ class ConnectionActions:
         save_btn.clicked.connect(_on_create)
         name_input.returnPressed.connect(_on_create)
         dialog.exec()
+
+    # =========================================================================
+    # --- SEARCH & STATISTICS ---
+    # =========================================================================
+
+    def open_search_objects_dialog(self, item_data):
+        if not item_data:
+            return
+        conn_data = item_data.get('conn_data')
+        dialog = SearchObjectsDialog(self.manager, conn_data, parent=self.manager)
+        dialog.show()
+
+    def fetch_search_results(self, conn_data, query_text):
+        """Executes a consolidated PostgreSQL search query across system catalogs."""
+        conn = db.create_postgres_connection(conn_data)
+        if not conn:
+            raise Exception("Failed to establish PostgreSQL connection.")
+            
+        cursor = conn.cursor()
+        
+        # We use a UNION ALL query to fetch everything in one pass and sort server-side.
+        sql = """
+        SELECT schema, name, type FROM (
+            -- Tables, Views, Sequences, Indexes, Foreign Tables
+            SELECT 
+                n.nspname AS schema,
+                c.relname AS name,
+                CASE c.relkind
+                    WHEN 'r' THEN 'Table'
+                    WHEN 'v' THEN 'View'
+                    WHEN 'f' THEN 'Foreign Table'
+                    WHEN 'i' THEN 'Index'
+                    WHEN 'S' THEN 'Sequence'
+                    WHEN 'm' THEN 'Materialized View'
+                    ELSE 'Other'
+                END AS type
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname NOT LIKE 'pg_%%' 
+            AND n.nspname != 'information_schema'
+            
+            UNION ALL
+            
+            -- Functions
+            SELECT 
+                n.nspname AS schema,
+                p.proname || '(' || COALESCE(pg_get_function_arguments(p.oid), '') || ')' AS name,
+                'Function' AS type
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname NOT LIKE 'pg_%%' 
+            AND n.nspname != 'information_schema'
+        ) sub
+        WHERE name ILIKE %s
+        ORDER BY schema, name
+        """
+        
+        try:
+            search_pattern = f"%{query_text}%"
+            cursor.execute(sql, (search_pattern,))
+            results = list(cursor.fetchall())
+            
+            # DEBUG logging for diagnosing "tuple index out of range"
+            if results:
+                print(f"DEBUG: Search returned {len(results)} rows.")
+                print(f"DEBUG: Sample row (0): {results[0]} (Type: {type(results[0])}, Len: {len(results[0])})")
+            
+            return results
+        except Exception as e:
+            print(f"Database search query error: {e}")
+            raise
+        finally:
+            conn.close()
+
+    def open_database_statistics_dialog(self, item_data):
+        if not item_data:
+            return
+        conn_data = item_data.get('conn_data')
+        dialog = DatabaseStatisticsDialog(self.manager, conn_data, parent=self.manager)
+        dialog.exec()
+
+    def fetch_database_statistics(self, conn_data):
+        """Fetches counts and size summary for the database."""
+        conn = db.create_postgres_connection(conn_data)
+        if not conn:
+            return {}
+            
+        cursor = conn.cursor()
+        
+        stats = {}
+        
+        # DB Size
+        cursor.execute("SELECT pg_size_pretty(pg_database_size(current_database()));")
+        size_row = cursor.fetchone()
+        stats['db_size'] = size_row[0] if size_row else "Unknown"
+        
+        # Counts
+        cursor.execute("""
+        SELECT 
+            (SELECT count(*) FROM pg_namespace WHERE nspname NOT LIKE 'pg_%%' AND nspname != 'information_schema') as schema_count,
+            (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema' AND c.relkind = 'r') as table_count,
+            (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema' AND c.relkind = 'v') as view_count,
+            (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema' AND c.relkind = 'i') as index_count,
+            (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema') as function_count,
+            (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema' AND c.relkind = 'S') as sequence_count,
+            (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()) as active_sessions;
+        """)
+        row = cursor.fetchone()
+        if row:
+            stats.update({
+                'schema_count': row[0],
+                'table_count': row[1],
+                'view_count': row[2],
+                'index_count': row[3],
+                'function_count': row[4],
+                'sequence_count': row[5],
+                'active_sessions': row[6]
+            })
+        else:
+            stats.update({k: 0 for k in ['schema_count', 'table_count', 'view_count', 'index_count', 'function_count', 'sequence_count', 'active_sessions']})
+        
+        conn.close()
+        return stats
+
+    def navigate_to_object(self, schema, name, obj_type):
+        """
+        Navigates to the specified object in the Schema Tree.
+        This handles expanding nodes to reveal the target.
+        """
+        tree = self.manager.schema_tree
+        model = self.manager.schema_model
+        
+        if not tree or not model:
+            return
+
+        # 1. Find the "Schemas" root node
+        schemas_root = None
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item and item.text() == "Schemas":
+                schemas_root = item
+                break
+        
+        if not schemas_root:
+            return
+        
+        # Expand "Schemas"
+        tree.expand(schemas_root.index())
+        
+        # 2. Find the specific Schema
+        schema_item = None
+        for i in range(schemas_root.rowCount()):
+            item = schemas_root.child(i)
+            if item and item.text() == schema:
+                schema_item = item
+                break
+        
+        if not schema_item:
+            return
+        
+        # Expand Schema
+        tree.expand(schema_item.index())
+        
+        # 3. Handle object groups (if it's not a root-level object)
+        # We need to map object type to the group name (Tables, Views, etc.)
+        group_map = {
+            "Table": "Tables",
+            "View": "Views",
+            "Materialized View": "Views",
+            "Foreign Table": "Foreign Tables",
+            "Function": "Functions",
+            "Sequence": "Sequences",
+            "Trigger Function": "Trigger Functions",
+        }
+        
+        target_group = group_map.get(obj_type)
+        if not target_group:
+            return
+
+        # Check if we need to load children (if they are still "Loading...")
+        if schema_item.rowCount() == 1 and schema_item.child(0).text() == "Loading...":
+            self.manager.schema_loader.load_tables_on_expand(schema_item.index())
+
+        # Find the group node
+        group_node = None
+        for i in range(schema_item.rowCount()):
+            item = schema_item.child(i)
+            if item and item.text() == target_group:
+                group_node = item
+                break
+        
+        if not group_node:
+            return
+            
+        # Expand group
+        tree.expand(group_node.index())
+        
+        # Check if group needs loading
+        if group_node.rowCount() == 1 and group_node.child(0).text() == "Loading...":
+            self.manager.schema_loader.load_tables_on_expand(group_node.index())
+
+        # 4. Find the object itself
+        target_name = name
+        
+        target_item = None
+        for i in range(group_node.rowCount()):
+            item = group_node.child(i)
+            if item and item.text() == target_name:
+                target_item = item
+                break
+        
+        if target_item:
+            tree.setCurrentIndex(target_item.index())
+            tree.scrollTo(target_item.index())
+            self.manager.main_window.activateWindow()
