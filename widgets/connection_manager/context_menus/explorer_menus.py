@@ -191,6 +191,13 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.generate_erd(item))
         menu.addAction(act)
 
+        if code == "POSTGRES":
+            act = action(self.manager, "Database Statistics...", "mdi.chart-pie")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_database_statistics_dialog(conn_data)
+            )
+            menu.addAction(act)
+
         menu.addSeparator()
         act = action(self.manager, "Delete Connection", "mdi.delete-outline")
         act.triggered.connect(lambda: self.manager.delete_connection(item))
@@ -208,20 +215,6 @@ class ExplorerMenuBuilder:
         table_type = item_data.get("table_type", "TABLE")
         is_view = "VIEW" in str(table_type).upper()
         object_label = "View" if is_view else "Table"
-
-        create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
-        if is_view:
-            act = action(self.manager, "View...", "mdi.eye-plus-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_create_view_template(item_data)
-            )
-            create_sub.addAction(act)
-        else:
-            act = action(self.manager, "Table...", "mdi.table-plus")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_create_table_template(item_data)
-            )
-            create_sub.addAction(act)
 
         is_group = item_data.get("type") in ("group", "schema_group", "schemas_root")
         
@@ -243,12 +236,6 @@ class ExplorerMenuBuilder:
             act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
             act.triggered.connect(
                 lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Database Statistics...", "mdi.chart-pie")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_database_statistics_dialog(item_data)
             )
             menu.addAction(act)
 

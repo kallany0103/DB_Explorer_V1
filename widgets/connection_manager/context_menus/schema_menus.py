@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QMenu
 
 from widgets.connection_manager.menu_style import apply_menu_style
 from widgets.connection_manager.context_menus._helpers import action, stub, submenu
+from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
 
 
 class SchemaMenuBuilder:
@@ -18,6 +19,7 @@ class SchemaMenuBuilder:
 
     def __init__(self, manager):
         self.manager = manager
+        self.mview_builder = MaterializedViewMenuBuilder(manager)
 
     # =========================================================================
     # Entry point
@@ -52,6 +54,8 @@ class SchemaMenuBuilder:
 
         if node_type == "schema_group":
             self._schema_group_menu(menu, item, item_data, index)
+        elif table_type == "MATERIALIZED VIEW":
+            self.mview_builder.build_menu(menu, item, item_data)
         elif is_table_or_view:
             self._table_menu(menu, item, item_data, db_type)
         elif is_sequence:
@@ -164,24 +168,6 @@ class SchemaMenuBuilder:
             a.triggered.connect(fn)
             scripts_sub.addAction(a)
 
-        menu.addSeparator()
-        if db_type in ("postgres", "sqlite"):
-            if is_view:
-                # Right-clicking a View → only offer Create View
-                act = action(self.manager, "Create View...", "mdi.eye-plus-outline")
-                act.triggered.connect(
-                    lambda: self.manager.connection_actions.open_create_view_template(item_data)
-                )
-                menu.addAction(act)
-            else:
-                # Right-clicking a Table → only offer Create Table
-                act = action(self.manager, "Create Table...", "mdi.table-plus")
-                act.triggered.connect(
-                    lambda: self.manager.connection_actions.open_create_table_template(item_data)
-                )
-                menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_table(item_data, display_name)
@@ -317,13 +303,6 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Database Statistics...", "mdi.chart-pie")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_database_statistics_dialog(item_data)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
             lambda: self.manager.schema_loader.load_postgres_schema(item_data.get("conn_data"))
@@ -355,9 +334,12 @@ class SchemaMenuBuilder:
                 "Create Trigger Function...", "mdi.lightning-bolt-outline",
                 lambda: self.manager.script_generator.open_create_trigger_function_template(item_data)
             ),
+            "Materialized Views": (
+                "Create Materialized View...", "mdi.eye-settings-outline",
+                lambda: self.manager.connection_actions.open_create_materialized_view_dialog(item_data)
+            ),
         }
         _stubbed = {
-            "Materialized Views":   ("Create Materialized View...", "mdi.eye-settings-outline"),
             "Procedures":           ("Create Procedure...",          "mdi.cog-play-outline"),
             "Sequences":            ("Create Sequence...",           "mdi.numeric-1-box-multiple-outline"),
             "Aggregates":           ("Create Aggregate...",          "mdi.sigma"),

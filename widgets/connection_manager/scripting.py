@@ -71,51 +71,73 @@ class ScriptGenerator:
                 )
                 cursor = conn.cursor()
 
+                # Get relkind to distinguish table/view/mview
                 cursor.execute(
-                    """
-                    SELECT column_name, data_type, is_nullable, column_default
-                    FROM information_schema.columns
-                    WHERE table_schema = %s AND table_name = %s
-                    ORDER BY ordinal_position;
-                    """,
-                    (schema_name, table_name),
+                    "SELECT c.relkind, c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relname = %s;",
+                    (schema_name, table_name)
                 )
-                cols = cursor.fetchall()
+                res = cursor.fetchone()
+                if not res:
+                    raise Exception(f"Object '{schema_name}.{table_name}' not found.")
+                relkind, oid = res
 
-                col_defs = []
-                for col_name, dtype, nullable, default in cols:
-                    null_str = " NOT NULL" if nullable == "NO" else ""
-                    def_str = f' DEFAULT {default}' if default else ""
-                    col_defs.append(f'    {col_name} {dtype}{null_str}{def_str}')
+                if relkind == 'r': # Table
+                    cursor.execute(
+                        """
+                        SELECT column_name, data_type, is_nullable, column_default
+                        FROM information_schema.columns
+                        WHERE table_schema = %s AND table_name = %s
+                        ORDER BY ordinal_position;
+                        """,
+                        (schema_name, table_name),
+                    )
+                    cols = cursor.fetchall()
 
-                cursor.execute(
-                    """
-                    SELECT kcu.column_name
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                      AND tc.table_schema = kcu.table_schema
-                    WHERE tc.constraint_type = 'PRIMARY KEY'
-                      AND tc.table_schema = %s AND tc.table_name = %s;
-                    """,
-                    (schema_name, table_name),
-                )
-                pk_cols = [r[0] for r in cursor.fetchall()]
+                    col_defs = []
+                    for col_name, dtype, nullable, default in cols:
+                        null_str = " NOT NULL" if nullable == "NO" else ""
+                        def_str = f' DEFAULT {default}' if default else ""
+                        col_defs.append(f'    {col_name} {dtype}{null_str}{def_str}')
 
-                if pk_cols:
-                    pk_names = ", ".join([f'{c}' for c in pk_cols])
-                    col_defs.append(f'    CONSTRAINT {table_name}_pkey PRIMARY KEY ({pk_names})')
+                    cursor.execute(
+                        """
+                        SELECT kcu.column_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu
+                          ON tc.constraint_name = kcu.constraint_name
+                          AND tc.table_schema = kcu.table_schema
+                        WHERE tc.constraint_type = 'PRIMARY KEY'
+                          AND tc.table_schema = %s AND tc.table_name = %s;
+                        """,
+                        (schema_name, table_name),
+                    )
+                    pk_cols = [r[0] for r in cursor.fetchall()]
 
-                sql_script = f'-- Table: {schema_name}.{table_name}\n\n'
-                sql_script += f'CREATE TABLE {schema_name}.{table_name} (\n' + ",\n".join(col_defs) + "\n);"
+                    if pk_cols:
+                        pk_names = ", ".join([f'{c}' for c in pk_cols])
+                        col_defs.append(f'    CONSTRAINT {table_name}_pkey PRIMARY KEY ({pk_names})')
 
-                cursor.execute(
-                    "SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND tablename = %s;",
-                    (schema_name, table_name),
-                )
-                idxs = cursor.fetchall()
-                if idxs:
-                    sql_script += "\n\n" + "\n".join([r[0] + ";" for r in idxs])
+                    sql_script = f'-- Table: {schema_name}.{table_name}\n\n'
+                    sql_script += f'CREATE TABLE {schema_name}.{table_name} (\n' + ",\n".join(col_defs) + "\n);"
+
+                elif relkind in ('v', 'm'): # View or Materialized View
+                    obj_type = "VIEW" if relkind == 'v' else "MATERIALIZED VIEW"
+                    cursor.execute("SELECT pg_get_viewdef(%s);", (oid,))
+                    view_def = cursor.fetchone()[0]
+                    sql_script = f'-- {obj_type.title()}: {schema_name}.{table_name}\n\n'
+                    sql_script += f'CREATE {obj_type} {schema_name}.{table_name} AS\n{view_def}'
+                    if not sql_script.strip().endswith(';'):
+                        sql_script += ';'
+
+                # Indexes (applicable to tables and mviews)
+                if relkind in ('r', 'm'):
+                    cursor.execute(
+                        "SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND tablename = %s;",
+                        (schema_name, table_name),
+                    )
+                    idxs = cursor.fetchall()
+                    if idxs:
+                        sql_script += "\n\n" + "\n".join([r[0] + ";" for r in idxs])
 
                 conn.close()
             except Exception as e:
