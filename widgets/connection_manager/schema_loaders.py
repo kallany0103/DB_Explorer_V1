@@ -110,6 +110,7 @@ class SchemaLoader:
             password=conn_data["password"],
             port=int(conn_data["port"]),
         )
+        self.manager.pg_conn.autocommit = True
 
         schemas_root = QStandardItem("Schemas")
         schemas_root.setEditable(False)

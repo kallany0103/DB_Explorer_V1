@@ -213,7 +213,14 @@ class ConnectionActions:
         real_table_name = item_data.get('table_name', table_name)
 
         is_view = "VIEW" in table_type
-        object_type = "View" if is_view else "Table"
+        is_mview = "MATERIALIZED VIEW" in table_type
+        
+        if is_mview:
+            object_type = "Materialized View"
+        elif is_view:
+            object_type = "View"
+        else:
+            object_type = "Table"
         
         confirm_msg = f"Are you sure you want to delete {object_type.lower()} '{table_name}'?"
         if cascade:
@@ -237,7 +244,13 @@ class ConnectionActions:
                 conn = db.create_postgres_connection(conn_data)
                 schema_quoted = f'"{schema_name}"' if schema_name else ""
                 full_name = f'{schema_quoted}."{real_table_name}"' if schema_quoted else f'"{real_table_name}"'
-                drop_cmd = "DROP VIEW" if is_view else "DROP TABLE"
+                if is_mview:
+                    drop_cmd = "DROP MATERIALIZED VIEW"
+                elif is_view:
+                    drop_cmd = "DROP VIEW"
+                else:
+                    drop_cmd = "DROP TABLE"
+                    
                 cascade_cmd = " CASCADE" if cascade else ""
                 sql = f"{drop_cmd} {full_name}{cascade_cmd};"
             elif db_type == 'sqlite':
@@ -749,6 +762,97 @@ class ConnectionActions:
             QMessageBox.warning(self.manager, "Not Supported", f"Interactive view creation is not supported for {db_type} yet.")
 
 
+    def open_create_materialized_view_dialog(self, item_data):
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Materialized Views are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            conn.close()
+
+            from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
+            dialog = CreateMaterializedViewDialog(self.manager, schemas, db_type="postgres")
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                no_data = " WITH NO DATA" if data.get("with_no_data") else ""
+                sql = f'CREATE MATERIALIZED VIEW "{data["schema"]}"."{data["name"]}" AS\n{data["definition"]}{no_data};'
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Materialized View", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Materialized View:\n{e}")
+
+    def refresh_materialized_view(self, item_data, name, concurrently=False):
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        schema = item_data.get('schema_name', 'public')
+        
+        try:
+            concurrent_str = " CONCURRENTLY" if concurrently else ""
+            sql = f'REFRESH MATERIALIZED VIEW{concurrent_str} "{schema}"."{name}";'
+            
+            self.manager.status.showMessage(f"Refreshing materialized view '{name}'...", 4000)
+            
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            self.manager.status.showMessage(f"Materialized view '{name}' refreshed successfully.", 4000)
+            
+            # Show in messages tab
+            self._notify_generic_success(name, "Materialized View Refreshed", sql)
+            
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to refresh materialized view:\n{e}")
+
+    def _notify_generic_success(self, object_name, operation, sql):
+        """Generic notification for successful operations in the Messages tab."""
+        current_tab = self.manager.tab_widget.currentWidget()
+        if not current_tab:
+            new_tab = self.manager.add_tab()
+            current_tab = new_tab
+
+        if current_tab:
+            message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+            if not message_view:
+                message_view = current_tab.findChild(QTextEdit, "message_view")
+            results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+
+            if message_view and results_stack:
+                results_stack.setCurrentIndex(1)
+                msg = f"{sql}\n\n{operation} successfully."
+                message_view.setPlainText(msg)
+                
+                # Switch tab buttons style (internal convenience)
+                from PySide6.QtWidgets import QWidget
+                header = current_tab.findChild(QWidget, "resultsHeader")
+                if header:
+                    from PySide6.QtWidgets import QPushButton
+                    buttons = header.findChildren(QPushButton)
+                    if len(buttons) >= 2:
+                        buttons[0].setChecked(False)
+                        buttons[1].setChecked(True)
+
     def export_schema_table_rows(self, item_data, table_name):
         if not item_data:
             return
@@ -1070,10 +1174,8 @@ class ConnectionActions:
         finally:
             conn.close()
 
-    def open_database_statistics_dialog(self, item_data):
-        if not item_data:
-            return
-        conn_data = item_data.get('conn_data')
+    def open_database_statistics_dialog(self, conn_data):
+        """Opens the database statistics dialog."""
         dialog = DatabaseStatisticsDialog(self.manager, conn_data, parent=self.manager)
         dialog.exec()
 

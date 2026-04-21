@@ -40,6 +40,7 @@ class TableDetailsLoader:
                     groups = [
                         ("Tables", "Group", "Tables"),
                         ("Views", "Group", "Views"),
+                        ("Materialized Views", "Group", "Materialized Views"),
                         ("Foreign Tables", "Group", "Foreign Tables"),
                         ("Functions", "Group", "Functions"),
                         ("Trigger Functions", "Group", "Trigger Functions"),
@@ -190,41 +191,61 @@ class TableDetailsLoader:
                 item.removeRows(0, item.rowCount())
                 group_name = item_data.get('group_name')
                 schema_name = item_data.get('schema_name')
+                
+                # --- Connection Check ---
+                if not hasattr(self.manager, 'pg_conn') or self.manager.pg_conn is None or self.manager.pg_conn.closed:
+                    item.appendRow(QStandardItem("Error: Connection lost"))
+                    return
+
                 try:
                     cursor = self.manager.pg_conn.cursor()
-                    if group_name in ["Tables", "Views", "Foreign Tables"]:
-                        relkind = {'Tables': 'r', 'Views': 'v', 'Foreign Tables': 'f'}.get(group_name)
+                    if group_name in ["Tables", "Views", "Materialized Views", "Foreign Tables"]:
+                        relkind = {
+                            'Tables': 'r',
+                            'Views': 'v',
+                            'Materialized Views': 'm',
+                            'Foreign Tables': 'f'
+                        }.get(group_name)
+                        
+                        # Use a more standard query structure
                         cursor.execute("""
-                            SELECT c.relname, %s
+                            SELECT c.relname
                             FROM pg_class c
                             JOIN pg_namespace n ON n.oid = c.relnamespace
                             WHERE n.nspname = %s AND c.relkind = %s
                             ORDER BY 1;
-                        """, (group_name, schema_name, relkind))
+                        """, (schema_name, relkind))
+                        
                         tables = cursor.fetchall()
-                        for (table_name, table_type) in tables:
+                        for (table_name,) in tables:
                             table_item = QStandardItem(table_name)
                             table_item.setEditable(False)
 
                             table_data = item_data.copy()
-                            table_data['type'] = 'table' # Reset type from schema_group
+                            table_data['type'] = 'table' 
                             table_data['table_name'] = table_name
-                            table_data['table_type'] = table_type
+                            table_data['table_type'] = group_name # Use group_name directly as type
                             table_item.setData(table_data, Qt.ItemDataRole.UserRole)
 
                             table_item.appendRow(QStandardItem("Loading..."))
 
-                            if group_name == "Tables":
-                                self.manager._set_tree_item_icon(table_item, level="TABLE")
-                                type_text = "Table"
-                            elif group_name == "Views":
-                                self.manager._set_tree_item_icon(table_item, level="VIEW")
-                                type_text = "View"
-                            elif group_name == "Foreign Tables":
-                                self.manager._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
-                                type_text = "Foreign Table"
-                            else:
-                                type_text = table_type.title()
+                            try:
+                                if group_name == "Tables":
+                                    self.manager._set_tree_item_icon(table_item, level="TABLE")
+                                    type_text = "Table"
+                                elif group_name == "Views":
+                                    self.manager._set_tree_item_icon(table_item, level="VIEW")
+                                    type_text = "View"
+                                elif group_name == "Materialized Views":
+                                    self.manager._set_tree_item_icon(table_item, level="MATERIALIZED_VIEW")
+                                    type_text = "Materialized View"
+                                elif group_name == "Foreign Tables":
+                                    self.manager._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
+                                    type_text = "Foreign Table"
+                                else:
+                                    type_text = group_name.rstrip('s')
+                            except Exception:
+                                type_text = group_name.rstrip('s')
 
                             type_item = QStandardItem(type_text)
                             type_item.setEditable(False)
@@ -291,9 +312,14 @@ class TableDetailsLoader:
                             type_item = QStandardItem("Trigger Function")
                             type_item.setEditable(False)
                             item.appendRow([func_item, type_item])
+                            
+                    cursor.close()
 
                 except Exception as e:
+                    if hasattr(self.manager, 'pg_conn') and self.manager.pg_conn:
+                        self.manager.pg_conn.rollback()
                     self.manager.status.showMessage(f"Error loading {group_name}: {e}", 5000)
+                    item.appendRow(QStandardItem(f"Error: {e}"))
 
         elif db_type == 'sqlite':
             self.load_sqlite_table_details(item, item_data)
@@ -503,29 +529,22 @@ class TableDetailsLoader:
 
             col_query = """
             SELECT
-                c.column_name,
-                c.data_type,
-                c.character_maximum_length,
-                c.is_nullable,
-                c.column_default,
-                CASE
-                    WHEN kcu.column_name IS NOT NULL AND tc.constraint_type = 'PRIMARY KEY' THEN 'YES'
-                    ELSE 'NO'
-                END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN information_schema.key_column_usage kcu
-              ON c.table_schema = kcu.table_schema
-              AND c.table_name = kcu.table_name
-              AND c.column_name = kcu.column_name
-            LEFT JOIN information_schema.table_constraints tc
-              ON kcu.constraint_name = tc.constraint_name
-              AND kcu.table_schema = tc.table_schema
-              AND kcu.table_name = tc.table_name
-              AND tc.constraint_type = 'PRIMARY KEY'
-            WHERE c.table_schema = %s AND c.table_name = %s
-            ORDER BY c.ordinal_position;
+                a.attname AS column_name,
+                format_type(a.atttypid, a.atttypmod) AS data_type,
+                NULL AS character_maximum_length,
+                CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
+                pg_get_expr(ad.adbin, ad.adrelid) AS column_default,
+                CASE WHEN i.indisprimary THEN 'YES' ELSE 'NO' END AS is_pk
+            FROM pg_attribute a
+            LEFT JOIN pg_attrdef ad ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+            LEFT JOIN pg_index i ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) AND i.indisprimary
+            WHERE a.attrelid = %s::regclass
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY a.attnum;
             """
-            cursor.execute(col_query, (schema_name, table_name))
+            full_table_path = f'"{schema_name}"."{table_name}"'
+            cursor.execute(col_query, (full_table_path,))
             columns = cursor.fetchall()
 
             columns_folder = QStandardItem(f"Columns ({len(columns)})")
@@ -533,10 +552,8 @@ class TableDetailsLoader:
 
             for col in columns:
                 name, dtype, char_max, is_nullable, default, is_pk = col
-                desc = f"{name} ({dtype}"
-                if char_max:
-                    desc += f"[{char_max}]"
-                desc += ")"
+                desc = f"{name} ({dtype})"
+                # dtype already includes length from format_type
                 if is_pk == 'YES':
                     desc += " [PK]"
                 if is_nullable == 'NO':

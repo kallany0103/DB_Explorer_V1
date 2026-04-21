@@ -46,6 +46,9 @@ class TreeHelpers:
         if level == "GROUP_FOREIGN_TABLES":
             item.setIcon(qta.icon("mdi.folder-network", color="#C49102"))
             return
+        if level == "GROUP_MATERIALIZED_VIEWS":
+            item.setIcon(qta.icon("mdi.folder-table", color="#C49102"))
+            return
         if level == "GROUP_FUNCTIONS":
             item.setIcon(qta.icon("mdi.code-braces", color="#E91E63"))
             return
@@ -65,6 +68,9 @@ class TreeHelpers:
             return
         if level == "VIEW":
             item.setIcon(qta.icon("mdi.table-eye", color="#2196F3"))
+            return
+        if level == "MATERIALIZED_VIEW":
+            item.setIcon(qta.icon("mdi.table-eye", color="#00BCD4"))
             return
 
         if level == "COLUMN":
