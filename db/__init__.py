@@ -8,13 +8,6 @@ from db.db_connections import (
     DB_FILE,
 )
 
-# Aliases
-csv_connection = create_csv_connection
-servicenow_connection = create_servicenow_connection
-postgres_connection = create_postgres_connection
-sqlite_connection = create_sqlite_connection
-oracle_connection = create_oracle_connection
-
 from db.db_retrieval import (
     get_all_connections_from_db,
     get_hierarchy_data,
@@ -42,6 +35,13 @@ from db.db_modifications import (
     update_connection_type,
     delete_connection_type,
 )
+
+# Aliases
+csv_connection = create_csv_connection
+servicenow_connection = create_servicenow_connection
+postgres_connection = create_postgres_connection
+sqlite_connection = create_sqlite_connection
+oracle_connection = create_oracle_connection
 
 
 __all__ = [

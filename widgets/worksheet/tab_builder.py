@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
 import qtawesome as qta
 
 from widgets.worksheet.code_editor import CodeEditor

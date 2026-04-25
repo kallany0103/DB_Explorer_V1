@@ -201,6 +201,11 @@ class PropertyPanel(QWidget):
         form = QFormLayout()
         form.addRow("Source:", QLabel(f"{conn_item.source_item.table_name}.{conn_item.source_col}"))
         form.addRow("Target:", QLabel(f"{conn_item.target_item.table_name}.{conn_item.target_col}"))
+        if getattr(conn_item, "fk_meta", None):
+            if conn_item.fk_meta.get("on_delete"):
+                form.addRow("On Delete:", QLabel(conn_item.fk_meta.get("on_delete", "NO ACTION")))
+            if conn_item.fk_meta.get("on_update"):
+                form.addRow("On Update:", QLabel(conn_item.fk_meta.get("on_update", "NO ACTION")))
         self.content_layout.addLayout(form)
         
         self.content_layout.addWidget(QLabel("Relation Type:"))

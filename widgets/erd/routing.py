@@ -131,10 +131,10 @@ class ERDConnectionPathPlanner:
     def _relationship_key(self, conn=None):
         relation_conn = conn or self.connection_item
         return (
-            relation_conn.source_item.table_name,
-            relation_conn.source_col,
-            relation_conn.target_item.table_name,
-            relation_conn.target_col,
+            relation_conn.source_item.table_name or "",
+            relation_conn.source_col or "",
+            relation_conn.target_item.table_name or "",
+            relation_conn.target_col or "",
         )
 
     def _preferred_side(self, item, other_item):

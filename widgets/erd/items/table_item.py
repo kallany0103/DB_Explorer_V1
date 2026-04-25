@@ -233,6 +233,18 @@ class ERDTableItem(QGraphicsRectItem):
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):
+        from widgets.erd.items.connection_item import ERDConnectionItem
+        # Defensive: If clicking near a connection handle, let the connection catch it
+        for item in self.scene().items(event.scenePos()):
+            if isinstance(item, ERDConnectionItem):
+                path = item.path()
+                if path.elementCount() >= 2:
+                    p0 = item.mapToScene(QPointF(path.elementAt(0).x, path.elementAt(0).y))
+                    pn = item.mapToScene(QPointF(path.elementAt(path.elementCount()-1).x, path.elementAt(path.elementCount()-1).y))
+                    if (event.scenePos() - p0).manhattanLength() < 25 or (event.scenePos() - pn).manhattanLength() < 25:
+                        event.ignore()
+                        return
+
         pos = event.pos()
         if self.show_columns and self.scene():
             full_name = f"{self.schema_name or 'public'}.{self.table_name}"

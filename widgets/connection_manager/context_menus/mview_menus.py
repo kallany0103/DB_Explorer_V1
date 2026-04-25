@@ -1,7 +1,6 @@
 # widgets/connection_manager/context_menus/mview_menus.py
 """Modular context menu builder for Materialized Views."""
 
-from PySide6.QtCore import Qt
 from widgets.connection_manager.context_menus._helpers import action, submenu
 
 class MaterializedViewMenuBuilder:

@@ -16,7 +16,7 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QFileDialog, QMessageBox, QDialog,
-    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog, QSplitter
+    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog
 )
 from PySide6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
 from PySide6.QtCore import Qt, QSize, QRectF, QTimer, QPointF
@@ -24,12 +24,14 @@ from PySide6.QtSvg import QSvgGenerator
 
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem
+from widgets.erd.items.note_item import ERDNoteItem
 from widgets.erd.scene import ERDScene
 from widgets.erd.view import ERDView
 from widgets.erd.property_panel import PropertyPanel
 from widgets.erd.palette import ERDPalette
 from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
-from widgets.erd.commands import AddTableCommand, AddConnectionCommand
+from widgets.erd.commands import AddTableCommand, AddConnectionCommand, AddNoteCommand
+from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
 
 class SQLPreviewDialog(QDialog):
     def __init__(self, sql_text, parent=None):
@@ -100,20 +102,22 @@ def generate_sql_script(schema_data, dialect="postgresql"):
             return s
         return "'" + s.replace("'", "''") + "'"
 
+    normalized_schema = {name: normalize_entity(info) for name, info in schema_data.items()}
+
     # --- ALGORITHM: Topological Sort (Kahn's Algorithm) ---
     # Ensures tables are created in the correct order to satisfy foreign key constraints.
-    # Uses a Min-Heap (heapq) to maintain a deterministic, alphabetically-sorted order 
+    # Uses a Min-Heap (heapq) to maintain a deterministic, alphabetically-sorted order
     # for tables at the same dependency level.
-    adj = {name: [] for name in schema_data.keys()}
-    in_degree = {name: 0 for name in schema_data.keys()}
-    for name, info in schema_data.items():
+    adj = {name: [] for name in normalized_schema.keys()}
+    in_degree = {name: 0 for name in normalized_schema.keys()}
+    for name, info in normalized_schema.items():
         for fk in info.get('foreign_keys', []):
             target = fk['table']
             if target in in_degree:
                 adj.setdefault(target, []).append(name)
                 in_degree[name] += 1
 
-    heap = [n for n in schema_data.keys() if in_degree[n] == 0]
+    heap = [n for n in normalized_schema.keys() if in_degree[n] == 0]
     heapq.heapify(heap)
     ordered_tables = []
     while heap:
@@ -125,7 +129,7 @@ def generate_sql_script(schema_data, dialect="postgresql"):
                 heapq.heappush(heap, v)
 
     # Append remaining tables (detects/handles dependency cycles) in deterministic order
-    for name in sorted(schema_data.keys()):
+    for name in sorted(normalized_schema.keys()):
         if name not in ordered_tables:
             ordered_tables.append(name)
 
@@ -145,9 +149,9 @@ def generate_sql_script(schema_data, dialect="postgresql"):
         sql_lines.append("BEGIN;\n")
 
     for full_table_name in ordered_tables:
-        info = schema_data[full_table_name]
+        info = normalized_schema[full_table_name]
         
-        schema = info.get('schema', 'public') if dialect == "postgresql" else None
+        schema = info.get('schema', DEFAULT_SCHEMA) if dialect == "postgresql" else None
         table_name = info.get('table', full_table_name.split('.')[-1])
 
         if schema:
@@ -207,16 +211,21 @@ def generate_sql_script(schema_data, dialect="postgresql"):
 
         for fk in info.get('foreign_keys', []):
             fk_name = fk.get('name', f"fk_{table_name}_{fk['from']}")
-            target_info = schema_data.get(fk['table'], {})
-            target_schema = target_info.get('schema', 'public') if dialect == "postgresql" else None
+            target_info = normalized_schema.get(fk['table'], {})
+            target_schema = target_info.get('schema', DEFAULT_SCHEMA) if dialect == "postgresql" else None
             target_table = fk['table'].split('.')[-1]
-            
+
             target_ref = f"{quote_ident(target_schema)}.{quote_ident(target_table)}" if target_schema else f"{quote_ident(target_table)}"
-            
-            col_lines.append(
+
+            clause = (
                 f"    CONSTRAINT {quote_ident(fk_name)} FOREIGN KEY ({quote_ident(fk['from'])}) "
                 f"REFERENCES {target_ref}({quote_ident(fk['to'])})"
             )
+            if fk.get("on_delete"):
+                clause += f" ON DELETE {fk['on_delete']}"
+            if fk.get("on_update"):
+                clause += f" ON UPDATE {fk['on_update']}"
+            col_lines.append(clause)
 
         sql_lines.append(",\n".join(col_lines))
         sql_lines.append(" );\n")
@@ -228,6 +237,7 @@ class ERDWidget(QWidget):
     def __init__(self, schema_data, parent=None):
         super().__init__(parent)
         self.schema_data = schema_data
+        self.notes_data = []
         self.undo_stack = QUndoStack(self)
         self.initUI()
         
@@ -508,6 +518,61 @@ class ERDWidget(QWidget):
             dialog = SQLPreviewDialog(sql_script, self)
             dialog.exec()
 
+    def _create_default_entity(self, pos, name=None):
+        table_name = name or self._suggest_entity_name("new_entity")
+        columns = [{"name": "id", "type": "INTEGER", "pk": True, "nullable": False}]
+        self.undo_stack.push(AddTableCommand(
+            self,
+            table_name,
+            columns,
+            pos,
+            schema_name=DEFAULT_SCHEMA,
+        ))
+
+    def _create_entity_with_fk(self, pos):
+        table_name = self._suggest_entity_name("new_entity_fk")
+        columns = [
+            {"name": "id", "type": "INTEGER", "pk": True, "nullable": False},
+            {"name": "parent_id", "type": "INTEGER", "nullable": True, "fk": True},
+        ]
+
+        self.undo_stack.beginMacro("Add Entity With FK")
+        self.undo_stack.push(AddTableCommand(
+            self,
+            table_name,
+            columns,
+            pos,
+            schema_name=DEFAULT_SCHEMA,
+            foreign_keys=[],
+        ))
+        self.undo_stack.endMacro()
+
+    def _create_note_at(self, text, pos):
+        self.undo_stack.push(AddNoteCommand(self, text, pos))
+
+    def _suggest_entity_name(self, base="new_entity"):
+        name = base
+        counter = 1
+        while f"public.{name}" in self.scene.tables:
+            name = f"{base}_{counter}"
+            counter += 1
+        return name
+
+    def _open_entity_dialog(self, pos, preset=None):
+        preset = preset or {}
+        preset.setdefault("table", self._suggest_entity_name())
+        dialog = TableDesignerDialog(
+            self,
+            table_name=preset.get("table", ""),
+            columns=preset.get("columns", []),
+            schema_name=preset.get("schema", DEFAULT_SCHEMA),
+            notes=preset.get("notes", []),
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            name, cols = dialog.get_result()
+            cmd = AddTableCommand(self, name, cols, pos, schema_name=preset.get("schema", DEFAULT_SCHEMA))
+            self.undo_stack.push(cmd)
+
     def load_schema(self):
         # Color palette for Subject Areas (Subject Area Highlighting)
         GROUP_COLORS = [
@@ -523,15 +588,16 @@ class ERDWidget(QWidget):
 
         # 1. Create table items
         for full_name, table_info in self.schema_data.items():
-            table_name = table_info.get('table', full_name)
-            schema_name = table_info.get('schema')
-            
-            columns = table_info['columns']
-            fk_cols = {fk['from'] for fk in table_info.get('foreign_keys', [])}
+            info = normalize_entity(table_info)
+            table_name = info.get('table', full_name)
+            schema_name = info.get('schema', DEFAULT_SCHEMA)
+
+            columns = info['columns']
+            fk_cols = {fk['from'] for fk in info.get('foreign_keys', [])}
             for col in columns:
                 if col['name'] in fk_cols:
                     col['fk'] = True
-            
+
             table_item = ERDTableItem(table_name, columns, schema_name=schema_name)
             self.scene.addItem(table_item)
             self.scene.tables[full_name] = table_item
@@ -541,7 +607,8 @@ class ERDWidget(QWidget):
         # Uses an adjacency list and BFS/DFS traversal to identify independent subgraphs.
         adj = {name: [] for name in self.schema_data.keys()}
         for full_name, table_info in self.schema_data.items():
-            for fk in table_info.get('foreign_keys', []):
+            info = normalize_entity(table_info)
+            for fk in info.get('foreign_keys', []):
                 target = fk['table']
                 if target in adj:
                     adj[full_name].append(target)
@@ -570,14 +637,14 @@ class ERDWidget(QWidget):
             
         # 3. Create connection items
         for full_name, table_info in self.schema_data.items():
+            info = normalize_entity(table_info)
             source_item = self.scene.tables.get(full_name)
             if not source_item:
                 continue
             
             # Get PK info for source table to detect Identifying relationships
-            pk_cols = {col['name'] for col in table_info['columns'] if col.get('pk')}
-            
-            for fk in table_info.get('foreign_keys', []):
+            pk_cols = {col['name'] for col in info['columns'] if col.get('pk')}
+            for fk in info.get('foreign_keys', []):
                 target_full_name = fk['table']
                 target_item = self.scene.tables.get(target_full_name)
                 if target_item:
@@ -587,15 +654,22 @@ class ERDWidget(QWidget):
                     # Logic 2: Cardinality? Check if the FK column is also marked unique
                     # (Note: In simple schema retrieval, we'll assume uniqueness if it's a 1:1 join)
                     # For now, if the FK itself is the PK, we treat it as potentially 1:1
-                    is_unique = (fk['from'] in pk_cols and len(pk_cols) == 1)
+                    is_unique = fk.get("type") == "one-to-one" or is_identifying or any(col['name'] == fk['from'] and col.get('unique') for col in info['columns'])
                     
                     conn_item = ERDConnectionItem(
                         source_item, target_item, 
                         fk['from'], fk['to'],
                         is_identifying=is_identifying,
-                        is_unique=is_unique
+                        is_unique=is_unique,
+                        fk_meta=fk
                     )
                     self.scene.addItem(conn_item)
+
+        # 4. Create note items if persisted
+        for note in getattr(self, "notes_data", []):
+            note_item = ERDNoteItem(note.get("text", "Note"))
+            note_item.setPos(note.get("x", 0), note.get("y", 0))
+            self.scene.addItem(note_item)
         
         self.scene.update_scene_rect()
 
@@ -756,19 +830,42 @@ class ERDWidget(QWidget):
         self.update_scene_items(ERDTableItem, 'show_types', checked)
         
     def save_erd(self):
+        from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+        floating = any(isinstance(i, ERDFloatingConnectionItem) for i in self.scene.items())
+        if floating:
+            reply = QMessageBox.warning(
+                self, 
+                "Unconnected Lines", 
+                "These lines are not connected. Do you want to save anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+                
         file_path, _ = QFileDialog.getSaveFileName(self, "Save ERD State", "", "ERD Files (*.erd)")
         if not file_path:
             return
             
         state = {
-            "version": 1,
+            "version": 2,
             "schema_data": self.schema_data,
-            "positions": {}
+            "positions": {},
+            "notes": []
         }
         
         for full_name, item in self.scene.tables.items():
             pos = item.pos()
             state["positions"][full_name] = {"x": pos.x(), "y": pos.y()}
+
+        for item in self.scene.items():
+            if isinstance(item, ERDNoteItem):
+                pos = item.pos()
+                state["notes"].append({
+                    "text": item.text(),
+                    "x": pos.x(),
+                    "y": pos.y()
+                })
             
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -788,6 +885,7 @@ class ERDWidget(QWidget):
                 
             if "schema_data" in state:
                 self.schema_data = state["schema_data"]
+                self.notes_data = state.get("notes", [])
                 self.scene.clear()
                 self.undo_stack.clear()
                 self.scene.tables = {}
@@ -803,14 +901,8 @@ class ERDWidget(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to load ERD: {str(e)}")
 
     def add_new_table(self):
-        dialog = TableDesignerDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            name, cols = dialog.get_result()
-            # Default position in the center of the viewport
-            view_center = self.view.mapToScene(self.view.viewport().rect().center())
-            
-            cmd = AddTableCommand(self, name, cols, view_center)
-            self.undo_stack.push(cmd)
+        view_center = self.view.mapToScene(self.view.viewport().rect().center())
+        self._open_entity_dialog(view_center, preset={"schema": DEFAULT_SCHEMA, "columns": [{"name": "id", "type": "INTEGER", "pk": True, "nullable": False}]})
 
     def add_new_relationship(self):
         if not self.scene.tables:
@@ -827,6 +919,10 @@ class ERDWidget(QWidget):
                 res['relation_type']
             )
             self.undo_stack.push(cmd)
+
+    def add_new_note(self):
+        view_center = self.view.mapToScene(self.view.viewport().rect().center())
+        self._create_note_at("Note", view_center)
 
     def status_message(self, msg):
         # Notify parent main window if possible

@@ -20,7 +20,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         # or other optimizations will corrupt the painter state during redraws.
         return super().boundingRect().adjusted(-40, -40, 40, 40)
 
-    def __init__(self, source_item, target_item, source_col, target_col, is_identifying=False, is_unique=False, relation_name=None):
+    def __init__(self, source_item, target_item, source_col, target_col, is_identifying=False, is_unique=False, relation_name=None, fk_meta=None):
         super().__init__()
         self.source_item = source_item
         self.target_item = target_item
@@ -28,6 +28,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         self.target_col = target_col
         self.is_identifying = is_identifying
         self.is_unique = is_unique
+        self.fk_meta = fk_meta or {}
         
         # Determine Plain-English Cardinality
         # Source (FK side) is usually Many, Target (PK side) is One
@@ -38,11 +39,19 @@ class ERDConnectionItem(QGraphicsPathItem):
             self.cardinality_desc = f"One {target_item.table_name} can have many {source_item.table_name}s"
             self.cardinality_label = "Many-to-One"
 
+        source_str = f"{source_item.table_name}.{source_col}" if source_col else source_item.table_name
+        target_str = f"{target_item.table_name}.{target_col}" if target_col else target_item.table_name
+
         self.tooltip_text = (
             f"<b>{self.cardinality_label}</b><br/>"
             f"{self.cardinality_desc}<br/>"
-            f"<code>{source_item.table_name}.{source_col}</code> → <code>{target_item.table_name}.{target_col}</code>"
+            f"<code>{source_str}</code> → <code>{target_str}</code>"
         )
+        if self.fk_meta.get("on_delete") or self.fk_meta.get("on_update"):
+            self.tooltip_text += (
+                f"<br/><small>ON DELETE {self.fk_meta.get('on_delete', 'NO ACTION')} | "
+                f"ON UPDATE {self.fk_meta.get('on_update', 'NO ACTION')}</small>"
+            )
         
         # Line styling
         pen = QPen(QColor("#5F6368"), 1.5)
@@ -54,7 +63,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         self._last_target_side = None
         self.path_planner = ERDConnectionPathPlanner(self)
         
-        self.setZValue(-1)
+        self.setZValue(2) # Above tables (0) to ensure handles are always grabable
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setToolTip(self.tooltip_text)
@@ -65,11 +74,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         self.updatePath()
 
     def hoverEnterEvent(self, event):
-        # 1. Glow Line
-        self.setZValue(10) # Bring to front
-        self.update()
-        
-        # 2. Highlight Source/Target Columns
+        # Highlight Source/Target Columns
         self.source_item.highlighted_cols.add(self.source_col)
         self.target_item.highlighted_cols.add(self.target_col)
         self.source_item.update()
@@ -77,11 +82,7 @@ class ERDConnectionItem(QGraphicsPathItem):
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        # 1. Unglow
-        self.setZValue(-1)
-        self.update()
-        
-        # 2. Unhighlight Columns
+        # Unhighlight Columns
         if self.source_col in self.source_item.highlighted_cols:
             self.source_item.highlighted_cols.remove(self.source_col)
         if self.target_col in self.target_item.highlighted_cols:
@@ -89,8 +90,94 @@ class ERDConnectionItem(QGraphicsPathItem):
         self.source_item.update()
         self.target_item.update()
         super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event):
+        path = self.path()
+        if path.elementCount() >= 2:
+            p0 = path.elementAt(0)
+            pn = path.elementAt(path.elementCount() - 1)
+            dist_start = (event.scenePos() - self.mapToScene(QPointF(p0.x, p0.y))).manhattanLength()
+            dist_end = (event.scenePos() - self.mapToScene(QPointF(pn.x, pn.y))).manhattanLength()
+            
+            if dist_start < 25:
+                self._drag_side = "start"
+                self._current_mouse_pos = event.scenePos()
+                self.setSelected(True)
+                event.accept()
+                return
+            elif dist_end < 25:
+                self._drag_side = "end"
+                self._current_mouse_pos = event.scenePos()
+                self.setSelected(True)
+                event.accept()
+                return
+                
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if getattr(self, '_drag_side', None):
+            self._current_mouse_pos = event.scenePos()
+            self.updatePath()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if getattr(self, '_drag_side', None):
+            from widgets.erd.commands import DetachConnectionCommand
+            from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+            
+            if self._drag_side == "start":
+                 p1 = event.scenePos()
+                 p2 = self.target_item.get_column_anchor_pos(self.target_col, self._last_target_side or "left")
+                 trigger_handle = "start"
+            else:
+                 p1 = self.source_item.get_column_anchor_pos(self.source_col, self._last_source_side or "right")
+                 p2 = event.scenePos()
+                 trigger_handle = "end"
+                 
+            self._drag_side = None
+            
+            widget = self.scene().parent()
+            while widget and getattr(widget, '__class__', None).__name__ != 'ERDWidget':
+                widget = widget.parent()
+                
+            floating = ERDFloatingConnectionItem(self.relation_type)
+            floating.set_handles(p1, p2)
+            
+            cmd = DetachConnectionCommand(widget, self, floating)
+            self.scene().undo_stack.push(cmd)
+            
+            # Fake drop to allow immediate connection to new table
+            handle = floating.start_handle if trigger_handle == "start" else floating.end_handle
+            handle._update_hover_highlight(event.scenePos())
+            handle.mouseReleaseEvent(event)
+            
+            event.accept()
+            return
+            
+        super().mouseReleaseEvent(event)
         
     def updatePath(self):
+        # Temporary drawing for drag detaching
+        if getattr(self, '_drag_side', None):
+            path = QPainterPath()
+            if self._drag_side == "start":
+                p1 = self.mapFromScene(self._current_mouse_pos)
+                p2_scene = self.target_item.get_column_anchor_pos(self.target_col, self._last_target_side or "left")
+                p2 = self.mapFromScene(p2_scene)
+            else:
+                p1_scene = self.source_item.get_column_anchor_pos(self.source_col, self._last_source_side or "right")
+                p1 = self.mapFromScene(p1_scene)
+                p2 = self.mapFromScene(self._current_mouse_pos)
+                
+            path.moveTo(p1)
+            path.lineTo(p2)
+            self.prepareGeometryChange()
+            self.setPath(path)
+            self.update()
+            return
+
         # 0. Safeguard: Prevent recursive updates
         if getattr(self, "_updating", False):
             return
@@ -244,10 +331,13 @@ class ERDConnectionItem(QGraphicsPathItem):
 
         # Update cardinality label and tooltip
         self.cardinality_label = rel_info['label']
+        source_str = f"{self.source_item.table_name}.{self.source_col}" if self.source_col else self.source_item.table_name
+        target_str = f"{self.target_item.table_name}.{self.target_col}" if self.target_col else self.target_item.table_name
+        
         self.tooltip_text = (
             f"<b>{self.cardinality_label}</b><br/>"
-            f"<code>{self.source_item.table_name}.{self.source_col}</code> → "
-            f"<code>{self.target_item.table_name}.{self.target_col}</code>"
+            f"<code>{source_str}</code> → "
+            f"<code>{target_str}</code>"
         )
         self.setToolTip(self.tooltip_text)
 
@@ -283,4 +373,28 @@ class ERDConnectionItem(QGraphicsPathItem):
             action.setChecked(type_key == self.relation_type)
             action.triggered.connect(lambda checked, k=type_key: self.set_relation_type(k))
 
+        menu.addSeparator()
+        detach_action = menu.addAction("Detach Relationship")
+        detach_action.triggered.connect(self.detach_relationship)
+
         menu.exec(event.screenPos())
+        
+    def detach_relationship(self):
+        if not self.scene() or not hasattr(self.scene(), 'undo_stack'):
+            return
+            
+        from widgets.erd.commands import DetachConnectionCommand
+        from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+        widget = self.scene().parent()
+        while widget and getattr(widget, '__class__', None).__name__ != 'ERDWidget':
+            widget = widget.parent()
+            
+        floating = ERDFloatingConnectionItem(self.relation_type)
+        
+        # Determine endpoints based on current anchors
+        p1 = self.source_item.get_column_anchor_pos(self.source_col, self._last_source_side or "right")
+        p2 = self.target_item.get_column_anchor_pos(self.target_col, self._last_target_side or "left")
+        floating.set_handles(p1, p2)
+        
+        cmd = DetachConnectionCommand(widget, self, floating)
+        self.scene().undo_stack.push(cmd)
