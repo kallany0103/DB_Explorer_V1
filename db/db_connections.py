@@ -28,24 +28,43 @@ def create_sqlite_connection(path):
 
 
 def create_postgres_connection(host, port=None, database=None, user=None, password=None):
-    """Establishes a connection to a PostgreSQL database."""
+    """Establishes a connection to a PostgreSQL database with SSL support for cloud hosts."""
     try:
         if isinstance(host, dict):
             conn_data = host
+            dsn = conn_data.get("dsn")
+            if dsn:
+                try:
+                    return psycopg2.connect(dsn, connect_timeout=5)
+                except Exception as e:
+                    print(f"DSN connection failed, falling back to keywords: {e}")
+
             host = conn_data.get("host")
             port = conn_data.get("port")
             database = conn_data.get("database")
             user = conn_data.get("user")
             password = conn_data.get("password")
 
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password
-        )
-        return conn
+        # Basic connection parameters
+        params = {
+            "host": host,
+            "port": port,
+            "database": database,
+            "user": user,
+            "password": password,
+            "connect_timeout": 5
+        }
+        
+        # If the host looks like an Aive/ElephantSQL/AWS host, or if first attempt fails, try with SSL
+        try:
+            conn = psycopg2.connect(**params)
+            return conn
+        except OperationalError:
+            # Retry with SSL for cloud providers
+            params["sslmode"] = "require"
+            conn = psycopg2.connect(**params)
+            return conn
+            
     except OperationalError as e:
         print(f"PostgreSQL connection error: {e}")
         return None

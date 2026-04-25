@@ -2,8 +2,9 @@ import qtawesome as qta
 
 from PySide6.QtWidgets import (
     QWidget, QTextEdit,
-    QFrame
+    QFrame, QComboBox, QLabel
 )
+
 from PySide6.QtCore import (
     QRect
 )
@@ -230,6 +231,8 @@ class WorksheetManager(QWidget):
 
     def handle_query_error(self, current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message):
         handle_query_error_action(self, current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message)
+        self._refresh_conn_status_icon(current_tab)
+
 
 
 
@@ -292,7 +295,25 @@ class WorksheetManager(QWidget):
                 message_view.append(f"Error rendering query result:\n\n{str(e)}")
             self.results_manager.stop_spinner(target_tab, success=False)
             self.status_message_label.setText("Error occurred")
+        self._refresh_conn_status_icon(target_tab)
         self._refresh_editor_layout_for_tab(target_tab)
+
+    def _refresh_conn_status_icon(self, tab):
+        if not tab:
+            return
+        combo = tab.findChild(QComboBox, "db_combo_box")
+        status_icon = tab.findChild(QLabel, "conn_status_icon")
+        if combo and status_icon:
+            from widgets.worksheet.connections import get_connection_icon
+            data = combo.currentData()
+            if data:
+                db_type = data.get("type", "")
+                icon = get_connection_icon(db_type)
+                status_icon.setPixmap(icon.pixmap(18, 18))
+            else:
+                # Default fallback
+                status_icon.setPixmap(qta.icon("fa5s.plug", color="#72777a").pixmap(18, 18))
+
 
     def execute_query_in_new_output_tab(self):
         self.execute_query(output_mode="new")

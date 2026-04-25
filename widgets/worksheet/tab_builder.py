@@ -18,9 +18,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
 import qtawesome as qta
-
+from widgets.worksheet.connections import get_connection_icon
 from widgets.worksheet.code_editor import CodeEditor
-
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QFrame
 
 def add_tab(manager):
     tab_content = QWidget(manager.tab_widget)
@@ -35,14 +36,73 @@ def add_tab(manager):
 
     font = QFont()
     font.setBold(True)
+    # Unified Connection Selector Frame
+    conn_selector_frame = QFrame()
+    conn_selector_frame.setObjectName("conn_selector_container")
+    conn_selector_frame.setFixedHeight(32)
+    conn_selector_frame.setStyleSheet("""
+        QFrame#conn_selector_container {
+            background-color: #ffffff;
+            border: 1px solid #b9b9b9;
+            border-radius: 4px;
+        }
+        QComboBox#db_combo_box {
+            border: none;
+            background-color: transparent;
+            padding: 2px 5px;
+        }
+        QLabel#conn_status_icon {
+            background-color: transparent;
+            border: none;
+            padding-left: 5px;
+        }
+    """)
+
+    conn_selection_layout = QHBoxLayout(conn_selector_frame)
+    conn_selection_layout.setContentsMargins(0, 0, 0, 0)
+    conn_selection_layout.setSpacing(0)
+
+    conn_status_icon = QLabel()
+    conn_status_icon.setObjectName("conn_status_icon")
+    conn_status_icon.setFixedSize(30, 30)
+    conn_status_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    
+    # Set a default icon pixmap
+    conn_status_icon.setPixmap(qta.icon("fa5s.link", color="#72777a").pixmap(16, 16))
+    conn_selection_layout.addWidget(conn_status_icon)
+
+    # Vertical Separator
+    separator = QFrame()
+    separator.setFrameShape(QFrame.Shape.VLine)
+    separator.setFrameShadow(QFrame.Shadow.Plain)
+    separator.setStyleSheet("color: #D3D3D3; margin: 0px;")
+    conn_selection_layout.addWidget(separator)
 
     db_combo_box = QComboBox()
     db_combo_box.setObjectName("db_combo_box")
-    layout.addWidget(db_combo_box)
+    conn_selection_layout.addWidget(db_combo_box, 1)
+    
+    # Add the unified frame to the main layout
+    layout.addWidget(conn_selector_frame)
     manager.load_joined_connections(db_combo_box)
+
+    def update_conn_status_icon():
+        
+        data = db_combo_box.currentData()
+        if data:
+            db_type = data.get("type", "")
+            icon = get_connection_icon(db_type)
+            conn_status_icon.setPixmap(icon.pixmap(16, 16))
+        else:
+            conn_status_icon.setPixmap(qta.icon("fa5s.link", color="#72777a").pixmap(16, 16))
+
+    db_combo_box.currentIndexChanged.connect(update_conn_status_icon)
     db_combo_box.currentIndexChanged.connect(lambda: manager.results_manager.refresh_processes_view())
+    
+    QTimer.singleShot(100, update_conn_status_icon)
 
     toolbar_widget = QWidget()
+
     toolbar_widget.setObjectName("tab_toolbar")
     toolbar_layout = QHBoxLayout(toolbar_widget)
     toolbar_layout.setContentsMargins(6, 3, 6, 3)
@@ -163,7 +223,6 @@ def add_tab(manager):
             QMenu::separator { height: 1px; background: #eeeeee; margin: 2px 0px; }
         """
     )
-
     def add_menu_action(text, shortcut=None, icon=None, func=None):
         action = QAction(text, manager)
         if icon:

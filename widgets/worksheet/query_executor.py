@@ -1,8 +1,10 @@
 import time
 
 from PySide6.QtWidgets import (
-    QMessageBox,
+    QMessageBox, QLabel
 )
+import qtawesome as qta
+
 
 from widgets.worksheet.query.query_feedback import (
     append_error_message,
@@ -183,6 +185,12 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
 
     output_tab_index = resolve_output_tab_index(manager, current_tab, output_mode=output_mode)
 
+    # Update status icon to 'Executing' (Hourglass)
+    status_icon = current_tab.findChild(QLabel, "conn_status_icon")
+    if status_icon:
+        status_icon.setPixmap(qta.icon("fa5s.hourglass-half", color="#ff9800").pixmap(18, 18))
+
+
     dispatch_query(
         manager,
         current_tab,
@@ -193,7 +201,6 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
         output_mode=output_mode,
         output_tab_index=output_tab_index,
     )
-
 
 def update_timer_label(manager, label, tab):
     if not label or tab not in manager.tab_timers:

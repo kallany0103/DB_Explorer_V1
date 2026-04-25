@@ -1,5 +1,8 @@
 import db
+import qtawesome as qta
 from PySide6.QtWidgets import QComboBox
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import QSize
 
 
 def refresh_all_comboboxes(manager):
@@ -10,13 +13,32 @@ def refresh_all_comboboxes(manager):
             load_joined_connections(manager, combo)
 
 
+def get_connection_icon(conn_type):
+    """Always returns a fixed link icon with a consistent color."""
+    # Returning a fixed professional dark grey link icon for all connections
+    return qta.icon("fa5s.link", color="#333333")
+
+
+
+
+
+
+
+
+
+
+
+
 def load_joined_connections(manager, combo_box):
     try:
         current_data = combo_box.currentData()
         combo_box.clear()
+        
         connections = db.get_all_connections_from_db()
         for connection in connections:
             conn_data = {key: connection[key] for key in connection if key != "display_name"}
+            
+            # Add simple text items (icons are now handled separately by tab_builder)
             combo_box.addItem(connection["display_name"], conn_data)
 
         if current_data:
@@ -27,3 +49,5 @@ def load_joined_connections(manager, combo_box):
                     break
     except Exception as error:
         print(f"Error refreshing combobox: {error}")
+
+

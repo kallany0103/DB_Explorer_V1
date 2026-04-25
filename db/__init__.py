@@ -11,6 +11,7 @@ from db.db_connections import (
 from db.db_retrieval import (
     get_all_connections_from_db,
     get_hierarchy_data,
+    get_postgres_session_stats,
 )
 
 from db.schema_retrieval import (
@@ -76,4 +77,5 @@ __all__ = [
     "postgres_connection",
     "sqlite_connection",
     "oracle_connection",
+    "get_postgres_session_stats",
 ]

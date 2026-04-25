@@ -122,6 +122,9 @@ def build_main_window_actions(main_window):
     # Removed setShortcut("Ctrl+Shift+L") to prevent conflict with lowercase action
     main_window.restore_action.triggered.connect(main_window.restore_tool)
 
+    main_window.reset_layout_action = QAction(qta.icon("fa5s.th-large", color="#555555"), "Reset Layout", main_window)
+    main_window.reset_layout_action.triggered.connect(main_window.reset_layout)
+
     main_window.refresh_action = QAction("Refresh Explorer", main_window)
     main_window.refresh_action.setShortcuts(["F5", "Ctrl+R"])
     main_window.refresh_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)

@@ -66,6 +66,7 @@ class ConnectionManager(QWidget):
         self._spinner = ConnectionSpinner(self)
         self._active_schema_workers = []
         self._schema_load_token = 0
+        self.active_postgres_conn = None
 
         self.erd_icon_key = "fa6s.sitemap"
         self.erd_icon_fallback_key = "fa5s.project-diagram"
@@ -220,6 +221,11 @@ class ConnectionManager(QWidget):
     def refresh_object_explorer(self, *args, **kwargs):
         try:
             self._save_tree_expansion_state()
+            
+            # Visually collapse everything first as requested
+            self.tree.collapseAll()
+            self.schema_tree.collapseAll()
+            
             self.load_data()
             self._restore_tree_expansion_state()
             
@@ -328,7 +334,8 @@ class ConnectionManager(QWidget):
         if hasattr(self.main_window, "results_manager"):
             self.main_window.results_manager.add_connection_notification(conn_name)
 
-        if "postgres" in connection_type_name and conn_data.get("host"):
+        if "postgres" in connection_type_name and (conn_data.get("host") or conn_data.get("dsn")):
+            self.active_postgres_conn = conn_data
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
             worker = PostgresSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_postgres_schema)

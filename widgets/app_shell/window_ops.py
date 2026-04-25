@@ -2,7 +2,7 @@
 # from PyQt6.QtGui import QDesktopServices
 # from PyQt6.QtCore import QUrl
 
-from PySide6.QtWidgets import QSplitter, QMessageBox
+from PySide6.QtWidgets import QSplitter, QMessageBox, QStackedWidget, QTabWidget, QTextEdit, QWidget, QPushButton
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 
@@ -46,17 +46,101 @@ def close_tab(main_window, index):
 
 def restore_tool(main_window):
     try:
+        # Always maximize the window on layout restore
+        main_window.showMaximized()
+        
+        # 1. Reset Splitter Sizes
         main_window.main_splitter.setSizes([280, 920])
-        if hasattr(main_window, 'connection_manager') and hasattr(main_window.connection_manager, 'vertical_splitter'):
-            main_window.connection_manager.vertical_splitter.setSizes([240, 360])
+        if hasattr(main_window, 'connection_manager'):
+            cm = main_window.connection_manager
+            if hasattr(cm, 'vertical_splitter'):
+                cm.vertical_splitter.setSizes([240, 360])
+            
+            # 2. Collapse DB Explorer Trees
+            if hasattr(cm, 'tree'):
+                cm.tree.collapseAll()
+            if hasattr(cm, 'schema_tree'):
+                cm.schema_tree.collapseAll()
+
+        # 3. Close all tabs except one
+        while main_window.tab_widget.count() > 1:
+            # We use the main_window.close_tab method which handles manager cleanup
+            main_window.close_tab(0)
+
+        # 3b. Clear everything from the remaining tab
+        current_tab = main_window.tab_widget.currentWidget()
+        if current_tab:
+            # Clear editor
+            current_editor = main_window._get_current_editor()
+            if current_editor:
+                current_editor.clear()
+            
+            # Reset Results View
+            results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+            if results_stack:
+                # 6 is the index for the 'No data output' placeholder
+                results_stack.setCurrentIndex(6)
+            
+            # Reset Result Tabs
+            output_tabs_widget = current_tab.findChild(QTabWidget, "output_tabs")
+            if output_tabs_widget:
+                # Clear all existing result tabs and recreate a fresh one
+                from widgets.results_view.output_tabs import ensure_at_least_one_output_tab
+                while output_tabs_widget.count() > 0:
+                    output_tabs_widget.removeTab(0)
+                ensure_at_least_one_output_tab(main_window.results_manager, current_tab)
+
+            # Clear messages
+            message_view = current_tab.findChild(QTextEdit, "message_view")
+            if message_view:
+                message_view.clear()
+            
+            # Reset header buttons (uncheck all for the placeholder state)
+            results_header = current_tab.findChild(QWidget, "resultsHeader")
+            if results_header:
+                for btn in results_header.findChildren(QPushButton):
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+
+            # Hide bars
+            for bar_name in ["resultsInfoBar", "processFilterBar", "processInfoBar"]:
+                bar = current_tab.findChild(QWidget, bar_name)
+                if bar:
+                    bar.hide()
+
+        # 4. Reset Current Tab Splitter
         current_tab = main_window.tab_widget.currentWidget()
         if current_tab:
             tab_splitter = current_tab.findChild(QSplitter, "tab_vertical_splitter")
             if tab_splitter:
                 tab_splitter.setSizes([300, 300])
-        main_window.status.showMessage("Layout restored to defaults.", 3000)
+                
+        main_window.status.showMessage("Layout reset: Explorer collapsed, extra tabs closed, and sizes restored.", 4000)
     except Exception as e:
         main_window.status.showMessage(f"Error restoring layout: {e}", 5000)
+        import traceback
+        traceback.print_exc()
+
+def reset_layout(main_window):
+    try:
+        main_window.showMaximized()
+        main_window.main_splitter.setSizes([280, 920])
+        if hasattr(main_window, 'connection_manager'):
+            cm = main_window.connection_manager
+            if hasattr(cm, 'vertical_splitter'):
+                cm.vertical_splitter.setSizes([240, 360])
+            if hasattr(cm, 'tree'):
+                cm.tree.collapseAll()
+            if hasattr(cm, 'schema_tree'):
+                cm.schema_tree.collapseAll()
+
+        # Add dashboard tab first
+        main_window.add_dashboard_tab()
+        
+        main_window.status.showMessage("Layout reset to Dashboard.", 4000)
+    except Exception as e:
+        main_window.status.showMessage(f"Error resetting layout: {e}", 5000)
         import traceback
         traceback.print_exc()
 
