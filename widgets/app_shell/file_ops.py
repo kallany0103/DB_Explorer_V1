@@ -4,6 +4,8 @@ from PySide6.QtCore import QDir
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
 
 from widgets.worksheet.editor_actions import FindReplaceDialog
+import re
+import os
 
 
 def open_sql_file(main_window):
@@ -53,24 +55,67 @@ def open_sql_file(main_window):
         except Exception as e:
             QMessageBox.critical(main_window, "Error", f"Could not read file:\n{e}")
 
+def _get_default_sql_filename(main_window, content):
+    """Helper to determine the default filename from tab or content."""
+    current_tab = main_window.tab_widget.currentWidget()
+    default_filename = "query"
+    
+    if hasattr(current_tab, 'table_name') and current_tab.table_name:
+        default_filename = current_tab.table_name
+    else:
+        table_match = re.search(r'(?i)(?:FROM|JOIN|UPDATE|INTO|TABLE)\s+([a-zA-Z0-9_\.\"\'\[\]\.]+)', content)
+        if table_match:
+            table_name = table_match.group(1).strip()
+            # Clean up quotes and take the last part of a multipart name (schema.table)
+            table_name = table_name.strip('\"\'[]').split('.')[-1]
+            if table_name:
+                default_filename = table_name
+
+    # Ensure no extension in name for base
+    if default_filename.lower().endswith('.sql'):
+        default_filename = default_filename[:-4]
+        
+    return f"{default_filename}.sql"
 
 def save_sql_file(main_window):
-    save_sql_file_as(main_window)
+    """Auto-save using table name without dialog if possible."""
+    editor = main_window._get_current_editor()
+    if not editor:
+        return
+
+    content = editor.toPlainText()
+    filename = _get_default_sql_filename(main_window, content)
+    
+    # Save to Desktop directory
+    desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
+    save_path = os.path.join(desktop_path, filename)
+    
+    try:
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        main_window.status.showMessage(f"Auto-saved to Desktop: {filename}", 5000)
+    except Exception as e:
+        # Fallback to Save As if direct save fails
+        save_sql_file_as(main_window)
 
 
 def save_sql_file_as(main_window):
+    """Manual save with name change possibility."""
     editor = main_window._get_current_editor()
     if not editor:
         QMessageBox.warning(main_window, "Error", "No active query editor to save from.")
         return
 
     content = editor.toPlainText()
-    default_dir = QDir.homePath()
+    filename = _get_default_sql_filename(main_window, content)
+    
+    desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
+    default_path = os.path.join(desktop_path, filename)
 
     file_name, _ = QFileDialog.getSaveFileName(
         main_window,
         "Save SQL File As",
-        default_dir,
+        default_path,
         "SQL Files (*.sql);;All Files (*)",
     )
 

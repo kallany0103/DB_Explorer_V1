@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint
 from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
+from widgets.dashboard import DashboardWidget
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
@@ -27,6 +28,7 @@ from widgets.app_shell import (
     update_thread_pool_status,
     restore_main_window_session,
     save_main_window_session,
+    reset_layout,
 )
 
 
@@ -184,6 +186,20 @@ class MainWindow(QMainWindow):
         tab_title = f"ERD Tab {self.tab_widget.count() + 1}"
         index = self.tab_widget.addTab(erd_widget, tab_title)
         self.tab_widget.setTabIcon(index, qta.icon('fa6s.sitemap'))
+        self.tab_widget.setCurrentIndex(index)
+        self.renumber_tabs()
+
+    def add_dashboard_tab(self):
+        # Prevent multiple dashboard tabs
+        for i in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(i) == "Dashboard":
+                self.tab_widget.setCurrentIndex(i)
+                return
+
+        dashboard_widget = DashboardWidget(self)
+        tab_title = "Dashboard"
+        index = self.tab_widget.addTab(dashboard_widget, tab_title)
+        self.tab_widget.setTabIcon(index, qta.icon('fa5s.th-large', color='#3b82f6'))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
 
@@ -363,6 +379,9 @@ class MainWindow(QMainWindow):
 
     def restore_tool(self, *args, **kwargs):
         restore_tool(self)
+
+    def reset_layout(self, *args, **kwargs):
+        reset_layout(self)
 
 
 

@@ -20,6 +20,7 @@ from widgets.app_shell.window_ops import (
 	toggle_maximize,
 	open_help_url,
 	update_thread_pool_status,
+	reset_layout,
 )
 
 __all__ = [
@@ -43,4 +44,5 @@ __all__ = [
 	"toggle_maximize",
 	"open_help_url",
 	"update_thread_pool_status",
+	"reset_layout",
 ]
