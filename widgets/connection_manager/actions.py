@@ -5,7 +5,6 @@ import uuid
 import db
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -19,7 +18,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTextEdit,
     QVBoxLayout,
-    QWidget,
 )
 
 from dialogs import (
@@ -261,7 +259,6 @@ class ConnectionActions:
                 folder_path = conn_data.get("db_path")
                 file_path = os.path.join(folder_path, real_table_name)
                 if os.path.exists(file_path):
-                    import os
                     os.remove(file_path)
                     self._notify_deletion_success(table_name, object_type, f"OS.REMOVE(\"{file_path}\")", conn_data)
                     return
@@ -694,10 +691,7 @@ class ConnectionActions:
                     conn.commit()
                     conn.close()
 
-                    log_success_to_view(data["name"])
-
-                    self.manager.status.showMessage("Refreshing schema...", 2000)
-                    self.manager.refresh_object_explorer()
+                    self._notify_creation_success(data["name"], "Table", conn_data)
 
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to create SQLite table:\n{e}")

@@ -238,7 +238,15 @@ class ERDView(QGraphicsView):
             widget = widget.parent()
 
         if widget:
-            cmd = AddTableCommand(widget, table_name, columns, scene_pos)
+            cmd = AddTableCommand(
+                widget,
+                table_name,
+                columns,
+                scene_pos,
+                schema_name=schema_name,
+                foreign_keys=item_data.get("foreign_keys", []),
+                notes=item_data.get("notes", []),
+            )
             widget.undo_stack.push(cmd)
 
     def _handle_component_drop(self, comp_type, view_pos):
@@ -252,16 +260,10 @@ class ERDView(QGraphicsView):
             return
 
         if comp_type == "table":
-            # Just trigger the add_new_table logic
-            # Or better, just add a default table without dialog
-            name = "new_table"
-            counter = 1
-            while f"public.{name}" in self.scene().tables:
-                name = f"new_table_{counter}"
-                counter += 1
-            
-            cmd = AddTableCommand(widget, name, [{"name": "id", "type": "INTEGER", "pk": True}], scene_pos)
-            widget.undo_stack.push(cmd)
+            widget._create_default_entity(scene_pos)
+
+        elif comp_type == "table_fk":
+            widget._create_entity_with_fk(scene_pos)
             
         elif comp_type == "column":
             # Check if dropped over a table
@@ -277,6 +279,18 @@ class ERDView(QGraphicsView):
                 
                 cmd = AddColumnCommand(widget, item, {"name": col_name, "type": "VARCHAR(255)"})
                 widget.undo_stack.push(cmd)
+
+        elif comp_type == "note":
+            widget._create_note_at("Note", scene_pos)
+
+        elif comp_type.startswith("relationship:"):
+            from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+            rel_type = comp_type.split(":")[1]
+            floating_conn = ERDFloatingConnectionItem(rel_type)
+            p1 = scene_pos - QPointF(50, 0)
+            p2 = scene_pos + QPointF(50, 0)
+            floating_conn.set_handles(p1, p2)
+            self.scene().addItem(floating_conn)
 
     def _duplicate_selected_tables(self):
         # Find which items are selected

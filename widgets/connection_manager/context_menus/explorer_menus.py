@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
 
 from widgets.connection_manager.menu_style import apply_menu_style
-from widgets.connection_manager.context_menus._helpers import action, stub, submenu
+from widgets.connection_manager.context_menus._helpers import action, stub
 
 
 class ExplorerMenuBuilder:

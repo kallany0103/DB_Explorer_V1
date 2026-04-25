@@ -347,7 +347,7 @@ class ResultsManager(QObject):
 
     def add_connection_notification(self, conn_name):
         from widgets.results_view.notifications import add_connection_event
-        from PySide6.QtWidgets import QTreeView, QStackedWidget, QPushButton, QWidget
+        from PySide6.QtWidgets import QTreeView
         target_tab = self.tab_widget.currentWidget()
         if not target_tab:
             return

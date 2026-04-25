@@ -1,10 +1,11 @@
 import math
-from PySide6.QtWidgets import QGraphicsScene
+from PySide6.QtWidgets import QGraphicsScene, QDialog
 from PySide6.QtGui import QBrush, QColor, QPen, QTransform
 from PySide6.QtCore import QLineF, Qt
 
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem
+from widgets.erd.items.note_item import ERDNoteItem
 from widgets.erd.routing import ERDRouter
 from widgets.erd.commands import DeleteItemCommand, UpdateTableCommand
 
@@ -40,7 +41,7 @@ class ERDScene(QGraphicsScene):
     def delete_selected_items(self):
         items_to_delete = []
         for item in self.selectedItems():
-            if isinstance(item, ERDConnectionItem):
+            if isinstance(item, (ERDConnectionItem, ERDNoteItem)):
                 items_to_delete.append(item)
                 
         if items_to_delete and hasattr(self, 'undo_stack'):  
@@ -145,10 +146,20 @@ class ERDScene(QGraphicsScene):
         if isinstance(item, ERDTableItem):
             from widgets.erd.dialogs import TableDesignerDialog
             widget = self.parent() 
-            dialog = TableDesignerDialog(widget, item.table_name, item.columns)
-            if dialog.exec() == TableDesignerDialog.Accepted:
+            dialog = TableDesignerDialog(
+                widget,
+                item.table_name,
+                item.columns,
+                schema_name=item.schema_name or "public",
+            )
+            if dialog.exec() == QDialog.DialogCode.Accepted:
                 new_name, new_cols = dialog.get_result()
-                cmd = UpdateTableCommand(widget, item, new_name, new_cols)
+                cmd = UpdateTableCommand(
+                    widget,
+                    item,
+                    new_name,
+                    new_cols,
+                )
                 widget.undo_stack.push(cmd)
         
         super().mouseDoubleClickEvent(event)
@@ -225,4 +236,3 @@ class ERDScene(QGraphicsScene):
     def mouseReleaseEvent(self, event):
         self.finish_connection_drag(event.scenePos())
         super().mouseReleaseEvent(event)
-

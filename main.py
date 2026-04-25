@@ -4,9 +4,9 @@ import sys
 import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 from main_window import MainWindow
+from widgets.encryption.secure_sqlite import enable_transparent_encryption
 
 if __name__ == "__main__":
-    from widgets.encryption.secure_sqlite import enable_transparent_encryption
     enable_transparent_encryption("mysecretpassword")
 
     app = QApplication(sys.argv)

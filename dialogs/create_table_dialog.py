@@ -1,8 +1,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QTextEdit, QTableWidget, QHeaderView, 
-    QAbstractItemView, QHBoxLayout, QPushButton, QDialogButtonBox, 
-    QTableWidgetItem, QMessageBox, QLabel
+    QAbstractItemView, QHBoxLayout, QPushButton, QTableWidgetItem, QMessageBox, QLabel
 )
 from PySide6.QtCore import Qt
 
