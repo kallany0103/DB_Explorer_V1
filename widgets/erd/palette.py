@@ -69,7 +69,7 @@ class ERDPalette(QFrame):
         self.list.setSpacing(0)
         self.list.hide() # Initially closed
         
-        def add_item(icon_name, text, role, height=42, icon_color='#5F6368'):
+        def add_item(icon_name, text, role, height=42, icon_color='#5F6368', icon_size=22):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, role)
             item.setSizeHint(QSize(self.expanded_width - 12, height))
@@ -81,8 +81,8 @@ class ERDPalette(QFrame):
             row_layout.setSpacing(8)
 
             icon_lbl = QLabel()
-            icon_lbl.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(22, 22))
-            icon_lbl.setFixedSize(22, 22)
+            icon_lbl.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(icon_size, icon_size))
+            icon_lbl.setFixedSize(icon_size, icon_size)
             icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             text_lbl = QLabel(text)
@@ -98,7 +98,7 @@ class ERDPalette(QFrame):
         # New Entity Items
         add_item('fa5s.table', "New Entity", "table", 40, '#1A73E8')
 
-        add_item('fa5s.link', "New Entity with FK", "table_fk", 46, '#1A73E8')
+        add_item('mdi.table-key', "New Entity with FK", "table_fk", 46, '#1A73E8', icon_size=24)
         
         # New Column Item
         add_item('fa5s.columns', "New Column", "column", 40, '#34A853')

@@ -43,7 +43,14 @@ class TableDesignerDialog(QDialog):
 
         self.col_table = QTableWidget(0, 5)
         self.col_table.setHorizontalHeaderLabels(["Column Name", "Type", "PK", "Nullable", "FK"])
-        self.col_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.col_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.col_table.setColumnWidth(0, 220)
+        self.col_table.setColumnWidth(1, 220)
         self.col_table.verticalHeader().setDefaultSectionSize(38)
         self.col_table.verticalHeader().setVisible(False)
         self.col_table.setStyleSheet("""
@@ -182,6 +189,8 @@ class TableDesignerDialog(QDialog):
 
         type_combo = QComboBox()
         type_combo.setEditable(True)
+        type_combo.setMinimumContentsLength(14)
+        type_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         types = [
             "INTEGER", "VARCHAR(255)", "TEXT", "BOOLEAN", "TIMESTAMP", "DECIMAL(10,2)",
             "SMALLINT", "BIGINT", "SERIAL", "BIGSERIAL",
