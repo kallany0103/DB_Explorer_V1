@@ -25,6 +25,11 @@ from PySide6.QtSvg import QSvgGenerator
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem
 from widgets.erd.items.note_item import ERDNoteItem
+from widgets.erd.items.entity_item import ERDEntityItem
+from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
+from widgets.erd.items.attribute_item import ERDAttributeItem
+from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
+from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
 from widgets.erd.scene import ERDScene
 from widgets.erd.view import ERDView
 from widgets.erd.property_panel import PropertyPanel
@@ -238,6 +243,7 @@ class ERDWidget(QWidget):
         super().__init__(parent)
         self.schema_data = schema_data
         self.notes_data = []
+        self.view_state_data = None
         self.undo_stack = QUndoStack(self)
         self.initUI()
         
@@ -282,6 +288,8 @@ class ERDWidget(QWidget):
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.save_erd)
         self.toolbar.addAction(save_action)
+
+        self.toolbar.addSeparator()
 
         export_png = QAction(qta.icon('fa5s.image', color='#555555'), "Export to PNG", self)
         export_png.triggered.connect(lambda: self.save_as_image("png"))
@@ -410,28 +418,8 @@ class ERDWidget(QWidget):
         self.addAction(self.sql_shortcut)
         
         
-        # Search Bar (Toggle UI)
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search...")
-        self.search_input.setFixedHeight(28)
-        self.search_input.setFixedWidth(180)
-        self.search_input.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding-left: 5px;
-                padding-right: 5px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1A73E8;
-            }
-        """)
-        self.search_input.hide() # Initially hidden
-        self.search_input.textChanged.connect(self.on_search_text_changed)
-        self.search_input.returnPressed.connect(self.on_search_return_pressed)
-        # Install event filter to auto-hide on focus out
-        self.search_input.installEventFilter(self)
-
+        # Search button stays in the toolbar; the search input is a floating
+        # overlay over the view so toggling it never changes the toolbar layout.
         self.search_btn = QToolButton()
         self.search_btn.setIcon(qta.icon('fa5s.search', color='#555555'))
         self.search_btn.setIconSize(QSize(16, 16))
@@ -439,10 +427,29 @@ class ERDWidget(QWidget):
         self.search_btn.setMinimumWidth(26)
         self.search_btn.setToolTip("Search (Ctrl+F)")
         self.search_btn.clicked.connect(self.toggle_search)
-
-        # Add to toolbar
-        self.toolbar.addWidget(self.search_input)
         self.toolbar.addWidget(self.search_btn)
+
+        # Floating search input (parented to view_container, not the toolbar)
+        self.search_input = QLineEdit(self.view_container)
+        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setFixedHeight(28)
+        self.search_input.setFixedWidth(220)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                padding-left: 8px;
+                padding-right: 8px;
+                background-color: #ffffff;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1A73E8;
+            }
+        """)
+        self.search_input.hide()
+        self.search_input.textChanged.connect(self.on_search_text_changed)
+        self.search_input.returnPressed.connect(self.on_search_return_pressed)
+        self.search_input.installEventFilter(self)
 
         search_action = QAction(self)
         search_action.setShortcut("Ctrl+F")
@@ -477,12 +484,21 @@ class ERDWidget(QWidget):
     def toggle_search(self):
         if self.search_input.isVisible():
             self.search_input.hide()
-            self.search_btn.show()
-            self.search_input.clear() # Optional: Clear search on close
+            self.search_input.clear()  # Optional: Clear search on close
         else:
-            self.search_btn.hide()
+            self._position_search_input()
             self.search_input.show()
+            self.search_input.raise_()
             self.search_input.setFocus()
+
+    def _position_search_input(self):
+        """Anchor the floating search input to the top-right of the view container."""
+        if not hasattr(self, 'search_input') or not hasattr(self, 'view_container'):
+            return
+        margin = 12
+        x = self.view_container.width() - self.search_input.width() - margin
+        y = margin
+        self.search_input.move(max(margin, x), y)
 
     def eventFilter(self, obj, event):
         if obj == getattr(self, 'search_input', None) and event.type() == event.Type.FocusOut:
@@ -490,6 +506,8 @@ class ERDWidget(QWidget):
                 self.toggle_search()
         elif hasattr(self, 'view_container') and obj == self.view_container and event.type() == event.Type.Resize:
             self._update_panel_geometry()
+            if hasattr(self, 'search_input') and self.search_input.isVisible():
+                self._position_search_input()
         return super().eventFilter(obj, event)
 
     def _update_panel_geometry(self):
@@ -572,6 +590,81 @@ class ERDWidget(QWidget):
             name, cols = dialog.get_result()
             cmd = AddTableCommand(self, name, cols, pos, schema_name=preset.get("schema", DEFAULT_SCHEMA))
             self.undo_stack.push(cmd)
+
+    def _free_item_types(self):
+        return (
+            ERDNoteItem,
+            ERDEntityItem,
+            ERDWeakEntityItem,
+            ERDAttributeItem,
+            ERDRelationshipDiamondItem,
+            ERDSubjectAreaItem,
+        )
+
+    def _serialize_free_item(self, item):
+        if hasattr(item, "serialize_view_state"):
+            return item.serialize_view_state()
+        return None
+
+    def _serialize_view_state(self):
+        view_state = {"tables": {}, "free_items": []}
+        for full_name, item in self.scene.tables.items():
+            data = item.serialize_view_state() if hasattr(item, "serialize_view_state") else {
+                "x": item.pos().x(),
+                "y": item.pos().y(),
+                "width": item.rect().width(),
+                "height": item.rect().height(),
+                "size_mode": getattr(item, "size_mode", "auto"),
+            }
+            view_state["tables"][full_name] = data
+
+        for item in reversed(self.scene.items()):
+            if isinstance(item, self._free_item_types()):
+                data = self._serialize_free_item(item)
+                if data:
+                    view_state["free_items"].append(data)
+        return view_state
+
+    def _create_free_item_from_state(self, data):
+        item_type = data.get("type")
+        if item_type == "note":
+            item = ERDNoteItem(data.get("text", "Note"))
+        elif item_type == "entity":
+            item = ERDEntityItem(data.get("label", "Entity"))
+        elif item_type == "weak_entity":
+            item = ERDWeakEntityItem(data.get("label", "WeakEntity"))
+        elif item_type == "attribute":
+            item = ERDAttributeItem(data.get("label", "Attribute"), kind=data.get("kind", "normal"))
+        elif item_type == "relationship_diamond":
+            item = ERDRelationshipDiamondItem(
+                data.get("label", "Relationship"),
+                is_identifying=data.get("is_identifying", False),
+            )
+        elif item_type == "subject_area":
+            item = ERDSubjectAreaItem(
+                data.get("title", "Subject Area"),
+                color_idx=data.get("color_idx"),
+            )
+        else:
+            return None
+
+        item.setPos(data.get("x", 0), data.get("y", 0))
+        if hasattr(item, "restore_view_state"):
+            item.restore_view_state(data)
+        self.scene.addItem(item)
+        return item
+
+    def _restore_view_state(self, state):
+        if not state:
+            return
+
+        for full_name, item_state in state.get("tables", {}).items():
+            item = self.scene.tables.get(full_name)
+            if item and hasattr(item, "restore_view_state"):
+                item.restore_view_state(item_state)
+
+        for item_state in state.get("free_items", []):
+            self._create_free_item_from_state(item_state)
 
     def load_schema(self):
         # Color palette for Subject Areas (Subject Area Highlighting)
@@ -665,12 +758,6 @@ class ERDWidget(QWidget):
                     )
                     self.scene.addItem(conn_item)
 
-        # 4. Create note items if persisted
-        for note in getattr(self, "notes_data", []):
-            note_item = ERDNoteItem(note.get("text", "Note"))
-            note_item.setPos(note.get("x", 0), note.get("y", 0))
-            self.scene.addItem(note_item)
-        
         self.scene.update_scene_rect()
 
     def auto_layout(self):
@@ -848,8 +935,9 @@ class ERDWidget(QWidget):
             return
             
         state = {
-            "version": 2,
+            "version": 3,
             "schema_data": self.schema_data,
+            "view_state": self._serialize_view_state(),
             "positions": {},
             "notes": []
         }
@@ -886,15 +974,23 @@ class ERDWidget(QWidget):
             if "schema_data" in state:
                 self.schema_data = state["schema_data"]
                 self.notes_data = state.get("notes", [])
+                self.view_state_data = state.get("view_state")
                 self.scene.clear()
                 self.undo_stack.clear()
                 self.scene.tables = {}
                 self.load_schema()
-                
-                positions = state.get("positions", {})
-                for full_name, pos in positions.items():
-                    if full_name in self.scene.tables:
-                        self.scene.tables[full_name].setPos(pos["x"], pos["y"])
+                if self.view_state_data:
+                    self._restore_view_state(self.view_state_data)
+                else:
+                    positions = state.get("positions", {})
+                    for full_name, pos in positions.items():
+                        if full_name in self.scene.tables:
+                            self.scene.tables[full_name].setPos(pos["x"], pos["y"])
+                    for note in self.notes_data:
+                        note_item = ERDNoteItem(note.get("text", "Note"))
+                        note_item.setPos(note.get("x", 0), note.get("y", 0))
+                        self.scene.addItem(note_item)
+                self.scene.update_scene_rect()
             
             self.status_message(f"ERD Loaded: {file_path}")
         except Exception as e:

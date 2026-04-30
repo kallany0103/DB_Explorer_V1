@@ -1,15 +1,18 @@
 import math
 import qtawesome as qta
-from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect
+from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect, QMenu
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QFontMetrics
-from PySide6.QtCore import Qt, QRectF, QPointF, QLineF
+from PySide6.QtCore import Qt, QRectF, QPointF, QLineF, QSizeF
 
 
-from widgets.erd.commands import MoveTableCommand
+from widgets.erd.commands import MoveTableCommand, ResizeItemCommand
+from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
 
-class ERDTableItem(QGraphicsRectItem):
+
+class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
     def __init__(self, table_name, columns, schema_name=None, parent=None):
         super().__init__(parent)
+        self._init_resizable()
         self.table_name = table_name
         self.schema_name = schema_name
         self.columns = columns
@@ -19,12 +22,13 @@ class ERDTableItem(QGraphicsRectItem):
         self.show_types = True
         self.connections = []
         self.highlighted_cols = set() # Columns to visually highlight
+        self.target_highlight = False
         
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-        
-        self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+        self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
+        self.setZValue(1)
         
         self.group_color = QColor("#E8F0FE") # Default
         self.is_dimmed = False
@@ -60,13 +64,24 @@ class ERDTableItem(QGraphicsRectItem):
         self.icon_col = qta.icon('mdi.table-column', color='#34A853')
         
         self.update_geometry()
-        
-    def boundingRect(self):
-        # Override to include the pen width
-        return self.rect().adjusted(-2, -2, 2, 2)
-        
-    def update_geometry(self):
+
+    def minimum_size(self):
+        min_height = self.header_height + (self.row_height if self.show_columns else 20)
+        return QSizeF(180.0, float(min_height))
+
+    def resize_bounds(self):
+        return self.rect()
+
+    def get_size(self):
+        return QSizeF(float(self.width), float(self.height))
+
+    def apply_size(self, width, height):
         self.prepareGeometryChange()
+        self.width = max(self.minimum_size().width(), width)
+        self.height = max(self.minimum_size().height(), height)
+        self.setRect(0, 0, self.width, self.height)
+
+    def compute_auto_size(self):
         # Calculate width
         font_header = QFont("Segoe UI", 10, QFont.Weight.Bold)
         fm_header = QFontMetrics(font_header)
@@ -83,27 +98,51 @@ class ERDTableItem(QGraphicsRectItem):
             
             for col in self.columns:
                 col_name = col['name']
-                # Space for icon (25px) + text
                 content_width = 30 + fm_col.horizontalAdvance(col_name)
                 
                 if self.show_types:
                     type_name = col.get('type', '')
-                    # Name Width + Type Width + Minimum Spacing (30px) + Icons/Padding
                     content_width += fm_col.horizontalAdvance(type_name) + 40
                 
                 max_width = max(max_width, content_width + 20)
         
-        self.width = max(180, max_width)
+        width = max(self.minimum_size().width(), max_width)
         
-        # Calculate height
         content_height = (len(self.columns) * self.row_height) if self.show_columns else 0
         total_height = self.header_height + content_height
-        # Pad up to the nearest multiple of 20 (Grid Size) for perfect alignment
-        self.height = math.ceil(total_height / 20.0) * 20.0
+        height = math.ceil(total_height / 20.0) * 20.0
+        return float(width), float(max(self.minimum_size().height(), height))
         
-        self.setRect(0, 0, self.width, self.height)
-        for conn in self.connections:
-            conn.updatePath()
+    def boundingRect(self):
+        # Override to include the pen width
+        pad = self.resize_padding()
+        return self.rect().adjusted(-pad, -pad, pad, pad)
+
+    def shape(self):
+        # When selected, expand the hit-test area to cover the resize handles
+        # which extend outside rect(); otherwise hover/click events near the
+        # handles never reach this item, making them hard to grab.
+        if self.isSelected():
+            return self.resize_shape_path()
+        return super().shape()
+
+    def update_geometry(self):
+        if self.size_mode == "auto":
+            width, height = self.compute_auto_size()
+            self.apply_size(width, height)
+        else:
+            self.apply_size(self.width, self.height)
+        self._after_geometry_changed()
+
+    def auto_size(self):
+        self.size_mode = "auto"
+        self.update_geometry()
+
+    def _visible_row_limit(self):
+        if not self.show_columns:
+            return 0
+        visible_rows = int(max(0, (self.height - self.header_height) // self.row_height))
+        return min(len(self.columns), visible_rows)
         
     def paint(self, painter, option, widget):
         # Safeguard: Skip if painter is not active
@@ -164,8 +203,13 @@ class ERDTableItem(QGraphicsRectItem):
             painter.drawText(header_rect.adjusted(28, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, self.table_name)
         
         if self.show_columns:
+            rows_bottom = self.header_height + (self._visible_row_limit() * self.row_height)
+            painter.save()
+            painter.setClipRect(QRectF(0, self.header_height, self.width, max(0, rows_bottom - self.header_height)))
             for i, col in enumerate(self.columns):
                 y = self.header_height + (i * self.row_height)
+                if y + self.row_height > self.height + 0.1:
+                    break
                 col_rect = QRectF(10, y, self.width - 20, self.row_height)
                 
                 is_pk = col.get('pk')
@@ -208,13 +252,20 @@ class ERDTableItem(QGraphicsRectItem):
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.drawEllipse(QRectF(self.width - 12 - port_radius, y + self.row_height/2 - port_radius, port_radius*2, port_radius*2))
                     painter.drawEllipse(QRectF(12 - port_radius, y + self.row_height/2 - port_radius, port_radius*2, port_radius*2))
+            painter.restore()
 
         # 4. Draw FINAL UNIFORM BORDER (Always on top)
-        border_color = QColor("#1A73E8") if (is_selected or self.is_highlighted) else QColor("#D1D1D1")
-        border_width = 2 if (is_selected or self.is_highlighted) else 1
+        if self.target_highlight:
+            border_color = QColor("#10B981") # Green for target
+            border_width = 3
+        else:
+            border_color = QColor("#1A73E8") if (is_selected or self.is_highlighted) else QColor("#D1D1D1")
+            border_width = 2 if (is_selected or self.is_highlighted) else 1
+            
         painter.setPen(QPen(border_color, border_width))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(self.rect(), 4, 4)
+        self.draw_resize_handles(painter)
 
         # 5. Dimming Overlay (Search Focus)
         if self.is_dimmed and not is_selected and not self.is_highlighted:
@@ -225,14 +276,27 @@ class ERDTableItem(QGraphicsRectItem):
     def hoverEnterEvent(self, event):
         if hasattr(self.scene(), "highlight_related"):
             self.scene().highlight_related(self)
+        self.update()
         super().hoverEnterEvent(event)
 
+    def hoverMoveEvent(self, event):
+        self.update_resize_cursor(event.pos())
+        self.update()
+        super().hoverMoveEvent(event)
+
     def hoverLeaveEvent(self, event):
+        self.clear_resize_cursor()
         if hasattr(self.scene(), "clear_highlight"):
             self.scene().clear_highlight()
+        self.update()
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):
+        handle = self.handle_at(event.pos())
+        if handle:
+            self.begin_resize(handle, event.scenePos())
+            event.accept()
+            return
         from widgets.erd.items.connection_item import ERDConnectionItem
         # Defensive: If clicking near a connection handle, let the connection catch it
         for item in self.scene().items(event.scenePos()):
@@ -247,16 +311,24 @@ class ERDTableItem(QGraphicsRectItem):
 
         pos = event.pos()
         if self.show_columns and self.scene():
-            full_name = f"{self.schema_name or 'public'}.{self.table_name}"
-            for i, col in enumerate(self.columns):
+            for i, col in enumerate(self.columns[:self._visible_row_limit()]):
                 y = self.header_height + (i * self.row_height)
                 port_rect_right = QRectF(self.width - 20, y, 20, self.row_height)
                 port_rect_left = QRectF(0, y, 20, self.row_height)
                 if port_rect_right.contains(pos) or port_rect_left.contains(pos):
-                    if hasattr(self.scene(), "start_connection"):
-                        self.scene().start_connection(full_name, col['name'], event.scenePos())
-                        event.accept()
-                        return
+                    # Arm a pending connection drag; the floating connection is
+                    # only created in mouseMoveEvent once the cursor moves past
+                    # the platform drag threshold. A plain click no longer
+                    # spawns a dangling connection line.
+                    from widgets.erd.items.floating_connection import arm_port_drag
+                    arm_port_drag(
+                        self,
+                        event.scenePos(),
+                        col=col['name'],
+                        relation_type="many-to-one",
+                    )
+                    event.accept()
+                    return
 
         super().mousePressEvent(event)
         if self.scene():
@@ -266,18 +338,34 @@ class ERDTableItem(QGraphicsRectItem):
             }
 
     def mouseMoveEvent(self, event):
-        if self.scene() and hasattr(self.scene(), '_temp_line') and self.scene()._temp_line:
-            self.scene().update_connection_drag(event.scenePos())
+        if self._resizing:
+            self.update_resize(event.scenePos())
+            event.accept()
+            return
+        if getattr(self, "_pending_port_drag", None) is not None:
+            from widgets.erd.items.floating_connection import maybe_start_port_drag
+            if maybe_start_port_drag(self, event.scenePos()) is not None:
+                event.accept()
+                return
             event.accept()
             return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self.scene() and hasattr(self.scene(), '_temp_line') and self.scene()._temp_line:
-            self.scene().finish_connection_drag(event.scenePos())
+        if self._resizing:
+            changed = self.finish_resize()
+            if changed and self.scene() and hasattr(self.scene(), "undo_stack"):
+                self.scene().undo_stack.push(
+                    ResizeItemCommand(self, self._resize_start_state, self.capture_geometry_state())
+                )
             event.accept()
             return
-            
+        if getattr(self, "_pending_port_drag", None) is not None:
+            # Plain click on a port (no drag) - cancel and treat as selection.
+            from widgets.erd.items.floating_connection import cancel_port_drag
+            cancel_port_drag(self)
+            event.accept()
+            return
         super().mouseReleaseEvent(event)
         if hasattr(self.scene(), '_drag_start_positions'):
             starts = self.scene()._drag_start_positions
@@ -387,12 +475,14 @@ class ERDTableItem(QGraphicsRectItem):
                 col_idx = i
                 break
         
-        rect = self.sceneBoundingRect()
+        rect = item_visual_scene_rect(self)
         if not self.show_columns or col_idx == -1:
             # Fallback to center side anchor if column not shown or not found
             y = rect.top() + self.header_height / 2
         else:
-            y = rect.top() + self.header_height + (col_idx * self.row_height) + (self.row_height / 2)
+            visible_limit = max(1, self._visible_row_limit())
+            visible_idx = min(col_idx, visible_limit - 1)
+            y = rect.top() + self.header_height + (visible_idx * self.row_height) + (self.row_height / 2)
             
         if side == "left":
             return QPointF(rect.left(), y)
@@ -402,3 +492,48 @@ class ERDTableItem(QGraphicsRectItem):
             return QPointF(rect.left() + rect.width()/2, rect.top())
         else: # bottom
             return QPointF(rect.left() + rect.width()/2, rect.bottom())
+    def contextMenuEvent(self, event):
+        self.show_context_menu(event.screenPos())
+        event.accept()
+
+    def show_context_menu(self, screen_pos):
+        menu = QMenu()
+        menu.setStyleSheet("""
+            QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
+            QMenu::item { padding: 6px 16px; font-size: 9pt; }
+            QMenu::item:selected { background: #e8f0fe; color: #1a73e8; border-radius: 4px; }
+        """)
+        
+        menu.addAction(
+            qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Table"
+        ).triggered.connect(self._remove_self)
+        if self.size_mode == "manual":
+            menu.addSeparator()
+            menu.addAction("Auto Size").triggered.connect(self._auto_size_from_menu)
+        
+        menu.exec(screen_pos)
+
+    def _remove_self(self):
+        scene = self.scene()
+        if not scene:
+            return
+        self.setSelected(True)
+        if hasattr(scene, "undo_stack"):
+            from widgets.erd.commands import DeleteItemCommand
+            scene.undo_stack.push(DeleteItemCommand(scene, [self]))
+        else:
+            scene.removeItem(self)
+
+    def serialize_view_state(self):
+        return self.capture_geometry_state()
+
+    def restore_view_state(self, state):
+        self.apply_geometry_state(state)
+
+    def _auto_size_from_menu(self):
+        if not self.scene() or not hasattr(self.scene(), "undo_stack"):
+            self.auto_size()
+            return
+        old_state = self.capture_geometry_state()
+        self.auto_size()
+        self.scene().undo_stack.push(ResizeItemCommand(self, old_state, self.capture_geometry_state()))

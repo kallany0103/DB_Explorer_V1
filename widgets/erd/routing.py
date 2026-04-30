@@ -1,7 +1,57 @@
 import heapq
+import math
 # from PyQt6.QtCore import QPointF, QRectF
 from PySide6.QtCore import QPointF, QRectF
 from widgets.erd.items.table_item import ERDTableItem
+from widgets.erd.items.resizable import item_visual_scene_rect
+
+
+def get_chen_boundary_anchor(item, target_point):
+    """Compute where a line from item's center to target_point exits the item's
+    actual visual boundary (ellipse, rectangle, or diamond)."""
+    from widgets.erd.items.attribute_item import ERDAttributeItem
+    from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
+    from widgets.erd.items.resizable import item_visual_scene_rect
+
+    rect = item_visual_scene_rect(item)
+    cx, cy = rect.center().x(), rect.center().y()
+    dx = target_point.x() - cx
+    dy = target_point.y() - cy
+
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return QPointF(cx, cy)
+
+    half_w = rect.width() / 2
+    half_h = rect.height() / 2
+
+    if isinstance(item, ERDAttributeItem):
+        # Ellipse: parametric intersection
+        # Line: (cx + t*dx, cy + t*dy) intersects ellipse (x-cx)²/a² + (y-cy)²/b² = 1
+        # t = 1 / sqrt((dx/a)² + (dy/b)²)
+        if half_w < 1e-6 or half_h < 1e-6:
+            return QPointF(cx, cy)
+        t = 1.0 / math.sqrt((dx / half_w) ** 2 + (dy / half_h) ** 2)
+        return QPointF(cx + t * dx, cy + t * dy)
+
+    if isinstance(item, ERDRelationshipDiamondItem):
+        # Diamond with vertices at (cx, cy-half_h), (cx+half_w, cy), (cx, cy+half_h), (cx-half_w, cy)
+        # Edge equation: |x-cx|/half_w + |y-cy|/half_h = 1
+        # For ray from center: t * (|dx|/half_w + |dy|/half_h) = 1
+        denom = abs(dx) / half_w + abs(dy) / half_h
+        if denom < 1e-6:
+            return QPointF(cx, cy)
+        t = 1.0 / denom
+        return QPointF(cx + t * dx, cy + t * dy)
+
+    # Rectangle (Entity, Weak Entity, fallback)
+    # Find which edge the ray hits first
+    if abs(dx) * half_h > abs(dy) * half_w:
+        # Hits left or right edge
+        t = half_w / abs(dx)
+    else:
+        # Hits top or bottom edge
+        t = half_h / abs(dy)
+    return QPointF(cx + t * dx, cy + t * dy)
 
 class ERDRouter:
     def __init__(self, scene_rect: QRectF, obstacles: list[QRectF], grid_size=20):
@@ -129,17 +179,31 @@ class ERDConnectionPathPlanner:
         self.connection_item = connection_item
 
     def _relationship_key(self, conn=None):
+        """Stable key for a pair of items to ensure they share a routing slot."""
         relation_conn = conn or self.connection_item
-        return (
-            relation_conn.source_item.table_name or "",
-            relation_conn.source_col or "",
-            relation_conn.target_item.table_name or "",
-            relation_conn.target_col or "",
-        )
+        def get_name(it):
+            if hasattr(it, "label"):
+                return it.label
+            if hasattr(it, "table_name"):
+                return it.table_name
+            return str(id(it))
+
+        names = sorted([
+            get_name(relation_conn.source_item),
+            get_name(relation_conn.target_item)
+        ])
+        return "-".join(names)
+
+    def _is_chen_connection(self):
+        """Returns True if both ends of the connection are Chen ERD elements."""
+        s_item = self.connection_item.source_item
+        t_item = self.connection_item.target_item
+        return (getattr(s_item, "is_chen_item", False) and 
+                getattr(t_item, "is_chen_item", False))
 
     def _preferred_side(self, item, other_item):
-        item_rect = item.sceneBoundingRect()
-        other_rect = other_item.sceneBoundingRect()
+        item_rect = item_visual_scene_rect(item)
+        other_rect = item_visual_scene_rect(other_item)
 
         dx = other_rect.center().x() - item_rect.center().x()
         dy = other_rect.center().y() - item_rect.center().y()
@@ -190,7 +254,7 @@ class ERDConnectionPathPlanner:
         spacing = 22.0
         offset = centered_index * spacing
 
-        rect = item.sceneBoundingRect()
+        rect = item_visual_scene_rect(item)
         margin = 12.0
 
         if side in ("left", "right"):
@@ -365,7 +429,7 @@ class ERDConnectionPathPlanner:
             if item == self.connection_item.source_item or item == self.connection_item.target_item:
                 continue
 
-            rect = item.sceneBoundingRect().adjusted(2, 2, -2, -2)
+            rect = item_visual_scene_rect(item).adjusted(2, 2, -2, -2)
             for i in range(len(points) - 1):
                 if self._segment_hits_rect(points[i], points[i + 1], rect):
                     return True
@@ -480,8 +544,21 @@ class ERDConnectionPathPlanner:
         return None
 
     def compute_best_path(self):
-        s_rect = self.connection_item.source_item.sceneBoundingRect()
-        t_rect = self.connection_item.target_item.sceneBoundingRect()
+        s_rect = item_visual_scene_rect(self.connection_item.source_item)
+        t_rect = item_visual_scene_rect(self.connection_item.target_item)
+
+        # For Chen ERD elements (Attributes, Entities), we prefer direct lines
+        # Compute anchor points where line between centers exits each shape's actual boundary
+        if self._is_chen_connection():
+            s_item = self.connection_item.source_item
+            t_item = self.connection_item.target_item
+            s_center = item_visual_scene_rect(s_item).center()
+            t_center = item_visual_scene_rect(t_item).center()
+            start = get_chen_boundary_anchor(s_item, t_center)
+            end = get_chen_boundary_anchor(t_item, s_center)
+            s_side = self._preferred_side(s_item, t_item)
+            t_side = self._preferred_side(t_item, s_item)
+            return [start, end], s_side, t_side
 
         best_points = None
         best_s_side = None
@@ -583,7 +660,7 @@ class ERDConnectionPathPlanner:
         return best_points, best_s_side, best_t_side
 
 def get_dynamic_anchor(item, side):
-    rect = item.sceneBoundingRect()
+    rect = item_visual_scene_rect(item)
     if side == "left" or side == "right":
         x = rect.left() if side == "left" else rect.right()
         return QPointF(x, rect.top() + rect.height() / 2)

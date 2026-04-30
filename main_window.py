@@ -3,6 +3,7 @@
 #from PyQt6.QtCore import Qt, QSize, QThreadPool, QTimer
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel, QMenu
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint
+from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
@@ -169,6 +170,12 @@ class MainWindow(QMainWindow):
 
         self._apply_styles()
         self.restore_session_state()
+        
+        # Clamp geometry to available screen size to prevent geometry warnings
+        
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(min(self.width(), screen.width()), min(self.height(), screen.height()))
+        
         self.main_splitter.setSizes([280, 920])
         self.raise_()
         self.activateWindow()

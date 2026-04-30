@@ -1,6 +1,7 @@
 # workers.py
 import os
 import time
+import multiprocessing as mp
 import pandas as pd
 import re
 # import cdata.csv as mod # Removed direct import, use db.create_csv_connection instead
@@ -36,6 +37,117 @@ def transform_csv_query(query, folder_path):
         return re.sub(pattern, f"FROM [{csv_file}]", q, flags=re.IGNORECASE) + ";"
 
     return query
+
+
+def _normalize_cell(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def _normalize_rows(rows):
+    normalized = []
+    for row in rows:
+        normalized.append([_normalize_cell(cell) for cell in row])
+    return normalized
+
+
+def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
+    conn = None
+    cursor = None
+    try:
+        code = (code or "").upper()
+        effective_query = query
+        # DEBUG-START
+        t_total_start = time.time()
+        # DEBUG-END
+
+        # DEBUG-START
+        t0 = time.time()
+        # DEBUG-END
+        if code == "SERVICENOW":
+            conn = db.create_servicenow_connection(conn_data)
+            if not conn:
+                raise ConnectionError("Failed to connect to ServiceNow")
+        elif code == "CSV":
+            effective_query = transform_csv_query(query, conn_data.get("db_path"))
+            conn = db.create_csv_connection(conn_data)
+            if not conn:
+                raise ConnectionError("Failed to connect to CSV data source")
+        else:
+            raise ValueError(f"Unsupported CData process execution type: {code}")
+        # DEBUG-START
+        t1 = time.time()
+        print(f"[CDATA-DEBUG] connect() took {t1-t0:.2f}s")
+        # DEBUG-END
+
+        cursor = conn.cursor()
+        # DEBUG-START
+        t2 = time.time()
+        # DEBUG-END
+        cursor.execute(effective_query)
+        # DEBUG-START
+        t3 = time.time()
+        print(f"[CDATA-DEBUG] cursor.execute() took {t3-t2:.2f}s")
+        # DEBUG-END
+
+        # DEBUG-START
+        t4 = time.time()
+        # DEBUG-END
+        rows = cursor.fetchall() if cursor.description else []
+        # DEBUG-START
+        t5 = time.time()
+        print(f"[CDATA-DEBUG] cursor.fetchall() took {t5-t4:.2f}s ({len(rows)} rows)")
+        # DEBUG-END
+
+        rows = _normalize_rows(rows)
+
+        columns = []
+        column_specs = []
+        if cursor.description:
+            # DEBUG-START
+            t6 = time.time()
+            # DEBUG-END
+            columns, column_specs = resolve_column_specs(
+                code,
+                conn,
+                conn_data,
+                effective_query,
+                cursor.description,
+            )
+            # DEBUG-START
+            t7 = time.time()
+            print(f"[CDATA-DEBUG] resolve_column_specs() took {t7-t6:.2f}s")
+            # DEBUG-END
+            columns = [str(col) for col in columns]
+
+        # DEBUG-START
+        print(f"[CDATA-DEBUG] TOTAL subprocess time: {time.time()-t_total_start:.2f}s")
+        # DEBUG-END
+
+        row_count = len(rows) if cursor.description else (cursor.rowcount if hasattr(cursor, "rowcount") else 0)
+        out_queue.put({
+            "ok": True,
+            "query": effective_query,
+            "results": rows,
+            "columns": columns,
+            "column_specs": column_specs,
+            "row_count": int(row_count or 0),
+            "is_returning_results": bool(columns),
+        })
+    except Exception as exc:
+        out_queue.put({"ok": False, "error": str(exc)})
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 # =========================================================
 # 1. RunnableExport (For Large Data / Direct Export)
@@ -221,9 +333,15 @@ class RunnableQuery(QRunnable):
         self.signals = signals
         self._is_cancelled = False
         self._conn = None
+        self._child_process = None
 
     def cancel(self):
         self._is_cancelled = True
+        if self._child_process and self._child_process.is_alive():
+            try:
+                self._child_process.terminate()
+            except Exception:
+                pass
         if self._conn:
             try:
                 # Try to interrupt the database operation if possible
@@ -254,18 +372,43 @@ class RunnableQuery(QRunnable):
 
             # --- DB Execution ---
             if code == "SERVICENOW":
-                self._conn = db.create_servicenow_connection(self.conn_data)
-                if not self._conn:
-                    raise ConnectionError("Failed to connect to ServiceNow")
-                cursor = self._conn.cursor()
-                cursor.execute(self.query)
+                ctx = mp.get_context("spawn")
+                result_queue = ctx.Queue(maxsize=1)
+                self._child_process = ctx.Process(
+                    target=_run_cdata_query_subprocess,
+                    args=("SERVICENOW", self.conn_data, self.query, result_queue),
+                )
+                # DEBUG-START
+                t_spawn = time.time()
+                # DEBUG-END
+                self._child_process.start()
+                # DEBUG-START
+                print(f"[CDATA-DEBUG] subprocess.start() (spawn overhead) took {time.time()-t_spawn:.2f}s")
+                # DEBUG-END
+                while self._child_process.is_alive():
+                    if self._is_cancelled:
+                        self._child_process.terminate()
+                        return
+                    self._child_process.join(timeout=0.1)
+                if self._is_cancelled:
+                    return
+                payload = result_queue.get() if not result_queue.empty() else {"ok": False, "error": "ServiceNow query process ended unexpectedly."}
+                if not payload.get("ok"):
+                    raise RuntimeError(payload.get("error") or "ServiceNow query failed")
+                self.query = payload.get("query", self.query)
+                results = payload.get("results", [])
+                columns = payload.get("columns", [])
+                column_specs = payload.get("column_specs", [])
+                row_count = int(payload.get("row_count", 0))
+                is_returning_results = bool(payload.get("is_returning_results", False))
             elif code == "CSV":
-                self.query = transform_csv_query(self.query, self.conn_data.get("db_path"))
+                effective_query = transform_csv_query(self.query, self.conn_data.get("db_path"))
+                self.query = effective_query
                 self._conn = db.create_csv_connection(self.conn_data)
                 if not self._conn:
                     raise ConnectionError("Failed to connect to CSV data source")
                 cursor = self._conn.cursor()
-                cursor.execute(self.query)
+                cursor.execute(effective_query)
             elif code == "SQLITE":
                 db_path = self.conn_data.get("db_path")
                 if not db_path:
@@ -301,28 +444,27 @@ class RunnableQuery(QRunnable):
                 return
 
             # --- Handle Results ---
-            results = cursor.fetchall() if cursor.description else []
-            columns = []
-            column_specs = []
-            if cursor.description:
-                columns, column_specs = resolve_column_specs(
-                    code,
-                    self._conn,
-                    self.conn_data,
-                    self.query,
-                    cursor.description,
-                )
-            row_count = len(results) if cursor.description else (cursor.rowcount if hasattr(cursor, 'rowcount') else 0)
+            if code not in ("SERVICENOW",):
+                results = cursor.fetchall() if cursor.description else []
+                columns = []
+                column_specs = []
+                if cursor.description:
+                    columns, column_specs = resolve_column_specs(
+                        code,
+                        self._conn,
+                        self.conn_data,
+                        self.query,
+                        cursor.description,
+                    )
+                row_count = len(results) if cursor.description else (cursor.rowcount if hasattr(cursor, 'rowcount') else 0)
+                is_returning_results = bool(columns)
             
             elapsed_time = time.time() - start_time
-            
-            # Treat as "select-like" if it returns data columns
-            is_returning_results = bool(columns)
             
             # Commit only for mutation queries that didn't automatically commit
             q_lower = self.query.lower().strip()
             is_mutation = any(q_lower.startswith(x) for x in ["insert", "update", "delete", "create", "drop", "alter", "truncate"])
-            if is_mutation and self._conn:
+            if is_mutation and self._conn and code not in ("SERVICENOW", "CSV"):
                 self._conn.commit()
 
             conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
@@ -349,6 +491,13 @@ class RunnableQuery(QRunnable):
                 emit_query_error(self.signals, conn_payload, self.query, 0, elapsed_time, str(e))
 
         finally:
+            if self._child_process:
+                try:
+                    if self._child_process.is_alive():
+                        self._child_process.terminate()
+                except Exception:
+                    pass
+                self._child_process = None
             if cursor:
                 cursor.close()
             if self._conn:

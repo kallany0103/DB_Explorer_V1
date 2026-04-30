@@ -1,6 +1,5 @@
 #from PyQt6.QtCore import QDir
 #from PyQt6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
-from PySide6.QtCore import QDir
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
 
 from widgets.worksheet.editor_actions import FindReplaceDialog
@@ -94,7 +93,7 @@ def save_sql_file(main_window):
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(content)
         main_window.status.showMessage(f"Auto-saved to Desktop: {filename}", 5000)
-    except Exception as e:
+    except Exception:
         # Fallback to Save As if direct save fails
         save_sql_file_as(main_window)
 

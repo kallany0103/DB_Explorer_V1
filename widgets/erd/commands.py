@@ -19,6 +19,23 @@ class MoveTableCommand(QUndoCommand):
         self.item.setPos(self.new_pos)
 
 
+class ResizeItemCommand(QUndoCommand):
+    """Records full geometry changes for resizable ERD items."""
+
+    def __init__(self, item, old_state, new_state):
+        item_name = getattr(item, "table_name", None) or getattr(item, "text", lambda: "Item")()
+        super().__init__(f"Resize {item_name}")
+        self.item = item
+        self.old_state = copy.deepcopy(old_state)
+        self.new_state = copy.deepcopy(new_state)
+
+    def undo(self):
+        self.item.apply_geometry_state(self.old_state)
+
+    def redo(self):
+        self.item.apply_geometry_state(self.new_state)
+
+
 class ChangeRelationTypeCommand(QUndoCommand):
     """Records connection type before/after change."""
     def __init__(self, connection_item, old_type, new_type):

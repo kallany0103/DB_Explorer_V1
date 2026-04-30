@@ -4,6 +4,8 @@ import sqlite3 as sqlite
 import psycopg2
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+import db
+
 
 class SchemaWorkerSignals(QObject):
     finished = Signal(dict)
@@ -47,7 +49,10 @@ class SQLiteSchemaWorker(QRunnable):
                 pass
         finally:
             if conn:
-                conn.close()
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
 
 class PostgresSchemaWorker(QRunnable):
@@ -108,6 +113,98 @@ class CsvSchemaWorker(QRunnable):
             csv_files.sort()
             try:
                 self.signals.finished.emit({"conn_data": self.conn_data, "files": csv_files})
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+
+
+class ServiceNowSchemaWorker(QRunnable):
+    """Loads the ServiceNow table list off the GUI thread."""
+
+    DEFAULT_TABLES = ["incident", "task", "change_request", "problem"]
+
+    def __init__(self, conn_data):
+        super().__init__()
+        self.conn_data = conn_data
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        conn = None
+        try:
+            conn = db.create_servicenow_connection(self.conn_data)
+            if not conn:
+                try:
+                    self.signals.error.emit("Unable to connect to ServiceNow")
+                except RuntimeError:
+                    pass
+                return
+
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT TableName FROM sys_tables")
+                tables = [row[0] for row in cursor.fetchall()]
+            except Exception:
+                tables = list(self.DEFAULT_TABLES)
+
+            try:
+                self.signals.finished.emit(
+                    {"conn_data": self.conn_data, "tables": tables}
+                )
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+
+class ServiceNowTableDetailsWorker(QRunnable):
+    """Loads column metadata for a single ServiceNow table off the GUI thread."""
+
+    def __init__(self, conn_data, table_name):
+        super().__init__()
+        self.conn_data = conn_data
+        self.table_name = table_name
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        conn = None
+        try:
+            conn = db.create_servicenow_connection(self.conn_data)
+            if not conn:
+                try:
+                    self.signals.error.emit("Unable to connect to ServiceNow")
+                except RuntimeError:
+                    pass
+                return
+
+            cursor = conn.cursor()
+            try:
+                cursor.execute(f"SELECT * FROM {self.table_name} LIMIT 0")
+            except Exception:
+                cursor.execute(f"SELECT * FROM {self.table_name} WHERE 1=0")
+
+            columns = [col[0] for col in (cursor.description or [])]
+
+            try:
+                self.signals.finished.emit(
+                    {
+                        "conn_data": self.conn_data,
+                        "table_name": self.table_name,
+                        "columns": columns,
+                    }
+                )
             except RuntimeError:
                 pass
         except Exception as exc:
