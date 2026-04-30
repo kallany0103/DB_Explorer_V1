@@ -523,6 +523,15 @@ class ResultsManager(QObject):
     def handle_process_error(self, process_id, error_message):
         processes.handle_process_error(self, process_id, error_message)
     
+    def handle_process_output(self, process_id, text):
+        # We can stream this to the individual tab's message view or a global logger
+        # For now, let's update the "details" in the database or append to Messages
+        current_tab = self.tab_widget.currentWidget()
+        if current_tab:
+            message_view = current_tab.findChild(QTextEdit, "message_view")
+            if message_view:
+                message_view.append(f"[{process_id}] {text.strip()}")
+    
     
     def refresh_processes_view(self):
         processes.refresh_processes_view(self)

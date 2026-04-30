@@ -108,6 +108,29 @@ class ExplorerMenuBuilder:
                 lambda: self.manager.connection_dialogs.add_servicenow_connection(item)
             )
             menu.addAction(act)
+            
+        # Gather connections for group-level restore
+        connections = []
+        for i in range(item.rowCount()):
+            child = item.child(i)
+            c_data = child.data(Qt.ItemDataRole.UserRole)
+            if c_data and isinstance(c_data, dict):
+                connections.append(c_data)
+        
+        if connections:
+            menu.addSeparator()
+            act = action(self.manager, "Restore into Group...", "mdi.restore")
+            # We assume the first connection's db_type is representative of the group for dialog purposes
+            db_type = connections[0].get("code", "postgres").lower()
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_restore_dialog({
+                    "connections": connections, 
+                    "db_type": db_type, 
+                    "type": "group",
+                    "database": item.text()
+                })
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
 
@@ -197,6 +220,19 @@ class ExplorerMenuBuilder:
                 lambda: self.manager.connection_actions.open_database_statistics_dialog(conn_data)
             )
             menu.addAction(act)
+            
+            menu.addSeparator()
+            act = action(self.manager, "Backup...", "mdi.backup-restore")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_backup_dialog({"conn_data": conn_data, "db_type": "postgres", "type": "database"})
+            )
+            menu.addAction(act)
+
+            act = action(self.manager, "Restore...", "mdi.restore")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_restore_dialog({"conn_data": conn_data, "db_type": "postgres", "type": "database"})
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Delete Connection", "mdi.delete-outline")
@@ -242,14 +278,6 @@ class ExplorerMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(lambda: self.manager.refresh_object_explorer())
-        menu.addAction(act)
-
-        act = action(self.manager, "Restore...", "mdi.restore")
-        act.triggered.connect(stub("restore"))
-        menu.addAction(act)
-
-        act = action(self.manager, "Backup...", "mdi.backup-restore")
-        act.triggered.connect(stub("backup"))
         menu.addAction(act)
 
         menu.addSeparator()

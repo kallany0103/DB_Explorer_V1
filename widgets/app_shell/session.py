@@ -14,6 +14,8 @@ def save_main_window_session(main_window, session_file):
     session_data = {
         "window_geometry": main_window.saveGeometry().toBase64().data().decode(),
         "window_state": main_window.saveState().toBase64().data().decode(),
+        "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
+        "use_wsl": getattr(main_window, "use_wsl", False),
         "tabs": [],
     }
 
@@ -51,6 +53,9 @@ def restore_main_window_session(main_window, session_file):
             main_window.showMaximized()
         if "window_state" in session_data:
             main_window.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
+        
+        main_window.pg_bin_path = session_data.get("pg_bin_path", "")
+        main_window.use_wsl = session_data.get("use_wsl", False)
 
         tabs = session_data.get("tabs", [])
         if not tabs:
@@ -108,6 +113,8 @@ def restore_main_window_session(main_window, session_file):
                 sanitized = {
                     "window_geometry": main_window.saveGeometry().toBase64().data().decode(),
                     "window_state": main_window.saveState().toBase64().data().decode(),
+                    "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
+                    "use_wsl": getattr(main_window, "use_wsl", False),
                     "tabs": [],
                 }
                 for i in range(main_window.tab_widget.count()):

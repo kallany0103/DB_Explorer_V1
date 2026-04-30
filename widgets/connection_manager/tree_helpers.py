@@ -1,7 +1,7 @@
 # from PyQt6.QtCore import Qt, QEvent
 # from PyQt6.QtGui import QIcon
 
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, QModelIndex
 from PySide6.QtGui import QIcon
 import qtawesome as qta
 
@@ -182,6 +182,99 @@ class TreeHelpers:
             tree.setUpdatesEnabled(True)
             self.manager._saved_tree_paths = []
             self.manager._saved_selection_name = None
+
+    def save_schema_tree_expansion_state(self):
+        saved_paths = []
+        if not hasattr(self.manager, 'schema_tree') or not hasattr(self.manager, 'schema_model'):
+            return
+            
+        tree = self.manager.schema_tree
+        model = self.manager.schema_model
+
+        def traverse(parent_index, current_path):
+            for row in range(model.rowCount(parent_index)):
+                index = model.index(row, 0, parent_index)
+                if tree.isExpanded(index):
+                    item_text = index.data(Qt.ItemDataRole.DisplayRole)
+                    new_path = current_path + [item_text]
+                    saved_paths.append(tuple(new_path))
+                    traverse(index, new_path)
+
+        traverse(QModelIndex(), [])
+        self.manager._saved_schema_tree_paths = saved_paths
+
+        # Save selected schema item path if any
+        selection = tree.selectionModel().selectedIndexes()
+        if selection:
+            # Reconstruct path from selection
+            sel_index = selection[0]
+            if sel_index.column() != 0:
+                sel_index = sel_index.siblingAtColumn(0)
+            
+            sel_path = []
+            curr = sel_index
+            while curr.isValid():
+                sel_path.insert(0, curr.data(Qt.ItemDataRole.DisplayRole))
+                curr = curr.parent()
+            self.manager._saved_schema_selection_path = tuple(sel_path)
+        else:
+            self.manager._saved_schema_selection_path = None
+
+    def restore_schema_tree_expansion_state(self):
+        if not hasattr(self.manager, '_saved_schema_tree_paths') or not self.manager._saved_schema_tree_paths:
+            return
+
+        tree = self.manager.schema_tree
+        model = self.manager.schema_model
+
+        tree.setUpdatesEnabled(False)
+        try:
+            def expand_path(path_tuple):
+                parent_index = QModelIndex()
+                for part in path_tuple:
+                    found = False
+                    for row in range(model.rowCount(parent_index)):
+                        index = model.index(row, 0, parent_index)
+                        if index.data(Qt.ItemDataRole.DisplayRole) == part:
+                            tree.expand(index)
+                            parent_index = index
+                            found = True
+                            break
+                    if not found:
+                        break
+
+            # Sort paths by length so we expand parents before children
+            paths = sorted(self.manager._saved_schema_tree_paths, key=len)
+            for path in paths:
+                expand_path(path)
+                
+            # Restore selection
+            if hasattr(self.manager, '_saved_schema_selection_path') and self.manager._saved_schema_selection_path:
+                sel_path = self.manager._saved_schema_selection_path
+                parent_index = QModelIndex()
+                final_index = None
+                for part in sel_path:
+                    found = False
+                    for row in range(model.rowCount(parent_index)):
+                        index = model.index(row, 0, parent_index)
+                        if index.data(Qt.ItemDataRole.DisplayRole) == part:
+                            parent_index = index
+                            final_index = index
+                            found = True
+                            break
+                    if not found:
+                        final_index = None
+                        break
+                        
+                if final_index and final_index.isValid():
+                    from PySide6.QtCore import QItemSelectionModel
+                    tree.selectionModel().select(final_index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
+                    tree.setCurrentIndex(final_index)
+                    
+        finally:
+            tree.setUpdatesEnabled(True)
+            self.manager._saved_schema_tree_paths = []
+            self.manager._saved_schema_selection_path = None
 
     def get_item_depth(self, item):
         depth = 0

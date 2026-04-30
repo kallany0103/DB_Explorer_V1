@@ -227,6 +227,7 @@ class ConnectionManager(QWidget):
             self.tree.collapseAll()
             self.schema_tree.collapseAll()
             
+            self._save_schema_tree_expansion_state()
             self.load_data()
             self._restore_tree_expansion_state()
             
@@ -283,6 +284,12 @@ class ConnectionManager(QWidget):
 
     def _restore_tree_expansion_state(self):
         self.tree_helpers.restore_tree_expansion_state()
+
+    def _save_schema_tree_expansion_state(self):
+        self.tree_helpers.save_schema_tree_expansion_state()
+
+    def _restore_schema_tree_expansion_state(self):
+        self.tree_helpers.restore_schema_tree_expansion_state()
 
     def delete_connection(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)

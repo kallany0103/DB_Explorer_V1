@@ -74,6 +74,12 @@ class MaterializedViewMenuBuilder:
         )
         menu.addAction(act)
 
+        act = action(self.manager, "Backup...", "mdi.backup-restore")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+        )
+        menu.addAction(act)
+
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)

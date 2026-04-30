@@ -28,6 +28,8 @@ class TableDetailsLoader:
         if not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
 
+        self.manager._save_schema_tree_expansion_state()
+
         db_type = item_data.get('db_type')
 
         if db_type == 'postgres':
@@ -329,6 +331,8 @@ class TableDetailsLoader:
             self.load_cdata_table_details(item, item_data)
         elif db_type == 'servicenow':
             self.load_servicenow_table_details(item, item_data)
+            
+        self.manager._restore_schema_tree_expansion_state()
 
     def load_servicenow_table_details(self, table_item, item_data):
         if not item_data or table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":

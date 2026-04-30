@@ -308,7 +308,7 @@ def create_results_ui(manager, tab_content):
 
     all_filter_btn = QPushButton("All (0)")
     running_filter_btn = QPushButton("Running (0)")
-    success_filter_btn = QPushButton("Successfull (0)")
+    success_filter_btn = QPushButton("Successful (0)")
     warning_filter_btn = QPushButton("Warning (0)")
     error_filter_btn = QPushButton("Error (0)")
 
@@ -330,14 +330,14 @@ def create_results_ui(manager, tab_content):
 
     all_filter_btn.clicked.connect(lambda: manager._set_process_filter(tab_content, "ALL"))
     running_filter_btn.clicked.connect(lambda: manager._set_process_filter(tab_content, "RUNNING"))
-    success_filter_btn.clicked.connect(lambda: manager._set_process_filter(tab_content, "SUCCESSFULL"))
+    success_filter_btn.clicked.connect(lambda: manager._set_process_filter(tab_content, "SUCCESSFUL"))
     warning_filter_btn.clicked.connect(lambda: manager._set_process_filter(tab_content, "WARNING"))
     error_filter_btn.clicked.connect(lambda: manager._set_process_filter(tab_content, "ERROR"))
 
     tab_content.process_filter_buttons = {
         "ALL": all_filter_btn,
         "RUNNING": running_filter_btn,
-        "SUCCESSFULL": success_filter_btn,
+        "SUCCESSFUL": success_filter_btn,
         "WARNING": warning_filter_btn,
         "ERROR": error_filter_btn,
     }
