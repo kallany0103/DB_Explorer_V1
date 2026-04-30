@@ -138,7 +138,7 @@ def update_process_summary_ui(manager, target_tab, status_counts, total_count, v
 
     all_count = total_count
     running_count = status_counts.get("RUNNING", 0)
-    success_count = status_counts.get("SUCCESSFULL", 0)
+    success_count = status_counts.get("SUCCESSFUL", 0)
     warning_count = status_counts.get("WARNING", 0)
     error_count = status_counts.get("ERROR", 0)
 
@@ -146,8 +146,8 @@ def update_process_summary_ui(manager, target_tab, status_counts, total_count, v
         filter_buttons["ALL"].setText(f"All ({all_count})")
     if "RUNNING" in filter_buttons:
         filter_buttons["RUNNING"].setText(f"Running ({running_count})")
-    if "SUCCESSFULL" in filter_buttons:
-        filter_buttons["SUCCESSFULL"].setText(f"Successfull ({success_count})")
+    if "SUCCESSFUL" in filter_buttons:
+        filter_buttons["SUCCESSFUL"].setText(f"Successful ({success_count})")
     if "WARNING" in filter_buttons:
         filter_buttons["WARNING"].setText(f"Warning ({warning_count})")
     if "ERROR" in filter_buttons:
@@ -275,7 +275,7 @@ def handle_process_started(manager, process_id, data):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            data.get("pid", ""),
+            process_id,
             data.get("type", ""),
             "Running",
             data.get("server", ""),
@@ -293,7 +293,7 @@ def handle_process_started(manager, process_id, data):
 
 
 def handle_process_finished(manager, process_id, message, time_taken, row_count):
-    status = "Successfull" if row_count == 0 else "Successfull"
+    status = "Successful"
     conn = sqlite.connect("databases/hierarchy.db")
     cursor = conn.cursor()
     cursor.execute(

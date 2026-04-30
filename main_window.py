@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
 
         self.thread_pool = QThreadPool.globalInstance()
         self._saved_tree_paths = []
+        self.pg_bin_path = ""
+        self.use_wsl = False
 
         # 1. Initialize Status Bar (needed by managers)
         self.status = QStatusBar()
@@ -401,7 +403,17 @@ class MainWindow(QMainWindow):
 
     def update_thread_pool_status(self):
         update_thread_pool_status_action(self)
-
+   
+    def show_preferences(self):
+        from dialogs.preferences_dialog import PreferencesDialog
+        dialog = PreferencesDialog(self)
+        if dialog.exec():
+            settings = dialog.get_settings()
+            self.pg_bin_path = settings.get("pg_bin_path", "")
+            self.use_wsl = settings.get("use_wsl", False)
+            # Save session immediately to persist settings
+            save_main_window_session(self, self.SESSION_FILE)
+   
 
     def _apply_styles(self):
         apply_main_window_styles(self)
@@ -593,6 +605,9 @@ class MainWindow(QMainWindow):
 
     def handle_process_error(self, process_id, error_message):
         self.results_manager.handle_process_error(process_id, error_message)
+
+    def handle_process_output(self, process_id, text):
+        self.results_manager.handle_process_output(process_id, text)
 
     def refresh_processes_view(self):
         self.results_manager.refresh_processes_view()

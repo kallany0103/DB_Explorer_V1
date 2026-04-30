@@ -322,6 +322,52 @@ class RunnableExportFromModel(QRunnable):
         except Exception as e:
             emit_process_error(self.signals, self.process_id, str(e))
 
+class RunnableSqliteBackup(QRunnable):
+    def __init__(self, process_id, db_path, target_path, signals):
+        super().__init__()
+        self.process_id = process_id
+        self.db_path = db_path
+        self.target_path = target_path
+        self.signals = signals
+
+    def run(self):
+        import shutil
+        start_time = time.time()
+        try:
+            if not os.path.exists(self.db_path):
+                raise FileNotFoundError(f"Source database not found: {self.db_path}")
+            
+            shutil.copy2(self.db_path, self.target_path)
+            
+            time_taken = time.time() - start_time
+            msg = f"Database backed up successfully to {os.path.basename(self.target_path)}"
+            emit_process_finished(self.signals, self.process_id, msg, time_taken, 0)
+        except Exception as e:
+            emit_process_error(self.signals, self.process_id, str(e))
+
+class RunnableSqliteRestore(QRunnable):
+    def __init__(self, process_id, backup_path, target_path, signals):
+        super().__init__()
+        self.process_id = process_id
+        self.backup_path = backup_path
+        self.target_path = target_path
+        self.signals = signals
+
+    def run(self):
+        import shutil
+        start_time = time.time()
+        try:
+            if not os.path.exists(self.backup_path):
+                raise FileNotFoundError(f"Backup file not found: {self.backup_path}")
+            
+            shutil.copy2(self.backup_path, self.target_path)
+            
+            time_taken = time.time() - start_time
+            msg = f"Database restored successfully from {os.path.basename(self.backup_path)}"
+            emit_process_finished(self.signals, self.process_id, msg, time_taken, 0)
+        except Exception as e:
+            emit_process_error(self.signals, self.process_id, str(e))
+
 
 # =========================================================
 # 3. RunnableQuery (Existing Query Worker)

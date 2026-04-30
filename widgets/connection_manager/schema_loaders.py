@@ -19,6 +19,7 @@ class SchemaLoader:
         self.manager = manager
 
     def _prepare_schema_tree(self):
+        self.manager._save_schema_tree_expansion_state()
         self.manager.schema_model.clear()
         self.manager.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
         self.manager.schema_tree.setColumnWidth(0, 200)
@@ -69,6 +70,7 @@ class SchemaLoader:
             self.manager.schema_model.appendRow([name_item, type_item])
 
         self._connect_expand_handler()
+        self.manager._restore_schema_tree_expansion_state()
 
     def load_sqlite_schema(self, conn_data):
         db_path = conn_data.get("db_path")
@@ -163,6 +165,7 @@ class SchemaLoader:
         self.manager.schema_model.appendRow([lang_root, lang_type_item])
 
         self._connect_expand_handler()
+        self.manager._restore_schema_tree_expansion_state()
 
     def load_postgres_schema(self, conn_data):
         pg_conn = None
@@ -254,29 +257,37 @@ class SchemaLoader:
             type_item.setEditable(False)
 
             self.manager.schema_model.appendRow([table_item, type_item])
+            
+        self.manager._restore_schema_tree_expansion_state()
 
     def populate_servicenow_schema(self, data):
         """UI-only: render the ServiceNow table list emitted by ServiceNowSchemaWorker."""
-        conn_data = data.get("conn_data", {})
-        tables = data.get("tables", [])
+        try:
+            conn_data = data.get("conn_data", {})
+            tables = data.get("tables", [])
 
-        if not tables:
-            self.manager.status.showMessage("No tables found or access restricted.", 5000)
-            return
+            if not tables:
+                self.manager.status.showMessage("No tables found or access restricted.", 5000)
+                return
 
-        self._prepare_schema_tree()
-        for table_name in tables:
-            table_item = QStandardItem(qta.icon("mdi.table", color="#4CAF50"), table_name)
-            table_item.setEditable(False)
-            table_item.setData({
-                'db_type': 'servicenow',
-                'table_name': table_name,
-                'conn_data': conn_data,
-            }, Qt.ItemDataRole.UserRole)
-            table_item.appendRow(QStandardItem("Loading..."))
+            self._prepare_schema_tree()
+            for table_name in tables:
+                table_item = QStandardItem(qta.icon("mdi.table", color="#4CAF50"), table_name)
+                table_item.setEditable(False)
+                table_item.setData({
+                    'db_type': 'servicenow',
+                    'table_name': table_name,
+                    'conn_data': conn_data,
+                }, Qt.ItemDataRole.UserRole)
+                table_item.appendRow(QStandardItem("Loading..."))
 
-            type_item = QStandardItem("Table")
-            type_item.setEditable(False)
-            self.manager.schema_model.appendRow([table_item, type_item])
+                type_item = QStandardItem("Table")
+                type_item.setEditable(False)
+                self.manager.schema_model.appendRow([table_item, type_item])
 
-        self._connect_expand_handler()
+            self._connect_expand_handler()
+            self.manager._restore_schema_tree_expansion_state()
+
+        except Exception as e:
+            self.manager.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
+

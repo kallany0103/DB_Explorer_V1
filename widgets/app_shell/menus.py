@@ -59,6 +59,9 @@ def build_main_window_menu(main_window):
     tools_menu.addAction(main_window.dashboard_action)
     tools_menu.addAction(main_window.refresh_action)
     tools_menu.addAction(main_window.reset_layout_action)
+    tools_menu.addAction(main_window.preferences_action)
+    tools_menu.addSeparator()
+    tools_menu.addAction(main_window.restore_action)
 
     window_menu = menubar.addMenu("&Window")
     window_menu.addAction(main_window.minimize_action)

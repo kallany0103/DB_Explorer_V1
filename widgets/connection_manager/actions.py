@@ -1,5 +1,6 @@
 import datetime
 import os
+import time
 import uuid
 
 import db
@@ -27,14 +28,24 @@ from dialogs import (
     TablePropertiesDialog,
     SearchObjectsDialog,
     DatabaseStatisticsDialog,
+    BackupDialog,
+    RestoreDialog,
 )
 from workers.signals import ProcessSignals, QuerySignals, emit_process_started
-from workers.workers import RunnableExportFromModel, RunnableQuery
+from workers.workers import (
+    RunnableExportFromModel, 
+    RunnableQuery, 
+    RunnableSqliteBackup, 
+    RunnableSqliteRestore
+)
+from workers.process_worker import ProcessWorker
+from widgets.connection_manager.backup_restore_handler import BackupRestoreHandler
 
 
 class ConnectionActions:
     def __init__(self, manager):
         self.manager = manager
+        self.backup_restore_handler = BackupRestoreHandler(self.manager.main_window)
 
     def count_table_rows(self, item_data, table_name):
         if not item_data:
@@ -1307,3 +1318,183 @@ class ConnectionActions:
             tree.setCurrentIndex(target_item.index())
             tree.scrollTo(target_item.index())
             self.manager.main_window.activateWindow()
+    def open_backup_dialog(self, item_data):
+        if not item_data:
+            return
+            
+        db_type = item_data.get("db_type")
+        if db_type not in ("postgres", "sqlite"):
+            QMessageBox.information(self.manager.main_window, "Not Supported", f"Backup is currently only supported for PostgreSQL and SQLite. (Database type: {db_type})")
+            return
+            
+        dialog = BackupDialog(self.manager.main_window, item_data)
+        if dialog.exec():
+            options = dialog.get_options()
+            conn_data = item_data.get("conn_data", {})
+
+            if db_type == "postgres":
+                # Build command
+                binary = self.backup_restore_handler.get_pg_binary("pg_dump")
+                
+                # Handle granularity (database, schema, table)
+                granularity = options.get("object_type", "database")
+                object_name = options.get("display_name") or item_data.get("table_name") or item_data.get("schema_name")
+                schema_name = item_data.get("schema_name")
+                
+                args = self.backup_restore_handler.build_pg_dump_args(
+                    conn_data, 
+                    options["filename"],
+                    format=options.get("format", "custom"),
+                    granularity=granularity,
+                    object_name=object_name,
+                    schema_name=schema_name,
+                    options=options
+                )
+                
+                # Start Worker
+                metadata = {
+                    "pid": "BACKUP",
+                    "type": "Backup Database",
+                    "status": "Running",
+                    "server": conn_data.get("short_name", "Unknown"),
+                    "object": object_name or conn_data.get("database"),
+                    "details": f"Backing up to {os.path.basename(options['filename'])}",
+                    "_conn_id": conn_data.get("id")
+                }
+                
+                # Environment for password handling
+                env = self.backup_restore_handler.get_pg_environment(conn_data)
+                
+                worker = ProcessWorker(binary, args, metadata=metadata, env=env)
+                
+                # Connect signals
+                worker.signals.started.connect(self.manager.main_window.handle_process_started)
+                worker.signals.output.connect(self.manager.main_window.handle_process_output)
+                worker.signals.finished.connect(self.manager.main_window.handle_process_finished)
+                worker.signals.error.connect(self.manager.main_window.handle_process_error)
+                
+                # Add to main window so it doesn't get GC'd
+                if not hasattr(self.manager.main_window, "_active_processes"):
+                    self.manager.main_window._active_processes = {}
+                self.manager.main_window._active_processes[worker.process_id] = worker
+                
+                worker.run()
+            
+            elif db_type == "sqlite":
+                db_path = conn_data.get("db_path")
+                if not db_path:
+                    QMessageBox.critical(self.manager.main_window, "Error", "SQLite database path not found.")
+                    return
+                
+                process_id = f"BACKUP_SQLITE_{int(time.time())}"
+                metadata = {
+                    "pid": process_id,
+                    "type": "Backup SQLite",
+                    "status": "Running",
+                    "server": os.path.basename(db_path),
+                    "object": "Full Database",
+                    "details": f"Copying to {os.path.basename(options['filename'])}",
+                }
+                
+                from workers.signals import ProcessSignals
+                signals = ProcessSignals()
+                signals.started.connect(self.manager.main_window.handle_process_started)
+                signals.finished.connect(self.manager.main_window.handle_process_finished)
+                signals.error.connect(self.manager.main_window.handle_process_error)
+                
+                worker = RunnableSqliteBackup(process_id, db_path, options["filename"], signals)
+                
+                # Fake a "started" signal for the UI
+                from workers.signals import emit_process_started
+                emit_process_started(signals, process_id, metadata)
+                
+                self.manager.main_window.thread_pool.start(worker)
+
+    def open_restore_dialog(self, item_data):
+        if not item_data:
+            return
+            
+        db_type = item_data.get("db_type")
+        if db_type not in ("postgres", "sqlite"):
+            QMessageBox.information(self.manager.main_window, "Not Supported", f"Restore is currently only supported for PostgreSQL and SQLite. (Database type: {db_type})")
+            return
+            
+        dialog = RestoreDialog(self.manager.main_window, item_data)
+        if dialog.exec():
+            options = dialog.get_options()
+            # Use the target connection selected in the dialog, or fall back to the item's connection
+            conn_data = options.get("target_conn_data") or item_data.get("conn_data", {})
+            
+            if not conn_data:
+                 QMessageBox.critical(self.manager.main_window, "Error", "No target connection found for restore.")
+                 return
+
+            if db_type == "postgres":
+                # Build command
+                binary = self.backup_restore_handler.get_pg_binary("pg_restore")
+                
+                args = self.backup_restore_handler.build_pg_restore_args(
+                    conn_data, 
+                    options["filename"],
+                    format=options.get("format", "custom"),
+                    options=options
+                )
+                
+                # Start Worker
+                metadata = {
+                    "pid": "RESTORE",
+                    "type": "Restore Database",
+                    "status": "Running",
+                    "server": conn_data.get("short_name", "Unknown"),
+                    "object": item_data.get("table_name") or item_data.get("schema_name") or conn_data.get("database"),
+                    "details": f"Restoring from {os.path.basename(options['filename'])}",
+                    "_conn_id": conn_data.get("id")
+                }
+                
+                # Environment for password handling
+                env = self.backup_restore_handler.get_pg_environment(conn_data)
+                
+                worker = ProcessWorker(binary, args, metadata=metadata, env=env)
+                
+                # Connect signals
+                worker.signals.started.connect(self.manager.main_window.handle_process_started)
+                worker.signals.output.connect(self.manager.main_window.handle_process_output)
+                worker.signals.finished.connect(self.manager.main_window.handle_process_finished)
+                worker.signals.error.connect(self.manager.main_window.handle_process_error)
+                
+                # Add to main window so it doesn't get GC'd
+                if not hasattr(self.manager.main_window, "_active_processes"):
+                    self.manager.main_window._active_processes = {}
+                self.manager.main_window._active_processes[worker.process_id] = worker
+                
+                worker.run()
+
+            elif db_type == "sqlite":
+                db_path = conn_data.get("db_path")
+                if not db_path:
+                    QMessageBox.critical(self.manager.main_window, "Error", "SQLite database path not found.")
+                    return
+                
+                process_id = f"RESTORE_SQLITE_{int(time.time())}"
+                metadata = {
+                    "pid": process_id,
+                    "type": "Restore SQLite",
+                    "status": "Running",
+                    "server": os.path.basename(db_path),
+                    "object": "Full Database",
+                    "details": f"Restoring from {os.path.basename(options['filename'])}",
+                }
+                
+                from workers.signals import ProcessSignals
+                signals = ProcessSignals()
+                signals.started.connect(self.manager.main_window.handle_process_started)
+                signals.finished.connect(self.manager.main_window.handle_process_finished)
+                signals.error.connect(self.manager.main_window.handle_process_error)
+                
+                worker = RunnableSqliteRestore(process_id, options["filename"], db_path, signals)
+                
+                # Fake a "started" signal for the UI
+                from workers.signals import emit_process_started
+                emit_process_started(signals, process_id, metadata)
+                
+                self.manager.main_window.thread_pool.start(worker)

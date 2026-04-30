@@ -142,6 +142,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        act = action(self.manager, "Backup...", "mdi.backup-restore")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+        )
+        menu.addAction(act)
+
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)
@@ -229,12 +235,10 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Restore...", "mdi.restore")
-        act.triggered.connect(stub("restore_schema"))
-        menu.addAction(act)
-
         act = action(self.manager, "Backup...", "mdi.backup-restore")
-        act.triggered.connect(stub("backup_schema"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+        )
         menu.addAction(act)
 
         menu.addSeparator()
