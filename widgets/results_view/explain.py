@@ -560,7 +560,7 @@ class PlanNodeItem(QGraphicsItem):
         painter.drawText(QRectF(8, 62, self.width-16, 15), Qt.AlignmentFlag.AlignLeft, cost_text)
 
 class ExplainGraphView(QGraphicsView):
-    nodeSelected = Signal(dict)
+    nodeSelected = Signal(object)
     
     def __init__(self, parent=None):
         super().__init__(parent)

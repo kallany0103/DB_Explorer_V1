@@ -177,7 +177,8 @@ class RunnableExport(QRunnable):
                 conn = db.create_postgres_connection(
                     host=conn_data["host"], database=conn_data["database"], 
                     user=conn_data["user"], password=conn_data["password"], 
-                    port=int(conn_data["port"])
+                    port=int(conn_data["port"]),
+                    application_name=f"Universal SQL Client - Export ({conn_data.get('database')})"
                 )
                 schema_name = self.item_data.get("schema_name")
                 query = f'SELECT * FROM "{schema_name}"."{self.table_name}"'
@@ -424,7 +425,8 @@ class RunnableQuery(QRunnable):
                     database=self.conn_data["database"],
                     user=self.conn_data["user"],
                     password=self.conn_data["password"],
-                    port=int(self.conn_data["port"]) if self.conn_data.get("port") else 5432
+                    port=int(self.conn_data["port"]) if self.conn_data.get("port") else 5432,
+                    application_name=f"Universal SQL Client - {self.conn_data.get('database')}"
                 )
                 if not self._conn:
                     raise ConnectionError("Failed to connect to PostgreSQL database")

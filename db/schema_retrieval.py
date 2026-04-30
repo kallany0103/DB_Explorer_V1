@@ -80,7 +80,8 @@ def get_postgres_schema(conn_data, schema_name=None):
         database=conn_data["database"],
         user=conn_data["user"],
         password=conn_data["password"],
-        port=int(conn_data["port"])
+        port=int(conn_data["port"]),
+        application_name=f"Universal SQL Client - Metadata Retrieval ({conn_data.get('database')})"
     )
     if not conn:
         return schema_data

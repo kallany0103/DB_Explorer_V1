@@ -20,16 +20,16 @@ from widgets.app_shell import (
     open_sql_file,
     save_sql_file,
     save_sql_file_as,
-    close_current_tab,
-    close_all_tabs,
-    close_tab,
-    restore_tool,
-    toggle_maximize,
-    open_help_url,
-    update_thread_pool_status,
+    close_current_tab as close_current_tab_action,
+    close_all_tabs as close_all_tabs_action,
+    close_tab as close_tab_action,
+    reset_layout as reset_layout_action,
+    toggle_maximize as toggle_maximize_action,
+    open_help_url as open_help_url_action,
+    update_thread_pool_status as update_thread_pool_status_action,
     restore_main_window_session,
     save_main_window_session,
-    reset_layout,
+    reset_to_dashboard as reset_to_dashboard_action,
 )
 
 
@@ -95,29 +95,29 @@ class MainWindow(QMainWindow):
         add_tab_btn.setIcon(qta.icon('fa5s.caret-down', color='#1f2937'))
         add_tab_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         add_tab_btn.setToolTip("New Tab Options")
-        
+
         # Create Dropdown Menu
         new_tab_menu = QMenu(self)
         new_tab_menu.setObjectName("new_tab_menu")
         new_tab_menu.setCursor(Qt.CursorShape.PointingHandCursor)
-        
+
         action_new_worksheet = QAction(qta.icon('mdi.database-edit', scale_factor=1.3), "New Worksheet", self)
         action_new_worksheet.setShortcut("Ctrl+N")
         action_new_worksheet.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_worksheet.triggered.connect(self.add_tab)
-        
+
         action_new_erd = QAction(qta.icon('fa6s.sitemap'), "New ERD", self)
         action_new_erd.setShortcut("Ctrl+Shift+E")
         action_new_erd.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_erd.triggered.connect(self.add_erd_tab)
-        
+
         new_tab_menu.addAction(action_new_worksheet)
         new_tab_menu.addAction(action_new_erd)
-        
+
         # Explicitly add actions to the window so their shortcuts trigger regardless of whether the dropdown is open
         self.addAction(action_new_worksheet)
         self.addAction(action_new_erd)
-        
+
         # Style for the dropdown menu
         new_tab_menu.setStyleSheet("""
             QMenu#new_tab_menu {
@@ -141,10 +141,10 @@ class MainWindow(QMainWindow):
             new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(0, add_tab_btn.height() + 2)))
 
         add_tab_btn.clicked.connect(show_new_tab_menu)
-        
+
         # Tab-integrated neutral style
         add_tab_btn.setStyleSheet("""
-            QPushButton#add_tab_btn { 
+            QPushButton#add_tab_btn {
                 padding: 5px 12px;
                 border: 1px solid #B8BEC6;
                 background-color: #ECEFF3;
@@ -206,7 +206,7 @@ class MainWindow(QMainWindow):
         dashboard_widget = DashboardWidget(self)
         tab_title = "Dashboard"
         index = self.tab_widget.addTab(dashboard_widget, tab_title)
-        self.tab_widget.setTabIcon(index, qta.icon('fa5s.th-large', color='#3b82f6'))
+        self.tab_widget.setTabIcon(index, qta.icon('fa5s.th-large', color='#555555'))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
 
@@ -372,54 +372,53 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.cancel_current_query()
 
     def close_current_tab(self):
-        close_current_tab(self)
+        close_current_tab_action(self)
 
     def close_all_tabs(self):
-        close_all_tabs(self)
+        close_all_tabs_action(self)
 
     def close_tab(self, index):
-        close_tab(self, index)
+        close_tab_action(self, index)
 
     # =========================================================================
     # --- WINDOW / HELP / STYLE / SESSION ---
     # =========================================================================
 
-    def restore_tool(self, *args, **kwargs):
-        restore_tool(self)
-
     def reset_layout(self, *args, **kwargs):
-        reset_layout(self)
+        reset_layout_action(self)
+
+    def reset_to_dashboard(self, *args, **kwargs):
+        reset_to_dashboard_action(self)
 
 
 
 
     def toggle_maximize(self):
-        toggle_maximize(self)
+        toggle_maximize_action(self)
 
     def open_help_url(self, url_string):
-        open_help_url(self, url_string)
-            
-            
+        open_help_url_action(self, url_string)
+
     def update_thread_pool_status(self):
-        update_thread_pool_status(self)
-   
+        update_thread_pool_status_action(self)
+
 
     def _apply_styles(self):
         apply_main_window_styles(self)
-        
+
 
     def closeEvent(self, event):
         """Confirm exit and save session state."""
         active_queries = len(self.worksheet_manager.running_queries)
-        
+
         if active_queries > 0:
             msg = f"There are {active_queries} active queries running.\n\nAre you sure you want to quit and cancel them?"
         else:
             msg = "Are you sure you want to exit the application?"
 
         reply = QMessageBox.question(
-            self, 
-            "Confirm Exit", 
+            self,
+            "Confirm Exit",
             msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -427,14 +426,14 @@ class MainWindow(QMainWindow):
 
         if reply == QMessageBox.StandardButton.Yes:
             save_main_window_session(self, self.SESSION_FILE)
-            
+
             # Cancel all running queries before exit
             for tab, runner in list(self.worksheet_manager.running_queries.items()):
                 try:
                     runner.cancel()
                 except Exception:
                     pass
-                    
+
             event.accept()
         else:
             event.ignore()

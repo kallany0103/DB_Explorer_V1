@@ -118,12 +118,19 @@ def build_main_window_actions(main_window):
     main_window.query_tool_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.query_tool_action.triggered.connect(main_window.add_tab)
 
-    main_window.restore_action = QAction("Restore Layout", main_window)
+    main_window.reset_layout_action = QAction("Reset Layout", main_window)
     # Removed setShortcut("Ctrl+Shift+L") to prevent conflict with lowercase action
-    main_window.restore_action.triggered.connect(main_window.restore_tool)
-
-    main_window.reset_layout_action = QAction(qta.icon("fa5s.th-large", color="#555555"), "Reset Layout", main_window)
     main_window.reset_layout_action.triggered.connect(main_window.reset_layout)
+
+    # Safely load the dashboard icon
+    try:
+        dash_icon = qta.icon("fa5s.th-large", color="#555555")
+    except Exception:
+        dash_icon = QIcon()
+        
+    main_window.dashboard_action = QAction(dash_icon, "Dashboard", main_window)
+    main_window.dashboard_action.setIconVisibleInMenu(True)
+    main_window.dashboard_action.triggered.connect(main_window.reset_to_dashboard)
 
     main_window.refresh_action = QAction("Refresh Explorer", main_window)
     main_window.refresh_action.setShortcuts(["F5", "Ctrl+R"])

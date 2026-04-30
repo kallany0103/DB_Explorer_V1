@@ -30,23 +30,45 @@ def create_sqlite_connection(path):
         return None
 
 
-def create_postgres_connection(host, port=None, database=None, user=None, password=None):
+def create_postgres_connection(host, port=None, database=None, user=None, password=None, application_name=None):
     """Establishes a connection to a PostgreSQL database with SSL support for cloud hosts."""
     try:
+        app_name = application_name
+
         if isinstance(host, dict):
             conn_data = host
             dsn = conn_data.get("dsn")
+            
+            # Use application_name from conn_data if provided and not overridden by arg
+            if not app_name:
+                app_name = conn_data.get("application_name") or conn_data.get("name")
+
             if dsn:
                 try:
-                    return psycopg2.connect(dsn, connect_timeout=5)
+                    return psycopg2.connect(dsn, connect_timeout=5, application_name=app_name or "Universal SQL Client")
                 except Exception as e:
-                    print(f"DSN connection failed, falling back to keywords: {e}")
+                    # Only print if it's not a common timeout or DNS error to reduce noise
+                    if "timeout expired" not in str(e) and "Name or service not known" not in str(e):
+                        print(f"DSN connection failed, falling back to keywords: {e}")
 
             host = conn_data.get("host")
             port = conn_data.get("port")
             database = conn_data.get("database")
             user = conn_data.get("user")
             password = conn_data.get("password")
+
+        if not app_name:
+            db_name = database
+            if not db_name and isinstance(host, dict):
+                db_name = host.get("database")
+            
+            if db_name:
+                app_name = f"Universal SQL Client - {db_name}"
+            else:
+                app_name = "Universal SQL Client"
+
+        if not host:
+            return None
 
         # Basic connection parameters
         params = {
@@ -55,21 +77,43 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             "database": database,
             "user": user,
             "password": password,
-            "connect_timeout": 5
+            "connect_timeout": 5,
+            "application_name": app_name
         }
         
-        # If the host looks like an Aive/ElephantSQL/AWS host, or if first attempt fails, try with SSL
+        # Determine if we should use SSL immediately (Aiven, Heroku, ElephantSQL, AWS)
+        is_cloud = any(cloud_domain in str(host).lower() for cloud_domain in [
+            "aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com", "cloud.google.com"
+        ])
+        
+        if is_cloud:
+            params["sslmode"] = "require"
+
         try:
             conn = psycopg2.connect(**params)
             return conn
-        except OperationalError:
-            # Retry with SSL for cloud providers
-            params["sslmode"] = "require"
-            conn = psycopg2.connect(**params)
-            return conn
+        except OperationalError as e:
+            if not is_cloud:
+                # Retry with SSL for other hosts if first attempt fails
+                try:
+                    params["sslmode"] = "require"
+                    conn = psycopg2.connect(**params)
+                    return conn
+                except OperationalError:
+                    pass # Fall through to print original error
             
-    except OperationalError as e:
-        print(f"PostgreSQL connection error: {e}")
+            # Print error only if it's not a common network issue or if it's a new error
+            err_str = str(e).strip()
+            if "timeout expired" in err_str:
+                print(f"PostgreSQL connection timeout: {host}")
+            elif "Name or service not known" in err_str:
+                print(f"PostgreSQL host unreachable: {host}")
+            else:
+                print(f"PostgreSQL connection error: {err_str}")
+            return None
+            
+    except Exception as e:
+        print(f"Unexpected PostgreSQL connection error: {e}")
         return None
 
 

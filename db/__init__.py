@@ -12,6 +12,7 @@ from db.db_retrieval import (
     get_all_connections_from_db,
     get_hierarchy_data,
     get_postgres_session_stats,
+    get_postgres_state_details,
 )
 
 from db.schema_retrieval import (
@@ -35,6 +36,8 @@ from db.db_modifications import (
     delete_connection_group,
     update_connection_type,
     delete_connection_type,
+    terminate_postgres_backend,
+    cancel_postgres_backend,
 )
 
 # Aliases
@@ -78,4 +81,7 @@ __all__ = [
     "sqlite_connection",
     "oracle_connection",
     "get_postgres_session_stats",
+    "get_postgres_state_details",
+    "terminate_postgres_backend",
+    "cancel_postgres_backend",
 ]
