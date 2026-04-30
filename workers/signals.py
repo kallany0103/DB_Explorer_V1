@@ -4,15 +4,15 @@
 from PySide6.QtCore import QObject, Signal
 
 class ProcessSignals(QObject):
-    started = Signal(str, object)
-    finished = Signal(str, str, float, int)
-    error = Signal(str, str)
+    started = Signal(object, object)
+    finished = Signal(object, object, object, object)
+    error = Signal(object, object)
       
 class QuerySignals(QObject):
-    finished = Signal(object, str, list, list, list, int, float, bool)
+    finished = Signal(object, object, object, object, object, object, object, object)
     # conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query
 
-    error = Signal(object, str, int, float, str)  
+    error = Signal(object, object, object, object, object)  
     # conn_data, query, row_count, elapsed_time, error_message
 
 

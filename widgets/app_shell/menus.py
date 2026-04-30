@@ -10,12 +10,12 @@ def build_main_window_menu(main_window):
     file_menu.addAction(main_window.save_action)
     file_menu.addAction(main_window.save_as_action)
     file_menu.addSeparator()
-    file_menu.addAction(main_window.reset_layout_action)
-    file_menu.addSeparator()
     file_menu.addAction(main_window.close_tab_action)
     file_menu.addAction(main_window.close_all_tabs_action)
     file_menu.addSeparator()
     file_menu.addAction(main_window.exit_action)
+
+
 
     object_menu = menubar.addMenu("&Object")
     create_menu = object_menu.addMenu("Create")
@@ -56,8 +56,9 @@ def build_main_window_menu(main_window):
 
     tools_menu = menubar.addMenu("&Tools")
     tools_menu.addAction(main_window.query_tool_action)
+    tools_menu.addAction(main_window.dashboard_action)
     tools_menu.addAction(main_window.refresh_action)
-    tools_menu.addAction(main_window.restore_action)
+    tools_menu.addAction(main_window.reset_layout_action)
 
     window_menu = menubar.addMenu("&Window")
     window_menu.addAction(main_window.minimize_action)

@@ -8,6 +8,7 @@ from widgets.dashboard.state_widget import StateWidget, StateWorker
 import qtawesome as qta
 import db
 from datetime import datetime
+import time
 
 class ChartTooltip(QFrame):
     def __init__(self, parent=None):
@@ -73,8 +74,8 @@ class ChartTooltip(QFrame):
         self.adjustSize()
 
 class DashboardWorkerSignals(QObject):
-    finished = Signal(dict)
-    error = Signal(str)
+    finished = Signal(object)
+    error = Signal(object)
 
 class DashboardWorker(QRunnable):
     def __init__(self, conn_data, current_db_only=False):
@@ -92,10 +93,13 @@ class DashboardWorker(QRunnable):
             except RuntimeError:
                 pass # Receiver already deleted
         except Exception as e:
-            try:
-                self.signals.error.emit(str(e))
-            except RuntimeError:
-                pass
+            err_msg = str(e).lower()
+            # Only emit error if it's not a common connection issue to reduce noise
+            if "timeout" not in err_msg and "connection" not in err_msg and "unreachable" not in err_msg:
+                try:
+                    self.signals.error.emit(str(e))
+                except RuntimeError:
+                    pass
 
 class LiveChartView(QChartView):
     def __init__(self, series_names, colors, parent=None):
@@ -344,9 +348,10 @@ class DashboardWidget(QWidget):
         
         self.prev_stats = None
         self.prev_time = None
+        self.last_state_refresh = 0
         
         self.setup_ui()
-        self.refresh_timer.start(1000) # 1 second refresh for "live" feel
+        self.refresh_timer.start(1000) # 1 second refresh for activity
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -388,6 +393,7 @@ class DashboardWidget(QWidget):
 
         # 2. State Tab
         self.state_widget = StateWidget()
+        self.state_widget.refresh_requested.connect(lambda: self.request_stats_update(manual=True))
         self.tabs.addTab(self.state_widget, qta.icon('mdi.database-search', color="#121213"), "State")
 
         layout.addWidget(self.tabs)
@@ -423,15 +429,16 @@ class DashboardWidget(QWidget):
         grid_layout.addWidget(self.tuples_out_chart, 1, 2, 1, 2)
         grid_layout.addWidget(self.block_io_chart, 1, 4, 1, 2)
         
-        self.status_label = QLabel("Monitoring: None")
-        self.status_label.setStyleSheet("color: #2563eb; font-weight: bold; font-size: 13px; margin-bottom: 4px;")
-        main_layout.addWidget(self.status_label)
+        # Grid for charts ... (code removed for brevity, will replace carefully)
         
         main_layout.addWidget(self.no_connection_lbl)
         main_layout.addLayout(grid_layout)
         main_layout.addStretch()
 
-    def request_stats_update(self):
+    def request_stats_update(self, manual=False):
+        # Activity (charts) always refresh every 1s for "live" feel
+        # State (tables) refresh every 3s OR if manual is requested
+        
         # Locate the MainWindow
         main_window = None
         curr = self
@@ -484,15 +491,33 @@ class DashboardWidget(QWidget):
         if not conn_data:
             return
 
-        # 2. Activity Stats Update
+        # 2. Activity Stats Update (Always happens for live charts)
         activity_worker = DashboardWorker(conn_data, current_db_only)
         activity_worker.signals.finished.connect(self.update_dashboard_stats)
-        activity_worker.signals.error.connect(lambda err: print(f"Dashboard activity worker error: {err}"))
+        
+        def handle_worker_error(err):
+            err_msg = str(err).lower()
+            if "timeout" not in err_msg and "connection" not in err_msg:
+                print(f"Dashboard activity worker error: {err}")
+                
+        activity_worker.signals.error.connect(handle_worker_error)
         main_window.thread_pool.start(activity_worker)
 
-        # 3. State Details Update (if State tab is active or just refresh it anyway)
-        if self.tabs.currentWidget() == self.state_widget:
-            state_worker = StateWorker(conn_data)
+        # 3. State Details Update 
+        # Only if: (State tab is active AND (manual requested OR (Auto-refresh is ON AND 3s passed)))
+        now_ts = time.time()
+        
+        is_state_active = self.tabs.currentWidget() == self.state_widget
+        should_refresh_state = manual or (
+            is_state_active and 
+            self.state_widget.auto_refresh_cb.isChecked() and 
+            (now_ts - self.last_state_refresh) > 3
+        )
+
+        if should_refresh_state:
+            self.last_state_refresh = now_ts
+            self.state_widget.conn_data = conn_data
+            state_worker = StateWorker(conn_data, self.state_widget.active_checkbox.isChecked())
             state_worker.signals.finished.connect(self.state_widget.update_state)
             state_worker.signals.error.connect(lambda err: print(f"Dashboard state worker error: {err}"))
             main_window.thread_pool.start(state_worker)
@@ -509,7 +534,6 @@ class DashboardWidget(QWidget):
             
         self.sessions_chart.title_lbl.setText(prefix)
         self.tps_chart.title_lbl.setText(tps_prefix)
-        self.status_label.setText(f"Monitoring: {conn_data.get('name', 'N/A')} ({conn_data.get('database', 'N/A')})")
         
 
     def _find_conn_data(self, cm, index):
@@ -527,6 +551,8 @@ class DashboardWidget(QWidget):
         return None
 
     def update_dashboard_stats(self, stats):
+        if stats is None:
+            return
         try:
             now = datetime.now()
             

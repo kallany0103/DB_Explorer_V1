@@ -1,6 +1,36 @@
 import sqlite3 as sqlite
 import datetime
-from db.db_connections import DB_FILE
+from db.db_connections import DB_FILE, create_postgres_connection
+
+def terminate_postgres_backend(conn_data, pid):
+    """Terminates a PostgreSQL backend session by PID."""
+    try:
+        db_name = conn_data.get('database', 'unknown')
+        conn = create_postgres_connection(conn_data, application_name=f"Universal SQL Client - Management ({db_name})")
+        if conn:
+            conn.set_session(autocommit=True)
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_terminate_backend(%s)", (pid,))
+            conn.close()
+            return True, None
+    except Exception as e:
+        return False, str(e)
+    return False, "Unknown error"
+
+def cancel_postgres_backend(conn_data, pid):
+    """Cancels the current query of a PostgreSQL backend session by PID."""
+    try:
+        db_name = conn_data.get('database', 'unknown')
+        conn = create_postgres_connection(conn_data, application_name=f"Universal SQL Client - Management ({db_name})")
+        if conn:
+            conn.set_session(autocommit=True)
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_cancel_backend(%s)", (pid,))
+            conn.close()
+            return True, None
+    except Exception as e:
+        return False, str(e)
+    return False, "Unknown error"
 
 def add_connection_group(name, parent_id):
     with sqlite.connect(DB_FILE) as conn:

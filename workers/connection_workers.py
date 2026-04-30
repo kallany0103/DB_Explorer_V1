@@ -8,8 +8,8 @@ import db
 
 
 class SchemaWorkerSignals(QObject):
-    finished = Signal(dict)
-    error = Signal(str)
+    finished = Signal(object)
+    error = Signal(object)
 
 
 class SQLiteSchemaWorker(QRunnable):

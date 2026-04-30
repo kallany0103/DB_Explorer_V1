@@ -16,11 +16,11 @@ from widgets.app_shell.window_ops import (
 	close_current_tab,
 	close_all_tabs,
 	close_tab,
-	restore_tool,
+	reset_layout,
 	toggle_maximize,
 	open_help_url,
 	update_thread_pool_status,
-	reset_layout,
+	reset_to_dashboard,
 )
 
 __all__ = [
@@ -40,9 +40,9 @@ __all__ = [
 	"close_current_tab",
 	"close_all_tabs",
 	"close_tab",
-	"restore_tool",
+	"reset_layout",
 	"toggle_maximize",
 	"open_help_url",
 	"update_thread_pool_status",
-	"reset_layout",
+	"reset_to_dashboard",
 ]
