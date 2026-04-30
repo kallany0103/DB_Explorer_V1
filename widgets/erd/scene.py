@@ -6,8 +6,28 @@ from PySide6.QtCore import QLineF, Qt
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem
 from widgets.erd.items.note_item import ERDNoteItem
+from widgets.erd.items.entity_item import ERDEntityItem
+from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
+from widgets.erd.items.attribute_item import ERDAttributeItem
+from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
+from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
+from widgets.erd.items.floating_connection import ERDFloatingConnectionItem, ConnectionHandle
+from widgets.erd.items.resizable import item_visual_scene_rect
 from widgets.erd.routing import ERDRouter
 from widgets.erd.commands import DeleteItemCommand, UpdateTableCommand
+
+# All non-table items that can be deleted with the Delete key
+_DELETABLE_TYPES = (
+    ERDTableItem, ERDConnectionItem, ERDNoteItem,
+    ERDEntityItem, ERDWeakEntityItem, ERDAttributeItem,
+    ERDRelationshipDiamondItem, ERDSubjectAreaItem,
+    ERDFloatingConnectionItem, ConnectionHandle,
+)
+
+_ROUTING_OBSTACLE_TYPES = (
+    ERDTableItem, ERDNoteItem, ERDEntityItem, ERDWeakEntityItem,
+    ERDAttributeItem, ERDRelationshipDiamondItem, ERDSubjectAreaItem,
+)
 
 class ERDScene(QGraphicsScene):
     def __init__(self, parent=None):
@@ -30,8 +50,8 @@ class ERDScene(QGraphicsScene):
         if self._router_cache is None:  
             obstacles = []
             for item in self.items():
-                if isinstance(item, ERDTableItem):
-                    obstacles.append(item.sceneBoundingRect())
+                if isinstance(item, _ROUTING_OBSTACLE_TYPES):
+                    obstacles.append(item_visual_scene_rect(item))
             self._router_cache = ERDRouter(self.sceneRect(), obstacles)
         return self._router_cache
 
@@ -41,12 +61,13 @@ class ERDScene(QGraphicsScene):
     def delete_selected_items(self):
         items_to_delete = []
         for item in self.selectedItems():
-            if isinstance(item, (ERDConnectionItem, ERDNoteItem)):
+            if isinstance(item, _DELETABLE_TYPES):
                 items_to_delete.append(item)
                 
         if items_to_delete and hasattr(self, 'undo_stack'):  
             cmd = DeleteItemCommand(self, items_to_delete)
             self.undo_stack.push(cmd)
+
 
     def highlight_related(self, table_item):
         for item in self.items():

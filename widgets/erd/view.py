@@ -18,6 +18,7 @@ class ERDView(QGraphicsView):
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
         self.setAcceptDrops(True)
+        self.viewport().setMouseTracking(True)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
@@ -176,6 +177,11 @@ class ERDView(QGraphicsView):
         else:
             super().dragMoveEvent(event)
 
+    def dragLeaveEvent(self, event):
+        # Properly handle drag leaving the view without dropping
+        # This prevents the "drag leave received before drag enter" warning
+        event.ignore()
+
     def dropEvent(self, event):
         if event.mimeData().hasFormat("application/x-erd-component"):
             comp_type = event.mimeData().data("application/x-erd-component").data().decode('utf-8')
@@ -264,7 +270,61 @@ class ERDView(QGraphicsView):
 
         elif comp_type == "table_fk":
             widget._create_entity_with_fk(scene_pos)
-            
+
+        elif comp_type == "entity":
+            from widgets.erd.items.entity_item import ERDEntityItem
+            item = ERDEntityItem("Entity")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "weak_entity":
+            from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
+            item = ERDWeakEntityItem("WeakEntity")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "attribute":
+            from widgets.erd.items.attribute_item import ERDAttributeItem
+            item = ERDAttributeItem("Attribute", kind="normal")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "attribute_key":
+            from widgets.erd.items.attribute_item import ERDAttributeItem
+            item = ERDAttributeItem("Attribute", kind="key")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "attribute_partial":
+            from widgets.erd.items.attribute_item import ERDAttributeItem
+            item = ERDAttributeItem("Attribute", kind="partial")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "attribute_multi":
+            from widgets.erd.items.attribute_item import ERDAttributeItem
+            item = ERDAttributeItem("Attribute", kind="multivalued")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "attribute_derived":
+            from widgets.erd.items.attribute_item import ERDAttributeItem
+            item = ERDAttributeItem("Attribute", kind="derived")
+            item.setPos(scene_pos)
+            self.scene().addItem(item)
+
+        elif comp_type == "relationship_diamond":
+            from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
+            item = ERDRelationshipDiamondItem("Relationship")
+            item.setPos(scene_pos - QPointF(80, 35))
+            self.scene().addItem(item)
+
+        elif comp_type == "subject_area":
+            from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
+            item = ERDSubjectAreaItem("Subject Area")
+            item.setPos(scene_pos - QPointF(200, 150))
+            self.scene().addItem(item)
+
         elif comp_type == "column":
             # Check if dropped over a table
             item = self.itemAt(view_pos.toPoint())
@@ -291,6 +351,7 @@ class ERDView(QGraphicsView):
             p2 = scene_pos + QPointF(50, 0)
             floating_conn.set_handles(p1, p2)
             self.scene().addItem(floating_conn)
+
 
     def _duplicate_selected_tables(self):
         # Find which items are selected

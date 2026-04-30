@@ -40,6 +40,7 @@ from widgets.connection_manager.spinner import ConnectionSpinner
 from workers.connection_workers import (
     CsvSchemaWorker,
     PostgresSchemaWorker,
+    ServiceNowSchemaWorker,
     SQLiteSchemaWorker,
 )
 
@@ -349,7 +350,8 @@ class ConnectionManager(QWidget):
             self._start_schema_load(item, worker, self.schema_loader.populate_csv_schema)
         elif "servicenow" in connection_type_name:
             self.status.showMessage(f"Loading ServiceNow schema for {conn_name}...", 3000)
-            self.load_servicenow_schema(conn_data)
+            worker = ServiceNowSchemaWorker(conn_data)
+            self._start_schema_load(item, worker, self.schema_loader.populate_servicenow_schema)
 
         elif "oracle" in connection_type_name:
             self.status.showMessage("Oracle connections are not currently supported.", 5000)
@@ -431,7 +433,8 @@ class ConnectionManager(QWidget):
         self.schema_loader.load_csv_schema(conn_data)
 
     def load_servicenow_schema(self, conn_data):
-        self.schema_loader.load_servicenow_schema(conn_data)
+        worker = ServiceNowSchemaWorker(conn_data)
+        self._start_schema_load(None, worker, self.schema_loader.populate_servicenow_schema)
 
     def handle_process_started(self, process_id, data):
         self.status.showMessage(f"Export Started: {data.get('details', 'Processing...')}", 3000)

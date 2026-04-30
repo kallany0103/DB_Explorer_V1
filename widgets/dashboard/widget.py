@@ -1,9 +1,8 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QFrame, QGridLayout, QScrollArea, QSizePolicy, 
-                               QToolTip, QGraphicsLineItem, QGraphicsEllipseItem,
+                               QFrame, QGridLayout, QGraphicsLineItem, QGraphicsEllipseItem,
                                QTabWidget)
-from PySide6.QtCore import Qt, QMargins, QTimer, QRunnable, QObject, Signal, Slot, QPointF
-from PySide6.QtGui import QFont, QColor, QPalette, QPainter, QPen, QBrush
+from PySide6.QtCore import Qt, QTimer, QRunnable, QObject, Signal, Slot, QPointF
+from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from widgets.dashboard.state_widget import StateWidget, StateWorker
 import qtawesome as qta
@@ -304,15 +303,15 @@ class LiveChartWidget(QFrame):
         for name, color in zip(series_names, colors):
             item = QWidget()
             item.setStyleSheet("border: none;")
-            l = QHBoxLayout(item)
-            l.setContentsMargins(4, 0, 4, 0)
+            legend_layout = QHBoxLayout(item)
+            legend_layout.setContentsMargins(4, 0, 4, 0)
             sq = QLabel()
             sq.setFixedSize(10, 10)
             sq.setStyleSheet(f"background-color: {color}; border-radius: 2px; border: none;")
             lbl = QLabel(name)
             lbl.setStyleSheet("font-size: 13px !important; color: #111111 !important; font-weight: bold !important; border: none !important; background: transparent !important;")
-            l.addWidget(sq)
-            l.addWidget(lbl)
+            legend_layout.addWidget(sq)
+            legend_layout.addWidget(lbl)
             h_layout.addWidget(item)
             
         self.chart_view = LiveChartView(series_names, colors)
@@ -465,20 +464,17 @@ class DashboardWidget(QWidget):
         
         conn_data = None
         current_db_only = False
-        chart_title = "Database sessions"
 
         if depth == 3:
             # Connection level
             conn_data = item.data(Qt.ItemDataRole.UserRole)
             current_db_only = True
-            chart_title = f"Sessions for: {item.text()}"
         elif depth == 2:
             # Group level -> Show server-wide for the first connection in group
             if item.hasChildren():
                 child = item.child(0)
                 conn_data = child.data(Qt.ItemDataRole.UserRole)
             current_db_only = False
-            chart_title = f"Server Sessions for: {item.text()}"
         else:
             # Fallback to active postgres conn if any
             if hasattr(cm, 'active_postgres_conn'):
@@ -517,7 +513,8 @@ class DashboardWidget(QWidget):
         
 
     def _find_conn_data(self, cm, index):
-        if not index.isValid(): return None
+        if not index.isValid():
+            return None
         curr_index = index
         while curr_index.isValid():
             source_idx = cm.proxy_model.mapToSource(curr_index)

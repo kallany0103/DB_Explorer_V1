@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
                                 QTableWidget, QTableWidgetItem, QHeaderView, 
                                 QFrame, QSplitter)
 from PySide6.QtCore import Qt, Signal, QObject, QRunnable, Slot

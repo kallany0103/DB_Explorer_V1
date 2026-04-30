@@ -255,41 +255,28 @@ class SchemaLoader:
 
             self.manager.schema_model.appendRow([table_item, type_item])
 
-    def load_servicenow_schema(self, conn_data):
-        try:
-            conn = db.create_servicenow_connection(conn_data)
-            if not conn:
-                self.manager.status.showMessage("Unable to connect to ServiceNow", 5000)
-                return
+    def populate_servicenow_schema(self, data):
+        """UI-only: render the ServiceNow table list emitted by ServiceNowSchemaWorker."""
+        conn_data = data.get("conn_data", {})
+        tables = data.get("tables", [])
 
-            cursor = conn.cursor()
+        if not tables:
+            self.manager.status.showMessage("No tables found or access restricted.", 5000)
+            return
 
-            try:
-                cursor.execute("SELECT TableName FROM sys_tables")
-                tables = [row[0] for row in cursor.fetchall()]
-            except Exception:
-                tables = ['incident', 'task', 'change_request', 'problem', 'change_request']
+        self._prepare_schema_tree()
+        for table_name in tables:
+            table_item = QStandardItem(qta.icon("mdi.table", color="#4CAF50"), table_name)
+            table_item.setEditable(False)
+            table_item.setData({
+                'db_type': 'servicenow',
+                'table_name': table_name,
+                'conn_data': conn_data,
+            }, Qt.ItemDataRole.UserRole)
+            table_item.appendRow(QStandardItem("Loading..."))
 
-            if not tables:
-                self.manager.status.showMessage("No tables found or access restricted.", 5000)
-                return
+            type_item = QStandardItem("Table")
+            type_item.setEditable(False)
+            self.manager.schema_model.appendRow([table_item, type_item])
 
-            self.manager.schema_model.clear()
-            self.manager.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-            for table_name in tables:
-                table_item = QStandardItem(qta.icon("mdi.table", color="#4CAF50"), table_name)
-                table_item.setEditable(False)
-                table_item.setData({
-                    'db_type': 'servicenow',
-                    'table_name': table_name,
-                    'conn_data': conn_data
-                }, Qt.ItemDataRole.UserRole)
-                table_item.appendRow(QStandardItem("Loading..."))
-
-                type_item = QStandardItem("Table")
-                type_item.setEditable(False)
-                self.manager.schema_model.appendRow([table_item, type_item])
-
-            conn.close()
-        except Exception as e:
-            self.manager.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
+        self._connect_expand_handler()

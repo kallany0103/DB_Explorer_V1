@@ -48,7 +48,7 @@ def restore_main_window_session(main_window, session_file):
             session_data = json.load(f)
 
         if "window_geometry" in session_data:
-            main_window.restoreGeometry(QByteArray.fromBase64(session_data["window_geometry"].encode()))
+            main_window.showMaximized()
         if "window_state" in session_data:
             main_window.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
 

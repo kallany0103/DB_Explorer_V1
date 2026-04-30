@@ -199,8 +199,13 @@ class PropertyPanel(QWidget):
 
     def _render_connection_details(self, conn_item):
         form = QFormLayout()
-        form.addRow("Source:", QLabel(f"{conn_item.source_item.table_name}.{conn_item.source_col}"))
-        form.addRow("Target:", QLabel(f"{conn_item.target_item.table_name}.{conn_item.target_col}"))
+        s_name = conn_item.source_item.table_name
+        t_name = conn_item.target_item.table_name
+        s_text = f"{s_name}.{conn_item.source_col}" if conn_item.source_col else s_name
+        t_text = f"{t_name}.{conn_item.target_col}" if conn_item.target_col else t_name
+
+        form.addRow("Source:", QLabel(s_text))
+        form.addRow("Target:", QLabel(t_text))
         if getattr(conn_item, "fk_meta", None):
             if conn_item.fk_meta.get("on_delete"):
                 form.addRow("On Delete:", QLabel(conn_item.fk_meta.get("on_delete", "NO ACTION")))

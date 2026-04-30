@@ -4,6 +4,9 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
+# DEBUG-START
+import time
+# DEBUG-END
 import cdata.servicenow as sn_driver
 import cdata.csv as csv_driver
 
@@ -92,7 +95,14 @@ def create_servicenow_connection(conn_data):
             f"AuthScheme=Basic;"
         )
 
+        # DEBUG-START
+        t0 = time.time()
+        # DEBUG-END
         conn = sn_driver.connect(conn_str)
+        # DEBUG-START
+        t1 = time.time()
+        print(f"[SN-DEBUG] sn_driver.connect() took {t1-t0:.2f}s")
+        # DEBUG-END
         return conn
 
     except Exception as e:
@@ -109,7 +119,11 @@ def create_csv_connection(conn_data):
         # If it's a file, it treats it as a single table
         path = conn_data['db_path']
         
-        conn_str = f"URI={path};"
+        # Configure CData CSV driver to scan more rows and use 64-bit integers
+        # to avoid Int32 overflow errors with large values like 5600000000
+        # RowScanDepth=0 scans every row so values like 5_600_000_000
+        # are detected as Int64 instead of overflowing the default Int32.
+        conn_str = f"URI={path};TypeDetectionScheme=RowScan;RowScanDepth=100;"
         conn = csv_driver.connect(conn_str)
         return conn
     except Exception as e:

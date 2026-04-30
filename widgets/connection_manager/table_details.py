@@ -7,6 +7,8 @@ import db
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItem, QIcon
 
+from workers.connection_workers import ServiceNowTableDetailsWorker
+
 
 
 class TableDetailsLoader:
@@ -332,51 +334,45 @@ class TableDetailsLoader:
         if not item_data or table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
             return
 
-        table_item.removeRows(0, table_item.rowCount())
-
         table_name = item_data.get('table_name')
         conn_data = item_data.get('conn_data')
 
         if not table_name or not conn_data:
             return
 
-        conn = None
-        try:
-            conn = db.create_servicenow_connection(conn_data)
-            cursor = conn.cursor()
+        worker = ServiceNowTableDetailsWorker(conn_data, table_name)
 
-            try:
-                cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
-            except Exception:
-                cursor.execute(f"SELECT * FROM {table_name} WHERE 1=0")
+        def on_finished(data):
+            if table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
+                return
 
-            columns_info = cursor.description
+            table_item.removeRows(0, table_item.rowCount())
+            columns = data.get("columns", [])
 
-            column_items = []
-            if columns_info:
-                for col in columns_info:
-                    col_name = col[0]
-                    desc = f"{col_name}"
-                    col_item = QStandardItem(desc)
-                    col_item.setEditable(False)
-                    column_items.append(col_item)
-
-            columns_folder = QStandardItem(f"Columns ({len(column_items)})")
+            columns_folder = QStandardItem(f"Columns ({len(columns)})")
             columns_folder.setEditable(False)
 
-            if not column_items:
+            if not columns:
                 columns_folder.appendRow(QStandardItem("No columns found"))
             else:
-                for item in column_items:
-                    columns_folder.appendRow(item)
+                for col_name in columns:
+                    col_item = QStandardItem(col_name)
+                    col_item.setEditable(False)
+                    columns_folder.appendRow(col_item)
 
             table_item.appendRow(columns_folder)
 
-            conn.close()
+        def on_error(message):
+            if table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
+                return
 
-        except Exception as e:
-            table_item.appendRow(QStandardItem(f"Error: {e}"))
-            self.manager.status.showMessage(f"Error loading ServiceNow details: {e}", 5000)
+            table_item.removeRows(0, table_item.rowCount())
+            table_item.appendRow(QStandardItem(f"Error: {message}"))
+            self.manager.status.showMessage(f"Error loading ServiceNow details: {message}", 5000)
+
+        worker.signals.finished.connect(on_finished)
+        worker.signals.error.connect(on_error)
+        self.manager.thread_pool.start(worker)
 
     def load_sqlite_table_details(self, table_item, item_data):
         if not item_data or table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
