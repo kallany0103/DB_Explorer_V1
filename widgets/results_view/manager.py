@@ -215,6 +215,12 @@ class ResultsManager(QObject):
     def _handle_process_row_header_click(self, tab_content, row):
         processes.handle_process_row_header_click(self, tab_content, row)
 
+    def _handle_view_log(self, tab_content):
+        processes.handle_view_log(self, tab_content)
+
+    def _filter_processes_table(self, tab_content, text):
+        processes.filter_processes_table(self, tab_content, text)
+
     def copy_current_result_table(self):
         clipboard.copy_current_result_table(self)
 

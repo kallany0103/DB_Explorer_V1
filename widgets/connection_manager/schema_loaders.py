@@ -19,7 +19,6 @@ class SchemaLoader:
         self.manager = manager
 
     def _prepare_schema_tree(self):
-        self.manager._save_schema_tree_expansion_state()
         self.manager.schema_model.clear()
         self.manager.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
         self.manager.schema_tree.setColumnWidth(0, 200)
@@ -70,7 +69,7 @@ class SchemaLoader:
             self.manager.schema_model.appendRow([name_item, type_item])
 
         self._connect_expand_handler()
-        self.manager._restore_schema_tree_expansion_state()
+        self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
 
     def load_sqlite_schema(self, conn_data):
         db_path = conn_data.get("db_path")
@@ -165,7 +164,7 @@ class SchemaLoader:
         self.manager.schema_model.appendRow([lang_root, lang_type_item])
 
         self._connect_expand_handler()
-        self.manager._restore_schema_tree_expansion_state()
+        self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
 
     def load_postgres_schema(self, conn_data):
         pg_conn = None
@@ -258,7 +257,7 @@ class SchemaLoader:
 
             self.manager.schema_model.appendRow([table_item, type_item])
             
-        self.manager._restore_schema_tree_expansion_state()
+        self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
 
     def populate_servicenow_schema(self, data):
         """UI-only: render the ServiceNow table list emitted by ServiceNowSchemaWorker."""
@@ -286,7 +285,7 @@ class SchemaLoader:
                 self.manager.schema_model.appendRow([table_item, type_item])
 
             self._connect_expand_handler()
-            self.manager._restore_schema_tree_expansion_state()
+            self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
 
         except Exception as e:
             self.manager.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)

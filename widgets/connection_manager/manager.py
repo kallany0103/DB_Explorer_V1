@@ -68,6 +68,8 @@ class ConnectionManager(QWidget):
         self._active_schema_workers = []
         self._schema_load_token = 0
         self.active_postgres_conn = None
+        self._schema_states = {}
+        self._current_conn_id = None
 
         self.erd_icon_key = "fa6s.sitemap"
         self.erd_icon_fallback_key = "fa5s.project-diagram"
@@ -222,12 +224,12 @@ class ConnectionManager(QWidget):
     def refresh_object_explorer(self, *args, **kwargs):
         try:
             self._save_tree_expansion_state()
+            self._save_schema_tree_expansion_state(self._current_conn_id)
             
             # Visually collapse everything first as requested
             self.tree.collapseAll()
             self.schema_tree.collapseAll()
             
-            self._save_schema_tree_expansion_state()
             self.load_data()
             self._restore_tree_expansion_state()
             
@@ -285,11 +287,15 @@ class ConnectionManager(QWidget):
     def _restore_tree_expansion_state(self):
         self.tree_helpers.restore_tree_expansion_state()
 
-    def _save_schema_tree_expansion_state(self):
-        self.tree_helpers.save_schema_tree_expansion_state()
+    def _save_schema_tree_expansion_state(self, conn_id=None):
+        target_id = conn_id or self._current_conn_id
+        if target_id:
+            self.tree_helpers.save_schema_tree_expansion_state(target_id)
 
-    def _restore_schema_tree_expansion_state(self):
-        self.tree_helpers.restore_schema_tree_expansion_state()
+    def _restore_schema_tree_expansion_state(self, conn_id=None):
+        target_id = conn_id or self._current_conn_id
+        if target_id:
+            self.tree_helpers.restore_schema_tree_expansion_state(target_id)
 
     def delete_connection(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -316,18 +322,25 @@ class ConnectionManager(QWidget):
     def item_clicked(self, proxy_index):
         source_index = self.proxy_model.mapToSource(proxy_index)
         item = self.model.itemFromIndex(source_index)
-        if not item:
-            return
-
         depth = self.get_item_depth(item)
+        
+        # Save state for the PREVIOUS connection before switching
+        if self._current_conn_id:
+            self._save_schema_tree_expansion_state(self._current_conn_id)
+        
         self.schema_model.clear()
         self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
         if depth != 3:
+            self._current_conn_id = None
             return
 
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         if not conn_data:
+            self._current_conn_id = None
             return
+            
+        new_conn_id = conn_data.get("id")
+        self._current_conn_id = new_conn_id
 
         parent_group = item.parent()
         if not parent_group:

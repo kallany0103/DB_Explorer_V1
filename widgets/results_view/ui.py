@@ -343,6 +343,20 @@ def create_results_ui(manager, tab_content):
     }
 
     process_filter_layout.addStretch()
+    
+    # Search Field
+    search_edit = QLineEdit()
+    search_edit.setPlaceholderText("Search processes...")
+    search_edit.setFixedWidth(150)
+    search_edit.textChanged.connect(lambda text: manager._filter_processes_table(tab_content, text))
+    process_filter_layout.addWidget(QLabel("Search:"))
+    process_filter_layout.addWidget(search_edit)
+    
+    # View Log Button
+    view_log_btn = QPushButton(qta.icon("fa5s.file-alt"), "View Log")
+    view_log_btn.clicked.connect(lambda: manager._handle_view_log(tab_content))
+    process_filter_layout.addWidget(view_log_btn)
+
 
     refresh_now_btn = QPushButton("Refresh")
     refresh_now_btn.setObjectName("process_refresh_now_btn")
