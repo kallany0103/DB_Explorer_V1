@@ -10,8 +10,6 @@ from dialogs.table_properties import TablePropertiesDialog
 from dialogs.search_objects_dialog import SearchObjectsDialog
 from dialogs.database_statistics_dialog import DatabaseStatisticsDialog
 from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
-from dialogs.backup_dialog import BackupDialog
-from dialogs.restore_dialog import RestoreDialog
 from dialogs.preferences_dialog import PreferencesDialog
 
 __all__ = [
@@ -27,7 +25,5 @@ __all__ = [
 	"SearchObjectsDialog",
 	"DatabaseStatisticsDialog",
 	"CreateMaterializedViewDialog",
-	"BackupDialog",
-	"RestoreDialog",
 	"PreferencesDialog",
 ]

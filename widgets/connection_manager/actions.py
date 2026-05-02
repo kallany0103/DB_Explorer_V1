@@ -28,9 +28,9 @@ from dialogs import (
     TablePropertiesDialog,
     SearchObjectsDialog,
     DatabaseStatisticsDialog,
-    BackupDialog,
-    RestoreDialog,
 )
+from widgets.backup_and_restore.backup.dialog import BackupDialog
+from widgets.backup_and_restore.restore.dialog import RestoreDialog
 from workers.signals import ProcessSignals, QuerySignals, emit_process_started
 from workers.workers import (
     RunnableExportFromModel, 
@@ -39,13 +39,15 @@ from workers.workers import (
     RunnableSqliteRestore
 )
 from workers.process_worker import ProcessWorker
-from widgets.connection_manager.backup_restore_handler import BackupRestoreHandler
+from widgets.backup_and_restore.backup.engine import BackupEngine
+from widgets.backup_and_restore.restore.engine import RestoreEngine
 
 
 class ConnectionActions:
     def __init__(self, manager):
         self.manager = manager
-        self.backup_restore_handler = BackupRestoreHandler(self.manager.main_window)
+        self.backup_engine = BackupEngine(self.manager.main_window)
+        self.restore_engine = RestoreEngine(self.manager.main_window)
 
     def count_table_rows(self, item_data, table_name):
         if not item_data:
@@ -1334,14 +1336,14 @@ class ConnectionActions:
 
             if db_type == "postgres":
                 # Build command
-                binary = self.backup_restore_handler.get_pg_binary("pg_dump")
+                binary = self.backup_engine.get_pg_binary("pg_dump")
                 
                 # Handle granularity (database, schema, table)
                 granularity = options.get("object_type", "database")
                 object_name = options.get("display_name") or item_data.get("table_name") or item_data.get("schema_name")
                 schema_name = item_data.get("schema_name")
                 
-                args = self.backup_restore_handler.build_pg_dump_args(
+                args = self.backup_engine.build_pg_dump_args(
                     conn_data, 
                     options["filename"],
                     format=options.get("format", "custom"),
@@ -1363,7 +1365,7 @@ class ConnectionActions:
                 }
                 
                 # Environment for password handling
-                env = self.backup_restore_handler.get_pg_environment(conn_data)
+                env = self.backup_engine.get_pg_environment(conn_data)
                 
                 worker = ProcessWorker(binary, args, metadata=metadata, env=env)
                 
@@ -1431,9 +1433,9 @@ class ConnectionActions:
 
             if db_type == "postgres":
                 # Build command
-                binary = self.backup_restore_handler.get_pg_binary("pg_restore")
+                binary = self.restore_engine.get_pg_binary("pg_restore")
                 
-                args = self.backup_restore_handler.build_pg_restore_args(
+                args = self.restore_engine.build_pg_restore_args(
                     conn_data, 
                     options["filename"],
                     format=options.get("format", "custom"),
@@ -1452,7 +1454,7 @@ class ConnectionActions:
                 }
                 
                 # Environment for password handling
-                env = self.backup_restore_handler.get_pg_environment(conn_data)
+                env = self.restore_engine.get_pg_environment(conn_data)
                 
                 worker = ProcessWorker(binary, args, metadata=metadata, env=env)
                 
