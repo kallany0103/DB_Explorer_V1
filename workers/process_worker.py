@@ -25,6 +25,8 @@ class ProcessWorker(QObject):
         self.signals = ProcessSignals()
         
         self.process = QProcess()
+        self.full_output = []
+        
         if self.env:
             self.process.setProcessEnvironment(self.env)
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
@@ -38,7 +40,10 @@ class ProcessWorker(QObject):
         self.start_time = time.time()
         self.signals.started.emit(self.process_id, self.metadata)
         
-        # Start the process
+        # Log the command being run
+        cmd_str = f"Running command: {self.command} {' '.join(self.args)}\n"
+        self.full_output.append(cmd_str)
+        
         self.process.start(self.command, self.args)
         
         if not self.process.waitForStarted():
@@ -47,26 +52,33 @@ class ProcessWorker(QObject):
             self.signals.finished.emit(self.process_id, err_msg, 0.0, 0)
 
     def handle_stdout(self):
-        data = self.process.readAllStandardOutput().data().decode()
+        data = self.process.readAllStandardOutput().data().decode(errors='replace')
         if data:
+            self.full_output.append(data)
             self.signals.output.emit(self.process_id, data)
 
     def handle_stderr(self):
-        data = self.process.readAllStandardError().data().decode()
+        data = self.process.readAllStandardError().data().decode(errors='replace')
         if data:
-            # Often pg_dump sends progress/info to stderr, so we treat it as output/info unless it's a crash
+            self.full_output.append(data)
             self.signals.output.emit(self.process_id, data)
 
     def handle_finished(self, exit_code, exit_status):
         elapsed = time.time() - self.start_time
+        total_log = "".join(self.full_output).strip()
+        
         if exit_code == 0:
-            self.signals.finished.emit(self.process_id, "Process completed successfully.", elapsed, 0)
+            msg = total_log or "Process completed successfully."
+            self.signals.finished.emit(self.process_id, msg, elapsed, 0)
         else:
-            # Read any remaining stderr output before signalling error
-            remaining = self.process.readAllStandardError().data().decode().strip()
-            err = remaining or f"Process exited with code {exit_code}"
-            # Only emit error — do NOT also emit finished, as that would overwrite the Error status
+            remaining = self.process.readAllStandardError().data().decode(errors='replace').strip()
+            if remaining:
+                self.full_output.append(remaining)
+                total_log = "".join(self.full_output).strip()
+            
+            err = total_log or f"Process exited with code {exit_code}"
             self.signals.error.emit(self.process_id, err)
+
 
     def cancel(self):
         """Terminates the running process."""

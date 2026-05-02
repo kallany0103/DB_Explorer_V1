@@ -1,9 +1,13 @@
 import datetime
 import sqlite3 as sqlite
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPalette, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QComboBox, QPushButton, QStackedWidget, QStyledItemDelegate, QStyle, QStyleOptionViewItem, QTableView, QWidget, QAbstractItemView
+from PySide6.QtCore import Qt, QTimer, QSortFilterProxyModel
+from PySide6.QtGui import QColor, QPalette, QStandardItem, QStandardItemModel, QFont
+from PySide6.QtWidgets import (
+    QComboBox, QPushButton, QStackedWidget, QStyledItemDelegate, 
+    QStyle, QStyleOptionViewItem, QTableView, QWidget, QAbstractItemView,
+    QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QLabel
+)
 
 
 class ProcessRowDelegate(QStyledItemDelegate):
@@ -103,6 +107,31 @@ def create_processes_view(manager, tab_content):
         lambda section: manager._handle_process_row_header_click(tab_content, section)
     )
     return processes_view
+
+
+class LogViewerDialog(QDialog):
+    def __init__(self, title, log_text, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(700, 500)
+        
+        layout = QVBoxLayout(self)
+        
+        self.text_edit = QTextEdit()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setPlainText(log_text)
+        
+        # Use a monospace font for logs
+        font = QFont("Consolas")
+        if not font.fixedPitch():
+            font = QFont("Courier New")
+        self.text_edit.setFont(font)
+        
+        layout.addWidget(self.text_edit)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
 
 
 def get_process_status_meta(manager, status_text):
@@ -208,7 +237,14 @@ def initialize_processes_model(manager, tab_content):
     tab_content.processes_model.setHorizontalHeaderLabels(
         ["PID", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Details"]
     )
-    processes_view.setModel(tab_content.processes_model)
+    
+    # Use proxy for filtering
+    tab_content.processes_proxy = QSortFilterProxyModel()
+    tab_content.processes_proxy.setSourceModel(tab_content.processes_model)
+    tab_content.processes_proxy.setFilterKeyColumn(-1) # Filter across all columns
+    tab_content.processes_proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    
+    processes_view.setModel(tab_content.processes_proxy)
 
 
 def switch_to_processes_view(manager):
@@ -409,6 +445,37 @@ def refresh_processes_view(manager):
     manager._update_process_summary_ui(current_tab, status_counts, len(data), len(filtered_data))
     processes_view.resizeColumnsToContents()
     processes_view.horizontalHeader().setStretchLastSection(True)
+
+
+def handle_view_log(manager, tab_content):
+    processes_view = tab_content.findChild(QTableView, "processes_view")
+    if not processes_view:
+        return
+        
+    selection = processes_view.selectionModel().selectedRows()
+    if not selection:
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(tab_content, "Select Process", "Please select a process from the table first.")
+        return
+        
+    proxy_index = selection[0]
+    model = processes_view.model() # This is the proxy
+    
+    # Details is at column 8
+    details_index = model.index(proxy_index.row(), 8)
+    details_text = str(details_index.data() or "No details available.")
+    
+    pid_index = model.index(proxy_index.row(), 0)
+    pid = str(pid_index.data() or "Unknown")
+    
+    dialog = LogViewerDialog(f"Process Log - {pid}", details_text, tab_content)
+    dialog.exec()
+
+
+def filter_processes_table(manager, tab_content, text):
+    proxy = getattr(tab_content, "processes_proxy", None)
+    if proxy:
+        proxy.setFilterFixedString(text)
 
 
 def get_current_tab_processes_model(manager):

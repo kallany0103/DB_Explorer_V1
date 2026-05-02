@@ -183,7 +183,7 @@ class TreeHelpers:
             self.manager._saved_tree_paths = []
             self.manager._saved_selection_name = None
 
-    def save_schema_tree_expansion_state(self):
+    def save_schema_tree_expansion_state(self, conn_id):
         saved_paths = []
         if not hasattr(self.manager, 'schema_tree') or not hasattr(self.manager, 'schema_model'):
             return
@@ -201,12 +201,19 @@ class TreeHelpers:
                     traverse(index, new_path)
 
         traverse(QModelIndex(), [])
-        self.manager._saved_schema_tree_paths = saved_paths
-
+        
+        if not hasattr(self.manager, '_schema_states'):
+            self.manager._schema_states = {}
+            
+        # Save both paths and selection
+        state = {
+            'paths': saved_paths,
+            'selection': None
+        }
+        
         # Save selected schema item path if any
         selection = tree.selectionModel().selectedIndexes()
         if selection:
-            # Reconstruct path from selection
             sel_index = selection[0]
             if sel_index.column() != 0:
                 sel_index = sel_index.siblingAtColumn(0)
@@ -216,12 +223,17 @@ class TreeHelpers:
             while curr.isValid():
                 sel_path.insert(0, curr.data(Qt.ItemDataRole.DisplayRole))
                 curr = curr.parent()
-            self.manager._saved_schema_selection_path = tuple(sel_path)
-        else:
-            self.manager._saved_schema_selection_path = None
+            state['selection'] = tuple(sel_path)
+            
+        if conn_id:
+            self.manager._schema_states[conn_id] = state
 
-    def restore_schema_tree_expansion_state(self):
-        if not hasattr(self.manager, '_saved_schema_tree_paths') or not self.manager._saved_schema_tree_paths:
+    def restore_schema_tree_expansion_state(self, conn_id):
+        if not conn_id or not hasattr(self.manager, '_schema_states'):
+            return
+            
+        state = self.manager._schema_states.get(conn_id)
+        if not state:
             return
 
         tree = self.manager.schema_tree
@@ -244,13 +256,13 @@ class TreeHelpers:
                         break
 
             # Sort paths by length so we expand parents before children
-            paths = sorted(self.manager._saved_schema_tree_paths, key=len)
+            paths = sorted(state.get('paths', []), key=len)
             for path in paths:
                 expand_path(path)
                 
             # Restore selection
-            if hasattr(self.manager, '_saved_schema_selection_path') and self.manager._saved_schema_selection_path:
-                sel_path = self.manager._saved_schema_selection_path
+            sel_path = state.get('selection')
+            if sel_path:
                 parent_index = QModelIndex()
                 final_index = None
                 for part in sel_path:
@@ -273,8 +285,6 @@ class TreeHelpers:
                     
         finally:
             tree.setUpdatesEnabled(True)
-            self.manager._saved_schema_tree_paths = []
-            self.manager._saved_schema_selection_path = None
 
     def get_item_depth(self, item):
         depth = 0
