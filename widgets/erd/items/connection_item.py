@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QStyle, QMenu
 )
 from PySide6.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QFont
-from PySide6.QtCore import Qt, QPointF, QObject, Property, QPropertyAnimation
+from PySide6.QtCore import Qt, QPointF, QObject, Property, QPropertyAnimation, QEasingCurve
 from widgets.erd.constants import RELATION_TYPES
 from widgets.erd.routing import ERDConnectionPathPlanner
 from widgets.erd.commands import ChangeRelationTypeCommand
@@ -118,10 +118,11 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         self._dash_offset = 0.0
         
         self._animation = QPropertyAnimation(self, b"dash_offset")
-        self._animation.setDuration(1000)
+        self._animation.setDuration(800)
         self._animation.setStartValue(0.0)
-        self._animation.setEndValue(20.0)
+        self._animation.setEndValue(14.0)  # = 8+6, one full dash-cycle for seamless loop
         self._animation.setLoopCount(-1)
+        self._animation.setEasingCurve(QEasingCurve.Type.Linear)
 
         source_item.connections.append(self)
         target_item.connections.append(self)
@@ -754,7 +755,6 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         draw_path = path
 
         pen = self._apply_line_style_to_pen(QPen(self.pen()), hovered=bool(is_hovered))
-        painter.setPen(pen)
 
         should_snap = (
             hasattr(self.source_item, "table_name")
@@ -764,25 +764,30 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         )
         display_path = self._get_rendered_path(draw_path, pen.widthF(), should_snap)
 
+        # 1. Draw base line — faded when animated (draw.io style)
+        if self._is_animated:
+            faded_pen = QPen(pen)
+            c = faded_pen.color()
+            c.setAlpha(60)
+            faded_pen.setColor(c)
+            painter.setPen(faded_pen)
+        else:
+            painter.setPen(pen)
         painter.drawPath(display_path)
 
-        # 2. Draw Animation Overlay (Dashed/Dotted Flow)
+        # 2. Draw Animation Overlay — marching dashes in the line's own color
         if self._is_animated:
             anim_path = display_path
             if not anim_path.isEmpty():
-                anim_pen = QPen(QColor("#1A73E8") if is_hovered else QColor("#4285F4"))
+                anim_pen = QPen(pen.color())  # line's own color, not hard-coded blue
                 anim_pen.setWidthF(pen.widthF() + 0.5)
-                # Use a distinct dash pattern for "flow" (e.g., small dots/dashes with large gaps)
-                anim_pen.setDashPattern([2, 10]) 
-                anim_pen.setDashOffset(self._dash_offset)
+                anim_pen.setDashPattern([8.0, 6.0])  # draw.io marching-dash ratio
                 anim_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-                
-                painter.setPen(anim_pen)
-                
+
                 if self._flow_mode == "bidirectional":
-                    # Forward flow
+                    anim_pen.setDashOffset(self._dash_offset)
+                    painter.setPen(anim_pen)
                     painter.drawPath(anim_path)
-                    # Backward flow
                     anim_pen.setDashOffset(-self._dash_offset)
                     painter.setPen(anim_pen)
                     painter.drawPath(anim_path)
@@ -790,8 +795,12 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
                     anim_pen.setDashOffset(-self._dash_offset)
                     painter.setPen(anim_pen)
                     painter.drawPath(anim_path)
-                else: # Default forward
+                else:  # forward (default)
+                    anim_pen.setDashOffset(self._dash_offset)
+                    painter.setPen(anim_pen)
                     painter.drawPath(anim_path)
+
+        painter.setPen(pen)  # restore full pen for crow's foot / arrow drawing
 
         # 3. Draw Crow's Foot Ends
         if self._is_chen_connection():
@@ -1009,56 +1018,129 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
     # ------------------------------------------------------------------
 
     def contextMenuEvent(self, event):
-        menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
-            QMenu::item { padding: 6px 16px; font-size: 9pt; }
-            QMenu::item:selected { background: #e8f0fe; color: #1a73e8; border-radius: 4px; }
+        _SS = """
+            QMenu {
+                min-width: 220px;
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 4px;
+                font-family: 'Segoe UI';
+            }
+            QMenu::item {
+                padding: 7px 16px 7px 10px;
+                font-size: 10pt;
+                color: #1f2937;
+                border-radius: 4px;
+                margin: 1px 4px;
+            }
+            QMenu::item:selected  { background: #eff6ff; color: #1d4ed8; }
+            QMenu::item:checked   { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
+            QMenu::item:disabled  {
+                color: #9ca3af;
+                font-size: 8pt;
+                font-weight: 700;
+                padding: 6px 16px 2px 10px;
+                background: transparent;
+                margin: 0px 4px;
+            }
             QMenu::separator { height: 1px; background: #e5e7eb; margin: 4px 8px; }
-        """)
+            QMenu::right-arrow { width: 8px; height: 8px; }
+        """
 
+        def _make_menu(parent=None):
+            m = QMenu(parent)
+            m.setStyleSheet(_SS)
+            return m
+
+        def _header(m, text):
+            a = m.addAction(text.upper())
+            a.setEnabled(False)
+            return a
+
+        menu = _make_menu()
+
+        # ── Section: Cardinality ──────────────────────────────────────
+        _header(menu, "Cardinality")
         for type_key, info in self.RELATION_TYPES.items():
-            action = menu.addAction(info['label'])
+            action = menu.addAction(
+                qta.icon(info['icon'], color='#5F6368'), info['label']
+            )
             action.setCheckable(True)
             action.setChecked(type_key == self.relation_type)
             action.triggered.connect(lambda checked, k=type_key: self.set_relation_type(k))
 
+        # ── Section: Label ────────────────────────────────────────────
         menu.addSeparator()
-        label_text = "Edit Label" if self._label.isVisible() else "Add Label"
-        menu.addAction(label_text).triggered.connect(self._open_label_editor)
+        _header(menu, "Label")
         if self._label.isVisible():
-            menu.addAction("Clear Label").triggered.connect(lambda: self.set_label(""))
+            menu.addAction(
+                qta.icon('fa5s.edit', color='#374151'), "Edit Label"
+            ).triggered.connect(self._open_label_editor)
+            menu.addAction(
+                qta.icon('fa5s.times', color='#374151'), "Clear Label"
+            ).triggered.connect(lambda: self.set_label(""))
+        else:
+            menu.addAction(
+                qta.icon('fa5s.tag', color='#374151'), "Add Label"
+            ).triggered.connect(self._open_label_editor)
 
+        # ── Section: Actions ──────────────────────────────────────────
         menu.addSeparator()
-        menu.addAction("Detach Relationship").triggered.connect(self.detach_relationship)
-        
+        _header(menu, "Actions")
+        menu.addAction(
+            qta.icon('mdi.link-off', color='#374151'), "Detach Relationship"
+        ).triggered.connect(self.detach_relationship)
+
+        # ── Section: Style & Animation ────────────────────────────────
         menu.addSeparator()
-        # Line Style Submenu
-        style_menu = menu.addMenu("Line Style")
-        for style in ["solid", "dashed", "dotted"]:
-            act = style_menu.addAction(style.capitalize())
+        _header(menu, "Style & Animation")
+
+        style_menu = _make_menu(menu)
+        style_menu.setTitle("Line Style")
+        style_menu.setIcon(qta.icon('mdi.format-line-style', color='#374151'))
+        _style_icons = {
+            'solid':  ('mdi.minus',                          '#374151'),
+            'dashed': ('mdi.dots-horizontal',                '#374151'),
+            'dotted': ('mdi.dots-horizontal-circle-outline', '#374151'),
+        }
+        for style in ['solid', 'dashed', 'dotted']:
+            ico, col = _style_icons[style]
+            act = style_menu.addAction(qta.icon(ico, color=col), style.capitalize())
             act.setCheckable(True)
             act.setChecked(self._line_style == style)
             act.triggered.connect(lambda checked, s=style: self.set_line_style(s))
+        menu.addMenu(style_menu)
 
-        # Flow Mode Submenu
-        flow_menu = menu.addMenu("Flow Direction")
-        for mode in ["none", "forward", "backward", "bidirectional"]:
-            act = flow_menu.addAction(mode.capitalize())
+        flow_menu = _make_menu(menu)
+        flow_menu.setTitle("Flow Direction")
+        flow_menu.setIcon(qta.icon('mdi.transit-connection-variant', color='#374151'))
+        _flow_icons = {
+            'none':          ('mdi.block-helper',               '#374151'),
+            'forward':       ('mdi.arrow-right',                '#374151'),
+            'backward':      ('mdi.arrow-left',                 '#374151'),
+            'bidirectional': ('mdi.arrow-left-right',           '#374151'),
+        }
+        for mode in ['none', 'forward', 'backward', 'bidirectional']:
+            ico, col = _flow_icons[mode]
+            act = flow_menu.addAction(qta.icon(ico, color=col), mode.capitalize())
             act.setCheckable(True)
             act.setChecked(self._flow_mode == mode)
             act.triggered.connect(lambda checked, m=mode: self.set_flow_mode(m))
+        menu.addMenu(flow_menu)
 
-        # Animation Toggle
-        anim_act = menu.addAction("Animate Flow")
+        anim_icon = 'fa5s.pause' if self._is_animated else 'fa5s.play'
+        anim_act = menu.addAction(qta.icon(anim_icon, color='#374151'), "Animate Flow")
         anim_act.setCheckable(True)
         anim_act.setChecked(self._is_animated)
         anim_act.triggered.connect(self.set_animated)
 
+        # ── Destructive ───────────────────────────────────────────────
         menu.addSeparator()
-        menu.addAction(
+        remove_act = menu.addAction(
             qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Relationship"
-        ).triggered.connect(self._remove_self)
+        )
+        remove_act.triggered.connect(self._remove_self)
 
         menu.exec(event.screenPos())
 

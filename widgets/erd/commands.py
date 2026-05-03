@@ -232,7 +232,7 @@ class DetachConnectionCommand(QUndoCommand):
         if self.connection_item in self.connection_item.target_item.connections:
             self.connection_item.target_item.connections.remove(self.connection_item)
 
-        full_source = f"{self.connection_item.source_item.schema_name or DEFAULT_SCHEMA}.{self.connection_item.source_item.table_name}"
+        full_source = f"{getattr(self.connection_item.source_item, 'schema_name', None) or DEFAULT_SCHEMA}.{self.connection_item.source_item.table_name}"
         if full_source in self.widget.schema_data:
             fk_list = self.widget.schema_data[full_source].get("foreign_keys", [])
             self.widget.schema_data[full_source]["foreign_keys"] = [
@@ -252,7 +252,7 @@ class DetachConnectionCommand(QUndoCommand):
         if self.connection_item not in self.connection_item.target_item.connections:
             self.connection_item.target_item.connections.append(self.connection_item)
 
-        full_source = f"{self.connection_item.source_item.schema_name or DEFAULT_SCHEMA}.{self.connection_item.source_item.table_name}"
+        full_source = f"{getattr(self.connection_item.source_item, 'schema_name', None) or DEFAULT_SCHEMA}.{self.connection_item.source_item.table_name}"
         if full_source in self.widget.schema_data:
             fk_list = self.widget.schema_data[full_source].setdefault("foreign_keys", [])
             exists = any(fk['from'] == self.source_col and fk['table'] == self.target_table_name for fk in fk_list)

@@ -16,7 +16,8 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QFileDialog, QMessageBox, QDialog,
-    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog
+    QTextEdit, QDialogButtonBox, QToolButton, QLineEdit, QInputDialog,
+    QFrame, QLabel, QProgressBar, QStackedWidget
 )
 from PySide6.QtGui import QAction, QTransform, QPixmap, QPainter, QFont, QColor, QUndoStack, QPdfWriter, QPageSize
 from PySide6.QtCore import Qt, QSize, QRectF, QTimer, QPointF
@@ -239,9 +240,10 @@ def generate_sql_script(schema_data, dialect="postgresql"):
     return "\n".join(sql_lines)
 
 class ERDWidget(QWidget):
-    def __init__(self, schema_data, parent=None):
+    def __init__(self, schema_data, parent=None, loading=False):
         super().__init__(parent)
         self.schema_data = schema_data
+        self._loading = loading
         self.notes_data = []
         self.view_state_data = None
         self.undo_stack = QUndoStack(self)
@@ -324,8 +326,14 @@ class ERDWidget(QWidget):
         self.view_layout = QVBoxLayout(self.view_container)
         self.view_layout.setContentsMargins(0, 0, 0, 0)
         self.view_layout.addWidget(self.view)
-        
-        content_layout.addWidget(self.view_container, 1)
+
+        # Canvas stack: 0 = loading overlay, 1 = ERD canvas
+        self._canvas_stack = QStackedWidget()
+        self._canvas_stack.addWidget(self._build_loading_overlay())
+        self._canvas_stack.addWidget(self.view_container)
+        self._canvas_stack.setCurrentIndex(0 if self._loading else 1)
+
+        content_layout.addWidget(self._canvas_stack, 1)
         
         layout.addLayout(content_layout)
         
@@ -358,7 +366,7 @@ class ERDWidget(QWidget):
         self.toolbar.addSeparator()
         
         # Group 3: Auto Align & History
-        align_action = QAction(qta.icon('fa5s.th', color='#555555'), "Auto Align", self)
+        align_action = QAction(qta.icon('fa5s.magic', color='#555555'), "Auto Align", self)
         align_action.setShortcut("Alt+Ctrl+L")
         align_action.triggered.connect(self.auto_layout)
         self.toolbar.addAction(align_action)
@@ -384,14 +392,14 @@ class ERDWidget(QWidget):
         self.show_details_action.triggered.connect(self.toggle_details)
         self.toolbar.addAction(self.show_details_action)
 
-        self.show_types_action = QAction(qta.icon('fa5s.font', color='#555555'), "Show Data Types", self)
+        self.show_types_action = QAction(qta.icon('mdi.label-outline', color='#555555'), "Show Data Types", self)
         self.show_types_action.setShortcut("Alt+Ctrl+D")
         self.show_types_action.setCheckable(True)
         self.show_types_action.setChecked(True)
         self.show_types_action.triggered.connect(self.toggle_types)
         self.toolbar.addAction(self.show_types_action)
         
-        self.show_panel_action = QAction(qta.icon('fa5s.columns', color='#555555'), "Toggle Panel", self)
+        self.show_panel_action = QAction(qta.icon('mdi.card-text-outline', color='#555555'), "Toggle Panel", self)
         self.show_panel_action.setCheckable(True)
         self.show_panel_action.setChecked(True)
         self.show_panel_action.triggered.connect(self.toggle_panel)
@@ -665,6 +673,74 @@ class ERDWidget(QWidget):
 
         for item_state in state.get("free_items", []):
             self._create_free_item_from_state(item_state)
+
+    # ------------------------------------------------------------------
+    # Async loading overlay
+    # ------------------------------------------------------------------
+
+    def _build_loading_overlay(self):
+        frame = QFrame()
+        frame.setStyleSheet("QFrame { background: #f8f9fb; }")
+        v = QVBoxLayout(frame)
+        v.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.setSpacing(14)
+
+        spinner = QProgressBar()
+        spinner.setRange(0, 0)
+        spinner.setFixedWidth(240)
+        spinner.setFixedHeight(5)
+        spinner.setTextVisible(False)
+        spinner.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                background: #e5e7eb;
+                border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background: #1A73E8;
+                border-radius: 3px;
+            }
+        """)
+
+        title = QLabel("Building diagram\u2026")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(
+            "color: #1f2937; font-size: 14px; font-weight: 600; background: transparent;"
+        )
+
+        subtitle = QLabel("Reading database structure\u2026")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet(
+            "color: #6b7280; font-size: 10px; background: transparent;"
+        )
+
+        self._load_error_label = QLabel("")
+        self._load_error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._load_error_label.setWordWrap(True)
+        self._load_error_label.setStyleSheet(
+            "color: #DC2626; font-size: 10px; background: transparent;"
+        )
+        self._load_error_label.hide()
+
+        v.addWidget(spinner)
+        v.addWidget(title)
+        v.addWidget(subtitle)
+        v.addWidget(self._load_error_label)
+        return frame
+
+    def populate(self, schema_data):
+        """Called by the async worker when the schema fetch completes."""
+        self.schema_data = schema_data
+        self.load_schema()
+        self.auto_layout()
+        self._canvas_stack.setCurrentIndex(1)
+
+    def show_load_error(self, message):
+        """Display an inline error on the loading overlay (worker failed)."""
+        self._load_error_label.setText(f"\u26a0\ufe0f  {message}")
+        self._load_error_label.show()
+
+    # ------------------------------------------------------------------
 
     def load_schema(self):
         # Color palette for Subject Areas (Subject Area Highlighting)

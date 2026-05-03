@@ -228,13 +228,18 @@ class PostgresConnectionDialog(QDialog):
 
     def testConnection(self):
         db_name = self.db_input.text()
+        host = self.host_input.text()
+        _cloud_domains = ["aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com", "cloud.google.com"]
+        is_cloud = any(d in host.lower() for d in _cloud_domains)
+        _extra = {"sslmode": "require"} if is_cloud else {}
         try:
             conn = psycopg2.connect(
-                host=self.host_input.text(),
+                host=host,
                 port=int(self.port_input.text()),
                 database=db_name,
                 user=self.user_input.text(),
-                password=self.password_input.text()
+                password=self.password_input.text(),
+                **_extra
             )
             conn.close()
             QMessageBox.information(self, "Success", "Connection successful!")

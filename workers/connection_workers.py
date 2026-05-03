@@ -169,6 +169,86 @@ class ServiceNowSchemaWorker(QRunnable):
                     pass
 
 
+class ERDSchemaFetchWorker(QRunnable):
+    """Fetches the complete filtered schema for ERD generation off the GUI thread."""
+
+    def __init__(self, item_data):
+        super().__init__()
+        self.item_data = item_data
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        try:
+            item_data = self.item_data
+            db_type_val = (
+                item_data.get("db_type") or item_data.get("type") or
+                item_data.get("code") or ""
+            ).upper()
+            schema_name = item_data.get("schema_name")
+            table_name  = item_data.get("table_name")
+            conn_info   = item_data.get("conn_data") or item_data
+
+            if "POSTGRES" in db_type_val:
+                full_schema = db.get_postgres_schema(conn_info, schema_name=schema_name)
+            elif "SQLITE" in db_type_val:
+                sqlite_db_path = conn_info.get("db_path") if isinstance(conn_info, dict) else conn_info
+                full_schema = db.get_sqlite_schema(sqlite_db_path)
+            elif "CSV" in db_type_val:
+                full_schema = db.get_csv_schema(conn_info)
+            elif "SERVICENOW" in db_type_val:
+                full_schema = db.get_servicenow_schema(conn_info, table_name=table_name)
+            else:
+                try:
+                    self.signals.error.emit(
+                        f"ERD generation is not supported for {db_type_val or 'unknown type'}"
+                    )
+                except RuntimeError:
+                    pass
+                return
+
+            if not full_schema:
+                try:
+                    self.signals.error.emit("Could not retrieve schema data for ERD.")
+                except RuntimeError:
+                    pass
+                return
+
+            # Filter to just the requested table + its FK neighbours
+            filtered_schema = full_schema
+            if table_name:
+                target = (
+                    f"{schema_name}.{table_name}"
+                    if schema_name and "POSTGRES" in db_type_val
+                    else table_name
+                )
+                if target in full_schema:
+                    related = {target}
+                    for fk in full_schema[target].get("foreign_keys", []):
+                        related.add(fk["table"])
+                    for t_name, t_info in full_schema.items():
+                        for fk in t_info.get("foreign_keys", []):
+                            if fk["table"] == target:
+                                related.add(t_name)
+                    filtered_schema = {n: v for n, v in full_schema.items() if n in related}
+
+            if not filtered_schema:
+                try:
+                    self.signals.error.emit("No related tables found for ERD.")
+                except RuntimeError:
+                    pass
+                return
+
+            try:
+                self.signals.finished.emit(filtered_schema)
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+
+
 class ServiceNowTableDetailsWorker(QRunnable):
     """Loads column metadata for a single ServiceNow table off the GUI thread."""
 

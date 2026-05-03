@@ -117,58 +117,26 @@ class ConnectionManager(QWidget):
         self.generate_erd_for_item(item_data, display_name)
 
     def generate_erd_for_item(self, item_data, display_name):
-        try:
-            if not item_data or not isinstance(item_data, dict):
-                QMessageBox.warning(self, "Error", "Invalid item data for ERD generation.")
-                return
+        if not item_data or not isinstance(item_data, dict):
+            QMessageBox.warning(self, "Error", "Invalid item data for ERD generation.")
+            return
 
-            db_type_val = (item_data.get("db_type") or item_data.get("type") or item_data.get("code") or "").upper()
-            schema_name = item_data.get("schema_name")
-            table_name = item_data.get("table_name")
-            conn_info = item_data.get("conn_data") or item_data
+        # Phase 1 — open the tab instantly with a loading overlay
+        schema_name = item_data.get("schema_name")
+        table_name  = item_data.get("table_name")
+        erd_widget  = ERDWidget({}, loading=True)
+        tab_title   = self._build_erd_tab_title(display_name, schema_name, table_name)
+        index = self.tab_widget.addTab(erd_widget, tab_title)
+        self.tab_widget.setTabIcon(index, self._get_erd_tab_icon())
+        self.tab_widget.setCurrentIndex(index)
+        self.main_window.renumber_tabs()
 
-            if "POSTGRES" in db_type_val:
-                full_schema = db.get_postgres_schema(conn_info, schema_name=schema_name)
-            elif "SQLITE" in db_type_val:
-                sqlite_db_path = conn_info.get("db_path") if isinstance(conn_info, dict) else conn_info
-                full_schema = db.get_sqlite_schema(sqlite_db_path)
-            elif "CSV" in db_type_val:
-                full_schema = db.get_csv_schema(conn_info)
-            elif "SERVICENOW" in db_type_val:
-                full_schema = db.get_servicenow_schema(conn_info, table_name=table_name)
-            else:
-                QMessageBox.warning(self, "Not Supported", f"ERD generation is not supported for {db_type_val or 'unknown type'}")
-                return
-
-            if not full_schema:
-                QMessageBox.warning(self, "No Data", "Could not retrieve schema data for ERD.")
-                return
-
-            filtered_schema = full_schema
-            if table_name:
-                target_full_name = f"{schema_name}.{table_name}" if schema_name and "POSTGRES" in db_type_val else table_name
-                if target_full_name in full_schema:
-                    related_tables = {target_full_name}
-                    for fk in full_schema[target_full_name].get("foreign_keys", []):
-                        related_tables.add(fk["table"])
-                    for t_name, t_info in full_schema.items():
-                        for fk in t_info.get("foreign_keys", []):
-                            if fk["table"] == target_full_name:
-                                related_tables.add(t_name)
-                    filtered_schema = {name: info for name, info in full_schema.items() if name in related_tables}
-
-            if not filtered_schema:
-                QMessageBox.warning(self, "No Data", "No related tables found for ERD.")
-                return
-
-            erd_widget = ERDWidget(filtered_schema)
-            tab_title = self._build_erd_tab_title(display_name, schema_name, table_name)
-            index = self.tab_widget.addTab(erd_widget, tab_title)
-            self.tab_widget.setTabIcon(index, self._get_erd_tab_icon())
-            self.tab_widget.setCurrentIndex(index)
-            self.main_window.renumber_tabs()
-        except Exception as exc:
-            QMessageBox.critical(self, "Error", f"Failed to generate ERD: {exc}")
+        # Phase 2 — fetch schema in background; populate widget when done
+        from workers.connection_workers import ERDSchemaFetchWorker
+        worker = ERDSchemaFetchWorker(item_data)
+        worker.signals.finished.connect(erd_widget.populate)
+        worker.signals.error.connect(erd_widget.show_load_error)
+        self.thread_pool.start(worker)
 
     def show_error_popup(self, msg):
         QMessageBox.critical(self, "Error", msg)

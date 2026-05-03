@@ -99,7 +99,27 @@ def apply_main_window_styles(main_window):
         QTabWidget::pane {{ border-top: 1px solid {border_color}; }}
         QTabBar::tab {{ background: #ECEFF3; border: 1px solid {border_color}; padding: 6px 12px; border-bottom: none; font-size: 9pt; }}
         QTabBar::tab:selected {{ background: {selection_color}; color: white; }}
-        QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; }}
+        QComboBox {{ border: 1px solid {border_color}; padding: 2px; background-color: white; color: {text_color_on_primary}; }}
+        QComboBox QAbstractItemView {{
+            background-color: #ffffff;
+            color: {text_color_on_primary};
+            selection-background-color: #DDE2E8;
+            selection-color: {text_color_on_primary};
+            border: 1px solid {border_color};
+            outline: none;
+        }}
+        QComboBox QAbstractItemView::item {{
+            padding: 4px 8px;
+            color: {text_color_on_primary};
+        }}
+        QComboBox QAbstractItemView::item:hover {{
+            background-color: #EEF1F6;
+            color: {text_color_on_primary};
+        }}
+        QComboBox QAbstractItemView::item:selected {{
+            background-color: #DDE2E8;
+            color: {text_color_on_primary};
+        }}
 
         QLineEdit#table_search_box {{
             background-color: #ffffff;
