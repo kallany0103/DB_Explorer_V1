@@ -5,19 +5,7 @@ Package-native implementation used as the primary ConnectionManager entrypoint.
 
 
 import qtawesome as qta
-# from PyQt6.QtCore import Qt, QModelIndex
-# from PyQt6.QtGui import QStandardItem
-# from PyQt6.QtWidgets import (
-#     QWidget,
-#     QMessageBox,
-#     QDialog,
-#     QVBoxLayout,
-#     QLabel,
-#     QLineEdit,
-#     QPushButton,
-#     QHBoxLayout,
-#     QFormLayout,
-# )
+
 
 from PySide6.QtCore import Qt, QModelIndex
 from PySide6.QtGui import QStandardItem
@@ -42,6 +30,7 @@ from workers.connection_workers import (
     PostgresSchemaWorker,
     ServiceNowSchemaWorker,
     SQLiteSchemaWorker,
+    ERDSchemaFetchWorker
 )
 
 
@@ -132,7 +121,6 @@ class ConnectionManager(QWidget):
         self.main_window.renumber_tabs()
 
         # Phase 2 — fetch schema in background; populate widget when done
-        from workers.connection_workers import ERDSchemaFetchWorker
         worker = ERDSchemaFetchWorker(item_data)
         worker.signals.finished.connect(erd_widget.populate)
         worker.signals.error.connect(erd_widget.show_load_error)
