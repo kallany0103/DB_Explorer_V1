@@ -50,6 +50,27 @@ def add_tab(manager):
             border: none;
             background-color: transparent;
             padding: 2px 5px;
+            color: #1f2937;
+        }
+        QComboBox#db_combo_box QAbstractItemView {
+            background-color: #ffffff;
+            color: #1f2937;
+            selection-background-color: #DDE2E8;
+            selection-color: #1f2937;
+            border: 1px solid #B8BEC6;
+            outline: none;
+        }
+        QComboBox#db_combo_box QAbstractItemView::item {
+            padding: 4px 8px;
+            color: #1f2937;
+        }
+        QComboBox#db_combo_box QAbstractItemView::item:hover {
+            background-color: #EEF1F6;
+            color: #1f2937;
+        }
+        QComboBox#db_combo_box QAbstractItemView::item:selected {
+            background-color: #DDE2E8;
+            color: #1f2937;
         }
         QLabel#conn_status_icon {
             background-color: transparent;
@@ -80,6 +101,13 @@ def add_tab(manager):
 
     db_combo_box = QComboBox()
     db_combo_box.setObjectName("db_combo_box")
+    _popup_view = db_combo_box.view()
+    _popup_view.setMouseTracking(True)
+    _popup_view.setStyleSheet("""
+        QAbstractItemView::item { padding: 4px 8px; color: #1f2937; }
+        QAbstractItemView::item:hover { background-color: #EEF1F6; color: #1f2937; }
+        QAbstractItemView::item:selected { background-color: #DDE2E8; color: #1f2937; }
+    """)
     conn_selection_layout.addWidget(db_combo_box, 1)
     
     # Add the unified frame to the main layout

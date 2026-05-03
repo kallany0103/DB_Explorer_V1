@@ -23,17 +23,17 @@ ELEMENTS = [
     # (label,           comp_type,              icon_name,                   icon_color,  row, col)
     ("Table",           "table",                "fa5s.table",                "#1A73E8",   0,   0),
     ("Table + FK",      "table_fk",             "mdi.table-key",             "#1A73E8",   0,   1),
-    ("Entity",          "entity",               "fa5s.square",               "#2563EB",   0,   2),
-    ("Weak Entity",     "weak_entity",          "fa5s.border-all",           "#6366F1",   1,   0),
-    ("Attribute",       "attribute",            "fa5s.circle",               "#22C55E",   1,   1),
-    ("Key Attribute",   "attribute_key",        "mdi.circle-edit-outline",   "#16A34A",   1,   2),
-    ("Partial Key",     "attribute_partial",    "mdi.circle-double",         "#15803D",   2,   0),
-    ("Multi-valued",    "attribute_multi",      "fa5s.dot-circle",           "#16A34A",   2,   1),
-    ("Derived Attr",    "attribute_derived",    "fa5s.circle-notch",         "#4ADE80",   2,   2),
-    ("Relationship",    "relationship_diamond", "fa5s.square",               "#F59E0B",   3,   0),
-    ("Subject Area",    "subject_area",         "fa5s.object-group",         "#8B5CF6",   3,   1),
-    ("Note",            "note",                 "fa5s.sticky-note",          "#D4A100",   3,   2),
-    ("Column",          "column",               "fa5s.columns",              "#34A853",   4,   0),
+    ("Column",          "column",               "mdi.table-column",          "#34A853",   0,   2),
+    ("Entity",          "entity",               "fa5s.square",               "#2563EB",   1,   0),
+    ("Weak Entity",     "weak_entity",          "fa5s.border-all",           "#6366F1",   1,   1),
+    ("Attribute",       "attribute",            "fa5s.circle",               "#22C55E",   1,   2),
+    ("Key Attribute",   "attribute_key",        "mdi.circle-edit-outline",   "#16A34A",   2,   0),
+    ("Partial Key",     "attribute_partial",    "mdi.circle-double",         "#15803D",   2,   1),
+    ("Multi-valued",    "attribute_multi",      "fa5s.dot-circle",           "#16A34A",   2,   2),
+    ("Derived Attr",    "attribute_derived",    "fa5s.circle-notch",         "#4ADE80",   3,   0),
+    ("Relationship",    "relationship_diamond", "fa5s.square",               "#F59E0B",   3,   1),
+    ("Subject Area",    "subject_area",         "fa5s.object-group",         "#8B5CF6",   3,   2),
+    ("Note",            "note",                 "fa5s.sticky-note",          "#D4A100",   4,   0),
     ("1-1 Relation",    "relationship:one-to-one",   "mdi6.relation-one-to-one",   "#5F6368", 4, 1),
     ("1-M Relation",    "relationship:one-to-many",  "mdi6.relation-one-to-many",  "#5F6368", 4, 2),
     ("M-1 Relation",    "relationship:many-to-one",  "mdi6.relation-many-to-one",  "#5F6368", 5, 0),
@@ -90,11 +90,15 @@ class ElementTile(QPushButton):
         layout.setSpacing(4)
 
         icon_lbl = QLabel()
-        try:
-            pix = qta.icon(icon_name, color=icon_color).pixmap(ICON_SIZE, ICON_SIZE)
-        except Exception:
-            pix = QPixmap(ICON_SIZE, ICON_SIZE)
-            pix.fill(Qt.GlobalColor.transparent)
+        if comp_type in _ERD_TILE_SHAPE_TYPES:
+            pix = _make_tile_icon(comp_type, ICON_SIZE)
+        else:
+            try:
+                scale = 1.2 if comp_type == "table_fk" else 1.0
+                pix = qta.icon(icon_name, color=icon_color, scale_factor=scale).pixmap(ICON_SIZE, ICON_SIZE)
+            except Exception:
+                pix = QPixmap(ICON_SIZE, ICON_SIZE)
+                pix.fill(Qt.GlobalColor.transparent)
         icon_lbl.setPixmap(pix)
         icon_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         icon_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -416,6 +420,140 @@ def _make_shape_preview(comp_type: str) -> "QPixmap":
     p.drawRoundedRect(2, 2, W - 4, H - 4, 4, 4)
     p.end()
     return _to_pix(img)
+
+
+# ERD shape types that get a custom-painted tile icon instead of a font icon
+_ERD_TILE_SHAPE_TYPES = frozenset({
+    "entity", "weak_entity", "relationship_diamond",
+    "attribute", "attribute_key", "attribute_partial",
+    "attribute_multi", "attribute_derived",
+    "relationship:one-to-one", "relationship:one-to-many",
+    "relationship:many-to-one", "relationship:many-to-many",
+    "relationship:none",
+})
+
+
+def _make_tile_icon(comp_type: str, size: int = 22) -> "QPixmap":
+    """
+    Draws a miniature Chen ERD symbol at `size` x `size` pixels.
+    Returns a QPixmap suitable for the palette tile icon label.
+    """
+    from PySide6.QtGui import QImage
+
+    img = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    s = size
+    # Wide-rect bounds (entity/weak-entity shape)
+    rx, ry = 1, s // 4
+    rw, rh = s - 2, s // 2
+    # Ellipse bounds (attribute shapes)
+    ex, ey = 1, s // 4
+    ew, eh = s - 2, s // 2
+
+    # ── Entity: single-border rectangle ───────────────────────────────
+    if comp_type == "entity":
+        p.setPen(QPen(QColor("#1A73E8"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(rx, ry, rw, rh)
+
+    # ── Weak Entity: double-border rectangle ──────────────────────────
+    elif comp_type == "weak_entity":
+        p.setPen(QPen(QColor("#6366F1"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(rx, ry, rw, rh)
+        im = max(2, s // 8)
+        p.drawRect(rx + im, ry + im, rw - im * 2, rh - im * 2)
+
+    # ── Relationship: diamond outline ─────────────────────────────────
+    elif comp_type == "relationship_diamond":
+        cx, cy = s // 2, s // 2
+        mg = 1
+        diamond = QPolygonF([
+            QPointF(cx, mg),
+            QPointF(s - mg, cy),
+            QPointF(cx, s - mg),
+            QPointF(mg, cy),
+        ])
+        p.setPen(QPen(QColor("#F59E0B"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPolygon(diamond)
+
+    # ── Attribute: solid filled ellipse ───────────────────────────────
+    elif comp_type == "attribute":
+        p.setPen(QPen(QColor("#16A34A"), 1.5))
+        p.setBrush(QColor("#22C55E"))
+        p.drawEllipse(ex, ey, ew, eh)
+
+    # ── Key Attribute: ellipse outline + solid underline ──────────────
+    elif comp_type == "attribute_key":
+        ey2 = s // 5
+        eh2 = s * 2 // 5
+        p.setPen(QPen(QColor("#16A34A"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(ex, ey2, ew, eh2)
+        ul_y = ey2 + eh2 + 3
+        p.drawLine(ex + 2, ul_y, ex + ew - 2, ul_y)
+
+    # ── Partial Key: ellipse outline + dashed underline ───────────────
+    elif comp_type == "attribute_partial":
+        ey2 = s // 5
+        eh2 = s * 2 // 5
+        p.setPen(QPen(QColor("#15803D"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(ex, ey2, ew, eh2)
+        pen_d = QPen(QColor("#15803D"), 1.5, Qt.PenStyle.DashLine)
+        p.setPen(pen_d)
+        ul_y = ey2 + eh2 + 3
+        p.drawLine(ex + 2, ul_y, ex + ew - 2, ul_y)
+
+    # ── Multi-valued: double ellipse ──────────────────────────────────
+    elif comp_type == "attribute_multi":
+        p.setPen(QPen(QColor("#16A34A"), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(ex, ey, ew, eh)
+        im = max(2, s // 8)
+        p.drawEllipse(ex + im, ey + im, ew - im * 2, eh - im * 2)
+
+    # ── Derived Attr: dashed-border ellipse ───────────────────────────
+    elif comp_type == "attribute_derived":
+        pen_d = QPen(QColor("#4ADE80"), 2.0, Qt.PenStyle.DashLine)
+        pen_d.setDashPattern([3.0, 2.0])
+        p.setPen(pen_d)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(ex, ey, ew, eh)
+
+    # ── Relationship lines: crow's foot notation ──────────────────────
+    elif comp_type.startswith("relationship:"):
+        rel = comp_type.split(":")[1]
+        cy = s // 2
+        lx, rx_end = 3, s - 3
+
+        pen = QPen(QColor("#5F6368"), 1.5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.drawLine(lx, cy, rx_end, cy)
+
+        if rel != "none":
+            left_part, right_part = rel.split("-to-")
+
+            def _mini_marker(x: int, nx: int, part: str) -> None:
+                if part == "one":
+                    bx = x + nx * 3
+                    p.drawLine(bx, cy - 3, bx, cy + 3)
+                elif part == "many":
+                    sx = x + nx * 1
+                    tx = x + nx * 6
+                    p.drawLine(sx, cy, tx, cy - 3)
+                    p.drawLine(sx, cy, tx, cy + 3)
+
+            _mini_marker(lx,    +1, left_part)
+            _mini_marker(rx_end, -1, right_part)
+
+    p.end()
+    return QPixmap.fromImage(img)
 
 
 def _draw_cf_marker(painter, P: "QPointF", nx: float, ny: float, part: str):
