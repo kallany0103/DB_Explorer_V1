@@ -6,9 +6,14 @@ from dialogs.servicenow_dialog import ServiceNowConnectionDialog
 from dialogs.create_table_dialog import CreateTableDialog
 from dialogs.create_view_dialog import CreateViewDialog
 from dialogs.export_dialog import ExportDialog
-from dialogs.table_properties import TablePropertiesDialog
+# from dialogs.table_properties import TablePropertiesDialog -- Moved to properties sub-package
 from dialogs.search_objects_dialog import SearchObjectsDialog
 from dialogs.database_statistics_dialog import DatabaseStatisticsDialog
+from dialogs.properties import (
+    TablePropertiesDialog, SchemaPropertiesDialog, FunctionPropertiesDialog, 
+    SequencePropertiesDialog, ExtensionPropertiesDialog, LanguagePropertiesDialog,
+    FDWPropertiesDialog, ForeignServerPropertiesDialog, UserMappingPropertiesDialog
+)
 from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
 from dialogs.preferences_dialog import PreferencesDialog
 
@@ -24,6 +29,15 @@ __all__ = [
 	"TablePropertiesDialog",
 	"SearchObjectsDialog",
 	"DatabaseStatisticsDialog",
+	"SchemaPropertiesDialog",
+	"FunctionPropertiesDialog",
+	"SequencePropertiesDialog",
+	"ExtensionPropertiesDialog",
+	"LanguagePropertiesDialog",
+	"FDWPropertiesDialog",
+	"ForeignServerPropertiesDialog",
+	"UserMappingPropertiesDialog",
+
 	"CreateMaterializedViewDialog",
 	"PreferencesDialog",
 ]
