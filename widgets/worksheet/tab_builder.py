@@ -164,7 +164,7 @@ def add_tab(manager):
     )
 
     open_btn = QToolButton()
-    open_btn.setDefaultAction(manager.open_file_action)
+    open_btn.setDefaultAction(manager.ws_open_file_action)
     open_btn.setIconSize(QSize(16, 16))
     open_btn.setFixedHeight(30)
     open_btn.setMinimumWidth(26)
@@ -173,7 +173,7 @@ def add_tab(manager):
     toolbar_layout.addWidget(open_btn)
 
     save_btn = QToolButton()
-    save_btn.setDefaultAction(manager.save_as_action)
+    save_btn.setDefaultAction(manager.ws_save_as_action)
     save_btn.setIconSize(QSize(16, 16))
     save_btn.setFixedHeight(30)
     save_btn.setMinimumWidth(26)
@@ -184,19 +184,19 @@ def add_tab(manager):
     toolbar_layout.addWidget(manager.create_vertical_separator())
 
     exec_btn = QToolButton()
-    exec_btn.setDefaultAction(manager.execute_action)
+    exec_btn.setDefaultAction(manager.ws_execute_action)
     exec_btn.setIconSize(QSize(16, 16))
     exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     exec_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
     exec_menu = QMenu(exec_btn)
-    exec_menu.addAction(manager.execute_new_tab_action)
+    exec_menu.addAction(manager.ws_execute_new_tab_action)
     exec_btn.setMenu(exec_menu)
     exec_btn.setFixedHeight(30)
     exec_btn.setStyleSheet(btn_style)
     toolbar_layout.addWidget(exec_btn)
 
     cancel_btn = QToolButton()
-    cancel_btn.setDefaultAction(manager.cancel_action)
+    cancel_btn.setDefaultAction(manager.ws_cancel_action)
     cancel_btn.setIconSize(QSize(16, 16))
     cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     cancel_btn.setFixedHeight(30)
@@ -244,11 +244,11 @@ def add_tab(manager):
     edit_menu = QMenu(manager)
     edit_menu.setStyleSheet(
         """
-            QMenu { background-color: #ffffff; border: 1px solid #b9b9b9; }
-            QMenu::item { padding: 4px 20px 4px 4px; spacing: 4px; min-width: 250px; }
+            QMenu { background-color: #ffffff; border: 1px solid #b9b9b9; padding: 3px 0px; }
+            QMenu::item { padding: 6px 12px 6px 6px; min-width: 180px; }
             QMenu::item:selected { background-color: #e8e8e8; color: #333333; }
-            QMenu::icon { padding: 4px; }
-            QMenu::separator { height: 1px; background: #eeeeee; margin: 2px 0px; }
+            QMenu::icon { padding-left: 6px; width: 14px; height: 14px; }
+            QMenu::separator { height: 1px; background: #eeeeee; margin: 3px 0px; }
         """
     )
     def add_menu_action(text, shortcut=None, icon=None, func=None):
@@ -266,26 +266,26 @@ def add_tab(manager):
         edit_menu.addAction(action)
         return action
 
-    edit_menu.addAction(manager.main_window.undo_action)
-    edit_menu.addAction(manager.main_window.redo_action)
+    edit_menu.addAction(manager.ws_undo_action)
+    edit_menu.addAction(manager.ws_redo_action)
     edit_menu.addSeparator()
-    edit_menu.addAction(manager.main_window.cut_action)
-    edit_menu.addAction(manager.main_window.copy_action)
-    edit_menu.addAction(manager.main_window.paste_action)
-    edit_menu.addAction(manager.main_window.select_all_action)
+    edit_menu.addAction(manager.ws_cut_action)
+    edit_menu.addAction(manager.ws_copy_action)
+    edit_menu.addAction(manager.ws_paste_action)
+    edit_menu.addAction(manager.ws_select_all_action)
     edit_menu.addSeparator()
-    edit_menu.addAction(manager.main_window.find_action)
-    edit_menu.addAction(manager.main_window.replace_action)
-    edit_menu.addAction(manager.main_window.goto_line_action)
+    edit_menu.addAction(manager.ws_find_action)
+    edit_menu.addAction(manager.ws_replace_action)
+    edit_menu.addAction(manager.ws_goto_line_action)
     edit_menu.addSeparator()
-    edit_menu.addAction(manager.main_window.comment_block_action)
-    edit_menu.addAction(manager.main_window.uncomment_block_action)
-    edit_menu.addAction(manager.main_window.upper_case_action)
-    edit_menu.addAction(manager.main_window.lower_case_action)
-    edit_menu.addAction(manager.main_window.initial_caps_action)
+    edit_menu.addAction(manager.ws_comment_block_action)
+    edit_menu.addAction(manager.ws_uncomment_block_action)
+    edit_menu.addAction(manager.ws_upper_case_action)
+    edit_menu.addAction(manager.ws_lower_case_action)
+    edit_menu.addAction(manager.ws_initial_caps_action)
     edit_menu.addSeparator()
-    edit_menu.addAction(manager.main_window.clear_all_action)
-    edit_menu.addAction(manager.main_window.format_sql_action)
+    edit_menu.addAction(manager.ws_clear_all_action)
+    edit_menu.addAction(manager.ws_format_sql_action)
 
     edit_btn.setMenu(edit_menu)
     toolbar_layout.addWidget(edit_btn)

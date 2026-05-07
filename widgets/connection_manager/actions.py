@@ -1168,12 +1168,6 @@ class ConnectionActions:
             search_pattern = f"%{query_text}%"
             cursor.execute(sql, (search_pattern,))
             results = list(cursor.fetchall())
-            
-            # DEBUG logging for diagnosing "tuple index out of range"
-            if results:
-                print(f"DEBUG: Search returned {len(results)} rows.")
-                print(f"DEBUG: Sample row (0): {results[0]} (Type: {type(results[0])}, Len: {len(results[0])})")
-            
             return results
         except Exception as e:
             print(f"Database search query error: {e}")

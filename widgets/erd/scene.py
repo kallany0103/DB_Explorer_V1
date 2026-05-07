@@ -166,20 +166,23 @@ class ERDScene(QGraphicsScene):
         item = self.itemAt(event.scenePos(), QTransform())
         if isinstance(item, ERDTableItem):
             from widgets.erd.dialogs import TableDesignerDialog
-            widget = self.parent() 
+            widget = self.parent()
+            available_schemas = widget._get_available_schemas() if hasattr(widget, '_get_available_schemas') else []
             dialog = TableDesignerDialog(
                 widget,
                 item.table_name,
                 item.columns,
                 schema_name=item.schema_name or "public",
+                available_schemas=available_schemas,
             )
             if dialog.exec() == QDialog.DialogCode.Accepted:
-                new_name, new_cols = dialog.get_result()
+                new_name, new_cols, new_schema = dialog.get_result()
                 cmd = UpdateTableCommand(
                     widget,
                     item,
                     new_name,
                     new_cols,
+                    new_schema=new_schema,
                 )
                 widget.undo_stack.push(cmd)
         

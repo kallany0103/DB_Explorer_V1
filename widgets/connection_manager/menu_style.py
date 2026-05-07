@@ -12,8 +12,8 @@ QMenu {
     color: #1f2937;
 }
 QMenu::item {
-    padding: 5px 32px 5px 22px;
-    min-width: 200px;
+    padding: 5px 16px 5px 6px;
+    min-width: 160px;
 }
 QMenu::item:selected {
     background-color: #e8f0fe;

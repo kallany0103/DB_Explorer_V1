@@ -109,6 +109,8 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
             (r.height() - lh) / 2,
         )
 
+    MAX_AUTO_WIDTH = 260
+
     def _sync_geometry(self):
         if self.size_mode == "manual":
             self._label.setTextWidth(max(60, self.rect().width() - 16))
@@ -117,10 +119,14 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
             return
         self._label.setTextWidth(-1)
         doc = self._label.document()
-        text_w = doc.idealWidth()
-        text_h = doc.size().height()
-        new_w = max(self.minimum_size().width(), text_w + 32)
-        new_h = max(self.minimum_size().height(), text_h + 20)
+        min_w, min_h = self.minimum_size().width(), self.minimum_size().height()
+        ideal_w = doc.idealWidth() + 32
+        if ideal_w > self.MAX_AUTO_WIDTH:
+            self._label.setTextWidth(self.MAX_AUTO_WIDTH - 32)
+            new_w = self.MAX_AUTO_WIDTH
+        else:
+            new_w = max(min_w, ideal_w)
+        new_h = max(min_h, doc.size().height() + 20)
         self.apply_size(new_w, new_h)
         self._after_geometry_changed()
 

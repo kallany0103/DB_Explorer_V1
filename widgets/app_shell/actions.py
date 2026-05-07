@@ -20,11 +20,11 @@ def build_main_window_actions(main_window):
     main_window.exit_action.setShortcut("Ctrl+Q")
     main_window.exit_action.triggered.connect(main_window.close)
 
-    main_window.close_tab_action = QAction("Close", main_window)
+    main_window.close_tab_action = QAction(qta.icon("mdi.tab-remove", color="#555555"), "Close", main_window)
     main_window.close_tab_action.setShortcut("Ctrl+W")
     main_window.close_tab_action.triggered.connect(main_window.close_current_tab)
 
-    main_window.close_all_tabs_action = QAction("Close All", main_window)
+    main_window.close_all_tabs_action = QAction(qta.icon("mdi.close-box-multiple-outline", color="#555555"), "Close All", main_window)
     main_window.close_all_tabs_action.setShortcut("Ctrl+Shift+W")
     main_window.close_all_tabs_action.triggered.connect(main_window.close_all_tabs)
 
@@ -38,7 +38,7 @@ def build_main_window_actions(main_window):
     main_window.execute_new_tab_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.execute_new_tab_action.triggered.connect(main_window.execute_query_in_new_output_tab)
 
-    main_window.explain_action = QAction(QIcon("assets/explain_icon.png"), "Explain", main_window)
+    main_window.explain_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain", main_window)
     main_window.explain_action.setShortcut("Ctrl+E")
     main_window.explain_action.triggered.connect(main_window.explain_query)
 
@@ -109,7 +109,9 @@ def build_main_window_actions(main_window):
     main_window.lower_case_action.setShortcut("Ctrl+Shift+L")
     main_window.lower_case_action.triggered.connect(main_window.lower_case_text)
 
-    main_window.initial_caps_action = QAction("Initial Caps", main_window)
+    main_window.initial_caps_action = QAction(
+        qta.icon("mdi.format-letter-case", color="#555555"), "Initial Caps", main_window
+    )
     main_window.initial_caps_action.setShortcut("Ctrl+I")
     main_window.initial_caps_action.triggered.connect(main_window.initial_caps_text)
 
@@ -118,12 +120,12 @@ def build_main_window_actions(main_window):
     main_window.query_tool_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.query_tool_action.triggered.connect(main_window.add_tab)
 
-    main_window.reset_layout_action = QAction("Reset Layout", main_window)
+    main_window.reset_layout_action = QAction(qta.icon("mdi.view-dashboard-outline", color="#555555"), "Reset Layout", main_window)
     main_window.preferences_action = QAction(qta.icon("fa5s.cog", color="#555555"), "Global Settings...", main_window)
     main_window.preferences_action.setShortcut("Ctrl+,")
     main_window.preferences_action.triggered.connect(main_window.show_preferences)
 
-    main_window.restore_action = QAction("Restore Layout", main_window)
+    main_window.restore_action = QAction(qta.icon("mdi.backup-restore", color="#555555"), "Restore Layout", main_window)
     # Removed setShortcut("Ctrl+Shift+L") to prevent conflict with lowercase action
     main_window.reset_layout_action.triggered.connect(main_window.reset_layout)
 
@@ -137,32 +139,34 @@ def build_main_window_actions(main_window):
     main_window.dashboard_action.setIconVisibleInMenu(True)
     main_window.dashboard_action.triggered.connect(main_window.reset_to_dashboard)
 
-    main_window.refresh_action = QAction("Refresh Explorer", main_window)
+    main_window.refresh_action = QAction(QIcon("assets/refresh.svg"), "Refresh Explorer", main_window)
     main_window.refresh_action.setShortcuts(["F5", "Ctrl+R"])
     main_window.refresh_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.refresh_action.triggered.connect(main_window.refresh_object_explorer)
 
-    main_window.minimize_action = QAction("Minimize", main_window)
+    main_window.minimize_action = QAction(qta.icon("mdi.window-minimize", color="#555555"), "Minimize", main_window)
     main_window.minimize_action.setShortcut("Ctrl+M")
     main_window.minimize_action.triggered.connect(main_window.showMinimized)
 
-    main_window.zoom_action = QAction("Zoom", main_window)
+    main_window.zoom_action = QAction(qta.icon("mdi.window-maximize", color="#555555"), "Zoom", main_window)
     main_window.zoom_action.setShortcut("F11")
     main_window.zoom_action.triggered.connect(main_window.toggle_maximize)
 
-    main_window.sqlite_help_action = QAction("SQLite Website", main_window)
+    main_window.sqlite_help_action = QAction(QIcon("assets/sqlite.svg"), "SQLite Website", main_window)
     main_window.sqlite_help_action.triggered.connect(lambda: main_window.open_help_url("https://www.sqlite.org/"))
 
-    main_window.postgres_help_action = QAction("PostgreSQL Website", main_window)
+    main_window.postgres_help_action = QAction(QIcon("assets/postgresql.svg"), "PostgreSQL Website", main_window)
     main_window.postgres_help_action.triggered.connect(lambda: main_window.open_help_url("https://www.postgresql.org/"))
 
-    main_window.oracle_help_action = QAction("Oracle Website", main_window)
+    main_window.oracle_help_action = QAction(QIcon("assets/oracle.svg"), "Oracle Website", main_window)
     main_window.oracle_help_action.triggered.connect(lambda: main_window.open_help_url("https://www.oracle.com/database/"))
 
     main_window.about_action = QAction("About", main_window)
     main_window.about_action.triggered.connect(main_window.show_about_dialog)
 
-    main_window.format_sql_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", main_window)
+    main_window.format_sql_action = QAction(
+        qta.icon("mdi.auto-fix", color="#555555"), "Format SQL", main_window
+    )
     main_window.format_sql_action.setShortcut("Ctrl+Shift+F")
     main_window.format_sql_action.triggered.connect(main_window.format_sql_text)
 

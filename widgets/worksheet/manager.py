@@ -55,6 +55,7 @@ from widgets.worksheet.history import (
 )
 from widgets.worksheet.utils import renumber_tabs as renumber_tabs_action, handle_event_filter, show_info as show_info_action
 from widgets.app_shell.file_ops import open_find_dialog as open_find_dialog_action
+from widgets.worksheet.toolbar_actions import build_worksheet_toolbar_actions
 
 class WorksheetManager(QWidget):
     def __init__(self, main_window):
@@ -80,6 +81,8 @@ class WorksheetManager(QWidget):
         self.QUERY_TIMEOUT = 300000
         self.worksheet_icon_key = "mdi.database-edit"
         self.worksheet_icon_fallback_key = "ri.layout-6-fill"
+
+        build_worksheet_toolbar_actions(self)
         
 
     def _get_worksheet_tab_icon(self):

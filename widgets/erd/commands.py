@@ -322,7 +322,7 @@ class AddColumnCommand(QUndoCommand):
 
 class UpdateTableCommand(QUndoCommand):
     """Records updating an existing table structure."""
-    def __init__(self, widget, table_item, new_name, new_columns, foreign_keys=None, notes=None):
+    def __init__(self, widget, table_item, new_name, new_columns, foreign_keys=None, notes=None, new_schema=None):
         super().__init__(f"Update Table {table_item.table_name}")
         self.widget = widget
         self.scene = widget.scene
@@ -337,12 +337,13 @@ class UpdateTableCommand(QUndoCommand):
         self.old_notes = copy.deepcopy(old_data.get("notes", []))
 
         self.new_name = new_name
+        self.new_schema_name = new_schema if new_schema is not None else table_item.schema_name
         self.new_columns = copy.deepcopy(new_columns or [])
         self.new_foreign_keys = copy.deepcopy(foreign_keys if foreign_keys is not None else self.old_foreign_keys)
         self.new_notes = copy.deepcopy(notes if notes is not None else self.old_notes)
 
     def redo(self):
-        self._apply(self.new_name, self.new_columns, self.new_foreign_keys, self.new_notes, self.table_item.schema_name)
+        self._apply(self.new_name, self.new_columns, self.new_foreign_keys, self.new_notes, self.new_schema_name)
 
     def undo(self):
         self._apply(self.old_name, self.old_columns, self.old_foreign_keys, self.old_notes, self.old_schema_name)

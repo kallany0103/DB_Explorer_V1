@@ -66,10 +66,17 @@ def apply_main_window_styles(main_window):
             background-color: #ffffff;
             border: 1px solid #D3D8DF;
             icon-size: 14px;
+            padding: 3px 0px;
         }}
 
         QMenu::item {{
-            padding: 4px 24px 4px 24px;
+            padding: 6px 24px 6px 6px;
+        }}
+
+        QMenu::icon {{
+            padding-left: 6px;
+            width: 14px;
+            height: 14px;
         }}
 
         QMenu::item:selected {{
