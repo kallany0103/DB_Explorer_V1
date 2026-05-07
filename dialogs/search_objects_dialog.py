@@ -94,10 +94,8 @@ class SearchObjectsDialog(QDialog):
             self.results_table.setRowCount(0)
             
             if not results:
-                print("DEBUG: Search returned no results.")
                 return
 
-            print(f"DEBUG: Processing {len(results)} search results.")
             for i, row_data in enumerate(results):
                 try:
                     # Defensive check: ensure the resulting row has at least 3 columns

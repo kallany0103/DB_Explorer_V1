@@ -57,6 +57,7 @@ def get_sqlite_schema(db_path):
                 })
             
             schema[table] = {
+                "table": table,
                 "columns": columns,
                 "foreign_keys": foreign_keys
             }

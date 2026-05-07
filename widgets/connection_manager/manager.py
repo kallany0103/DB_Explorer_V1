@@ -113,7 +113,7 @@ class ConnectionManager(QWidget):
         # Phase 1 — open the tab instantly with a loading overlay
         schema_name = item_data.get("schema_name")
         table_name  = item_data.get("table_name")
-        erd_widget  = ERDWidget({}, loading=True)
+        erd_widget  = ERDWidget({}, loading=True, conn_data=item_data)
         tab_title   = self._build_erd_tab_title(display_name, schema_name, table_name)
         index = self.tab_widget.addTab(erd_widget, tab_title)
         self.tab_widget.setTabIcon(index, self._get_erd_tab_icon())

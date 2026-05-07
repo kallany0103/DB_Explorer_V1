@@ -240,10 +240,11 @@ def generate_sql_script(schema_data, dialect="postgresql"):
     return "\n".join(sql_lines)
 
 class ERDWidget(QWidget):
-    def __init__(self, schema_data, parent=None, loading=False):
+    def __init__(self, schema_data, parent=None, loading=False, conn_data=None):
         super().__init__(parent)
         self.schema_data = schema_data
         self._loading = loading
+        self.conn_data = conn_data
         self.notes_data = []
         self.view_state_data = None
         self.undo_stack = QUndoStack(self)
@@ -401,7 +402,7 @@ class ERDWidget(QWidget):
         
         self.show_panel_action = QAction(qta.icon('mdi.card-text-outline', color='#555555'), "Toggle Panel", self)
         self.show_panel_action.setCheckable(True)
-        self.show_panel_action.setChecked(True)
+        self.show_panel_action.setChecked(False)
         self.show_panel_action.triggered.connect(self.toggle_panel)
         self.toolbar.addAction(self.show_panel_action)
         
@@ -584,6 +585,30 @@ class ERDWidget(QWidget):
             counter += 1
         return name
 
+    def _get_available_schemas(self):
+        """Return sorted list of schema names: from DB if connected, else from schema_data."""
+        schemas = set()
+        if self.conn_data:
+            try:
+                db_type = self.conn_data.get('db_type', '')
+                if db_type == 'postgres':
+                    import db as _db
+                    pg = {k: self.conn_data.get(k) for k in ['host', 'port', 'database', 'user', 'password']}
+                    conn = _db.create_postgres_connection(**pg)
+                    cur = conn.cursor()
+                    cur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast') ORDER BY schema_name;")
+                    schemas = {row[0] for row in cur.fetchall()}
+                    conn.close()
+            except Exception:
+                pass
+        if not schemas:
+            schemas = {v.get('schema', DEFAULT_SCHEMA) for v in self.schema_data.values() if isinstance(v, dict)}
+        schemas.discard('')
+        result = sorted(schemas)
+        if DEFAULT_SCHEMA not in result:
+            result.insert(0, DEFAULT_SCHEMA)
+        return result
+
     def _open_entity_dialog(self, pos, preset=None):
         preset = preset or {}
         preset.setdefault("table", self._suggest_entity_name())
@@ -593,10 +618,11 @@ class ERDWidget(QWidget):
             columns=preset.get("columns", []),
             schema_name=preset.get("schema", DEFAULT_SCHEMA),
             notes=preset.get("notes", []),
+            available_schemas=self._get_available_schemas(),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            name, cols = dialog.get_result()
-            cmd = AddTableCommand(self, name, cols, pos, schema_name=preset.get("schema", DEFAULT_SCHEMA))
+            name, cols, schema = dialog.get_result()
+            cmd = AddTableCommand(self, name, cols, pos, schema_name=schema)
             self.undo_stack.push(cmd)
 
     def _free_item_types(self):
@@ -1076,6 +1102,7 @@ class ERDWidget(QWidget):
         view_center = self.view.mapToScene(self.view.viewport().rect().center())
         self._open_entity_dialog(view_center, preset={"schema": DEFAULT_SCHEMA, "columns": [{"name": "id", "type": "INTEGER", "pk": True, "nullable": False}]})
 
+
     def add_new_relationship(self):
         if not self.scene.tables:
             QMessageBox.warning(self, "No Tables", "Add at least two tables to create a relationship.")
@@ -1204,6 +1231,10 @@ class ERDWidget(QWidget):
     def on_search_text_changed(self, text):
         if hasattr(self, 'scene') and self.scene:
             self.scene.apply_search_filter(text)
+            if text.strip():
+                item = self.scene.find_table_item(text)
+                if item:
+                    self.view.centerOn(item)
 
     def on_search_return_pressed(self):
         text = self.search_input.text()

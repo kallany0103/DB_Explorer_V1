@@ -121,14 +121,6 @@ def create_results_ui(manager, tab_content):
     copy_btn.setToolTip("Copy selected cells (Ctrl+C)")
     copy_btn.setStyleSheet(btn_style_bottom)
 
-    paste_btn = QToolButton()
-    paste_btn.setIcon(qta.icon("fa5s.paste", color="#555555"))
-    paste_btn.setIconSize(QSize(16, 16))
-    paste_btn.setFixedSize(30, 30)
-    paste_btn.setToolTip("Paste to editor")
-    paste_btn.setStyleSheet(btn_style_bottom)
-    paste_btn.clicked.connect(manager.paste_to_editor)
-
     delete_row_btn = QPushButton()
     delete_row_btn.setIcon(qta.icon("fa5s.trash-alt", color="#dc3545"))
     delete_row_btn.setIconSize(QSize(16, 16))
@@ -141,7 +133,6 @@ def create_results_ui(manager, tab_content):
 
     results_info_layout.addWidget(delete_row_btn)
     results_info_layout.addWidget(copy_btn)
-    results_info_layout.addWidget(paste_btn)
 
     download_btn = QPushButton()
     download_btn.setIcon(qta.icon("fa5s.file-download", color="#555555"))

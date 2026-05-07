@@ -1,5 +1,6 @@
 #from PyQt6.QtGui import QAction
 from PySide6.QtGui import QAction
+import qtawesome as qta
 
 def build_main_window_menu(main_window):
     menubar = main_window.menuBar()
@@ -17,13 +18,13 @@ def build_main_window_menu(main_window):
 
 
 
-    object_menu = menubar.addMenu("&Object")
-    create_menu = object_menu.addMenu("Create")
-    create_menu.addAction(main_window.create_table_action)
-    create_menu.addAction(main_window.create_view_action)
-    object_menu.addAction(main_window.query_tool_obj_action)
-    object_menu.addAction(main_window.refresh_action)
-    object_menu.addAction(main_window.delete_object_action)
+    # object_menu = menubar.addMenu("&Object")
+    # create_menu = object_menu.addMenu("Create")
+    # create_menu.addAction(main_window.create_table_action)
+    # create_menu.addAction(main_window.create_view_action)
+    # object_menu.addAction(main_window.query_tool_obj_action)
+    # object_menu.addAction(main_window.refresh_action)
+    # object_menu.addAction(main_window.delete_object_action)
 
     edit_menu = menubar.addMenu("&Edit")
     edit_menu.addAction(main_window.undo_action)
@@ -67,7 +68,7 @@ def build_main_window_menu(main_window):
     window_menu.addAction(main_window.minimize_action)
     window_menu.addAction(main_window.zoom_action)
     window_menu.addSeparator()
-    close_action = QAction("Close", main_window)
+    close_action = QAction(qta.icon("mdi.window-close", color="#555555"), "Close", main_window)
     close_action.setShortcut("Alt+F4")
     close_action.triggered.connect(main_window.close)
     window_menu.addAction(close_action)

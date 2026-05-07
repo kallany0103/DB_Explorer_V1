@@ -10,7 +10,7 @@ from widgets.erd.model import DEFAULT_SCHEMA
 
 
 class TableDesignerDialog(QDialog):
-    def __init__(self, parent=None, table_name="", columns=None, schema_name=DEFAULT_SCHEMA, foreign_keys=None, notes=None):
+    def __init__(self, parent=None, table_name="", columns=None, schema_name=DEFAULT_SCHEMA, foreign_keys=None, notes=None, available_schemas=None):
         super().__init__(parent)
         self.setWindowTitle("Entity Designer")
         self.resize(650, 500)
@@ -32,8 +32,14 @@ class TableDesignerDialog(QDialog):
         layout.setSpacing(16)
 
         form = QFormLayout()
-        self.schema_input = QLineEdit(self.schema_name)
+        self.schema_input = QComboBox()
+        self.schema_input.setEditable(True)
         self.schema_input.setPlaceholderText("Schema (default: public)")
+        schemas = list(available_schemas) if available_schemas else []
+        if DEFAULT_SCHEMA not in schemas:
+            schemas.insert(0, DEFAULT_SCHEMA)
+        self.schema_input.addItems(schemas)
+        self.schema_input.setCurrentText(self.schema_name)
         form.addRow("Schema:", self.schema_input)
 
         self.name_input = QLineEdit(table_name)
@@ -208,7 +214,8 @@ class TableDesignerDialog(QDialog):
         self.col_table.setCellWidget(row, 1, type_combo)
 
         pk_check = QCheckBox()
-        pk_check.setChecked(col_data.get("pk", False) if col_data else False)
+        is_pk = col_data.get("pk", False) if col_data else False
+        pk_check.setChecked(is_pk)
         pk_widget = QWidget()
         pk_layout = QHBoxLayout(pk_widget)
         pk_layout.addWidget(pk_check)
@@ -217,7 +224,8 @@ class TableDesignerDialog(QDialog):
         self.col_table.setCellWidget(row, 2, pk_widget)
 
         null_check = QCheckBox()
-        null_check.setChecked(col_data.get("nullable", True) if col_data else True)
+        default_nullable = False if is_pk else True
+        null_check.setChecked(col_data.get("nullable", default_nullable) if col_data else True)
         null_widget = QWidget()
         null_layout = QHBoxLayout(null_widget)
         null_layout.addWidget(null_check)
@@ -237,8 +245,13 @@ class TableDesignerDialog(QDialog):
         def _on_pk_changed(state):
             if state == Qt.CheckState.Checked.value:
                 null_check.setChecked(False)
+                null_check.setEnabled(False)
+            else:
+                null_check.setEnabled(True)
 
         pk_check.stateChanged.connect(_on_pk_changed)
+        if is_pk:
+            null_check.setEnabled(False)
 
     def remove_column_row(self):
         curr = self.col_table.currentRow()
@@ -271,7 +284,7 @@ class TableDesignerDialog(QDialog):
                 "fk": fk,
             })
 
-        return self.name_input.text(), cols
+        return self.name_input.text(), cols, self.schema_input.currentText().strip() or DEFAULT_SCHEMA
 
     def accept(self):
         name = self.name_input.text().strip()

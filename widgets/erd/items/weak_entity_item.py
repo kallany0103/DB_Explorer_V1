@@ -109,6 +109,8 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
             (r.height() - lh) / 2,
         )
 
+    MAX_AUTO_WIDTH = 280
+
     def _sync_geometry(self):
         """Grow rect to fit label text, then re-center."""
         if self.size_mode == "manual":
@@ -118,12 +120,15 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
             return
         self._text_item.setTextWidth(-1)
         doc = self._text_item.document()
-        text_w = doc.idealWidth()
-        text_h = doc.size().height()
-
         padding = self.GAP * 2 + 20
-        new_w = max(self.minimum_size().width(), text_w + padding)
-        new_h = max(self.minimum_size().height(), text_h + padding)
+        min_w, min_h = self.minimum_size().width(), self.minimum_size().height()
+        ideal_w = doc.idealWidth() + padding
+        if ideal_w > self.MAX_AUTO_WIDTH:
+            self._text_item.setTextWidth(self.MAX_AUTO_WIDTH - padding)
+            new_w = self.MAX_AUTO_WIDTH
+        else:
+            new_w = max(min_w, ideal_w)
+        new_h = max(min_h, doc.size().height() + padding)
 
         self.apply_size(new_w, new_h)
         self._after_geometry_changed()
