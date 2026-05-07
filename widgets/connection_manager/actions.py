@@ -25,10 +25,21 @@ from dialogs import (
     CreateTableDialog, 
     CreateViewDialog, 
     ExportDialog, 
-    TablePropertiesDialog,
     SearchObjectsDialog,
     DatabaseStatisticsDialog,
 )
+from dialogs.properties import (
+    TablePropertiesDialog,
+    SchemaPropertiesDialog,
+    FunctionPropertiesDialog,
+    SequencePropertiesDialog,
+    ExtensionPropertiesDialog,
+    LanguagePropertiesDialog,
+    FDWPropertiesDialog,
+    ForeignServerPropertiesDialog,
+    UserMappingPropertiesDialog,
+)
+from dialogs.statistics.stats_dialog import ObjectStatisticsDialog
 from widgets.backup_and_restore.backup.dialog import BackupDialog
 from widgets.backup_and_restore.restore.dialog import RestoreDialog
 from workers.signals import ProcessSignals, QuerySignals, emit_process_started
@@ -48,6 +59,17 @@ class ConnectionActions:
         self.manager = manager
         self.backup_engine = BackupEngine(self.manager.main_window)
         self.restore_engine = RestoreEngine(self.manager.main_window)
+
+    def get_connection(self, item_data):
+        """Returns a database connection based on db_type."""
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        if db_type == 'postgres':
+            pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
+            return db.create_postgres_connection(**pg_conn_data)
+        elif db_type == 'sqlite':
+            return db.create_sqlite_connection(conn_data.get('db_path'))
+        return None
 
     def count_table_rows(self, item_data, table_name):
         if not item_data:
@@ -211,6 +233,69 @@ class ConnectionActions:
             return
 
         dialog = TablePropertiesDialog(item_data, table_name, self.manager)
+        dialog.show()
+
+    def show_schema_properties(self, item_data, schema_name):
+        if not item_data:
+            return
+
+        dialog = SchemaPropertiesDialog(item_data, schema_name, self.manager)
+        dialog.show()
+
+    def show_function_properties(self, item_data, function_name):
+        if not item_data:
+            return
+
+        dialog = FunctionPropertiesDialog(item_data, function_name, self.manager)
+        dialog.show()
+
+    def show_sequence_properties(self, item_data, sequence_name):
+        if not item_data:
+            return
+
+        dialog = SequencePropertiesDialog(item_data, sequence_name, self.manager)
+        dialog.show()
+
+    def show_extension_properties(self, item_data, ext_name):
+        if not item_data:
+            return
+
+        dialog = ExtensionPropertiesDialog(item_data, ext_name, self.manager)
+        dialog.show()
+
+    def show_language_properties(self, item_data, lan_name):
+        if not item_data:
+            return
+
+        dialog = LanguagePropertiesDialog(item_data, lan_name, self.manager)
+        dialog.show()
+
+    def show_fdw_properties(self, item_data, fdw_name):
+        if not item_data:
+            return
+
+        dialog = FDWPropertiesDialog(item_data, fdw_name, self.manager)
+        dialog.show()
+
+    def show_foreign_server_properties(self, item_data, srv_name):
+        if not item_data:
+            return
+
+        dialog = ForeignServerPropertiesDialog(item_data, srv_name, self.manager)
+        dialog.show()
+
+    def show_user_mapping_properties(self, item_data, user_name):
+        if not item_data:
+            return
+
+        dialog = UserMappingPropertiesDialog(item_data, user_name, self.manager)
+        dialog.show()
+
+    def show_statistics(self, item_data, obj_name):
+        if not item_data:
+            return
+            
+        dialog = ObjectStatisticsDialog(item_data, obj_name, self.manager)
         dialog.show()
 
     def delete_table(self, item_data, table_name, cascade=False):

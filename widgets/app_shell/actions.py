@@ -128,6 +128,12 @@ def build_main_window_actions(main_window):
     main_window.restore_action = QAction(qta.icon("mdi.backup-restore", color="#555555"), "Restore Layout", main_window)
     # Removed setShortcut("Ctrl+Shift+L") to prevent conflict with lowercase action
     main_window.reset_layout_action.triggered.connect(main_window.reset_layout)
+    
+    main_window.properties_tool_action = QAction(qta.icon("mdi.tune", color="#555555"), "Properties", main_window)
+    main_window.properties_tool_action.triggered.connect(main_window.add_properties_tab)
+    
+    main_window.statistics_tool_action = QAction(qta.icon("mdi.chart-bar", color="#555555"), "Statistics", main_window)
+    main_window.statistics_tool_action.triggered.connect(main_window.add_statistics_tab)
 
     # Safely load the dashboard icon
     try:

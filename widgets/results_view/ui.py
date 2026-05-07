@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import PySide6.QtWidgets as QtWidgets
 
 from widgets.results_view.explain import create_explain_view
 from widgets.results_view.messages import create_message_view
@@ -143,13 +144,13 @@ def create_results_ui(manager, tab_content):
     download_btn.clicked.connect(lambda: manager.download_result(tab_content))
     results_info_layout.addWidget(download_btn)
 
-    search_box = QLineEdit()
+    search_box = QtWidgets.QLineEdit()
     search_box.setPlaceholderText("Search...")
     icon_path = "assets/search.svg"
 
     if os.path.exists(icon_path):
         search_icon = QIcon(icon_path)
-        search_box.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
+        search_box.addAction(search_icon, QtWidgets.QLineEdit.ActionPosition.LeadingPosition)
     search_box.setFixedHeight(28)
     search_box.setFixedWidth(180)
     search_box.setObjectName("table_search_box")
@@ -336,7 +337,7 @@ def create_results_ui(manager, tab_content):
     process_filter_layout.addStretch()
     
     # Search Field
-    search_edit = QLineEdit()
+    search_edit = QtWidgets.QLineEdit()
     search_edit.setPlaceholderText("Search processes...")
     search_edit.setFixedWidth(150)
     search_edit.textChanged.connect(lambda text: manager._filter_processes_table(tab_content, text))
