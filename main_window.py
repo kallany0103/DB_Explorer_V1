@@ -8,6 +8,8 @@ from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.dashboard import DashboardWidget
+from widgets.inspector.properties_view import PropertiesWorkbench
+from widgets.inspector.statistics_view import StatisticsWorkbench
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
@@ -174,11 +176,16 @@ class MainWindow(QMainWindow):
         self.restore_session_state()
         
         # Clamp geometry to available screen size to prevent geometry warnings
-        
         screen = QApplication.primaryScreen().availableGeometry()
-        self.resize(min(self.width(), screen.width()), min(self.height(), screen.height()))
+        if self.width() > screen.width() or self.height() > screen.height():
+            self.resize(min(self.width(), screen.width()), min(self.height(), screen.height()))
         
         self.main_splitter.setSizes([280, 920])
+        
+        # Connect tree selections for Inspector workbenches
+        self.schema_tree.selectionModel().currentChanged.connect(self._on_schema_selection_changed)
+        self.tree.selectionModel().currentChanged.connect(self._on_connection_selection_changed)
+        
         self.raise_()
         self.activateWindow()
 
@@ -214,6 +221,68 @@ class MainWindow(QMainWindow):
 
     def renumber_tabs(self):
         self.worksheet_manager.renumber_tabs()
+
+    def add_properties_tab(self):
+        # Allow multiple properties tabs or just one? Let's allow multiple.
+        prop_widget = PropertiesWorkbench(self)
+        index = self.tab_widget.addTab(prop_widget, "Properties")
+        self.tab_widget.setTabIcon(index, qta.icon('mdi.tune'))
+        self.tab_widget.setCurrentIndex(index)
+        
+        # If an item is already selected, update it immediately
+        item, item_data, name = self.connection_manager._get_current_schema_item_data()
+        if item_data:
+            prop_widget.update_view(item_data, name)
+
+    def add_statistics_tab(self):
+        stat_widget = StatisticsWorkbench(self)
+        index = self.tab_widget.addTab(stat_widget, "Statistics")
+        self.tab_widget.setTabIcon(index, qta.icon('mdi.chart-bar'))
+        self.tab_widget.setCurrentIndex(index)
+        
+        # If an item is already selected, update it immediately
+        item, item_data, name = self.connection_manager._get_current_schema_item_data()
+        if item_data:
+            stat_widget.update_view(item_data, name)
+
+    def _on_schema_selection_changed(self, current, previous):
+        if not current.isValid():
+            return
+            
+        item, item_data, name = self.connection_manager._get_current_schema_item_data()
+        if not item_data:
+            return
+            
+        # Update all open inspector tabs
+        for i in range(self.tab_widget.count()):
+            widget = self.tab_widget.widget(i)
+            if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
+                widget.update_view(item_data, name)
+
+    def _on_connection_selection_changed(self, current, previous):
+        if not current.isValid():
+            return
+            
+        source_index = self.proxy_model.mapToSource(current)
+        item = self.model.itemFromIndex(source_index)
+        if not item or self.connection_manager.get_item_depth(item) != 3:
+            return
+            
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        name = item.text()
+        
+        if not item_data:
+            return
+            
+        # Add a type tag if missing for clarity
+        if 'type' not in item_data:
+            item_data['type'] = 'connection'
+            
+        # Update all open inspector tabs
+        for i in range(self.tab_widget.count()):
+            widget = self.tab_widget.widget(i)
+            if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
+                widget.update_view(item_data, name)
 
 
     def load_data(self):

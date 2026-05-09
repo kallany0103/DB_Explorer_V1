@@ -123,7 +123,7 @@ class SchemaLoader:
             schema_item.setEditable(False)
             self.manager._set_tree_item_icon(schema_item, level="SCHEMA")
             schema_item.setData({'db_type': 'postgres', 'schema_name': schema_name,
-                                 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+                                 'type': 'schema', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
             schema_item.appendRow(QStandardItem("Loading..."))
             type_item = QStandardItem("Schema")
             type_item.setEditable(False)
