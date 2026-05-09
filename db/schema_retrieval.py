@@ -77,13 +77,11 @@ def get_postgres_schema(conn_data, schema_name=None):
     """
     schema_data = {}
     conn = create_postgres_connection(
-        host=conn_data["host"],
-        database=conn_data["database"],
-        user=conn_data["user"],
-        password=conn_data["password"],
-        port=int(conn_data["port"]),
-        application_name=f"Universal SQL Client - Metadata Retrieval ({conn_data.get('database')})"
+        conn_data, 
+        application_name=f"Universal SQL Client - Metadata Retrieval ({conn_data.get('database')})",
+        bypass_cooldown=True
     )
+
     if not conn:
         return schema_data
         
@@ -174,6 +172,8 @@ def get_postgres_schema(conn_data, schema_name=None):
                 "columns": columns,
                 "foreign_keys": foreign_keys
             }
+            
+        conn.commit()
             
     except Exception as e:
         print(f"Error retrieving Postgres schema: {e}")

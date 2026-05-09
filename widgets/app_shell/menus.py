@@ -13,8 +13,6 @@ def build_main_window_menu(main_window):
     file_menu.addSeparator()
     file_menu.addAction(main_window.close_tab_action)
     file_menu.addAction(main_window.close_all_tabs_action)
-    file_menu.addSeparator()
-    file_menu.addAction(main_window.exit_action)
 
 
 
@@ -61,8 +59,6 @@ def build_main_window_menu(main_window):
     tools_menu.addAction(main_window.refresh_action)
     tools_menu.addAction(main_window.reset_layout_action)
     tools_menu.addAction(main_window.preferences_action)
-    tools_menu.addSeparator()
-    tools_menu.addAction(main_window.restore_action)
 
     window_menu = menubar.addMenu("&Window")
     window_menu.addAction(main_window.minimize_action)
