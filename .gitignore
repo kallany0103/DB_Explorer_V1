@@ -2,15 +2,6 @@ __pycache__/
 build/
 dist/
 DbExplorer.spec
-*.pyc
-*.xls
-*.xlsx
-*.csv
 databases/hierarchy.db
 *.json
 .gitignore
-dbexplorer_venv/
-Review_Material/
-*.md
-
-dbexplorer_venv/Lib/site-packages/cdata/servicenow.cp311-win_amd64.pyd
