@@ -12,6 +12,11 @@ def get_query_editor(current_tab):
 
 def extract_query_under_cursor(query_editor):
     cursor = query_editor.textCursor()
+    
+    # If there's a selection, execute the selection
+    if cursor.hasSelection():
+        return cursor.selectedText().replace('\u2029', '\n').strip()
+
     cursor_pos = cursor.position()
     full_text = query_editor.toPlainText()
     queries = full_text.split(";")

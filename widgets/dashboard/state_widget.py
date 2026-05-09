@@ -13,16 +13,22 @@ class StateWorkerSignals(QObject):
     error = Signal(object)
 
 class StateWorker(QRunnable):
-    def __init__(self, conn_data, active_only=False):
+    def __init__(self, conn_data, active_only=False, local_sessions=None):
         super().__init__()
         self.conn_data = conn_data
         self.active_only = active_only
+        self.local_sessions = local_sessions
         self.signals = StateWorkerSignals()
 
     @Slot()
     def run(self):
         try:
-            state = db.get_postgres_state_details(self.conn_data, self.active_only)
+            db_type = str(self.conn_data.get("db_type", "")).lower()
+            if "sqlite" in db_type:
+                state = db.get_sqlite_state_details(self.conn_data, self.local_sessions)
+            else:
+                state = db.get_postgres_state_details(self.conn_data, self.active_only)
+                
             try:
                 self.signals.finished.emit(state)
             except RuntimeError:
@@ -183,20 +189,22 @@ class StateWidget(QWidget):
         
         toolbar_layout.addStretch()
         
-        self.auto_refresh_cb = QCheckBox("Auto-refresh")
-        self.auto_refresh_cb.setChecked(True)
-        self.auto_refresh_cb.setStyleSheet("font-size: 12px; color: #475569;")
-        toolbar_layout.addWidget(self.auto_refresh_cb)
-        
-        self.refresh_btn = QPushButton()
-        self.refresh_btn.setIcon(qta.icon('mdi.refresh'))
-        self.refresh_btn.setToolTip("Refresh Sessions")
-        self.refresh_btn.setFixedSize(24, 24)
+        self.refresh_btn = QPushButton(" Refresh")
+        self.refresh_btn.setIcon(qta.icon('mdi.refresh', color='#0ea5e9'))
+        self.refresh_btn.setFixedSize(100, 28)
         self.refresh_btn.setStyleSheet("""
-            QPushButton { border: 1px solid #e2e8f0; border-radius: 4px; background: white; }
-            QPushButton:hover { background: #f1f5f9; }
+            QPushButton { 
+                border: 1px solid #cbd5e1; 
+                border-radius: 4px; 
+                background: white; 
+                color: #0f172a;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover { background: #f8fafc; border-color: #94a3b8; }
+            QPushButton:pressed { background: #f1f5f9; }
         """)
-        self.refresh_btn.clicked.connect(self.refresh_requested.emit)
+        self.refresh_btn.clicked.connect(lambda: self.refresh_requested.emit())
         toolbar_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(self.toolbar)
@@ -208,6 +216,8 @@ class StateWidget(QWidget):
         self.sessions_frame = TableFrame("Sessions", has_checkbox=True)
         self.sessions_table = self.sessions_frame.table
         self.active_checkbox = self.sessions_frame.checkbox
+        self.active_checkbox.setChecked(False)
+        self.active_checkbox.toggled.connect(lambda _: self.refresh_requested.emit())
         self.sessions_frame.search_input.textChanged.connect(self._on_search)
         self.splitter.addWidget(self.sessions_frame)
 
@@ -228,6 +238,19 @@ class StateWidget(QWidget):
         # Trigger refresh to apply filters properly across expanded rows
         if self.last_state_data:
             self.update_state(self.last_state_data)
+
+    def clear_state(self):
+        """Clears all table rows to ensure no stale data is shown."""
+        self.sessions_table.setRowCount(0)
+        self.locks_table.setRowCount(0)
+        self.last_state_data = None
+
+    def set_db_type(self, db_type):
+        is_sqlite = "sqlite" in str(db_type).lower()
+        if is_sqlite:
+            self.locks_frame.hide()
+        else:
+            self.locks_frame.show()
 
     def update_state(self, state_data):
         self.last_state_data = state_data

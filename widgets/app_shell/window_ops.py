@@ -91,10 +91,7 @@ def reset_to_dashboard(main_window):
             cm = main_window.connection_manager
             if hasattr(cm, 'vertical_splitter'):
                 cm.vertical_splitter.setSizes([240, 360])
-            if hasattr(cm, 'tree'):
-                cm.tree.collapseAll()
-            if hasattr(cm, 'schema_tree'):
-                cm.schema_tree.collapseAll()
+
 
         # Add dashboard tab first
         main_window.add_dashboard_tab()

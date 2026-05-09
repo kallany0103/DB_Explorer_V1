@@ -174,12 +174,9 @@ class RunnableExport(QRunnable):
                 conn = db.create_sqlite_connection(conn_data["db_path"])
                 query = f'SELECT * FROM "{self.table_name}"'
             elif code == 'POSTGRES':
-                conn = db.create_postgres_connection(
-                    host=conn_data["host"], database=conn_data["database"], 
-                    user=conn_data["user"], password=conn_data["password"], 
-                    port=int(conn_data["port"]),
-                    application_name=f"Universal SQL Client - Export ({conn_data.get('database')})"
-                )
+                db_name = conn_data.get('database', 'unknown')
+                app_name = f"Universal SQL Client (Export) - {db_name}"
+                conn = db.create_postgres_connection(conn_data, application_name=app_name)
                 schema_name = self.item_data.get("schema_name")
                 query = f'SELECT * FROM "{schema_name}"."{self.table_name}"'
             elif code == 'CSV':
@@ -463,17 +460,25 @@ class RunnableQuery(QRunnable):
                 self._conn = db.create_sqlite_connection(db_path)
                 if not self._conn:
                     raise ConnectionError("Failed to connect to SQLite database")
+                
                 cursor = self._conn.cursor()
-                cursor.execute(self.query)
+                
+                # Use sqlparse for much more reliable query splitting
+                import sqlparse
+                statements = sqlparse.split(self.query)
+                
+                if not statements:
+                    statements = [self.query]
+
+                for stmt in statements:
+                    if stmt.strip():
+                        cursor.execute(stmt)
             elif code == "POSTGRES":
-                self._conn = db.create_postgres_connection(
-                    host=self.conn_data["host"],
-                    database=self.conn_data["database"],
-                    user=self.conn_data["user"],
-                    password=self.conn_data["password"],
-                    port=int(self.conn_data["port"]) if self.conn_data.get("port") else 5432,
-                    application_name=f"Universal SQL Client - {self.conn_data.get('database')}"
-                )
+                # Label this connection as a worksheet session
+                db_name = self.conn_data.get("database", "postgres")
+                app_name = f"Universal SQL Client (Worksheet) - {db_name}"
+                self._conn = db.create_postgres_connection(self.conn_data, application_name=app_name, bypass_cooldown=True)
+
                 if not self._conn:
                     raise ConnectionError("Failed to connect to PostgreSQL database")
                 cursor = self._conn.cursor()
@@ -509,10 +514,7 @@ class RunnableQuery(QRunnable):
             
             elapsed_time = time.time() - start_time
             
-            # Commit only for mutation queries that didn't automatically commit
-            q_lower = self.query.lower().strip()
-            is_mutation = any(q_lower.startswith(x) for x in ["insert", "update", "delete", "create", "drop", "alter", "truncate"])
-            if is_mutation and self._conn and code not in ("SERVICENOW", "CSV"):
+            if self._conn and code == "POSTGRES":
                 self._conn.commit()
 
             conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
@@ -527,6 +529,8 @@ class RunnableQuery(QRunnable):
                 elapsed_time,
                 is_returning_results,
             )
+
+
         except Exception as e:
             if not self._is_cancelled:
                 if self._conn:

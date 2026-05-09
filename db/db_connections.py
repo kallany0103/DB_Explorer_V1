@@ -19,21 +19,39 @@ def resource_path(relative_path):
 # Database file path updated
 DB_FILE = resource_path("databases/hierarchy.db")
 
+_failed_hosts = {}
+FAILED_HOST_COOLDOWN = 15 # seconds
+
 # --- Database Connection Functions ---
 def create_sqlite_connection(path):
     """Establishes a connection to a SQLite database."""
     try:
-        conn = sqlite.connect(path)
+        # isolation_level=None enables autocommit mode, 
+        # allowing manual BEGIN/COMMIT/ROLLBACK in SQL scripts
+        conn = sqlite.connect(path, isolation_level=None)
         return conn
     except sqlite.Error as e:
         print(f"SQLite connection error: {e}")
         return None
 
 
-def create_postgres_connection(host, port=None, database=None, user=None, password=None, application_name=None):
+def create_postgres_connection(host, port=None, database=None, user=None, password=None, application_name=None, bypass_cooldown=False):
     """Establishes a connection to a PostgreSQL database with SSL support for cloud hosts."""
     try:
         app_name = application_name
+
+        host_key = None
+        if isinstance(host, dict):
+            host_key = host.get("host") or host.get("dsn")
+        else:
+            host_key = host
+
+        if not bypass_cooldown and host_key and host_key in _failed_hosts:
+            if time.time() - _failed_hosts[host_key] < FAILED_HOST_COOLDOWN:
+                return None
+            else:
+                del _failed_hosts[host_key]
+
 
         if isinstance(host, dict):
             conn_data = host
@@ -45,10 +63,49 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
 
             if dsn:
                 try:
-                    return psycopg2.connect(dsn, connect_timeout=5, application_name=app_name or "Universal SQL Client")
+                    # Safely merge application_name into DSN using psycopg2's own parser
+                    from psycopg2.extensions import make_dsn
+                    from psycopg2 import connect as pg_connect
+                    
+                    # Ensure we have a default name
+                    final_app_name = app_name or "Universal SQL Client"
+                    
+                    # Detect if this is a cloud host to force SSL
+                    is_cloud = any(cloud_domain in str(dsn).lower() or cloud_domain in str(host_key).lower() 
+                                  for cloud_domain in ["aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com", "cloud.google.com"])
+
+                    # Convert DSN to dict, override app name, and convert back to DSN
+                    try:
+                        # This handles both URL and keyword-style DSNs
+                        import urllib.parse
+                        if "://" in dsn:
+                            # URL style: add to query params
+                            u = urllib.parse.urlparse(dsn)
+                            q = urllib.parse.parse_qs(u.query)
+                            q['application_name'] = [final_app_name]
+                            if is_cloud:
+                                q['sslmode'] = ['require']
+                            u = u._replace(query=urllib.parse.urlencode(q, doseq=True))
+                            dsn = urllib.parse.urlunparse(u)
+                        else:
+                            # Keyword style: append with quotes if needed
+                            if "application_name" not in dsn:
+                                dsn += f" application_name='{final_app_name}'"
+                            if is_cloud and "sslmode" not in dsn:
+                                dsn += " sslmode='require'"
+                    except:
+                        pass # Fallback to original DSN if parsing fails
+                        
+                    # Use underscores for better compatibility with poolers/command line
+                    safe_app_name = final_app_name.replace(" ", "_")
+                    return psycopg2.connect(dsn, connect_timeout=5, application_name=safe_app_name)
+
                 except Exception as e:
-                    # Only print if it's not a common timeout or DNS error to reduce noise
-                    if "timeout expired" not in str(e) and "Name or service not known" not in str(e):
+                    err_str = str(e)
+                    if "timeout expired" in err_str or "Name or service not known" in err_str:
+                        if host_key: _failed_hosts[host_key] = time.time()
+                        return None
+                    else:
                         print(f"DSN connection failed, falling back to keywords: {e}")
 
             host = conn_data.get("host")
@@ -71,6 +128,9 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             return None
 
         # Basic connection parameters
+        # Ensure application name is safe for command line (no spaces)
+        safe_app_name = (app_name or "Universal_SQL_Client").replace(" ", "_")
+        
         params = {
             "host": host,
             "port": port,
@@ -78,7 +138,7 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             "user": user,
             "password": password,
             "connect_timeout": 5,
-            "application_name": app_name
+            "application_name": safe_app_name
         }
         
         # Determine if we should use SSL immediately (Aiven, Heroku, ElephantSQL, AWS)
@@ -105,9 +165,11 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             # Print error only if it's not a common network issue or if it's a new error
             err_str = str(e).strip()
             if "timeout expired" in err_str:
-                print(f"PostgreSQL connection timeout: {host}")
+                if host_key: _failed_hosts[host_key] = time.time()
+                # print(f"PostgreSQL connection timeout: {host}")
             elif "Name or service not known" in err_str:
-                print(f"PostgreSQL host unreachable: {host}")
+                if host_key: _failed_hosts[host_key] = time.time()
+                # print(f"PostgreSQL host unreachable: {host}")
             else:
                 print(f"PostgreSQL connection error: {err_str}")
             return None
