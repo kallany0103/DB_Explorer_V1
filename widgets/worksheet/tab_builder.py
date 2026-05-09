@@ -20,6 +20,7 @@ from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
 import qtawesome as qta
 from widgets.worksheet.connections import get_connection_icon
 from widgets.worksheet.code_editor import CodeEditor
+from widgets.worksheet.autocomplete import CompletionEngine
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFrame
 
@@ -385,6 +386,10 @@ def add_tab(manager):
     text_edit.customContextMenuRequested.connect(lambda pos, editor=text_edit: manager.show_editor_context_menu(pos, editor))
     editor_stack.addWidget(text_edit)
 
+    _sql_engine = CompletionEngine()
+    text_edit.set_engine(_sql_engine)
+    tab_content._sql_engine = _sql_engine
+
     history_widget = QSplitter(Qt.Orientation.Horizontal)
     history_widget.setHandleWidth(0)
     history_list_view = QTreeView()
@@ -491,6 +496,14 @@ def add_tab(manager):
 
     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
+
+    def _refresh_engine():
+        data = db_combo_box.currentData()
+        text_edit._conn_data = data
+        tab_content._sql_engine.refresh(data)
+
+    db_combo_box.currentIndexChanged.connect(_refresh_engine)
+    QTimer.singleShot(300, _refresh_engine)
 
     db_combo_box.currentIndexChanged.connect(
         lambda: editor_stack.currentIndex() == 1 and manager.load_connection_history(tab_content)

@@ -172,6 +172,7 @@ class MainWindow(QMainWindow):
         self.thread_monitor_timer.timeout.connect(self.update_thread_pool_status)
         self.thread_monitor_timer.start(1000)
 
+
         self._apply_styles()
         self.restore_session_state()
         
