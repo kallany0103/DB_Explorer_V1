@@ -1,3 +1,5 @@
+import csv as _csv_mod
+import os
 import threading
 import sqlite3 as sqlite
 
@@ -112,6 +114,43 @@ def _fetch_db_words(conn_data):
                 table_columns.setdefault(tbl.lower(), []).append(col)
             return schemas, tables, schema_tables, table_columns
 
+        elif code == "CSV":
+            path = conn_data.get("db_path", "")
+            if not path or not os.path.isdir(path):
+                return [], [], {}, {}
+            tables = []
+            table_columns = {}
+            try:
+                for fname in sorted(os.listdir(path)):
+                    if fname.lower().endswith(".csv"):
+                        tbl = os.path.splitext(fname)[0]
+                        tables.append(tbl)
+                        try:
+                            with open(os.path.join(path, fname), newline="", encoding="utf-8", errors="replace") as f:
+                                headers = next(_csv_mod.reader(f), [])
+                                cols = [h.strip() for h in headers if h.strip()]
+                                if cols:
+                                    table_columns[tbl.lower()] = cols
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"CSV autocomplete fetch error: {e}")
+            return [], tables, {}, table_columns
+
+        elif code == "SERVICENOW":
+            try:
+                from db.db_connections import create_servicenow_connection
+                conn = create_servicenow_connection(conn_data)
+                if not conn:
+                    return [], [], {}, {}
+                cur = conn.cursor()
+                cur.execute("SELECT TableName FROM sys_tables")
+                tables = [row[0] for row in cur.fetchall()]
+                conn.close()
+                return [], tables, {}, {}
+            except Exception as e:
+                print(f"ServiceNow autocomplete fetch error: {e}")
+
     except Exception:
         pass
     return [], [], {}, {}
@@ -158,6 +197,42 @@ def fetch_columns(conn_data, table_name):
             rows = cur.fetchall()
             pg_conn.close()
             return [r[0] for r in rows]
+
+        elif code == "CSV":
+            path = conn_data.get("db_path", "")
+            if not path:
+                return []
+            csv_file = os.path.join(path, table_name + ".csv")
+            if not os.path.isfile(csv_file):
+                try:
+                    for fname in os.listdir(path):
+                        if fname.lower() == table_name.lower() + ".csv":
+                            csv_file = os.path.join(path, fname)
+                            break
+                    else:
+                        return []
+                except Exception:
+                    return []
+            try:
+                with open(csv_file, newline="", encoding="utf-8", errors="replace") as f:
+                    headers = next(_csv_mod.reader(f), [])
+                    return [h.strip() for h in headers if h.strip()]
+            except Exception:
+                pass
+
+        elif code == "SERVICENOW":
+            try:
+                from db.db_connections import create_servicenow_connection
+                conn = create_servicenow_connection(conn_data)
+                if not conn:
+                    return []
+                cur = conn.cursor()
+                cur.execute(f"SELECT ColumnName FROM sys_tablecolumns WHERE TableName='{table_name}'")
+                cols = [row[0] for row in cur.fetchall()]
+                conn.close()
+                return cols
+            except Exception:
+                pass
 
     except Exception:
         pass
@@ -246,12 +321,16 @@ class CompletionEngine:
             self._active_list = list(tables)
         return tables
 
-    def get_columns_for_table(self, table_name):
+    def get_columns_for_table(self, conn_data, table_name):
         """
-        Return pre-fetched columns for table_name and set them as the active
-        completion list. Pure dict lookup — no DB call, no freeze.
+        Return pre-fetched columns for table_name, or fetch dynamically if missing.
         """
         columns = self._table_columns.get(table_name.lower(), [])
+        if not columns:
+            columns = fetch_columns(conn_data, table_name)
+            if columns:
+                self._table_columns[table_name.lower()] = columns
+        
         if columns:
             self._active_list = list(columns)
         return columns

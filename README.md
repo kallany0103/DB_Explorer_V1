@@ -1,6 +1,6 @@
 # DB Explorer
 
-DB Explorer is a desktop SQL client built with Python and PyQt6 for working across PostgreSQL, Oracle, SQLite, CSV, and ServiceNow from one responsive interface.
+DB Explorer is a desktop SQL client built with Python and Pyside66 for working across PostgreSQL, Oracle, SQLite, CSV, and ServiceNow from one responsive interface.
 
 ## Features
 
