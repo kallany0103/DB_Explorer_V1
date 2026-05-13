@@ -253,7 +253,9 @@ class ExplorerMenuBuilder:
         object_label = "View" if is_view else "Table"
 
         is_group = item_data.get("type") in ("group", "schema_group", "schemas_root")
-        
+        hide_pg_style_actions = str(item_data.get("db_type") or "").lower() in ("csv", "servicenow")
+        hide_scripts_erd_props = hide_pg_style_actions and not is_group
+
         if not is_group:
             menu.addSeparator()
             act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -280,18 +282,19 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.refresh_object_explorer())
         menu.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
-        act.triggered.connect(
-            lambda: self.manager.script_generator.script_table_as_create(item_data, item.text())
-        )
-        menu.addAction(act)
+        if not hide_scripts_erd_props:
+            menu.addSeparator()
+            act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+            act.triggered.connect(
+                lambda: self.manager.script_generator.script_table_as_create(item_data, item.text())
+            )
+            menu.addAction(act)
 
-        act = action(self.manager, f"ERD for {object_label}", "fa6s.sitemap")
-        act.triggered.connect(
-            lambda: self.manager.generate_erd_for_item(item_data, item.text())
-        )
-        menu.addAction(act)
+            act = action(self.manager, f"ERD for {object_label}", "fa6s.sitemap")
+            act.triggered.connect(
+                lambda: self.manager.generate_erd_for_item(item_data, item.text())
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Maintenance...", "mdi.wrench-outline")
@@ -318,6 +321,7 @@ class ExplorerMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(stub("properties"))
-        menu.addAction(act)
+        if not hide_scripts_erd_props:
+            act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+            act.triggered.connect(stub("properties"))
+            menu.addAction(act)

@@ -1,5 +1,5 @@
 import sqlite3 as sqlite
-from db.db_connections import DB_FILE, create_postgres_connection
+from db.db_connections import DB_FILE, create_postgres_connection, get_pooled_postgres_connection, return_pooled_postgres_connection
 
 def get_all_connections_from_db():
     """Returns a list of dicts with full hierarchical connection info from usf_connections table."""
@@ -68,13 +68,14 @@ def get_hierarchy_data():
 
 
 def get_postgres_state_details(conn_data, active_only=False, application_name=None):
-    """Fetches detailed server state with dynamic application name."""
+    """Fetches detailed server state with dynamic application name. Uses connection pooling."""
     conn = None
     try:
         db_name = conn_data.get('database', 'unknown_db')
         app_name = application_name or f"Universal SQL Client - {db_name}"
 
-        conn = create_postgres_connection(conn_data, application_name=app_name)
+        # Use pooled connection instead of creating new one
+        conn = get_pooled_postgres_connection(conn_data, application_name=app_name, use_pool=True)
         if conn:
             conn.set_session(readonly=True, autocommit=True)
             with conn.cursor() as cur:
@@ -149,7 +150,8 @@ def get_postgres_state_details(conn_data, active_only=False, application_name=No
     finally:
         if conn:
             try:
-                conn.close()
+                # Return connection to pool instead of closing
+                return_pooled_postgres_connection(conn_data, conn=conn)
             except:
                 pass
     return {"sessions": {"columns": [], "data": []}, "locks": {"columns": [], "data": []}}
@@ -213,10 +215,8 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
         app_stats = tracker.get_stats()
         
         if conn is None:
-
-
-
-            conn = create_postgres_connection(conn_data, application_name=app_name)
+            # Use pooled connection instead of creating new one
+            conn = get_pooled_postgres_connection(conn_data, application_name=app_name, use_pool=True)
             should_close = True
             if conn:
                 conn.set_session(readonly=True, autocommit=True)
@@ -309,7 +309,8 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
     finally:
         if should_close and conn:
             try:
-                conn.close()
+                # Return to pool instead of closing
+                return_pooled_postgres_connection(conn_data, conn=conn)
             except:
                 pass
     return None

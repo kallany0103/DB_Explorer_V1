@@ -820,7 +820,7 @@ class CodeEditor(QPlainTextEdit):
                 if engine.is_schema(word):
                     items = engine.fetch_for_schema_dot(self._conn_data, word)
                 else:
-                    items = engine.get_columns_for_table(word)
+                    items = engine.get_columns_for_table(self._conn_data, word)
                 if items:
                     self._ghost_prefix = ""
                     self._ghost_full_match = ""

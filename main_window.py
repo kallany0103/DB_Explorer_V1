@@ -516,6 +516,13 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
 
+            # Close all PostgreSQL connection pools
+            try:
+                import db
+                db.close_all_postgres_pools()
+            except Exception as e:
+                print(f"Error closing connection pools: {e}")
+
             event.accept()
         else:
             event.ignore()

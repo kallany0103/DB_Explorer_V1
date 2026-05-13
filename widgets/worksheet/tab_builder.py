@@ -497,13 +497,22 @@ def add_tab(manager):
     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
 
-    def _refresh_engine():
+    def _refresh_engine(skip_slow=False):
         data = db_combo_box.currentData()
         text_edit._conn_data = data
-        tab_content._sql_engine.refresh(data)
+        code = (data.get("code") or data.get("db_type") or "").upper() if data else ""
+        # ServiceNow connections are slow to connect — skip autocomplete pre-fetch
+        # during the startup timer so we don't auto-connect before the user acts.
+        if not skip_slow or code not in ("SERVICENOW",):
+            tab_content._sql_engine.refresh(data)
+        if limit_combo := tab_content.findChild(QComboBox, "rows_limit_combo"):
+            if code == "SERVICENOW":
+                limit_combo.setCurrentText("1000")
+            elif limit_combo.currentText() == "1000" and code != "SERVICENOW":
+                limit_combo.setCurrentText("No Limit")
 
-    db_combo_box.currentIndexChanged.connect(_refresh_engine)
-    QTimer.singleShot(300, _refresh_engine)
+    db_combo_box.currentIndexChanged.connect(lambda: _refresh_engine(skip_slow=False))
+    QTimer.singleShot(300, lambda: _refresh_engine(skip_slow=True))
 
     db_combo_box.currentIndexChanged.connect(
         lambda: editor_stack.currentIndex() == 1 and manager.load_connection_history(tab_content)

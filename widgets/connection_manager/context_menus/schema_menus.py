@@ -95,6 +95,7 @@ class SchemaMenuBuilder:
         table_type   = item_data.get("table_type", "TABLE").upper()
         is_view      = "VIEW" in table_type
         label        = "View" if is_view else "Table"
+        hide_pg_style_actions = str(db_type or "").lower() in ("csv", "servicenow")
 
         # View/Edit Data submenu
         view_sub = submenu(menu, "View/Edit Data", "mdi.table-eye")
@@ -142,43 +143,44 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Backup...", "mdi.backup-restore")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
-        )
-        menu.addAction(act)
+        if not hide_pg_style_actions:
+            act = action(self.manager, "Backup...", "mdi.backup-restore")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+            )
+            menu.addAction(act)
 
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)
-        )
-        menu.addAction(act)
+            act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)
+            )
+            menu.addAction(act)
 
-        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
-        )
-        menu.addAction(act)
+            act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
+            )
+            menu.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
-        act.triggered.connect(
-            lambda: self.manager.generate_erd_for_item(item_data, display_name)
-        )
-        menu.addAction(act)
+            menu.addSeparator()
+            act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
+            act.triggered.connect(
+                lambda: self.manager.generate_erd_for_item(item_data, display_name)
+            )
+            menu.addAction(act)
 
-        menu.addSeparator()
-        scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
-        for lbl, fn in [
-            ("CREATE Script", lambda: self.manager.script_generator.script_table_as_create(item_data, display_name)),
-            ("INSERT Script", lambda: self.manager.script_generator.script_table_as_insert(item_data, display_name)),
-            ("UPDATE Script", lambda: self.manager.script_generator.script_table_as_update(item_data, display_name)),
-            ("DELETE Script", lambda: self.manager.script_generator.script_table_as_delete(item_data, display_name)),
-            ("SELECT Script", lambda: self.manager.script_generator.script_table_as_select(item_data, display_name)),
-        ]:
-            a = action(self.manager, lbl, "mdi.script-text-outline")
-            a.triggered.connect(fn)
-            scripts_sub.addAction(a)
+            menu.addSeparator()
+            scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
+            for lbl, fn in [
+                ("CREATE Script", lambda: self.manager.script_generator.script_table_as_create(item_data, display_name)),
+                ("INSERT Script", lambda: self.manager.script_generator.script_table_as_insert(item_data, display_name)),
+                ("UPDATE Script", lambda: self.manager.script_generator.script_table_as_update(item_data, display_name)),
+                ("DELETE Script", lambda: self.manager.script_generator.script_table_as_delete(item_data, display_name)),
+                ("SELECT Script", lambda: self.manager.script_generator.script_table_as_select(item_data, display_name)),
+            ]:
+                a = action(self.manager, lbl, "mdi.script-text-outline")
+                a.triggered.connect(fn)
+                scripts_sub.addAction(a)
 
         act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
