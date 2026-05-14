@@ -322,7 +322,7 @@ def get_or_create_pool(conn_params: Dict,
     # Create a unique key from connection parameters
     pool_key = (
         conn_params.get('host', ''),
-        int(conn_params.get('port', 5432)),
+        int(conn_params.get('port') or 5432),
         conn_params.get('database', ''),
         conn_params.get('user', '')
     )
@@ -339,7 +339,7 @@ def get_or_create_pool(conn_params: Dict,
             # Prepare connection parameters for the pool
             pool_conn_params = {
                 'host': conn_params.get('host'),
-                'port': conn_params.get('port', 5432),
+                'port': conn_params.get('port') or 5432,
                 'database': conn_params.get('database'),
                 'user': conn_params.get('user'),
                 'password': conn_params.get('password'),
