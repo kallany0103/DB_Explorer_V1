@@ -273,12 +273,12 @@ class SchemaMenuBuilder:
         act.triggered.connect(stub("search_schema"))
         menu.addAction(act)
 
-        if db_type == "postgres":
-            act = action(self.manager, "Import Foreign Schema...", "mdi.database-import")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.import_foreign_schema_dialog(item_data)
-            )
-            menu.addAction(act)
+        # if db_type == "postgres":
+        #     act = action(self.manager, "Import Foreign Schema...", "mdi.database-import")
+        #     # act.triggered.connect(
+        #     #     lambda: self.manager.connection_actions.import_foreign_schema_dialog(item_data)
+        #     # )
+        #     menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "PSQL Tool", "mdi.console")
@@ -568,11 +568,12 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _extension_root_menu(self, menu, item_data, index):
-        act = action(self.manager, "Create Extension...", "mdi.puzzle-plus-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.create_extension_dialog(item_data)
-        )
-        menu.addAction(act)
+        # act = action(self.manager, "Create Extension...", "mdi.puzzle-plus-outline")
+        # # act.triggered.connect(
+        # #     lambda: self.manager.connection_actions.create_extension_dialog(item_data)
+        # # )
+        # menu.addAction(act)
+        pass # To keep the function valid
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
@@ -586,21 +587,21 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _fdw_root_menu(self, menu, item_data, db_type, index):
-        if db_type == "postgres":
-            act = action(self.manager, "Create postgres_fdw Extension", "mdi.puzzle-plus-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.execute_simple_sql(
-                    item_data, "CREATE EXTENSION IF NOT EXISTS postgres_fdw;"
-                )
-            )
-            menu.addAction(act)
-            menu.addSeparator()
+        # if db_type == "postgres":
+        #     act = action(self.manager, "Create postgres_fdw Extension", "mdi.puzzle-plus-outline")
+        #     # act.triggered.connect(
+        #     #     lambda: self.manager.connection_actions.execute_simple_sql(
+        #     #         item_data, "CREATE EXTENSION IF NOT EXISTS postgres_fdw;"
+        #     #     )
+        #     # )
+        #     menu.addAction(act)
+        #     menu.addSeparator()
 
-        act = action(self.manager, "Create Foreign Data Wrapper...", "mdi.database-link-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.create_fdw_template(item_data)
-        )
-        menu.addAction(act)
+        # act = action(self.manager, "Create Foreign Data Wrapper...", "mdi.database-link-outline")
+        # # act.triggered.connect(
+        # #     lambda: self.manager.connection_actions.create_fdw_template(item_data)
+        # # )
+        # menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
@@ -617,11 +618,11 @@ class SchemaMenuBuilder:
         fdw_name = item_data.get("fdw_name", "")
         lbl = "Create Foreign Server (Postgres)..." if fdw_name == "postgres_fdw" else "Create Foreign Server..."
 
-        act = action(self.manager, lbl, "mdi.server-plus")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.create_foreign_server_template(item_data)
-        )
-        menu.addAction(act)
+        # act = action(self.manager, lbl, "mdi.server-plus")
+        # # act.triggered.connect(
+        # #     lambda: self.manager.connection_actions.create_foreign_server_template(item_data)
+        # # )
+        # menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Drop Foreign Data Wrapper", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -655,11 +656,12 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _foreign_server_menu(self, menu, item_data):
-        act = action(self.manager, "Create User Mapping...", "mdi.account-plus-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.create_user_mapping_template(item_data)
-        )
-        menu.addAction(act)
+        # act = action(self.manager, "Create User Mapping...", "mdi.account-plus-outline")
+        # # act.triggered.connect(
+        # #     lambda: self.manager.connection_actions.create_user_mapping_template(item_data)
+        # # )
+        # menu.addAction(act)
+        pass # To keep the function valid
 
         menu.addSeparator()
         act = action(self.manager, "Drop Foreign Server", "mdi.delete-outline", shortcut="Alt+Shift+D")
