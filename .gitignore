@@ -1,0 +1,7 @@
+__pycache__/
+build/
+dist/
+DbExplorer.spec
+databases/hierarchy.db
+*.json
+.gitignore
