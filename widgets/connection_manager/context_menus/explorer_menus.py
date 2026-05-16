@@ -1,25 +1,12 @@
 # widgets/connection_manager/context_menus/explorer_menus.py
-"""Right-click menus for the Object Explorer tree (top QTreeView).
-
-Covers depth 1 (Connection Type), 2 (Group), 3 (Connection), ≥4 (Object).
-"""
+"""Modular context menu builder for the Object Explorer (top QTreeView)."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMenu
-
-from widgets.connection_manager.menu_style import apply_menu_style
-from widgets.connection_manager.context_menus._helpers import action, stub
-
+from widgets.connection_manager.context_menus._helpers import action, stub, submenu
 
 class ExplorerMenuBuilder:
-    """Builds context menus for the Object Explorer tree."""
-
     def __init__(self, manager):
         self.manager = manager
-
-    # =========================================================================
-    # Entry point
-    # =========================================================================
 
     def show(self, pos):
         proxy_index = self.manager.tree.indexAt(pos)
@@ -29,299 +16,162 @@ class ExplorerMenuBuilder:
         source_index = self.manager.proxy_model.mapToSource(proxy_index)
         item = self.manager.model.itemFromIndex(source_index)
         depth = self.manager.get_item_depth(item)
-
+        
+        from PySide6.QtWidgets import QMenu
+        from widgets.connection_manager.menu_style import apply_menu_style
         menu = QMenu()
         apply_menu_style(menu)
 
         if depth == 1:
-            self._type_menu(menu, item)
+            self._connection_type_menu(menu, item)
         elif depth == 2:
-            self._group_menu(menu, item)
+            self._connection_group_menu(menu, item)
         elif depth == 3:
-            self._connection_menu(menu, item)
+            self._connection_menu(menu, item, source_index)
         elif depth >= 4:
-            self._object_menu(menu, item)
+            self._object_menu(menu, item, source_index)
 
         if not menu.isEmpty():
             menu.exec(self.manager.tree.viewport().mapToGlobal(pos))
 
-    # =========================================================================
-    # Depth 1 : Connection Type  (e.g. POSTGRES, SQLITE)
-    # =========================================================================
-
-    def _type_menu(self, menu, item):
+    def _connection_type_menu(self, menu, item):
         act = action(self.manager, "New Connection Group", "mdi.folder-plus-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_dialogs.add_connection_group(item)
-        )
+        act.triggered.connect(lambda: self.manager.connection_dialogs.add_connection_group(item))
         menu.addAction(act)
-
+        
         menu.addSeparator()
-
         act = action(self.manager, "Edit Connection Type", "mdi.pencil-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_dialogs.edit_connection_type(item)
-        )
+        act.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection_type(item))
         menu.addAction(act)
-
+        
         act = action(self.manager, "Delete Connection Type", "mdi.delete-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_dialogs.delete_connection_type(item)
-        )
+        act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_type(item))
         menu.addAction(act)
 
-    # =========================================================================
-    # Depth 2 : Connection Group
-    # =========================================================================
-
-    def _group_menu(self, menu, item):
+    def _connection_group_menu(self, menu, item):
         parent_item = item.parent()
         code = parent_item.data(Qt.ItemDataRole.UserRole) if parent_item else None
 
-        if code == "POSTGRES":
+        if code == 'POSTGRES':
             act = action(self.manager, "New PostgreSQL Connection", "mdi.database-plus")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.add_postgres_connection(item)
-            )
+            act.triggered.connect(lambda: self.manager.connection_dialogs.add_postgres_connection(item))
             menu.addAction(act)
-        elif code == "SQLITE":
+        elif code == 'SQLITE':
             act = action(self.manager, "New SQLite Connection", "mdi.database-plus")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.add_sqlite_connection(item)
-            )
+            act.triggered.connect(lambda: self.manager.connection_dialogs.add_sqlite_connection(item))
             menu.addAction(act)
-        elif code in ("ORACLE_FA", "ORACLE_DB"):
+        elif code in ['ORACLE_FA', 'ORACLE_DB']:
             act = action(self.manager, "New Oracle Connection", "mdi.database-plus")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.add_oracle_connection(item)
-            )
+            act.triggered.connect(lambda: self.manager.connection_dialogs.add_oracle_connection(item))
             menu.addAction(act)
-        elif code == "CSV":
-            act = action(self.manager, "New CSV Connection", "mdi.file-delimited-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.add_csv_connection(item)
-            )
+        elif code == 'CSV':
+            act = action(self.manager, "New CSV Connection", "mdi.file-plus-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.add_csv_connection(item))
             menu.addAction(act)
-        elif code == "SERVICENOW":
-            act = action(self.manager, "New ServiceNow Connection", "mdi.cloud-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.add_servicenow_connection(item)
-            )
+        elif code == 'SERVICENOW':
+            act = action(self.manager, "New ServiceNow Connection", "mdi.cloud-plus-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.add_servicenow_connection(item))
             menu.addAction(act)
-            
-        # Gather connections for group-level restore
-        connections = []
-        for i in range(item.rowCount()):
-            child = item.child(i)
-            c_data = child.data(Qt.ItemDataRole.UserRole)
-            if c_data and isinstance(c_data, dict):
-                connections.append(c_data)
         
-        if connections:
-            menu.addSeparator()
-            act = action(self.manager, "Restore into Group...", "mdi.restore")
-            # We assume the first connection's db_type is representative of the group for dialog purposes
-            db_type = connections[0].get("code", "postgres").lower()
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_restore_dialog({
-                    "connections": connections, 
-                    "db_type": db_type, 
-                    "type": "group",
-                    "database": item.text()
-                })
-            )
-            menu.addAction(act)
-
         menu.addSeparator()
-
-        act = action(self.manager, "Edit Connection Group", "mdi.pencil-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_dialogs.edit_connection_group(item)
-        )
+        act = action(self.manager, "Edit Connection Group", "mdi.folder-edit-outline")
+        act.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection_group(item))
+        menu.addAction(act)
+        
+        act = action(self.manager, "Delete Connection Group", "mdi.folder-remove-outline")
+        act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_group(item))
         menu.addAction(act)
 
-        act = action(self.manager, "Delete Connection Group", "mdi.delete-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_dialogs.delete_connection_group(item)
-        )
-        menu.addAction(act)
-
-    # =========================================================================
-    # Depth 3 : Individual Connection (server / file)
-    # =========================================================================
-
-    def _connection_menu(self, menu, item):
+    def _connection_menu(self, menu, item, index):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
-
-        if conn_data:
-            act = action(self.manager, "View Details", "mdi.information-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.show_connection_details(item)
-            )
-            menu.addAction(act)
-            menu.addSeparator()
-
-        parent_item = item.parent()
-        grandparent_item = parent_item.parent() if parent_item else None
-        code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
-
-        if code == "SQLITE" and conn_data and conn_data.get("db_path"):
-            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.edit_connection(item)
-            )
-            menu.addAction(act)
-        elif code == "POSTGRES" and conn_data and conn_data.get("host"):
-            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.edit_pg_connection(item)
-            )
-            menu.addAction(act)
-        elif code in ("ORACLE_FA", "ORACLE_DB"):
-            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.edit_oracle_connection(item)
-            )
-            menu.addAction(act)
-        elif code == "CSV" and conn_data and conn_data.get("db_path"):
-            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.edit_csv_connection(item)
-            )
-            menu.addAction(act)
-        elif code == "SERVICENOW":
-            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_dialogs.edit_servicenow_connection(item)
-            )
-            menu.addAction(act)
-
-        menu.addSeparator()
+        
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(conn_data, item.text())
-            if conn_data else None
-        )
+        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
-
+        
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(lambda: self.manager.refresh_object_explorer())
+        
+        # Search Objects Dialog
+        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+F")
+        act.triggered.connect(lambda: self.manager.connection_actions.open_search_objects_dialog(conn_data))
         menu.addAction(act)
-
+        
         menu.addSeparator()
+        
         act = action(self.manager, "ERD for Database", "fa6s.sitemap")
         act.triggered.connect(lambda: self.manager.generate_erd(item))
         menu.addAction(act)
-
-        if code == "POSTGRES":
-            act = action(self.manager, "Database Statistics...", "mdi.chart-pie")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_database_statistics_dialog(conn_data)
-            )
-            menu.addAction(act)
-            
-            menu.addSeparator()
-            act = action(self.manager, "Backup...", "mdi.backup-restore")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_backup_dialog({"conn_data": conn_data, "db_type": "postgres", "type": "database"})
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Restore...", "mdi.restore")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_restore_dialog({"conn_data": conn_data, "db_type": "postgres", "type": "database"})
-            )
-            menu.addAction(act)
-
+        
         menu.addSeparator()
-        act = action(self.manager, "Delete Connection", "mdi.delete-outline")
+        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+        act.triggered.connect(lambda: self.manager.connection_dialogs.show_connection_details(item))
+        menu.addAction(act)
+        
+        menu.addSeparator()
+        
+        # Refresh Logic (Targeted)
+        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))
+        menu.addAction(act)
+        
+        menu.addSeparator()
+        act = action(self.manager, "Delete Connection", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(lambda: self.manager.delete_connection(item))
         menu.addAction(act)
 
-    # =========================================================================
-    # Depth ≥ 4 : Table / object node inside the explorer tree
-    # =========================================================================
-
-    def _object_menu(self, menu, item):
+    def _object_menu(self, menu, item, index):
         item_data = item.data(Qt.ItemDataRole.UserRole)
-        if not (item_data and isinstance(item_data, dict)):
-            return
-
-        table_type = item_data.get("table_type", "TABLE")
-        is_view = "VIEW" in str(table_type).upper()
-        object_label = "View" if is_view else "Table"
-
-        is_group = item_data.get("type") in ("group", "schema_group", "schemas_root")
-        hide_pg_style_actions = str(item_data.get("db_type") or "").lower() in ("csv", "servicenow")
-        hide_scripts_erd_props = hide_pg_style_actions and not is_group
-
-        if not is_group:
-            menu.addSeparator()
-            act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.delete_table(item_data, item.text())
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Drop (Cascade)", "mdi.delete-sweep-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.delete_table(item_data, item.text(), cascade=True)
-            )
-            menu.addAction(act)
-        elif item_data.get("type") == "schemas_root":
-            menu.addSeparator()
-            act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
-            )
-            menu.addAction(act)
+        if not item_data: return
+        
+        display_name = item.text()
+        table_type = item_data.get('table_type', 'TABLE').upper()
+        is_view = "VIEW" in table_type
+        
+        # View/Edit Data submenu
+        view_sub = submenu(menu, "View/Edit Data", "mdi.table-eye")
+        
+        act = action(self.manager, "All Rows", "mdi.table-row")
+        act.triggered.connect(lambda: self.manager.connection_actions.query_table_rows(item_data, display_name, limit=None, execute_now=True))
+        view_sub.addAction(act)
+        
+        act = action(self.manager, "First 100 Rows", "mdi.table-row")
+        act.triggered.connect(lambda: self.manager.connection_actions.query_table_rows(item_data, display_name, limit=100, execute_now=True))
+        view_sub.addAction(act)
+        
+        act = action(self.manager, "Count Rows", "mdi.counter")
+        act.triggered.connect(lambda: self.manager.connection_actions.count_table_rows(item_data, display_name))
+        view_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(lambda: self.manager.refresh_object_explorer())
-        menu.addAction(act)
-
-        if not hide_scripts_erd_props:
-            menu.addSeparator()
-            act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
-            act.triggered.connect(
-                lambda: self.manager.script_generator.script_table_as_create(item_data, item.text())
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, f"ERD for {object_label}", "fa6s.sitemap")
-            act.triggered.connect(
-                lambda: self.manager.generate_erd_for_item(item_data, item.text())
-            )
-            menu.addAction(act)
-
-        menu.addSeparator()
-        act = action(self.manager, "Maintenance...", "mdi.wrench-outline")
-        act.triggered.connect(stub("maintenance"))
-        menu.addAction(act)
-
-        act = action(self.manager, "Grant Wizard...", "mdi.account-key-outline")
-        act.triggered.connect(stub("grant_wizard"))
-        menu.addAction(act)
-
-        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
-        act.triggered.connect(stub("search_objects"))
-        menu.addAction(act)
-
-        menu.addSeparator()
-        act = action(self.manager, "PSQL Tool", "mdi.console")
-        act.triggered.connect(stub("psql_tool"))
-        menu.addAction(act)
-
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item.text())
-        )
+        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name))
         menu.addAction(act)
 
         menu.addSeparator()
-        if not hide_scripts_erd_props:
-            act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-            act.triggered.connect(stub("properties"))
+        scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(lambda: self.manager.script_generator.script_table_as_create(item_data, display_name))
+        scripts_sub.addAction(act)
+        
+        act = action(self.manager, "SELECT Script", "mdi.script-text-outline")
+        act.triggered.connect(lambda: self.manager.script_generator.script_table_as_select(item_data, display_name))
+        scripts_sub.addAction(act)
+
+        menu.addSeparator()
+        if not is_view:
+            act = action(self.manager, "Truncate", "mdi.eraser")
+            act.triggered.connect(lambda: self.manager.connection_actions.truncate_table(item_data, display_name))
             menu.addAction(act)
+
+        act = action(self.manager, "Drop", "mdi.delete-outline", shortcut="Alt+Shift+D")
+        act.triggered.connect(lambda: self.manager.connection_actions.delete_table(item_data, display_name))
+        menu.addAction(act)
+        
+        menu.addSeparator()
+        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+        act.triggered.connect(lambda: self.manager.connection_actions.show_table_properties(item_data, display_name))
+        menu.addAction(act)
+
+        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))
+        menu.addAction(act)

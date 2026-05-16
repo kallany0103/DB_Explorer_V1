@@ -74,6 +74,29 @@ class MaterializedViewMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
+        
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_table_as_create(item_data, display_name)
+        )
+        scripts_sub.addAction(act)
+
+        act = action(self.manager, "SELECT Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_table_as_select(item_data, display_name)
+        )
+        scripts_sub.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "ERD for Materialized View", "fa6s.sitemap")
+        act.triggered.connect(
+            lambda: self.manager.generate_erd_for_item(item_data, f"M-View: {display_name}")
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         act = action(self.manager, "Backup...", "mdi.backup-restore")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_backup_dialog(item_data)
@@ -83,6 +106,12 @@ class MaterializedViewMenuBuilder:
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
         )
         menu.addAction(act)
 

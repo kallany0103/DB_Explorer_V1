@@ -95,7 +95,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
                 cursor.execute(pg_queries.GET_TABLE_DETAILS, (self.schema_name, self.table_name))
                 res = cursor.fetchone()
                 if res:
-                    owner, schema, comment, relkind = res
+                    oid, owner, schema, comment, relkind, *rest = res
                     self.comment_edit.setPlainText(comment or "")
                     self.original_owner = owner
                     

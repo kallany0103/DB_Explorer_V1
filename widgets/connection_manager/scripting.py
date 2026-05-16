@@ -270,3 +270,27 @@ BEGIN
 END;
 $$;"""
         self.open_script_in_editor(item_data, sql)
+
+    def script_schema_as_create(self, item_data, schema_name):
+        sql = f"-- Create Schema Script\nCREATE SCHEMA IF NOT EXISTS \"{schema_name}\";"
+        self.open_script_in_editor(item_data, sql)
+
+    def script_extension_as_create(self, item_data, ext_name):
+        sql = f"-- Create Extension Script\nCREATE EXTENSION IF NOT EXISTS \"{ext_name}\";"
+        self.open_script_in_editor(item_data, sql)
+
+    def script_fdw_as_create(self, item_data, fdw_name):
+        sql = f"-- Create Foreign Data Wrapper Script\nCREATE FOREIGN DATA WRAPPER \"{fdw_name}\";"
+        self.open_script_in_editor(item_data, sql)
+
+    def script_server_as_create(self, item_data, server_name):
+        sql = f"-- Create Foreign Server Script\nCREATE SERVER \"{server_name}\"\n    FOREIGN DATA WRAPPER <fdw_name>\n    OPTIONS (host 'localhost', port '5432', dbname 'database');"
+        self.open_script_in_editor(item_data, sql)
+
+    def script_user_mapping_as_create(self, item_data, user_name):
+        sql = f"-- Create User Mapping Script\nCREATE USER MAPPING FOR \"{user_name}\"\n    SERVER <server_name>\n    OPTIONS (user 'username', password 'password');"
+        self.open_script_in_editor(item_data, sql)
+
+    def script_database_as_create(self, item_data, db_name):
+        sql = f"-- Create Database Script\nCREATE DATABASE \"{db_name}\"\n    WITH \n    OWNER = postgres\n    ENCODING = 'UTF8'\n    CONNECTION LIMIT = -1;"
+        self.open_script_in_editor(item_data, sql)

@@ -82,7 +82,9 @@ class ConnectionActions:
         if db_type == 'postgres':
             schema = item_data.get("schema_name", "public")
             schema_quoted = f'"{schema}"'
-            query = f'SELECT COUNT(*) FROM {schema_quoted}.{table_name};'
+            table_type = item_data.get('table_type', '').upper()
+            # Handle Materialized Views separately if needed, but COUNT(*) is the same
+            query = f'SELECT COUNT(*) FROM {schema_quoted}."{table_name}";'
         elif db_type == 'csv':
             query = f'SELECT COUNT(*) FROM [{table_name}]'
         else:
@@ -383,6 +385,57 @@ class ConnectionActions:
 
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete {object_type.lower()}:\n{e}")
+
+    def truncate_table(self, item_data, table_name, cascade=False):
+        """Truncate all rows from a table."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        real_table_name = item_data.get('table_name', table_name)
+        
+        confirm_msg = f"Are you sure you want to truncate table '{table_name}'?"
+        if cascade:
+            confirm_msg += "\n\nThis will also truncate ALL dependent tables (CASCADE)."
+        confirm_msg += "\n\nThis will remove all data from the table."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Truncate Table',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            conn = None
+            sql = ""
+            if db_type == 'postgres':
+                conn = db.create_postgres_connection(conn_data)
+                schema_quoted = f'"{schema_name}"' if schema_name else ""
+                full_name = f'{schema_quoted}."{real_table_name}"' if schema_quoted else f'"{real_table_name}"'
+                cascade_cmd = " CASCADE" if cascade else ""
+                sql = f"TRUNCATE TABLE {full_name}{cascade_cmd};"
+            elif db_type == 'sqlite':
+                conn = db.create_sqlite_connection(conn_data.get('db_path'))
+                sql = f'DELETE FROM "{real_table_name}";'
+            
+            if conn and sql:
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self.manager.status.showMessage(f"Table '{table_name}' truncated.", 4000)
+                # We use _notify_deletion_success to show the SQL in the message view
+                self._notify_deletion_success(table_name, "Table Data", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to truncate table:\n{e}")
 
     def delete_schema(self, item_data, schema_name, cascade=False):
         """Perform DROP SCHEMA or DROP SCHEMA CASCADE on a PostgreSQL connection."""
@@ -1237,7 +1290,7 @@ class ConnectionActions:
         # We use a UNION ALL query to fetch everything in one pass and sort server-side.
         sql = """
         SELECT schema, name, type FROM (
-            -- Tables, Views, Sequences, Indexes, Foreign Tables
+            -- Tables, Views, Sequences, Indexes, Foreign Tables, Materialized Views
             SELECT 
                 n.nspname AS schema,
                 c.relname AS name,
@@ -1266,9 +1319,38 @@ class ConnectionActions:
             JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname NOT LIKE 'pg_%%' 
             AND n.nspname != 'information_schema'
+
+            UNION ALL
+
+            -- Schemas
+            SELECT 
+                '' AS schema,
+                nspname AS name,
+                'Schema' AS type
+            FROM pg_namespace
+            WHERE nspname NOT LIKE 'pg_%%' 
+            AND nspname != 'information_schema'
+
+            UNION ALL
+
+            -- Extensions
+            SELECT 
+                '' AS schema,
+                extname AS name,
+                'Extension' AS type
+            FROM pg_extension
+
+            UNION ALL
+
+            -- Languages
+            SELECT 
+                '' AS schema,
+                lanname AS name,
+                'Language' AS type
+            FROM pg_language
         ) sub
         WHERE name ILIKE %s
-        ORDER BY schema, name
+        ORDER BY type, schema, name
         """
         
         try:
