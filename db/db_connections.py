@@ -4,6 +4,7 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
+from db.connection_pool import get_or_create_pool
 # DEBUG-START
 import time
 # DEBUG-END
@@ -235,3 +236,131 @@ def create_csv_connection(conn_data):
     except Exception as e:
         print(f"CSV connection error: {e}")
         return None
+
+
+# =========================================================
+# CONNECTION POOLING FOR PostgreSQL
+# =========================================================
+
+def get_pooled_postgres_connection(host, port=None, database=None, user=None, password=None, application_name=None, use_pool=True):
+    """
+    Get a PostgreSQL connection from the pool.
+    
+    If use_pool=False, falls back to creating a non-pooled connection (legacy behavior).
+    
+    Args:
+        host: Host or connection data dict
+        port: Port number
+        database: Database name
+        user: Username
+        password: Password
+        application_name: Application name for the connection
+        use_pool: Whether to use connection pooling (default: True)
+    
+    Returns:
+        Database connection or None
+    """
+    
+    
+    # Normalize parameters from dict if host is a connection data dict
+    if isinstance(host, dict):
+        conn_data = host
+        pool_key = (conn_data.get("host"), int(conn_data.get("port", 5432)), 
+                   conn_data.get("database"), conn_data.get("user"))
+        
+        if not use_pool:
+            return create_postgres_connection(conn_data, application_name=application_name)
+        
+        pool = get_or_create_pool(conn_data)
+        return pool.get_connection()
+    else:
+        # Legacy parameter style
+        if not use_pool:
+            return create_postgres_connection(host, port, database, user, password, application_name)
+        
+        conn_params = {
+            'host': host,
+            'port': port or 5432,
+            'database': database,
+            'user': user,
+            'password': password,
+            'application_name': application_name or "Universal SQL Client"
+        }
+        
+        pool = get_or_create_pool(conn_params)
+        return pool.get_connection()
+
+
+def return_pooled_postgres_connection(host, port=None, database=None, user=None, password=None, conn=None):
+    """
+    Return a connection to the pool.
+    
+    Args:
+        host: Host or connection data dict (used to identify the pool)
+        port: Port number
+        database: Database name
+        user: Username
+        password: Password
+        conn: The connection to return to the pool
+    """
+    
+    if conn is None:
+        return
+    
+    try:
+        if isinstance(host, dict):
+            conn_data = host
+            pool = get_or_create_pool(conn_data)
+        else:
+            conn_params = {
+                'host': host,
+                'port': port or 5432,
+                'database': database,
+                'user': user,
+                'password': password,
+            }
+            pool = get_or_create_pool(conn_params)
+        
+        pool.return_connection(conn)
+    except Exception as e:
+        print(f"Error returning connection to pool: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+class PooledPostgresConnection:
+    """
+    Context manager for pooled PostgreSQL connections.
+    
+    Usage:
+        with PooledPostgresConnection(conn_data) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT ...")
+            results = cursor.fetchall()
+    """
+    
+    def __init__(self, conn_data, application_name=None):
+        self.conn_data = conn_data
+        self.application_name = application_name
+        self.conn = None
+    
+    def __enter__(self):
+        self.conn = get_pooled_postgres_connection(
+            self.conn_data, 
+            application_name=self.application_name,
+            use_pool=True
+        )
+        return self.conn
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            return_pooled_postgres_connection(self.conn_data, conn=self.conn)
+        return False
+
+
+def close_all_postgres_pools():
+    """Close all PostgreSQL connection pools. Call on application shutdown."""
+    from db.connection_pool import close_all_pools
+    close_all_pools()

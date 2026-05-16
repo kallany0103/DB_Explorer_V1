@@ -196,12 +196,12 @@ def get_csv_schema(conn_info):
     try:
         cursor = conn.cursor()
         # Get tables (CSV files)
-        cursor.execute("SELECT TABLE_NAME FROM sys_tables WHERE TABLE_TYPE='TABLE'")
+        cursor.execute("SELECT TableName FROM sys_tables")
         tables = [row[0] for row in cursor.fetchall()]
 
         for table in tables:
             # Get columns
-            cursor.execute(f"SELECT COLUMN_NAME, DATA_TYPE FROM sys_tablecolumns WHERE TABLE_NAME='{table}'")
+            cursor.execute(f"SELECT ColumnName, DataTypeName FROM sys_tablecolumns WHERE TableName='{table}'")
             columns = []
             for col_name, data_type in cursor.fetchall():
                 columns.append({
@@ -236,12 +236,12 @@ def get_servicenow_schema(conn_info, table_name=None):
             tables = [table_name]
         else:
             # Limiting to a few common tables to avoid timeout
-            cursor.execute("SELECT TABLE_NAME FROM sys_tables WHERE TABLE_TYPE='TABLE' LIMIT 50")
+            cursor.execute("SELECT TableName FROM sys_tables LIMIT 50")
             tables = [row[0] for row in cursor.fetchall()]
 
         for table in tables:
             # Get columns
-            cursor.execute(f"SELECT COLUMN_NAME, DATA_TYPE, IS_KEY FROM sys_tablecolumns WHERE TABLE_NAME='{table}'")
+            cursor.execute(f"SELECT ColumnName, DataTypeName, IsKey FROM sys_tablecolumns WHERE TableName='{table}'")
             columns = []
             for col_name, data_type, is_key in cursor.fetchall():
                 columns.append({

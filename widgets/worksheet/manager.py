@@ -337,3 +337,16 @@ class WorksheetManager(QWidget):
 
     def load_joined_connections(self, combo_box):
         load_joined_connections_action(self, combo_box)
+
+    def refresh_all_completers(self):
+        """Rebuild autocomplete word lists for all open worksheet tabs."""
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if not tab or not hasattr(tab, '_sql_engine'):
+                continue
+            combo = tab.findChild(QComboBox, "db_combo_box")
+            conn_data = combo.currentData() if combo else None
+            tab._sql_engine.refresh(conn_data)
+            editor = tab.findChild(CodeEditor, "query_editor")
+            if editor:
+                editor._conn_data = conn_data

@@ -223,10 +223,21 @@ class ConnectionActions:
                         buttons[0].setChecked(False)
                         buttons[1].setChecked(True)
 
-        # Refresh both trees
-        self.manager.refresh_object_explorer()
-        if conn_data and conn_data.get('db_type') == 'postgres':
+        # Refresh object explorer tree
+        self.manager._save_tree_expansion_state()
+        self.manager.load_data()
+        self.manager._restore_tree_expansion_state()
+        # Reload schema while preserving expansion state
+        self.manager._save_schema_tree_expansion_state()
+        _db_type = conn_data.get('db_type') if conn_data else None
+        if _db_type == 'postgres':
             self.manager.schema_loader.load_postgres_schema(conn_data)
+        elif _db_type == 'sqlite':
+            self.manager.schema_loader.load_sqlite_schema(conn_data)
+        elif _db_type == 'csv':
+            self.manager.schema_loader.load_csv_schema(conn_data)
+        elif _db_type == 'servicenow':
+            self.manager.load_servicenow_schema(conn_data)
 
     def show_table_properties(self, item_data, table_name):
         if not item_data:
@@ -711,10 +722,21 @@ class ConnectionActions:
                         buttons[0].setChecked(False)
                         buttons[1].setChecked(True)
 
-        # Refresh both trees
-        self.manager.refresh_object_explorer()
-        if conn_data and conn_data.get('db_type') == 'postgres':
+        # Refresh object explorer tree
+        self.manager._save_tree_expansion_state()
+        self.manager.load_data()
+        self.manager._restore_tree_expansion_state()
+        # Reload schema while preserving expansion state
+        self.manager._save_schema_tree_expansion_state()
+        _db_type = conn_data.get('db_type') if conn_data else None
+        if _db_type == 'postgres':
             self.manager.schema_loader.load_postgres_schema(conn_data)
+        elif _db_type == 'sqlite':
+            self.manager.schema_loader.load_sqlite_schema(conn_data)
+        elif _db_type == 'csv':
+            self.manager.schema_loader.load_csv_schema(conn_data)
+        elif _db_type == 'servicenow':
+            self.manager.load_servicenow_schema(conn_data)
 
     def open_create_table_template(self, item_data, table_name=None):
         if not item_data:

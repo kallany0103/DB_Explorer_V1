@@ -393,7 +393,9 @@ class ConnectionDialogs:
             parent_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
             try:
                 db.add_connection_group(name, parent_id)
+                self.manager._save_tree_expansion_state()
                 self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to add group:\n{e}")
 
@@ -451,7 +453,9 @@ class ConnectionDialogs:
             try:
                 db.update_connection_group(group_id, name)
                 dialog.accept()
+                self.manager._save_tree_expansion_state()
                 self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update group:\n{e}")
 
@@ -474,7 +478,9 @@ class ConnectionDialogs:
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 db.delete_connection_group(group_id)
+                self.manager._save_tree_expansion_state()
                 self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to delete group:\n{e}")
 
@@ -534,7 +540,7 @@ class ConnectionDialogs:
 
         title_label = QLabel("Edit Connection Type")
         title_label.setObjectName("dialogTitle")
-        subtitle_label = QLabel("Update the display name and code for this category.")
+        subtitle_label = QLabel("Update the display name for this category.")
         subtitle_label.setObjectName("dialogSubtitle")
         
         name_input = QLineEdit()
@@ -544,6 +550,8 @@ class ConnectionDialogs:
         code_input = QLineEdit()
         code_input.setText(current_code)
         code_input.setPlaceholderText("Type (e.g. SQLITE)")
+        code_input.setReadOnly(True)
+        code_input.setStyleSheet("background-color: #f0f0f0; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; padding: 3px 8px;")
 
         save_btn = QPushButton("Update")
         save_btn.setObjectName("primaryButton")
@@ -578,7 +586,9 @@ class ConnectionDialogs:
             try:
                 db.update_connection_type(type_id, name, code)
                 dialog.accept()
+                self.manager._save_tree_expansion_state()
                 self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update type:\n{e}")
 
@@ -601,7 +611,9 @@ class ConnectionDialogs:
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 db.delete_connection_type(type_id)
+                self.manager._save_tree_expansion_state()
                 self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to delete type:\n{e}")
 

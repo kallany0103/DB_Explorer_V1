@@ -172,6 +172,7 @@ class MainWindow(QMainWindow):
         self.thread_monitor_timer.timeout.connect(self.update_thread_pool_status)
         self.thread_monitor_timer.start(1000)
 
+
         self._apply_styles()
         self.restore_session_state()
         
@@ -514,6 +515,13 @@ class MainWindow(QMainWindow):
                     runner.cancel()
                 except Exception:
                     pass
+
+            # Close all PostgreSQL connection pools
+            try:
+                import db
+                db.close_all_postgres_pools()
+            except Exception as e:
+                print(f"Error closing connection pools: {e}")
 
             event.accept()
         else:

@@ -105,8 +105,10 @@ class DashboardWorker(QThread):
                 # If parameters changed, force a reconnection
                 if self._needs_reconnect:
                     if conn:
-                        try: conn.close()
-                        except: pass
+                        try:
+                            db.return_pooled_postgres_connection(self.conn_data, conn=conn)
+                        except:
+                            pass
                     conn = None
                     self._needs_reconnect = False
 
@@ -114,11 +116,15 @@ class DashboardWorker(QThread):
                 if "sqlite" in db_type:
                     stats = db.get_sqlite_session_stats(self.conn_data)
                 else:
-                    # Persistent Postgres connection reuse
+                    # Use pooled connection for PostgreSQL (more efficient)
                     if conn is None:
                         db_name = self.conn_data.get("database", "postgres")
                         app_name = f"Universal SQL Client (Dashboard) - {db_name}"
-                        conn = db.create_postgres_connection(self.conn_data, application_name=app_name)
+                        conn = db.get_pooled_postgres_connection(
+                            self.conn_data, 
+                            application_name=app_name,
+                            use_pool=True
+                        )
                         if conn:
                             conn.set_session(readonly=True, autocommit=True)
                     
@@ -128,13 +134,15 @@ class DashboardWorker(QThread):
                     self.finished.emit(stats, self.conn_data)
             except Exception as e:
                 err_msg = str(e).lower()
-                # If connection dropped, clear conn so it reconnects on next loop
+                # If connection dropped, clear conn so it reconnects on next loop.
                 if "closed" in err_msg or "connection" in err_msg or "timeout" in err_msg or "terminated" in err_msg:
                     if conn:
-                        try: conn.close()
-                        except: pass
+                        try:
+                            db.return_pooled_postgres_connection(self.conn_data, conn=conn)
+                        except:
+                            pass
                     conn = None
-                
+
                 if self._is_running and not self._needs_reconnect:
                     if "timeout" not in err_msg and "connection" not in err_msg and "unreachable" not in err_msg:
                         self.error.emit(str(e))
@@ -144,10 +152,11 @@ class DashboardWorker(QThread):
                 if not self._is_running or self._needs_reconnect:
                     break
                 self.msleep(100)
-        
+
         # Cleanup connection on thread exit
         if conn:
-            try: conn.close()
+            try:
+                db.return_pooled_postgres_connection(self.conn_data, conn=conn)
             except: pass
 
 class LiveChartView(QChartView):
@@ -512,12 +521,11 @@ class DashboardWidget(QWidget):
         grid_layout = QGridLayout()
         grid_layout.setSpacing(16)
         
-        # sessions_chart will hide the default Total/Active/Idle legends
+        # Sessions chart - show Total/Active/Idle legends
         self.sessions_chart = LiveChartWidget(
             "Database sessions",
             ["Total", "Active", "Idle"],
-            ["#3b82f6", "#f59e0b", "#10b981"],
-            hide_legends=True
+            ["#3b82f6", "#f59e0b", "#10b981"]
         )
         self.tps_chart = LiveChartWidget(
             "Transactions", 
@@ -655,8 +663,12 @@ class DashboardWidget(QWidget):
             # Simply update the existing worker's targets
             self.dashboard_worker.update_connection(conn_data, current_db_only)
         else:
-            # Start a new one ONLY if not already running
-            self.dashboard_worker = DashboardWorker(conn_data, current_db_only, parent=self)
+            # Stop any previous worker that finished (but not yet replaced)
+            if hasattr(self, 'dashboard_worker'):
+                self.dashboard_worker.stop()
+                self.dashboard_worker.wait(500)
+            # Start a new one — no Qt parent: we own the lifetime via self.dashboard_worker
+            self.dashboard_worker = DashboardWorker(conn_data, current_db_only)
             self.dashboard_worker.finished.connect(self.update_dashboard_stats)
             self.dashboard_worker.start()
 

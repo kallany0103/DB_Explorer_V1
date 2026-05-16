@@ -84,6 +84,7 @@ def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
         cursor = conn.cursor()
         # DEBUG-START
         t2 = time.time()
+        print(f"[CDATA-DEBUG] query sent to driver: {effective_query!r}")
         # DEBUG-END
         cursor.execute(effective_query)
         # DEBUG-START
@@ -415,20 +416,14 @@ class RunnableQuery(QRunnable):
                     code = "SQLITE"
 
             # --- DB Execution ---
-            if code == "SERVICENOW":
+            if code in ("SERVICENOW", "CSV"):
                 ctx = mp.get_context("spawn")
                 result_queue = ctx.Queue(maxsize=1)
                 self._child_process = ctx.Process(
                     target=_run_cdata_query_subprocess,
-                    args=("SERVICENOW", self.conn_data, self.query, result_queue),
+                    args=(code, self.conn_data, self.query, result_queue),
                 )
-                # DEBUG-START
-                t_spawn = time.time()
-                # DEBUG-END
                 self._child_process.start()
-                # DEBUG-START
-                print(f"[CDATA-DEBUG] subprocess.start() (spawn overhead) took {time.time()-t_spawn:.2f}s")
-                # DEBUG-END
                 while self._child_process.is_alive():
                     if self._is_cancelled:
                         self._child_process.terminate()
@@ -436,23 +431,15 @@ class RunnableQuery(QRunnable):
                     self._child_process.join(timeout=0.1)
                 if self._is_cancelled:
                     return
-                payload = result_queue.get() if not result_queue.empty() else {"ok": False, "error": "ServiceNow query process ended unexpectedly."}
+                payload = result_queue.get() if not result_queue.empty() else {"ok": False, "error": f"{code} query process ended unexpectedly."}
                 if not payload.get("ok"):
-                    raise RuntimeError(payload.get("error") or "ServiceNow query failed")
+                    raise RuntimeError(payload.get("error") or f"{code} query failed")
                 self.query = payload.get("query", self.query)
                 results = payload.get("results", [])
                 columns = payload.get("columns", [])
                 column_specs = payload.get("column_specs", [])
                 row_count = int(payload.get("row_count", 0))
                 is_returning_results = bool(payload.get("is_returning_results", False))
-            elif code == "CSV":
-                effective_query = transform_csv_query(self.query, self.conn_data.get("db_path"))
-                self.query = effective_query
-                self._conn = db.create_csv_connection(self.conn_data)
-                if not self._conn:
-                    raise ConnectionError("Failed to connect to CSV data source")
-                cursor = self._conn.cursor()
-                cursor.execute(effective_query)
             elif code == "SQLITE":
                 db_path = self.conn_data.get("db_path")
                 if not db_path:
@@ -497,7 +484,7 @@ class RunnableQuery(QRunnable):
                 return
 
             # --- Handle Results ---
-            if code not in ("SERVICENOW",):
+            if code not in ("SERVICENOW", "CSV"):
                 results = cursor.fetchall() if cursor.description else []
                 columns = []
                 column_specs = []
