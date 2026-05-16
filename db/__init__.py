@@ -12,6 +12,8 @@ from db.db_connections import (
     DB_FILE,
 )
 
+# from db.db_bootstrap import ensure_hierarchy_db
+
 from db.db_retrieval import (
     get_all_connections_from_db,
     get_hierarchy_data,
@@ -66,6 +68,7 @@ __all__ = [
     "close_all_postgres_pools",
     "resource_path",
     "DB_FILE",
+    # "ensure_hierarchy_db",
     "get_all_connections_from_db",
     "get_hierarchy_data",
     "add_connection_group",
