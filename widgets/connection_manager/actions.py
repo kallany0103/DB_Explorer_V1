@@ -4,6 +4,7 @@ import time
 import uuid
 
 import db
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -114,6 +115,26 @@ class ConnectionActions:
         self.manager.show_error_popup(f"Failed to count rows:\n{error_message}")
         self.manager.status_message_label.setText("Failed to count rows.")
 
+
+    def open_query_tool(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole) if hasattr(item, 'data') else item
+        if not conn_data:
+            return
+
+        new_tab = self.manager.add_tab()
+
+        query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+        db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
+
+        for i in range(db_combo_box.count()):
+            data = db_combo_box.itemData(i)
+            if data and data.get('id') == conn_data.get('id'):
+                db_combo_box.setCurrentIndex(i)
+                break
+
+        query_editor.clear()
+        query_editor.setFocus()
+        self.manager.tab_widget.setCurrentWidget(new_tab)
 
     def open_query_tool_for_table(self, item_data, table_name):
         if not item_data:
