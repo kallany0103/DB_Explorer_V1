@@ -28,51 +28,28 @@ class StatisticsTab(QWidget):
         
         self.layout.addWidget(self.view)
 
-    def load_stats(self, cursor, query, params, append=False):
-        """
-        Executes a query and loads the results into the model as key-value pairs.
-        Expects a query that returns a single row where columns are 'key' names.
-        """
-        try:
-            if not append:
-                self.model.removeRows(0, self.model.rowCount())
-            cursor.execute(query, params)
-            columns = [desc[0] for desc in cursor.description]
-            row = cursor.fetchone()
+    def clear_stats(self):
+        self.model.removeRows(0, self.model.rowCount())
+        self.model.setHorizontalHeaderLabels(["Property", "Value"])
+
+    def display_data(self, columns, rows, append=False):
+        if not append:
+            self.clear_stats()
             
-            if row:
+        if rows:
+            # If multiple rows, change to table view mode
+            if len(rows) > 1:
+                self.model.setHorizontalHeaderLabels([c.replace('_', ' ').capitalize() for c in columns])
+                for row in rows:
+                    items = [QStandardItem(str(val) if val is not None else "-") for val in row]
+                    self.model.appendRow(items)
+            else:
+                # Single row: Key-Value mode
+                row = rows[0]
                 for col_name, value in zip(columns, row):
-                    # Format column name: replace underscores with spaces and capitalize
                     pretty_name = col_name.replace('_', ' ').capitalize()
-                    
                     item_name = QStandardItem(pretty_name)
                     item_value = QStandardItem(str(value) if value is not None else "-")
                     self.model.appendRow([item_name, item_value])
-            else:
-                self.model.appendRow([QStandardItem("No statistics available"), QStandardItem("")])
-        except Exception as e:
-            self.model.appendRow([QStandardItem("Error loading statistics"), QStandardItem(str(e))])
-
-    def load_multi_row_stats(self, cursor, query, params, headers=None):
-        """
-        Loads multiple rows into the table if the statistics query returns a list.
-        """
-        try:
-            self.model.removeRows(0, self.model.rowCount())
-            cursor.execute(query, params)
-            columns = [desc[0] for desc in cursor.description]
-            
-            if headers:
-                self.model.setHorizontalHeaderLabels(headers)
-            else:
-                self.model.setHorizontalHeaderLabels([c.replace('_', ' ').capitalize() for c in columns])
-                
-            rows = cursor.fetchall()
-            for row in rows:
-                items = [QStandardItem(str(c) if c is not None else "-") for c in row]
-                self.model.appendRow(items)
-                
-            if not rows:
-                self.model.appendRow([QStandardItem("No data found")])
-        except Exception as e:
-            self.model.appendRow([QStandardItem("Error"), QStandardItem(str(e))])
+        else:
+            self.model.appendRow([QStandardItem("No statistics available"), QStandardItem("")])

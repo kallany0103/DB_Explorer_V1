@@ -8,10 +8,14 @@ Centralized PostgreSQL catalog queries for database object properties.
 
 GET_TABLE_DETAILS = """
     SELECT 
+        c.oid,
         pg_get_userbyid(c.relowner) as owner,
         n.nspname as schema_name,
         obj_description(c.oid, 'pg_class') as comment,
-        c.relkind
+        c.relkind,
+        reltablespace,
+        relispartition as is_partitioned,
+        reltuples as rows_estimated
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = %s AND c.relname = %s;
@@ -62,6 +66,7 @@ GET_TABLE_PRIVILEGES = """
 
 GET_SCHEMA_DETAILS = """
     SELECT 
+        oid,
         pg_get_userbyid(nspowner) as owner,
         obj_description(oid, 'pg_namespace') as comment
     FROM pg_namespace
@@ -342,4 +347,96 @@ GET_DATABASE_STATS = """
         pg_size_pretty(pg_database_size(datname)) as "Database Size"
     FROM pg_stat_database
     WHERE datname = %s;
+"""
+
+# --- Group Listing Queries ---
+
+LIST_SCHEMAS = """
+    SELECT 
+        nspname as "Name",
+        pg_get_userbyid(nspowner) as "Owner",
+        obj_description(oid, 'pg_namespace') as "Comment"
+    FROM pg_namespace
+    WHERE nspname NOT LIKE 'pg_%%' AND nspname != 'information_schema'
+    ORDER BY nspname;
+"""
+
+LIST_TABLES = """
+    SELECT 
+        c.relname as "Name",
+        pg_get_userbyid(c.relowner) as "Owner",
+        c.relispartition as "Partitioned?",
+        obj_description(c.oid, 'pg_class') as "Comment"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind IN ('r', 'p')
+    ORDER BY c.relname;
+"""
+
+LIST_VIEWS = """
+    SELECT 
+        c.relname as "Name",
+        pg_get_userbyid(c.relowner) as "Owner",
+        obj_description(c.oid, 'pg_class') as "Comment"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'v'
+    ORDER BY c.relname;
+"""
+
+LIST_FUNCTIONS = """
+    SELECT 
+        p.proname || '(' || pg_get_function_arguments(p.oid) || ')' as "Name",
+        pg_get_userbyid(p.proowner) as "Owner",
+        l.lanname as "Language",
+        obj_description(p.oid, 'pg_proc') as "Comment"
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN pg_language l ON l.oid = p.prolang
+    WHERE n.nspname = %s
+    ORDER BY 1;
+"""
+
+LIST_SEQUENCES = """
+    SELECT 
+        c.relname as "Name",
+        pg_get_userbyid(c.relowner) as "Owner",
+        obj_description(c.oid, 'pg_class') as "Comment"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'S'
+    ORDER BY c.relname;
+"""
+
+LIST_COLUMNS = """
+    SELECT 
+        a.attname as "Name",
+        pg_catalog.format_type(a.atttypid, a.atttypmod) as "Data Type",
+        NOT a.attnotnull as "Nullable?",
+        pg_get_expr(d.adbin, d.adrelid) as "Default",
+        col_description(a.attrelid, a.attnum) as "Comment"
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+    WHERE a.attrelid = (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relname = %s)
+    AND a.attnum > 0 AND NOT a.attisdropped
+    ORDER BY a.attnum;
+"""
+
+LIST_CONSTRAINTS = """
+    SELECT 
+        conname as "Name",
+        contype as "Type",
+        pg_get_constraintdef(oid) as "Definition"
+    FROM pg_constraint
+    WHERE conrelid = (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relname = %s)
+    ORDER BY conname;
+"""
+
+LIST_INDEXES = """
+    SELECT 
+        indexname as "Name",
+        indexdef as "Definition"
+    FROM pg_indexes
+    WHERE schemaname = %s AND tablename = %s
+    ORDER BY indexname;
 """
