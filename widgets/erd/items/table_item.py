@@ -56,12 +56,13 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             
         self.columns.sort(key=col_sort_key)
         
-        # Cache icons for performance and look
-        self.icon_schema = qta.icon('fa5s.layer-group', color='#D93025')
-        self.icon_table = qta.icon('fa5s.table', color='#1A73E8')
-        self.icon_pk = qta.icon('fa5s.key', color='#F9AB00')
-        self.icon_fk = qta.icon('fa5s.key', color='#1A73E8')
-        self.icon_col = qta.icon('mdi.table-column', color='#34A853')
+        # Pre-render icons to QPixmap so SVG/PDF export embeds them correctly
+        # (qtawesome draws glyphs via drawText; pre-rasterising avoids missing font in SVG)
+        self.icon_schema = qta.icon('fa5s.layer-group', color='#D93025').pixmap(12, 12)
+        self.icon_table = qta.icon('fa5s.table', color='#1A73E8').pixmap(14, 12)
+        self.icon_pk = qta.icon('fa5s.key', color='#F9AB00').pixmap(12, 12)
+        self.icon_fk = qta.icon('fa5s.key', color='#1A73E8').pixmap(12, 12)
+        self.icon_col = qta.icon('mdi.table-column', color='#34A853').pixmap(12, 12)
         
         self.update_geometry()
 
@@ -180,7 +181,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         if self.schema_name:
             # Draw schema icon
             schema_rect = QRectF(10, 6, 12, 12)
-            self.icon_schema.paint(painter, schema_rect.toRect())
+            painter.drawPixmap(schema_rect.toRect(), self.icon_schema)
             
             painter.setFont(QFont("Segoe UI", 8))
             painter.setPen(QPen(QColor("#666666")))
@@ -188,7 +189,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             
             # Draw table icon
             table_icon_rect = QRectF(10, 24, 14, 12)
-            self.icon_table.paint(painter, table_icon_rect.toRect())
+            painter.drawPixmap(table_icon_rect.toRect(), self.icon_table)
             
             painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
             painter.setPen(QPen(Qt.GlobalColor.black))
@@ -196,7 +197,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         else:
             # Table icon for simple header
             table_icon_rect = QRectF(10, (self.header_height-12)/2, 14, 12)
-            self.icon_table.paint(painter, table_icon_rect.toRect())
+            painter.drawPixmap(table_icon_rect.toRect(), self.icon_table)
             
             painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
             painter.setPen(QPen(Qt.GlobalColor.black))
@@ -228,11 +229,11 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
                     painter.setBrush(Qt.BrushStyle.NoBrush)
 
                 if is_pk:
-                    self.icon_pk.paint(painter, icon_rect.toRect())
+                    painter.drawPixmap(icon_rect.toRect(), self.icon_pk)
                 elif is_fk:
-                    self.icon_fk.paint(painter, icon_rect.toRect())
+                    painter.drawPixmap(icon_rect.toRect(), self.icon_fk)
                 else:
-                    self.icon_col.paint(painter, icon_rect.toRect())
+                    painter.drawPixmap(icon_rect.toRect(), self.icon_col)
 
                 painter.setFont(QFont("Segoe UI", 9))
                 # Only use a neutral dark grey for text

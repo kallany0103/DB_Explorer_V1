@@ -1,6 +1,7 @@
 import sqlite3 as sqlite
 import datetime
 from db.db_connections import DB_FILE, create_postgres_connection
+from db.credential_vault import delete_password, is_password_reference, resolve_password, store_password_for_connection
 
 def terminate_postgres_backend(conn_data, pid):
     """Terminates a PostgreSQL backend session by PID."""
@@ -86,9 +87,12 @@ def add_connection(data, connection_group_id):
                     connection_group_id,
                     data.get("instance_url"),
                     data.get("user"),
-                    data.get("password"),
+                    None,
                 )
             )
+            connection_id = c.lastrowid
+            password_ref = store_password_for_connection(connection_id, data.get("password"))
+            c.execute("UPDATE usf_connections SET password = ? WHERE id = ?", (password_ref, connection_id))
 
         # -------- Postgres / Oracle --------
         else:
@@ -105,10 +109,13 @@ def add_connection(data, connection_group_id):
                     data.get("host"),
                     data.get("database"),
                     data.get("user"),
-                    data.get("password"),
+                    None,
                     data.get("port"),
                 )
             )
+            connection_id = c.lastrowid
+            password_ref = store_password_for_connection(connection_id, data.get("password"))
+            c.execute("UPDATE usf_connections SET password = ? WHERE id = ?", (password_ref, connection_id))
 
         conn.commit()
 
@@ -127,13 +134,18 @@ def add_connection(data, connection_group_id):
 def update_connection(data):
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
+        c.execute("SELECT password FROM usf_connections WHERE id = ?", (data.get("id"),))
+        existing_row = c.fetchone()
+        existing_password = existing_row[0] if existing_row else None
 
         # -------- SQLite / CSV --------
         if data.get("db_path"):
+            if is_password_reference(existing_password):
+                delete_password(existing_password)
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, connection_group_id = ?, db_path = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, db_path = ?, password = NULL
                 WHERE id = ?
                 """,
                 (
@@ -147,6 +159,9 @@ def update_connection(data):
 
         # -------- ServiceNow --------
         elif data.get("instance_url"):
+            password_ref = store_password_for_connection(data.get("id"), data.get("password"))
+            if is_password_reference(existing_password) and existing_password != password_ref:
+                delete_password(existing_password)
             c.execute(
                 """
                 UPDATE usf_connections
@@ -159,13 +174,16 @@ def update_connection(data):
                     data.get("connection_group_id"),
                     data.get("instance_url"),
                     data.get("user"),
-                    data.get("password"),
+                    password_ref,
                     data.get("id")
                 )
             )
 
         # -------- Postgres / Oracle --------
         else:
+            password_ref = store_password_for_connection(data.get("id"), data.get("password"))
+            if is_password_reference(existing_password) and existing_password != password_ref:
+                delete_password(existing_password)
             c.execute(
                 """
                 UPDATE usf_connections
@@ -179,7 +197,7 @@ def update_connection(data):
                     data.get("host"),
                     data.get("database"),
                     data.get("user"),
-                    data.get("password"),
+                    password_ref,
                     data.get("port"),
                     data.get("id")
                 )
@@ -191,9 +209,25 @@ def update_connection(data):
 def delete_connection(connection_id):
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
+        c.execute("SELECT password FROM usf_connections WHERE id = ?", (connection_id,))
+        row = c.fetchone()
+        if row and is_password_reference(row[0]):
+            delete_password(row[0])
         c.execute("DELETE FROM usf_connections WHERE id = ?", (connection_id,))
         c.execute(
             "DELETE FROM usf_query_history WHERE connection_id = ?", (connection_id,))
+        conn.commit()
+
+def migrate_plaintext_connection_passwords():
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, password FROM usf_connections WHERE password IS NOT NULL AND password != ''")
+        rows = c.fetchall()
+        for connection_id, password in rows:
+            if is_password_reference(password):
+                continue
+            password_ref = store_password_for_connection(connection_id, resolve_password(password))
+            c.execute("UPDATE usf_connections SET password = ? WHERE id = ?", (password_ref, connection_id))
         conn.commit()
         
         
