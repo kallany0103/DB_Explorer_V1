@@ -229,22 +229,20 @@ class MainWindow(QMainWindow):
         index = self.tab_widget.addTab(prop_widget, "Properties")
         self.tab_widget.setTabIcon(index, qta.icon('mdi.tune'))
         self.tab_widget.setCurrentIndex(index)
-        
-        # If an item is already selected, update it immediately
-        item, item_data, name = self.connection_manager._get_current_schema_item_data()
-        if item_data:
-            prop_widget.update_view(item_data, name)
+        # Note: We do NOT update_view here to ensure it starts "empty" as requested.
 
     def add_statistics_tab(self):
+        # Check for existing Statistics tab
+        for i in range(self.tab_widget.count()):
+            if isinstance(self.tab_widget.widget(i), StatisticsWorkbench):
+                self.tab_widget.setCurrentIndex(i)
+                return
+
         stat_widget = StatisticsWorkbench(self)
         index = self.tab_widget.addTab(stat_widget, "Statistics")
         self.tab_widget.setTabIcon(index, qta.icon('mdi.chart-bar'))
         self.tab_widget.setCurrentIndex(index)
-        
-        # If an item is already selected, update it immediately
-        item, item_data, name = self.connection_manager._get_current_schema_item_data()
-        if item_data:
-            stat_widget.update_view(item_data, name)
+        # Note: We do NOT update_view here to ensure it starts "empty" as requested.
 
     def _on_schema_selection_changed(self, current, previous):
         if not current.isValid():

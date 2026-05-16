@@ -15,7 +15,7 @@ class TableDetailsLoader:
     def __init__(self, manager):
         self.manager = manager
 
-    def load_tables_on_expand(self, index):
+    def load_tables_on_expand(self, index, force=False):
         item = self.manager.schema_model.itemFromIndex(index)
         if not item:
             return
@@ -25,8 +25,12 @@ class TableDetailsLoader:
             return
 
         is_group = item_data.get('type') == 'schema_group' or item_data.get('type', '').endswith('_root')
-        if not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
+        if not force and not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
+
+        if force:
+            item.removeRows(0, item.rowCount())
+            item.appendRow(QStandardItem("Loading..."))
 
         self.manager._save_schema_tree_expansion_state()
 

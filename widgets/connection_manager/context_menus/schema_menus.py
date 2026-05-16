@@ -63,11 +63,11 @@ class SchemaMenuBuilder:
         elif is_function or is_trigger_function:
             self._function_menu(menu, item, item_data, table_type)
         elif is_language:
-            self._language_menu(menu, item, item_data)
+            self._language_menu(menu, item, item_data, index)
         elif is_extension:
-            self._extension_menu(menu, item, item_data)
+            self._extension_menu(menu, item, item_data, index)
         elif is_schema:
-            self._schema_node_menu(menu, item, item_data, db_type, schema_name)
+            self._schema_node_menu(menu, item, item_data, db_type, schema_name, index)
         elif node_type == "language_root":
             self._language_root_menu(menu, item_data, index)
         elif node_type == "extension_root":
@@ -182,6 +182,20 @@ class SchemaMenuBuilder:
                 a.triggered.connect(fn)
                 scripts_sub.addAction(a)
 
+        if not is_view:
+            menu.addSeparator()
+            act = action(self.manager, "Truncate", "mdi.eraser")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.truncate_table(item_data, display_name)
+            )
+            menu.addAction(act)
+
+            act = action(self.manager, "Truncate (Cascade)", "mdi.eraser-variant")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.truncate_table(item_data, display_name, cascade=True)
+            )
+            menu.addAction(act)
+
         act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_table(item_data, display_name)
@@ -198,7 +212,7 @@ class SchemaMenuBuilder:
     # Schema node  (e.g. "public")
     # =========================================================================
 
-    def _schema_node_menu(self, menu, item, item_data, db_type, schema_name):
+    def _schema_node_menu(self, menu, item, item_data, db_type, schema_name, index):
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
 
         act = action(self.manager, "Table...", "mdi.table-plus")
@@ -239,7 +253,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.schema_loader.load_postgres_schema(item_data.get("conn_data"))
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -251,7 +265,9 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
-        act.triggered.connect(stub("create_script_schema"))
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_schema_as_create(item_data, schema_name)
+        )
         menu.addAction(act)
 
         act = action(self.manager, "ERD for Schema", "fa6s.sitemap")
@@ -269,7 +285,7 @@ class SchemaMenuBuilder:
         act.triggered.connect(stub("grant_wizard_schema"))
         menu.addAction(act)
 
-        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
+        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+F")
         act.triggered.connect(stub("search_schema"))
         menu.addAction(act)
 
@@ -317,7 +333,7 @@ class SchemaMenuBuilder:
         create_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")
+        act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+F")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
         )
@@ -386,7 +402,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index)
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -539,6 +555,13 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_extension_as_create(item_data, display_name)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda: self.manager.connection_actions.show_extension_properties(item_data, display_name)
@@ -548,7 +571,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.schema_loader.load_postgres_schema(item_data.get("conn_data"))
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -559,7 +582,7 @@ class SchemaMenuBuilder:
     def _language_root_menu(self, menu, item_data, index):
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index)
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -578,7 +601,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index)
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -606,7 +629,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index)
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -638,6 +661,13 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_fdw_as_create(item_data, fdw_name)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda: self.manager.connection_actions.show_fdw_properties(item_data, fdw_name)
@@ -647,7 +677,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index)
+            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
 
@@ -677,6 +707,13 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_server_as_create(item_data, item.text())
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda: self.manager.connection_actions.show_foreign_server_properties(item_data, item.text())
@@ -697,6 +734,13 @@ class SchemaMenuBuilder:
         act = action(self.manager, "Drop User Mapping (Cascade)", "mdi.delete-sweep-outline")
         act.triggered.connect(
             lambda: self.manager.connection_actions.drop_user_mapping(item_data, cascade=True)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_user_mapping_as_create(item_data, item.text())
         )
         menu.addAction(act)
 

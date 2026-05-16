@@ -53,7 +53,7 @@ class ObjectStatisticsDialog(QDialog):
             obj_type = self.item_data.get('type')
             table_type = self.item_data.get('table_type', '').upper()
 
-            if obj_type == 'table' or 'TABLE' in table_type or 'VIEW' in table_type:
+            if obj_type == 'table' or 'TABLE' in table_type or 'VIEW' in table_type or 'MATERIALIZED VIEW' in table_type:
                 self.stats_view.load_stats(cursor, pg_queries.GET_TABLE_SIZE_STATS, (self.schema_name, self.obj_name))
                 self.stats_view.load_stats(cursor, pg_queries.GET_TABLE_STATS, (self.schema_name, self.obj_name), append=True)
             elif obj_type == 'schema' or self.item_data.get('group_name') == 'Schemas':

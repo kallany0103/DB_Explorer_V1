@@ -123,7 +123,10 @@ class SearchObjectsDialog(QDialog):
                         "Index": "mdi.format-list-bulleted",
                         "Sequence": "mdi.numeric",
                         "Foreign Table": "mdi.table-network",
-                        "Materialized View": "mdi.eye-settings"
+                        "Materialized View": "mdi.eye-settings",
+                        "Schema": "mdi.folder-outline",
+                        "Extension": "mdi.puzzle-outline",
+                        "Language": "mdi.translate"
                     }
                     icon_str = icon_map.get(type_str, "mdi.database-outline")
                     name_item.setIcon(qta.icon(icon_str, color="#0078d4"))
