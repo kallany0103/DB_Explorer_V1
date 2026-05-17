@@ -286,7 +286,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+F")
-        act.triggered.connect(stub("search_schema"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
+        )
         menu.addAction(act)
 
         # if db_type == "postgres":
@@ -302,7 +304,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(stub("query_tool_schema"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, schema_name)
+        )
         menu.addAction(act)
 
         menu.addSeparator()

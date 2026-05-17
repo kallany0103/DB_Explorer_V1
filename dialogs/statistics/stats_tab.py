@@ -53,3 +53,14 @@ class StatisticsTab(QWidget):
                     self.model.appendRow([item_name, item_value])
         else:
             self.model.appendRow([QStandardItem("No statistics available"), QStandardItem("")])
+
+    def load_stats(self, cursor, query, params=(), append=False):
+        try:
+            cursor.execute(query, params)
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            rows = cursor.fetchall()
+            self.display_data(columns, rows, append=append)
+        except Exception as e:
+            if not append:
+                self.clear_stats()
+            self.model.appendRow([QStandardItem("Error"), QStandardItem(str(e))])

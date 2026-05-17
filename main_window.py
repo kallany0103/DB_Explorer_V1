@@ -224,12 +224,26 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.renumber_tabs()
 
     def add_properties_tab(self):
-        # Allow multiple properties tabs or just one? Let's allow multiple.
         prop_widget = PropertiesWorkbench(self)
         index = self.tab_widget.addTab(prop_widget, "Properties")
         self.tab_widget.setTabIcon(index, qta.icon('mdi.tune'))
         self.tab_widget.setCurrentIndex(index)
-        # Note: We do NOT update_view here to ensure it starts "empty" as requested.
+        
+        # Try to populate with current selection immediately
+        schema_item, schema_data, schema_name = self.connection_manager._get_current_schema_item_data()
+        if schema_data:
+            prop_widget.update_view(schema_data, schema_name)
+        else:
+            current_conn_idx = self.tree.selectionModel().currentIndex()
+            if current_conn_idx.isValid():
+                source_idx = self.proxy_model.mapToSource(current_conn_idx)
+                item = self.model.itemFromIndex(source_idx)
+                if item and self.connection_manager.get_item_depth(item) == 3:
+                    item_data = item.data(Qt.ItemDataRole.UserRole)
+                    if item_data:
+                        if 'type' not in item_data:
+                            item_data['type'] = 'connection'
+                        prop_widget.update_view(item_data, item.text())
 
     def add_statistics_tab(self):
         # Check for existing Statistics tab
@@ -242,7 +256,22 @@ class MainWindow(QMainWindow):
         index = self.tab_widget.addTab(stat_widget, "Statistics")
         self.tab_widget.setTabIcon(index, qta.icon('mdi.chart-bar'))
         self.tab_widget.setCurrentIndex(index)
-        # Note: We do NOT update_view here to ensure it starts "empty" as requested.
+        
+        # Try to populate with current selection immediately
+        schema_item, schema_data, schema_name = self.connection_manager._get_current_schema_item_data()
+        if schema_data:
+            stat_widget.update_view(schema_data, schema_name)
+        else:
+            current_conn_idx = self.tree.selectionModel().currentIndex()
+            if current_conn_idx.isValid():
+                source_idx = self.proxy_model.mapToSource(current_conn_idx)
+                item = self.model.itemFromIndex(source_idx)
+                if item and self.connection_manager.get_item_depth(item) == 3:
+                    item_data = item.data(Qt.ItemDataRole.UserRole)
+                    if item_data:
+                        if 'type' not in item_data:
+                            item_data['type'] = 'connection'
+                        stat_widget.update_view(item_data, item.text())
 
     def _on_schema_selection_changed(self, current, previous):
         if not current.isValid():
