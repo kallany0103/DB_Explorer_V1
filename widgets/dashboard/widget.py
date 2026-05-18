@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QFrame, QGridLayout, QGraphicsLineItem, QGraphicsEllipseItem,
                                QTabWidget)
 from PySide6.QtCore import Qt, QTimer, QRunnable, QObject, Signal, Slot, QPointF, QThread
-from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush
+from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush  # QBrush kept for marker ellipses
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from widgets.dashboard.state_widget import StateWidget, StateWorker
 import qtawesome as qta
@@ -164,59 +164,63 @@ class LiveChartView(QChartView):
         super().__init__(parent)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setMouseTracking(True)
-        
+
         self.chart_obj = QChart()
         self.chart_obj.legend().setVisible(False)
         self.chart_obj.layout().setContentsMargins(0, 0, 0, 0)
         self.chart_obj.setBackgroundRoundness(0)
-        
+
         self.series_list = []
+
         for name, color in zip(series_names, colors):
-            series = QLineSeries()
-            series.setName(name)
-            pen = QPen(QColor(color))
-            pen.setWidth(2)
-            series.setPen(pen)
-            self.series_list.append(series)
-            self.chart_obj.addSeries(series)
-            
+            qcolor = QColor(color)
+
+            line = QLineSeries()
+            line.setName(name)
+            line_pen = QPen(qcolor)
+            line_pen.setWidth(2)
+            line.setPen(line_pen)
+
+            self.series_list.append(line)
+            self.chart_obj.addSeries(line)
+
         self.max_points = 60
         self.x_counter = 0
-        
+
         for series in self.series_list:
             for i in range(self.max_points):
                 series.append(i, 0)
         self.x_counter = self.max_points - 1
-            
+
         self.axis_x = QValueAxis()
         self.axis_x.setLineVisible(False)
         self.axis_x.setLabelsVisible(False)
         self.axis_x.setGridLineVisible(False)
         self.axis_x.setRange(0, self.max_points - 1)
         self.chart_obj.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
-        
+
         for series in self.series_list:
             series.attachAxis(self.axis_x)
-        
+
         self.axis_y = QValueAxis()
         self.axis_y.setRange(0, 5)
         self.axis_y.setTickCount(6)
         self.axis_y.setLabelFormat("%d")
-        
+
         grid_pen = QPen(QColor("#e5e7eb"))
         grid_pen.setWidth(1)
         self.axis_y.setGridLinePen(grid_pen)
         self.axis_y.setLineVisible(False)
         self.axis_y.setLabelsColor(QColor("#4b5563"))
-        
+
         font = QFont()
         font.setPointSize(9)
         self.axis_y.setLabelsFont(font)
-        
+
         self.chart_obj.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
         for series in self.series_list:
             series.attachAxis(self.axis_y)
-        
+
         self.setChart(self.chart_obj)
         self.setStyleSheet("background-color: transparent;")
 
@@ -225,8 +229,8 @@ class LiveChartView(QChartView):
         self.v_line.setPen(QPen(QColor("#6b7280"), 1, Qt.PenStyle.DashLine))
         self.chart().scene().addItem(self.v_line)
         self.v_line.hide()
-        
-        self.marker_items = [] # Circles on series
+
+        self.marker_items = []  # Circles on series
         self.floating_tooltip = ChartTooltip(self)
 
     def reset_series(self, _=None):
@@ -245,22 +249,30 @@ class LiveChartView(QChartView):
         self.x_counter += 1
         for series, val in zip(self.series_list, values):
             series.append(self.x_counter, val)
-            if series.count() > self.max_points + 20: 
+            if series.count() > self.max_points + 20:
                 series.remove(0)
-        
+
         self.axis_x.setRange(self.x_counter - self.max_points + 1, self.x_counter)
-        
-        max_val = max(max(values) if values else 0, 5)
+
+        # Compute the true max across ALL visible points in the window,
+        # not just the current tick. This prevents the axis from snapping
+        # back down one tick after a spike while the spike is still visible.
+        visible_min_x = self.x_counter - self.max_points + 1
+        window_max = 0
+        for series in self.series_list:
+            for p in series.pointsVector():
+                if p.x() >= visible_min_x:
+                    window_max = max(window_max, p.y())
+
+        max_val = max(window_max, 5)
         current_max_y = self.axis_y.max()
-        
-        # Grow axis if data exceeds 90% of current range
+
+        # Grow axis if any visible data exceeds 90% of current range
         if max_val > current_max_y * 0.9:
-            # Smooth growth: use 1.2x but at least 10
             new_max = max(max_val * 1.2, 10)
             self.axis_y.setRange(0, new_max)
-        # Snap axis down if data is significantly lower than current range
+        # Only shrink once ALL visible points drop well below the current range
         elif max_val < current_max_y * 0.15 and current_max_y > 10:
-            # Use 2x the current max to give breathing room
             new_max = max(max_val * 2, 5)
             self.axis_y.setRange(0, new_max)
 
@@ -424,14 +436,35 @@ class DashboardWidget(QWidget):
         self.cleanup()
         super().closeEvent(event)
 
+    def _retire_worker(self, worker):
+        """Gracefully stop a worker, keeping it alive until its thread exits."""
+        if worker is None:
+            return
+        self._dying_workers.append(worker)
+        worker.stop()
+        # Once the thread finishes Qt will call deleteLater; we also remove
+        # the Python reference from _dying_workers so it can be collected.
+        try:
+            worker.finished.disconnect()
+        except Exception:
+            pass
+        worker.finished.connect(lambda *_: self._dying_workers.remove(worker)
+                                if worker in self._dying_workers else None)
+        worker.finished.connect(worker.deleteLater)
+
     def cleanup(self):
         if hasattr(self, 'refresh_timer'):
             self.refresh_timer.stop()
         
-        # Ensure the background worker thread is stopped correctly
+        # Stop active worker and wait for it to exit cleanly
         if hasattr(self, 'dashboard_worker') and self.dashboard_worker.isRunning():
             self.dashboard_worker.stop()
-            self.dashboard_worker.wait(2000) # Wait up to 2 seconds
+            self.dashboard_worker.wait(5000)  # Wait up to 5 seconds
+        
+        # Also wait for any retiring workers that haven't finished yet
+        for w in list(self._dying_workers):
+            if w.isRunning():
+                w.wait(3000)
 
     def hideEvent(self, event):
         if hasattr(self, 'refresh_timer'):
@@ -452,6 +485,9 @@ class DashboardWidget(QWidget):
         self.refresh_timer.timeout.connect(self.request_stats_update)
         
         self.prev_stats = None
+        # Holds workers that are stopping — keeps Python reference alive until
+        # the thread finishes so Qt never destroys a running QThread.
+        self._dying_workers = []
         self.setup_ui()
         self.request_stats_update() # Initial call to set labels immediately
         self.refresh_timer.start(1000) # 1 second refresh for activity
@@ -663,11 +699,13 @@ class DashboardWidget(QWidget):
             # Simply update the existing worker's targets
             self.dashboard_worker.update_connection(conn_data, current_db_only)
         else:
-            # Stop any previous worker that finished (but not yet replaced)
+            # Retire the old worker safely before replacing it.
+            # _retire_worker() keeps the Python reference alive via _dying_workers
+            # until the thread finishes, preventing the "destroyed while running" crash.
             if hasattr(self, 'dashboard_worker'):
-                self.dashboard_worker.stop()
-                self.dashboard_worker.wait(500)
-            # Start a new one — no Qt parent: we own the lifetime via self.dashboard_worker
+                self._retire_worker(self.dashboard_worker)
+                self.dashboard_worker = None
+            # Start a fresh worker (no Qt parent — lifetime managed by self)
             self.dashboard_worker = DashboardWorker(conn_data, current_db_only)
             self.dashboard_worker.finished.connect(self.update_dashboard_stats)
             self.dashboard_worker.start()

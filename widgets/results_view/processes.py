@@ -1,6 +1,7 @@
 import datetime
 import sqlite3 as sqlite
 
+from db.db_connections import DB_FILE
 from PySide6.QtCore import Qt, QTimer, QSortFilterProxyModel
 from PySide6.QtGui import QColor, QPalette, QStandardItem, QStandardItemModel, QFont
 from PySide6.QtWidgets import (
@@ -290,7 +291,7 @@ def handle_process_started(manager, process_id, data):
 
     manager.switch_to_processes_view()
 
-    conn = sqlite.connect("databases/hierarchy.db")
+    conn = sqlite.connect(DB_FILE)
     cursor = conn.cursor()
     if target_conn_id:
         cursor.execute(
@@ -330,7 +331,7 @@ def handle_process_started(manager, process_id, data):
 
 def handle_process_finished(manager, process_id, message, time_taken, row_count):
     status = "Successful"
-    conn = sqlite.connect("databases/hierarchy.db")
+    conn = sqlite.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -352,7 +353,7 @@ def handle_process_finished(manager, process_id, message, time_taken, row_count)
 
 
 def handle_process_error(manager, process_id, error_message):
-    conn = sqlite.connect("databases/hierarchy.db")
+    conn = sqlite.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -390,7 +391,7 @@ def refresh_processes_view(manager):
     if not processes_view or not model:
         return
 
-    conn = sqlite.connect("databases/hierarchy.db")
+    conn = sqlite.connect(DB_FILE)
     cursor = conn.cursor()
 
     if selected_server:
