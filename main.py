@@ -7,8 +7,6 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QPalette, QColor
 from main_window import MainWindow
 from widgets.encryption.secure_sqlite import enable_transparent_encryption
-# from db.db_bootstrap import ensure_hierarchy_db
-# from db.db_modifications import migrate_plaintext_connection_passwords
 
 os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
 
@@ -35,11 +33,6 @@ if __name__ == "__main__":
     app.setPalette(palette)
 
     try:
-        # ensure_hierarchy_db()
-        # try:
-        #     migrate_plaintext_connection_passwords()
-        # except Exception as migration_error:
-        #     print(f"Credential migration skipped: {migration_error}", file=sys.stderr)
         window = MainWindow()
         window.show()
         sys.exit(app.exec())
