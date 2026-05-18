@@ -5,6 +5,7 @@
 from PySide6.QtWidgets import QSplitter, QMessageBox, QStackedWidget, QTabWidget, QTextEdit, QWidget, QPushButton
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
+import qtawesome as qta
 
 
 def close_current_tab(main_window):
@@ -105,8 +106,12 @@ def reset_to_dashboard(main_window):
 def toggle_maximize(main_window):
     if main_window.isMaximized():
         main_window.showNormal()
+        main_window.maximize_action.setText("Maximize")
+        main_window.maximize_action.setIcon(qta.icon("mdi.window-maximize", color="#555555"))
     else:
         main_window.showMaximized()
+        main_window.maximize_action.setText("Restore")
+        main_window.maximize_action.setIcon(qta.icon("mdi.window-restore", color="#555555"))
 
 
 def open_help_url(main_window, url_string):

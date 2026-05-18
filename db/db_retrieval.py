@@ -1,5 +1,5 @@
 import sqlite3 as sqlite
-from db.credential_vault import resolve_password
+# from db.credential_vault import resolve_password
 from db.db_connections import DB_FILE, create_postgres_connection, get_pooled_postgres_connection, return_pooled_postgres_connection
 
 def get_all_connections_from_db():
@@ -22,7 +22,6 @@ def get_all_connections_from_db():
         (connection_id, connection_type_name, code, connection_group_name, connection_name, short_name, host,
          port, dbname, db_path, user, password, instance_url) = row
         full_name = f"{connection_type_name} -> {connection_group_name} -> {connection_name} ({short_name})"
-        password = resolve_password(password)
         connections.append({
             "id": connection_id,
             "display_name": full_name,
@@ -61,7 +60,6 @@ def get_hierarchy_data():
                 usf_connections = c.fetchall()
                 for connections in usf_connections:
                     connection_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url = connections
-                    pwd = resolve_password(pwd)
                     conn_data = {"id": connection_id, "name": name, "short_name": short_name, "host": host, "database": db,
                                  "user": user, "password": pwd, "port": port, "dsn": dsn, "db_path": db_path, "instance_url": instance_url, "db_type": code.lower()}
                     connection_group_data['usf_connections'].append(conn_data)

@@ -66,7 +66,7 @@ def build_main_window_menu(main_window):
 
     window_menu = menubar.addMenu("&Window")
     window_menu.addAction(main_window.minimize_action)
-    window_menu.addAction(main_window.zoom_action)
+    window_menu.addAction(main_window.maximize_action)
     window_menu.addSeparator()
     close_action = QAction(qta.icon("mdi.window-close", color="#555555"), "Close", main_window)
     close_action.setShortcut("Alt+F4")

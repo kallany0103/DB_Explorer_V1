@@ -1,10 +1,12 @@
 import os
 import sqlite3 as sqlite
+from concurrent.futures import ProcessPoolExecutor
 
 import psycopg2
-from PySide6.QtCore import QObject, QRunnable, Signal
+from PySide6.QtCore import QObject, QRunnable, QThread, Signal
 
 import db
+from db.schema_retrieval import _subprocess_fetch_servicenow_schema
 
 
 class SchemaWorkerSignals(QObject):
@@ -196,7 +198,10 @@ class ERDSchemaFetchWorker(QRunnable):
             elif "CSV" in db_type_val:
                 full_schema = db.get_csv_schema(conn_info)
             elif "SERVICENOW" in db_type_val:
-                full_schema = db.get_servicenow_schema(conn_info, table_name=table_name)
+                with ProcessPoolExecutor(max_workers=1) as executor:
+                    full_schema = executor.submit(
+                        _subprocess_fetch_servicenow_schema, conn_info, table_name
+                    ).result(timeout=300)
             else:
                 try:
                     self.signals.error.emit(
@@ -247,6 +252,36 @@ class ERDSchemaFetchWorker(QRunnable):
                 self.signals.error.emit(str(exc))
             except RuntimeError:
                 pass
+
+
+class AvailableSchemasWorker(QThread):
+    """Fetches available Postgres schema names off the GUI thread."""
+
+    schemas_ready = Signal(list)
+
+    def __init__(self, conn_data: dict, schema_data: dict, parent=None):
+        super().__init__(parent)
+        self._conn_data = conn_data
+        self._schema_data = schema_data
+
+    def run(self):
+        _default_schema = "public"
+        schemas: list[str] = []
+        if self._conn_data:
+            db_type = self._conn_data.get('db_type', '')
+            if db_type == 'postgres':
+                schemas = db.get_postgres_available_schemas(self._conn_data)
+        if not schemas:
+            fallback = {
+                v.get('schema', _default_schema)
+                for v in self._schema_data.values()
+                if isinstance(v, dict)
+            }
+            fallback.discard('')
+            schemas = sorted(fallback)
+        if _default_schema not in schemas:
+            schemas.insert(0, _default_schema)
+        self.schemas_ready.emit(schemas)
 
 
 class ServiceNowTableDetailsWorker(QRunnable):

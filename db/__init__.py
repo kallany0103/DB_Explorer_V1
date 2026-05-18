@@ -28,6 +28,7 @@ from db.schema_retrieval import (
     get_postgres_schema,
     get_csv_schema,
     get_servicenow_schema,
+    get_postgres_available_schemas,
 )
 
 from db.db_modifications import (
@@ -83,6 +84,7 @@ __all__ = [
     "get_postgres_schema",
     "get_csv_schema",
     "get_servicenow_schema",
+    "get_postgres_available_schemas",
     "add_connection_type",
     "update_connection_group",
     "delete_connection_group",

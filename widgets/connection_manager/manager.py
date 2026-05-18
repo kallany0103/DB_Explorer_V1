@@ -12,6 +12,7 @@ from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (
     QWidget,
     QMessageBox,
+    QApplication,
 )
 
 import db
@@ -119,6 +120,7 @@ class ConnectionManager(QWidget):
         self.tab_widget.setTabIcon(index, self._get_erd_tab_icon())
         self.tab_widget.setCurrentIndex(index)
         self.main_window.renumber_tabs()
+        QApplication.processEvents()  # flush paint queue so loading overlay renders before worker starts
 
         # Phase 2 — fetch schema in background; populate widget when done
         worker = ERDSchemaFetchWorker(item_data)
