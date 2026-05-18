@@ -115,6 +115,32 @@ class ConnectionActions:
         self.manager.show_error_popup(f"Failed to count rows:\n{error_message}")
         self.manager.status_message_label.setText("Failed to count rows.")
 
+    def open_query_tool(self, item):
+        from PySide6.QtCore import Qt
+        if not item:
+            return
+            
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        if not item_data:
+            return
+            
+        conn_data = item_data.get("conn_data", item_data)
+        
+        new_tab = self.manager.add_tab()
+
+        query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+        db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
+
+        for i in range(db_combo_box.count()):
+            data = db_combo_box.itemData(i)
+            if data and data.get('id') == conn_data.get('id'):
+                db_combo_box.setCurrentIndex(i)
+                break
+
+        query_editor.clear()
+        query_editor.setFocus()
+        self.manager.tab_widget.setCurrentWidget(new_tab)
+
 
     def open_query_tool(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole) if hasattr(item, 'data') else item
@@ -140,7 +166,7 @@ class ConnectionActions:
         if not item_data:
             return
 
-        conn_data = item_data.get("conn_data")
+        conn_data = item_data.get("conn_data", item_data)
         new_tab = self.manager.add_tab()
 
         query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
@@ -1296,7 +1322,7 @@ class ConnectionActions:
     def open_search_objects_dialog(self, item_data):
         if not item_data:
             return
-        conn_data = item_data.get('conn_data')
+        conn_data = item_data.get('conn_data', item_data)
         dialog = SearchObjectsDialog(self.manager, conn_data, parent=self.manager)
         dialog.show()
 

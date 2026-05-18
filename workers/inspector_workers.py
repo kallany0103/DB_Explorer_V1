@@ -107,6 +107,21 @@ class InspectorWorker(QRunnable):
             if row:
                 data["details"] = dict(zip([d[0] for d in cursor.description], row))
             data["sql"] = f"-- Sequence: {schema_name}.{self.obj_name}\n\nCREATE SEQUENCE {schema_name}.{self.obj_name} ...;"
+            
+        elif obj_type == 'connection':
+            cursor.execute("SELECT version(), current_database(), current_user, inet_server_addr(), inet_server_port();")
+            row = cursor.fetchone()
+            if row:
+                data["details"] = {
+                    "Version": row[0],
+                    "Database": row[1],
+                    "User": row[2],
+                    "Server Address": row[3],
+                    "Server Port": row[4],
+                    "Connection Name": self.item_data.get('name', ''),
+                    "Short Name": self.item_data.get('short_name', '')
+                }
+            data["sql"] = "-- Connection details fetched directly from database connection parameters."
 
         return data
 
