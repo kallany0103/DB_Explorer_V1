@@ -1,5 +1,4 @@
 import sqlite3 as sqlite
-# from db.credential_vault import resolve_password
 from db.db_connections import DB_FILE, create_postgres_connection, get_pooled_postgres_connection, return_pooled_postgres_connection
 
 def get_all_connections_from_db():
