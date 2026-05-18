@@ -38,6 +38,8 @@ from widgets.erd.palette import ERDPalette
 from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
 from widgets.erd.commands import AddTableCommand, AddConnectionCommand, AddNoteCommand
 from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
+from workers.connection_workers import AvailableSchemasWorker
+
 
 class SQLPreviewDialog(QDialog):
     def __init__(self, sql_text, parent=None):
@@ -86,14 +88,8 @@ def generate_sql_script(schema_data, dialect="postgresql"):
     def quote_ident(ident: str) -> str:
         """Quote SQL identifiers safely, handling dotted names."""
         parts = ident.split('.')
-        quoted = []
-        for p in parts:
-            p2 = p.replace('"', '""')
-            if dialect == "sqlite":
-                quoted.append(f'"{p2}"')
-            else:
-                quoted.append(f'"{p2}"')
-        return '.'.join(quoted)
+        quoted = [p.replace('"', '""') for p in parts]
+        return '.'.join(f'"{q}"' for q in quoted)
 
     def quote_default(dval):
         """Heuristic quoting for default values: leave function/cast forms, quote plain strings."""
@@ -248,7 +244,10 @@ class ERDWidget(QWidget):
         self.notes_data = []
         self.view_state_data = None
         self.undo_stack = QUndoStack(self)
+        self._available_schemas_cache = None
+        self._schema_worker = None
         self.initUI()
+        self._start_schema_prefetch()
         
     def initUI(self):
         layout = QVBoxLayout(self)
@@ -585,28 +584,28 @@ class ERDWidget(QWidget):
             counter += 1
         return name
 
-    def _get_available_schemas(self):
-        """Return sorted list of schema names: from DB if connected, else from schema_data."""
-        schemas = set()
-        if self.conn_data:
-            try:
-                db_type = self.conn_data.get('db_type', '')
-                if db_type == 'postgres':
-                    import db as _db
-                    pg = {k: self.conn_data.get(k) for k in ['host', 'port', 'database', 'user', 'password']}
-                    conn = _db.create_postgres_connection(**pg)
-                    cur = conn.cursor()
-                    cur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast') ORDER BY schema_name;")
-                    schemas = {row[0] for row in cur.fetchall()}
-                    conn.close()
-            except Exception:
-                pass
-        if not schemas:
-            schemas = {v.get('schema', DEFAULT_SCHEMA) for v in self.schema_data.values() if isinstance(v, dict)}
+    def _start_schema_prefetch(self):
+        """Kick off a background thread to pre-fetch available schemas."""
+        if self._schema_worker and self._schema_worker.isRunning():
+            return
+        self._schema_worker = AvailableSchemasWorker(self.conn_data, self.schema_data, self)
+        self._schema_worker.schemas_ready.connect(self._on_schemas_ready)
+        self._schema_worker.start()
+
+    def _on_schemas_ready(self, schemas):
+        """Slot: cache the schema list returned by the background worker."""
+        self._available_schemas_cache = schemas
+
+    def _get_available_schemas(self) -> list[str]:
+        """Return sorted list of schema names. Uses pre-fetched cache when available."""
+        if self._available_schemas_cache is not None:
+            return self._available_schemas_cache
+        schemas = {v.get('schema', DEFAULT_SCHEMA) for v in self.schema_data.values() if isinstance(v, dict)}
         schemas.discard('')
         result = sorted(schemas)
         if DEFAULT_SCHEMA not in result:
             result.insert(0, DEFAULT_SCHEMA)
+        self._available_schemas_cache = result
         return result
 
     def _open_entity_dialog(self, pos, preset=None):

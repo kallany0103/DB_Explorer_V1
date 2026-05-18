@@ -221,6 +221,15 @@ def get_csv_schema(conn_info):
     return schema_data
 
 
+def _subprocess_fetch_servicenow_schema(conn_info, table_name):
+    """Module-level picklable wrapper used by ProcessPoolExecutor.
+
+    Must stay at module level so that concurrent.futures can pickle it
+    when spawning a worker process on Windows.
+    """
+    return get_servicenow_schema(conn_info, table_name)
+
+
 def get_servicenow_schema(conn_info, table_name=None):
     """
     Retrieves metadata for ServiceNow tables.
@@ -240,23 +249,106 @@ def get_servicenow_schema(conn_info, table_name=None):
             tables = [row[0] for row in cursor.fetchall()]
 
         for table in tables:
-            # Get columns
-            cursor.execute(f"SELECT ColumnName, DataTypeName, IsKey FROM sys_tablecolumns WHERE TableName='{table}'")
             columns = []
-            for col_name, data_type, is_key in cursor.fetchall():
-                columns.append({
-                    "name": col_name,
-                    "type": data_type,
-                    "pk": str(is_key).lower() == 'true'
-                })
-            
+            foreign_keys = []
+
+            # Attempt 1: fetch columns + ReferencedTable in one query
+            # CData exposes a ReferencedTable column in sys_tablecolumns for reference fields.
+            col_query_succeeded = False
+            try:
+                cursor.execute(
+                    f"SELECT ColumnName, DataTypeName, IsKey, ReferencedTable "
+                    f"FROM sys_tablecolumns WHERE TableName='{table}'"
+                )
+                for row in cursor.fetchall():
+                    col_name, data_type, is_key = row[0], row[1], row[2]
+                    ref_table = row[3] if len(row) > 3 else None
+                    columns.append({
+                        "name": col_name,
+                        "type": data_type,
+                        "pk": str(is_key).lower() == "true"
+                    })
+                    if ref_table:
+                        foreign_keys.append({"from": col_name, "table": ref_table, "to": "sys_id"})
+                col_query_succeeded = True
+            except Exception:
+                pass
+
+            # Fallback column query (no ReferencedTable) if Attempt 1 failed
+            if not col_query_succeeded:
+                try:
+                    cursor.execute(
+                        f"SELECT ColumnName, DataTypeName, IsKey "
+                        f"FROM sys_tablecolumns WHERE TableName='{table}'"
+                    )
+                    for col_name, data_type, is_key in cursor.fetchall():
+                        columns.append({
+                            "name": col_name,
+                            "type": data_type,
+                            "pk": str(is_key).lower() == "true"
+                        })
+                except Exception:
+                    pass
+
+            # Attempt 2: ServiceNow sys_dictionary (reference field metadata)
+            if not foreign_keys:
+                try:
+                    cursor.execute(
+                        f"SELECT element, reference FROM sys_dictionary "
+                        f"WHERE name='{table}' AND reference IS NOT NULL AND reference <> ''"
+                    )
+                    foreign_keys = [
+                        {"from": r[0], "table": r[1], "to": "sys_id"}
+                        for r in cursor.fetchall()
+                        if r[0] and r[1]
+                    ]
+                except Exception:
+                    pass
+
+            # Attempt 3: sys_foreignkeys (original fallback)
+            if not foreign_keys:
+                try:
+                    cursor.execute(
+                        f"SELECT FKCOLUMN_NAME, PKTABLE_NAME FROM sys_foreignkeys "
+                        f"WHERE FKTABLE_NAME='{table}'"
+                    )
+                    foreign_keys = [
+                        {"from": r[0], "table": r[1], "to": "sys_id"}
+                        for r in cursor.fetchall()
+                        if r[1]
+                    ]
+                except Exception:
+                    pass
+
             schema_data[table] = {
                 "table": table,
                 "columns": columns,
-                "foreign_keys": [] 
+                "foreign_keys": foreign_keys
             }
     except Exception as e:
         print(f"Error retrieving ServiceNow schema: {e}")
     finally:
         conn.close()
     return schema_data
+
+
+def get_postgres_available_schemas(conn_info: dict) -> list[str]:
+    """Return sorted non-system schema names for a Postgres connection."""
+    conn = None
+    try:
+        pg = {k: conn_info.get(k) for k in ['host', 'port', 'database', 'user', 'password']}
+        conn = create_postgres_connection(**pg)
+        if not conn:
+            return []
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT schema_name FROM information_schema.schemata "
+            "WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast') "
+            "ORDER BY schema_name;"
+        )
+        return [row[0] for row in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        if conn:
+            conn.close()

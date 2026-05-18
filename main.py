@@ -2,9 +2,11 @@
 import sys
 import os
 import traceback
+import multiprocessing
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QPalette, QColor
 from main_window import MainWindow
+from widgets.encryption.secure_sqlite import enable_transparent_encryption
 # from db.db_bootstrap import ensure_hierarchy_db
 # from db.db_modifications import migrate_plaintext_connection_passwords
 
@@ -12,6 +14,7 @@ os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
 
 if __name__ == "__main__":
 
+    multiprocessing.freeze_support()  # required for ProcessPoolExecutor in PyInstaller executable
     enable_transparent_encryption("mysecretpassword")
     
     app = QApplication(sys.argv)

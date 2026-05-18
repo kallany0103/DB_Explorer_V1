@@ -42,8 +42,8 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         self.shadow.setEnabled(False)
         self.setGraphicsEffect(self.shadow)
         
-        self.setAcceptHoverEvents(True) 
-        
+        self.setAcceptHoverEvents(True)
+
         # Sort columns: PK -> FK -> Name
         def col_sort_key(c):
             # Priority: PK (0), FK (1), Other (2)
@@ -277,11 +277,14 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
     def hoverEnterEvent(self, event):
         if hasattr(self.scene(), "highlight_related"):
             self.scene().highlight_related(self)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update()
         super().hoverEnterEvent(event)
 
     def hoverMoveEvent(self, event):
-        self.update_resize_cursor(event.pos())
+        handle = self.update_resize_cursor(event.pos())
+        if not handle and not self._resizing:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update()
         super().hoverMoveEvent(event)
 

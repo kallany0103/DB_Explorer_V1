@@ -4,7 +4,7 @@
 
 import copy
 
-from PySide6.QtWidgets import QGraphicsView, QFrame
+from PySide6.QtWidgets import QGraphicsView, QFrame, QToolTip
 from PySide6.QtCore import Signal, Qt, QPointF, QTimeLine
 from PySide6.QtGui import QPainter, QTransform
 
@@ -33,6 +33,7 @@ class ERDView(QGraphicsView):
         self._zoom_anim.valueChanged.connect(self._on_zoom_animate)
         self._target_scale = 1.0
         self._base_scale = 1.0
+        self._last_tooltip_item = None
 
     def _setup_zoom(self, factor):
         if self._zoom_anim.state() == QTimeLine.State.Running:
@@ -49,6 +50,18 @@ class ERDView(QGraphicsView):
             self.scale(step_factor, step_factor)
             self.viewport_changed.emit()
         
+    def mouseMoveEvent(self, event):
+        item = self.itemAt(event.pos())
+        if isinstance(item, ERDTableItem):
+            if item is not self._last_tooltip_item or not QToolTip.isVisible():
+                self._last_tooltip_item = item
+                QToolTip.showText(event.globalPosition().toPoint(), "Double-click to edit", self)
+        else:
+            if self._last_tooltip_item is not None:
+                self._last_tooltip_item = None
+                QToolTip.hideText()
+        super().mouseMoveEvent(event)
+
     def mousePressEvent(self, event):
         # Claim focus when user clicks on the view (clears focus from search bar)
         self.setFocus()

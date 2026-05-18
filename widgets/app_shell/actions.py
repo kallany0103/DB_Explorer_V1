@@ -154,9 +154,9 @@ def build_main_window_actions(main_window):
     main_window.minimize_action.setShortcut("Ctrl+M")
     main_window.minimize_action.triggered.connect(main_window.showMinimized)
 
-    main_window.zoom_action = QAction(qta.icon("mdi.window-maximize", color="#555555"), "Zoom", main_window)
-    main_window.zoom_action.setShortcut("F11")
-    main_window.zoom_action.triggered.connect(main_window.toggle_maximize)
+    main_window.maximize_action = QAction(qta.icon("mdi.window-maximize", color="#555555"), "Maximize", main_window)
+    main_window.maximize_action.setShortcut("F11")
+    main_window.maximize_action.triggered.connect(main_window.toggle_maximize)
 
     main_window.sqlite_help_action = QAction(QIcon("assets/sqlite.svg"), "SQLite Website", main_window)
     main_window.sqlite_help_action.triggered.connect(lambda: main_window.open_help_url("https://www.sqlite.org/"))
