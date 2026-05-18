@@ -11,6 +11,9 @@ from main_window import MainWindow
 os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
 
 if __name__ == "__main__":
+
+    enable_transparent_encryption("mysecretpassword")
+    
     app = QApplication(sys.argv)
 
     palette = QPalette()
