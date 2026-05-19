@@ -15,6 +15,13 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()  # required for ProcessPoolExecutor in PyInstaller executable
     enable_transparent_encryption("mysecretpassword")
     
+    # Bootstrap the database schema/tables if they don't exist
+    from db.db_bootstrap import ensure_hierarchy_db
+    try:
+        ensure_hierarchy_db()
+    except Exception as e:
+        print(f"Database bootstrap failed: {e}", file=sys.stderr)
+        
     app = QApplication(sys.argv)
 
     palette = QPalette()
