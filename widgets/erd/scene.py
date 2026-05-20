@@ -1,20 +1,26 @@
 import math
-from PySide6.QtWidgets import QGraphicsScene, QDialog
-from PySide6.QtGui import QBrush, QColor, QPen, QTransform
-from PySide6.QtCore import QLineF, Qt
+from typing import Any
 
-from widgets.erd.items.table_item import ERDTableItem
-from widgets.erd.items.connection_item import ERDConnectionItem
-from widgets.erd.items.note_item import ERDNoteItem
-from widgets.erd.items.entity_item import ERDEntityItem
-from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
+from PySide6.QtCore import QLineF, QPointF, Qt
+from PySide6.QtGui import QBrush, QColor, QPen, QTransform
+from PySide6.QtWidgets import QDialog, QGraphicsScene
+
+from widgets.erd.commands import AddConnectionCommand, DeleteItemCommand, UpdateTableCommand
+from widgets.erd.dialogs import TableDesignerDialog
 from widgets.erd.items.attribute_item import ERDAttributeItem
+from widgets.erd.items.connection_item import ERDConnectionItem
+from widgets.erd.items.entity_item import ERDEntityItem
+from widgets.erd.items.floating_connection import ConnectionHandle, ERDFloatingConnectionItem
+from widgets.erd.items.note_item import ERDNoteItem
 from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
-from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
-from widgets.erd.items.floating_connection import ERDFloatingConnectionItem, ConnectionHandle
 from widgets.erd.items.resizable import item_visual_scene_rect
+from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
+from widgets.erd.items.table_item import ERDTableItem
+from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
 from widgets.erd.routing import ERDRouter
-from widgets.erd.commands import DeleteItemCommand, UpdateTableCommand
+
+SCENE_MARGIN: int = 500  # padding around item bounding box when resizing scene rect
+BACKGROUND_GRID_SIZE: int = 20  # dot-grid spacing in pixels
 
 # All non-table items that can be deleted with the Delete key
 _DELETABLE_TYPES = (
@@ -30,7 +36,7 @@ _ROUTING_OBSTACLE_TYPES = (
 )
 
 class ERDScene(QGraphicsScene):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setBackgroundBrush(QBrush(QColor("#F8F9FA")))
         self.tables = {}
@@ -38,16 +44,15 @@ class ERDScene(QGraphicsScene):
         self.alignment_lines = []
         self._router_cache = None
         
-    def update_scene_rect(self):
+    def update_scene_rect(self) -> None:
         # Calculate the bounding box of all items and add a 500px margin
         rect = self.itemsBoundingRect()
         if not rect.isNull():
-            margin = 500
-            self.setSceneRect(rect.adjusted(-margin, -margin, margin, margin))
+            self.setSceneRect(rect.adjusted(-SCENE_MARGIN, -SCENE_MARGIN, SCENE_MARGIN, SCENE_MARGIN))
             self._router_cache = None 
             
-    def get_router(self):
-        if self._router_cache is None:  
+    def get_router(self) -> ERDRouter:
+        if self._router_cache is None:
             obstacles = []
             for item in self.items():
                 if isinstance(item, _ROUTING_OBSTACLE_TYPES):
@@ -55,10 +60,10 @@ class ERDScene(QGraphicsScene):
             self._router_cache = ERDRouter(self.sceneRect(), obstacles)
         return self._router_cache
 
-    def update_alignment_guides(self):
-        self.update() 
+    def update_alignment_guides(self) -> None:
+        self.update()
 
-    def delete_selected_items(self):
+    def delete_selected_items(self) -> None:
         items_to_delete = []
         for item in self.selectedItems():
             if isinstance(item, _DELETABLE_TYPES):
@@ -69,21 +74,21 @@ class ERDScene(QGraphicsScene):
             self.undo_stack.push(cmd)
 
 
-    def highlight_related(self, table_item):
+    def highlight_related(self, table_item: Any) -> None:
         for item in self.items():
             if isinstance(item, ERDTableItem):
                 item.is_highlighted = item == table_item
                 item.update()
         self.update()
 
-    def clear_highlight(self):
+    def clear_highlight(self) -> None:
         for item in self.items():
             if isinstance(item, ERDTableItem):
                 item.is_highlighted = False
                 item.update()
         self.update()
 
-    def apply_search_filter(self, text):
+    def apply_search_filter(self, text: str) -> None:
         text = text.strip().lower()
         for item in self.items():
             if isinstance(item, ERDTableItem):
@@ -95,7 +100,7 @@ class ERDScene(QGraphicsScene):
                     item.is_dimmed = not (match_name or match_schema)
                 item.update()
 
-    def find_table_item(self, text):
+    def find_table_item(self, text: str) -> ERDTableItem | None:
         text = text.strip().lower()
         if not text:
             return None
@@ -120,7 +125,7 @@ class ERDScene(QGraphicsScene):
         if rect.width() < 500: 
             return
 
-        grid_size = 20
+        grid_size = BACKGROUND_GRID_SIZE
         left = math.floor(rect.left() / grid_size) * grid_size
         top = math.floor(rect.top() / grid_size) * grid_size
         right = rect.right()
@@ -162,10 +167,9 @@ class ERDScene(QGraphicsScene):
         if adjusted_lines:
             painter.drawLines(adjusted_lines)
 
-    def mouseDoubleClickEvent(self, event):
+    def mouseDoubleClickEvent(self, event) -> None:
         item = self.itemAt(event.scenePos(), QTransform())
         if isinstance(item, ERDTableItem):
-            from widgets.erd.dialogs import TableDesignerDialog
             widget = self.parent()
             available_schemas = widget._get_available_schemas() if hasattr(widget, '_get_available_schemas') else []
             dialog = TableDesignerDialog(
@@ -188,11 +192,11 @@ class ERDScene(QGraphicsScene):
         
         super().mouseDoubleClickEvent(event)
 
-    def start_connection(self, source_table_name, source_col_name, start_scene_pos):
+    def start_connection(self, source_table_name: str, source_col_name: str, start_scene_pos: QPointF) -> None:
         self._temp_conn_start = (source_table_name, source_col_name)
         self._temp_line = self.addLine(QLineF(start_scene_pos, start_scene_pos), QPen(QColor("#1A73E8"), 2, Qt.PenStyle.DashLine))
 
-    def update_connection_drag(self, scene_pos):
+    def update_connection_drag(self, scene_pos: QPointF) -> None:
         if hasattr(self, '_temp_line') and self._temp_line:
             line = self._temp_line.line()
             line.setP2(scene_pos)
@@ -221,7 +225,7 @@ class ERDScene(QGraphicsScene):
                         target_table_item._drag_highlighted_col = target_col
                         target_table_item.update()
 
-    def finish_connection_drag(self, scene_pos):
+    def finish_connection_drag(self, scene_pos: QPointF) -> None:
         if hasattr(self, '_temp_line') and self._temp_line:
             self.removeItem(self._temp_line)
             source_table_name, source_col_name = self._temp_conn_start
@@ -244,19 +248,18 @@ class ERDScene(QGraphicsScene):
                     idx = int((local_pos.y() - item.header_height) // item.row_height)
                     if 0 <= idx < len(item.columns):
                         target_col = item.columns[idx]['name']
-                
+
                 target_full_name = f"{item.schema_name or 'public'}.{item.table_name}"
                 if target_col and (target_full_name != source_table_name or target_col != source_col_name):
-                    from widgets.erd.commands import AddConnectionCommand
                     widget = self.parent()
                     cmd = AddConnectionCommand(widget, source_table_name, source_col_name, target_full_name, target_col, "many-to-one")
                     if hasattr(self, 'undo_stack'):
                         self.undo_stack.push(cmd)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event) -> None:
         self.update_connection_drag(event.scenePos())
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event) -> None:
         self.finish_connection_drag(event.scenePos())
         super().mouseReleaseEvent(event)

@@ -1,10 +1,13 @@
+import qtawesome as qta
 from PySide6.QtWidgets import (
     QGraphicsPolygonItem, QGraphicsTextItem, QGraphicsItem, QMenu, QStyle
 )
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPolygonF
 from PySide6.QtCore import Qt, QRectF, QPointF, QSizeF
 
-from widgets.erd.commands import ResizeItemCommand
+from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
+from widgets.erd.constants import PORT_HIT_RADIUS_SQ
+# floating_connection imports table_item at module level; keep deferred to avoid init-order issues
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
 
 
@@ -25,14 +28,20 @@ class _DiamondLabelItem(QGraphicsTextItem):
 
 
 class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
-    is_chen_item = True
     """
     Chen ERD Relationship Diamond (⬦).
     is_identifying=True draws a double diamond (for weak entity owner relationships).
     """
+    is_chen_item = True
 
-    def __init__(self, label="Relationship", is_identifying=False,
-                 width=160, height=70, parent=None):
+    def __init__(
+        self,
+        label: str = "Relationship",
+        is_identifying: bool = False,
+        width: float = 160,
+        height: float = 70,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._init_resizable()
         self.label = label
@@ -62,13 +71,13 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         self._center_label()
         self.setZValue(1)
 
-    def minimum_size(self):
+    def minimum_size(self) -> QSizeF:
         return QSizeF(160.0, 70.0)
 
     def resize_bounds(self):
         return self._bounding_box()
 
-    def apply_size(self, width, height):
+    def apply_size(self, width: float, height: float) -> None:
         self.prepareGeometryChange()
         self._w = width
         self._h = height
@@ -110,7 +119,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         )
         self._after_geometry_changed()
 
-    def auto_size(self):
+    def auto_size(self) -> None:
         self.size_mode = "auto"
         self._sync_geometry()
 
@@ -176,29 +185,29 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         click_pos = event.pos()
         for px, py in ports:
             dx, dy = px - click_pos.x(), py - click_pos.y()
-            if (dx*dx + dy*dy) < 400: # 20px radius
+            if (dx*dx + dy*dy) < PORT_HIT_RADIUS_SQ:
                 # Arm pending port drag; floating connection only created
                 # once cursor moves past drag threshold.
-                from widgets.erd.items.floating_connection import arm_port_drag
                 scene_pos = self.mapToScene(QPointF(px, py))
+                from widgets.erd.items.floating_connection import arm_port_drag  # deferred: circular import guard
                 arm_port_drag(self, scene_pos, relation_type="none")
                 event.accept()
                 return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event) -> None:
         if self._resizing:
             self.update_resize(event.scenePos())
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag
+            from widgets.erd.items.floating_connection import maybe_start_port_drag  # deferred: circular import guard
             maybe_start_port_drag(self, event.scenePos())
             event.accept()
             return
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event) -> None:
         if self._resizing:
             changed = self.finish_resize()
             if changed and self.scene() and hasattr(self.scene(), "undo_stack"):
@@ -208,7 +217,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import cancel_port_drag
+            from widgets.erd.items.floating_connection import cancel_port_drag  # deferred: circular import guard
             cancel_port_drag(self)
             event.accept()
             return
@@ -218,8 +227,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         self._label.setFocus()
         super().mouseDoubleClickEvent(event)
 
-    def show_context_menu(self, screen_pos):
-        import qtawesome as qta
+    def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu { background:#ffffff; border:1px solid #d1d5db; border-radius:6px; padding:4px; }
@@ -243,13 +251,12 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         self.is_identifying = not self.is_identifying
         self.update()
 
-    def _remove_self(self):
+    def _remove_self(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
@@ -282,7 +289,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
     def text(self):
         return self._label.toPlainText()
 
-    def get_column_anchor_pos(self, column_name=None, side="left"):
+    def get_column_anchor_pos(self, column_name: str | None = None, side: str = "left") -> QPointF:
         r = item_visual_scene_rect(self)
         cx, cy = r.center().x(), r.center().y()
         if side == "left":
@@ -294,7 +301,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         else:
             return QPointF(cx, r.bottom())
 
-    def serialize_view_state(self):
+    def serialize_view_state(self) -> dict:
         state = self.capture_geometry_state()
         state.update({
             "type": "relationship_diamond",

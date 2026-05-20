@@ -1,8 +1,10 @@
+from typing import Any
+
 from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt
 from PySide6.QtGui import QColor, QBrush, QCursor, QPainterPath, QPen
 
 
-def item_visual_scene_rect(item):
+def item_visual_scene_rect(item: Any) -> QRectF:
     if hasattr(item, "resize_bounds"):
         mapped_bounds = item.mapRectToScene(item.resize_bounds())
         if hasattr(mapped_bounds, "boundingRect"):
@@ -31,7 +33,7 @@ class ResizableItemMixin:
         "w": Qt.CursorShape.SizeHorCursor,
     }
 
-    def _init_resizable(self):
+    def _init_resizable(self) -> None:
         self.size_mode = "auto"
         self._resize_handle = None
         self._resize_start_scene_rect = None
@@ -41,23 +43,23 @@ class ResizableItemMixin:
         self._resizing = False
         self.setAcceptHoverEvents(True)
 
-    def minimum_size(self):
+    def minimum_size(self) -> QSizeF:
         return QSizeF(120.0, 60.0)
 
-    def resize_padding(self):
+    def resize_padding(self) -> float:
         return self.HANDLE_SIZE + self.HANDLE_MARGIN
 
-    def get_size(self):
+    def get_size(self) -> QSizeF:
         bounds = self.resize_bounds()
         return QSizeF(bounds.width(), bounds.height())
 
-    def resize_bounds(self):
+    def resize_bounds(self) -> QRectF:
         raise NotImplementedError
 
-    def apply_size(self, width, height):
+    def apply_size(self, width: float, height: float) -> None:
         raise NotImplementedError
 
-    def apply_geometry_state(self, state):
+    def apply_geometry_state(self, state: dict[str, Any]) -> None:
         width = float(state.get("width", self.get_size().width()))
         height = float(state.get("height", self.get_size().height()))
         self.size_mode = state.get("size_mode", "auto")
@@ -68,7 +70,7 @@ class ResizableItemMixin:
         else:
             self._after_geometry_changed()
 
-    def capture_geometry_state(self):
+    def capture_geometry_state(self) -> dict[str, Any]:
         size = self.get_size()
         pos = self.pos()
         return {
@@ -79,15 +81,15 @@ class ResizableItemMixin:
             "size_mode": self.size_mode,
         }
 
-    def set_manual_size(self, width, height):
+    def set_manual_size(self, width: float, height: float) -> None:
         self.size_mode = "manual"
         self.apply_size(width, height)
         self._after_geometry_changed()
 
-    def auto_size(self):
+    def auto_size(self) -> None:
         raise NotImplementedError
 
-    def resize_handle_rects(self):
+    def resize_handle_rects(self) -> dict[str, QRectF]:
         rect = self.resize_bounds()
         s = self.HANDLE_SIZE
         hs = s / 2.0
@@ -115,7 +117,7 @@ class ResizableItemMixin:
         path.addRect(self.boundingRect())
         return path
 
-    def handle_at(self, pos):
+    def handle_at(self, pos: QPointF) -> str | None:
         if not self.isSelected():
             return None
         for handle, rect in self.resize_handle_rects().items():
@@ -129,7 +131,7 @@ class ResizableItemMixin:
                 return handle
         return None
 
-    def draw_resize_handles(self, painter):
+    def draw_resize_handles(self, painter: Any) -> None:
         if not self.isSelected():
             return
         painter.save()
@@ -139,7 +141,7 @@ class ResizableItemMixin:
             painter.drawRect(rect)
         painter.restore()
 
-    def begin_resize(self, handle, scene_pos):
+    def begin_resize(self, handle: str, scene_pos: QPointF) -> None:
         self._resize_handle = handle
         self._resize_start_scene_rect = item_visual_scene_rect(self)
         self._resize_start_item_pos = QPointF(self.pos())
@@ -147,7 +149,7 @@ class ResizableItemMixin:
         self._resizing = True
         self.setCursor(QCursor(self.HANDLE_CURSORS[handle]))
 
-    def update_resize(self, scene_pos):
+    def update_resize(self, scene_pos: QPointF) -> None:
         if not self._resizing or not self._resize_handle or not self._resize_start_scene_rect:
             return
 
@@ -173,7 +175,7 @@ class ResizableItemMixin:
         self.setPos(new_rect.topLeft())
         self._after_geometry_changed()
 
-    def finish_resize(self):
+    def finish_resize(self) -> bool:
         if not self._resizing:
             return False
         self._resizing = False
@@ -181,7 +183,7 @@ class ResizableItemMixin:
         self.unsetCursor()
         return self.capture_geometry_state() != self._resize_start_state
 
-    def update_resize_cursor(self, pos):
+    def update_resize_cursor(self, pos: QPointF) -> str | None:
         handle = self.handle_at(pos)
         self._resize_hover_handle = handle
         if handle:
@@ -190,12 +192,12 @@ class ResizableItemMixin:
             self.unsetCursor()
         return handle
 
-    def clear_resize_cursor(self):
+    def clear_resize_cursor(self) -> None:
         self._resize_hover_handle = None
         if not self._resizing:
             self.unsetCursor()
 
-    def _after_geometry_changed(self):
+    def _after_geometry_changed(self) -> None:
         for conn in getattr(self, "connections", []):
             conn.updatePath()
         scene = self.scene()

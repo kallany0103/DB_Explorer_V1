@@ -1,3 +1,4 @@
+import qtawesome as qta
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem,
     QMenu, QGraphicsDropShadowEffect, QStyle
@@ -5,7 +6,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter
 from PySide6.QtCore import Qt, QPointF, QSizeF
 
-from widgets.erd.commands import ResizeItemCommand
+from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
+from widgets.erd.constants import PORT_HIT_RADIUS_SQ
+# floating_connection imports table_item at module level; keep deferred to avoid init-order issues
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
 
 
@@ -26,7 +29,6 @@ class _EntityLabelItem(QGraphicsTextItem):
 
 
 class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
-    is_chen_item = True
     """
     Chen ERD Entity — a single-border rectangle with an editable name label.
 
@@ -36,10 +38,11 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
 
     Does NOT have column rows — use ERDTableItem for relational table representation.
     """
+    is_chen_item = True
 
     CORNER_R = 4
 
-    def __init__(self, label="Entity", width=180, height=60, parent=None):
+    def __init__(self, label: str = "Entity", width: float = 180, height: float = 60, parent=None) -> None:
         super().__init__(0, 0, width, height, parent)
         self._init_resizable()
 
@@ -73,13 +76,13 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
 
         self.setZValue(1)
 
-    def minimum_size(self):
+    def minimum_size(self) -> QSizeF:
         return QSizeF(180.0, 60.0)
 
     def resize_bounds(self):
         return self.rect()
 
-    def apply_size(self, width, height):
+    def apply_size(self, width: float, height: float) -> None:
         self.prepareGeometryChange()
         self.setRect(0, 0, width, height)
         self._center_label()
@@ -112,7 +115,7 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
         self.apply_size(new_w, new_h)
         self._after_geometry_changed()
 
-    def auto_size(self):
+    def auto_size(self) -> None:
         self.size_mode = "auto"
         self._center_label()
         self._sync_geometry()
@@ -181,31 +184,31 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
         for px, py in ports:
             # Use proper Euclidean distance for a perfect 20px hit circle
             dx, dy = px - click_pos.x(), py - click_pos.y()
-            if (dx*dx + dy*dy) < 400: # 20px radius squared
+            if (dx*dx + dy*dy) < PORT_HIT_RADIUS_SQ:
                 # Arm a pending connection drag; only promote to a real
                 # floating connection if the cursor moves past the drag
                 # threshold (see floating_connection.maybe_start_port_drag).
-                from widgets.erd.items.floating_connection import arm_port_drag
                 scene_pos = self.mapToScene(QPointF(px, py))
+                from widgets.erd.items.floating_connection import arm_port_drag  # deferred: circular import guard
                 arm_port_drag(self, scene_pos, relation_type="none")
                 event.accept()
                 return
 
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event) -> None:
         if self._resizing:
             self.update_resize(event.scenePos())
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag
+            from widgets.erd.items.floating_connection import maybe_start_port_drag  # deferred: circular import guard
             maybe_start_port_drag(self, event.scenePos())
             event.accept()
             return
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event) -> None:
         if self._resizing:
             changed = self.finish_resize()
             if changed and self.scene() and hasattr(self.scene(), "undo_stack"):
@@ -215,14 +218,13 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import cancel_port_drag
+            from widgets.erd.items.floating_connection import cancel_port_drag  # deferred: circular import guard
             cancel_port_drag(self)
             event.accept()
             return
         super().mouseReleaseEvent(event)
 
-    def show_context_menu(self, screen_pos):
-        import qtawesome as qta
+    def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
@@ -241,13 +243,12 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
         self.show_context_menu(event.screenPos())
         event.accept()
 
-    def _remove_self(self):
+    def _remove_self(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
@@ -280,7 +281,7 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
     def text(self):
         return self._text_item.toPlainText()
 
-    def get_column_anchor_pos(self, column_name=None, side="left"):
+    def get_column_anchor_pos(self, column_name: str | None = None, side: str = "left") -> QPointF:
         r = item_visual_scene_rect(self)
         cx, cy = r.center().x(), r.center().y()
         if side == "left":
@@ -292,7 +293,7 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
         else:
             return QPointF(cx, r.bottom())
 
-    def serialize_view_state(self):
+    def serialize_view_state(self) -> dict:
         state = self.capture_geometry_state()
         state.update({
             "type": "entity",

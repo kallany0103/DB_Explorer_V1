@@ -115,6 +115,7 @@ class ConnectionManager(QWidget):
         schema_name = item_data.get("schema_name")
         table_name  = item_data.get("table_name")
         erd_widget  = ERDWidget({}, loading=True, conn_data=item_data)
+        erd_widget._drop_item_data_resolver = self._get_selected_schema_item_data
         tab_title   = self._build_erd_tab_title(display_name, schema_name, table_name)
         index = self.tab_widget.addTab(erd_widget, tab_title)
         self.tab_widget.setTabIcon(index, self._get_erd_tab_icon())
@@ -138,6 +139,11 @@ class ConnectionManager(QWidget):
         item = self.schema_model.itemFromIndex(index)
         item_data = item.data(Qt.ItemDataRole.UserRole)
         return item, item_data, item.text() if item else None
+
+    def _get_selected_schema_item_data(self) -> dict | None:
+        """Return the UserRole data dict for the currently selected schema-tree item."""
+        _, item_data, _ = self._get_current_schema_item_data()
+        return item_data
 
     def _create_table_from_menu(self):
         _, item_data, _ = self._get_current_schema_item_data()
