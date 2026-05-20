@@ -1,16 +1,28 @@
+# NOTE: This file exceeds the 500-line soft limit because ERDTableItem combines
+# geometry computation, paint logic (header, columns, icons, highlights, resize
+# handles), and Qt event handling (hover, press, drag, resize, context menu) for
+# a single, cohesive graphics item.  The painting and geometry sections cannot be
+# meaningfully separated without introducing circular dependencies or artificial
+# indirection.  All extractable helpers (resizable mixin, constants) have already
+# been moved to dedicated modules.
 import math
 import qtawesome as qta
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect, QMenu
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QFontMetrics
 from PySide6.QtCore import Qt, QRectF, QPointF, QLineF, QSizeF
 
-
-from widgets.erd.commands import MoveTableCommand, ResizeItemCommand
+from widgets.erd.commands import DeleteItemCommand, MoveTableCommand, ResizeItemCommand
+from widgets.erd.constants import DRAG_ENDPOINT_RADIUS
+# ERDConnectionItem and floating_connection are deferred inside methods to break cycles:
+#   table_item -> connection_item -> routing -> table_item
+#   table_item -> floating_connection -> table_item
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
+
+GRID_SNAP: float = 20.0  # pixel grid for snap-to-grid during drag
 
 
 class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
-    def __init__(self, table_name, columns, schema_name=None, parent=None):
+    def __init__(self, table_name: str, columns: list, schema_name: str | None = None, parent=None) -> None:
         super().__init__(parent)
         self._init_resizable()
         self.table_name = table_name
@@ -301,15 +313,15 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             self.begin_resize(handle, event.scenePos())
             event.accept()
             return
-        from widgets.erd.items.connection_item import ERDConnectionItem
         # Defensive: If clicking near a connection handle, let the connection catch it
+        from widgets.erd.items.connection_item import ERDConnectionItem  # deferred: circular import guard
         for item in self.scene().items(event.scenePos()):
             if isinstance(item, ERDConnectionItem):
                 path = item.path()
                 if path.elementCount() >= 2:
                     p0 = item.mapToScene(QPointF(path.elementAt(0).x, path.elementAt(0).y))
                     pn = item.mapToScene(QPointF(path.elementAt(path.elementCount()-1).x, path.elementAt(path.elementCount()-1).y))
-                    if (event.scenePos() - p0).manhattanLength() < 25 or (event.scenePos() - pn).manhattanLength() < 25:
+                    if (event.scenePos() - p0).manhattanLength() < DRAG_ENDPOINT_RADIUS or (event.scenePos() - pn).manhattanLength() < DRAG_ENDPOINT_RADIUS:
                         event.ignore()
                         return
 
@@ -324,7 +336,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
                     # only created in mouseMoveEvent once the cursor moves past
                     # the platform drag threshold. A plain click no longer
                     # spawns a dangling connection line.
-                    from widgets.erd.items.floating_connection import arm_port_drag
+                    from widgets.erd.items.floating_connection import arm_port_drag  # deferred: circular import guard
                     arm_port_drag(
                         self,
                         event.scenePos(),
@@ -347,7 +359,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag
+            from widgets.erd.items.floating_connection import maybe_start_port_drag  # deferred: circular import guard
             if maybe_start_port_drag(self, event.scenePos()) is not None:
                 event.accept()
                 return
@@ -366,7 +378,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             return
         if getattr(self, "_pending_port_drag", None) is not None:
             # Plain click on a port (no drag) - cancel and treat as selection.
-            from widgets.erd.items.floating_connection import cancel_port_drag
+            from widgets.erd.items.floating_connection import cancel_port_drag  # deferred: circular import guard
             cancel_port_drag(self)
             event.accept()
             return
@@ -450,15 +462,15 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
                 else:
                     self.scene().alignment_lines = []
                     # Snap to grid fallback
-                    x = round(x / 20.0) * 20.0
-                    y = round(y / 20.0) * 20.0
+                    x = round(x / GRID_SNAP) * GRID_SNAP
+                    y = round(y / GRID_SNAP) * GRID_SNAP
                 
                 if hasattr(self.scene(), "update_alignment_guides"):
                     self.scene().update_alignment_guides()
             else:
                 # Still snap followers to grid for consistent spacing
-                x = round(x / 20.0) * 20.0
-                y = round(y / 20.0) * 20.0
+                x = round(x / GRID_SNAP) * GRID_SNAP
+                y = round(y / GRID_SNAP) * GRID_SNAP
                 
             return QPointF(x, y)
             
@@ -471,7 +483,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
                 self.scene()._router_cache = None
         return super().itemChange(change, value)
 
-    def get_column_anchor_pos(self, column_name, side="left"):
+    def get_column_anchor_pos(self, column_name: str | None, side: str = "left") -> QPointF:
         # Find column index
         col_idx = -1
         for i, col in enumerate(self.columns):
@@ -500,7 +512,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         self.show_context_menu(event.screenPos())
         event.accept()
 
-    def show_context_menu(self, screen_pos):
+    def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
@@ -517,18 +529,17 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         
         menu.exec(screen_pos)
 
-    def _remove_self(self):
+    def _remove_self(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
 
-    def serialize_view_state(self):
+    def serialize_view_state(self) -> dict:
         return self.capture_geometry_state()
 
     def restore_view_state(self, state):

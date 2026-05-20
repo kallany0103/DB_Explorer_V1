@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsTextItem, QGraphicsIte
 from PySide6.QtGui import QBrush, QColor, QPen, QFont
 from PySide6.QtCore import Qt, QSizeF
 
-from widgets.erd.commands import ResizeItemCommand
+from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.items.resizable import ResizableItemMixin
 
 
@@ -29,7 +29,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         """Compatibility property for ERD routing."""
         return self.text()
 
-    def __init__(self, text="Note", width=220, height=120, pinned=False):
+    def __init__(self, text: str = "Note", width: float = 220, height: float = 120, pinned: bool = False) -> None:
         super().__init__(0, 0, width, height)
         self._init_resizable()
         self.connections = []
@@ -53,13 +53,13 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         self.text_item.document().contentsChanged.connect(self._sync_geometry)
         self.set_pinned(pinned)
 
-    def minimum_size(self):
+    def minimum_size(self) -> QSizeF:
         return QSizeF(140.0, 70.0)
 
     def resize_bounds(self):
         return self.rect()
 
-    def apply_size(self, width, height):
+    def apply_size(self, width: float, height: float) -> None:
         self.prepareGeometryChange()
         self.setRect(0, 0, width, height)
         self.text_item.setTextWidth(max(120, width - 20))
@@ -88,15 +88,15 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         self.apply_size(width, height)
         self._after_geometry_changed()
 
-    def auto_size(self):
+    def auto_size(self) -> None:
         self.size_mode = "auto"
         self._sync_geometry()
 
-    def set_text(self, text):
+    def set_text(self, text: str) -> None:
         self.text_item.setPlainText(text)
         self._sync_geometry()
 
-    def set_pinned(self, pinned):
+    def set_pinned(self, pinned: bool) -> None:
         self.is_pinned = bool(pinned)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, not self.is_pinned)
         pen_color = QColor("#B45309") if self.is_pinned else QColor("#D4B106")
@@ -105,7 +105,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         self.setBrush(QBrush(fill_color))
         self.update()
 
-    def show_context_menu(self, screen_pos):
+    def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
@@ -132,13 +132,12 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         self.show_context_menu(event.screenPos())
         event.accept()
 
-    def remove_note(self):
+    def remove_note(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
@@ -193,7 +192,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
     def apply_geometry_state(self, state):
         ResizableItemMixin.apply_geometry_state(self, state)
 
-    def serialize_view_state(self):
+    def serialize_view_state(self) -> dict:
         state = self.capture_geometry_state()
         state.update({
             "type": "note",
@@ -215,5 +214,5 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         new_state = self.capture_geometry_state()
         self.scene().undo_stack.push(ResizeItemCommand(self, old_state, new_state))
 
-    def text(self):
+    def text(self) -> str:
         return self.text_item.toPlainText()

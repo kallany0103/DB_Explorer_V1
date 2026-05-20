@@ -1,3 +1,4 @@
+import qtawesome as qta
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsItem,
     QMenu, QStyle
@@ -5,7 +6,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter
 from PySide6.QtCore import Qt, QPointF, QSizeF
 
-from widgets.erd.commands import ResizeItemCommand
+from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
+from widgets.erd.constants import PORT_HIT_RADIUS_SQ
+from widgets.erd.items.floating_connection import arm_port_drag, cancel_port_drag, maybe_start_port_drag
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
 
 
@@ -45,13 +48,14 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
 
     GAP = 5  # inner ellipse inset for multivalued
 
-    def __init__(self, label="Attribute", kind="normal", parent=None):
+    def __init__(self, label: str = "Attribute", kind: str = "normal", parent=None) -> None:
         # Default oval size
         super().__init__(0, 0, 130, 50, parent)
         self._init_resizable()
 
         valid_kinds = ("normal", "multivalued", "derived", "key", "partial")
-        assert kind in valid_kinds, f"Unknown attribute kind: {kind!r}"
+        if kind not in valid_kinds:
+            raise ValueError(f"Unknown attribute kind: {kind!r}. Must be one of {valid_kinds}")
         self.kind = kind
         self.connections = []
         self.highlighted_cols = set()
@@ -84,13 +88,13 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
 
         self.setZValue(1)
 
-    def minimum_size(self):
+    def minimum_size(self) -> QSizeF:
         return QSizeF(130.0, 50.0)
 
     def resize_bounds(self):
         return self.rect()
 
-    def apply_size(self, width, height):
+    def apply_size(self, width: float, height: float) -> None:
         self.prepareGeometryChange()
         self.setRect(0, 0, width, height)
         self._center_label()
@@ -130,7 +134,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         self.apply_size(new_w, new_h)
         self._after_geometry_changed()
 
-    def auto_size(self):
+    def auto_size(self) -> None:
         self.size_mode = "auto"
         self._sync_geometry()
 
@@ -227,10 +231,9 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         
         for px, py in ports:
             dx, dy = px - click_pos.x(), py - click_pos.y()
-            if (dx*dx + dy*dy) < 400: # 20px radius
+            if (dx*dx + dy*dy) < PORT_HIT_RADIUS_SQ:
                 # Arm pending port drag; floating connection only created
                 # once cursor moves past drag threshold.
-                from widgets.erd.items.floating_connection import arm_port_drag
                 scene_pos = self.mapToScene(QPointF(px, py))
                 arm_port_drag(self, scene_pos, relation_type="none")
                 event.accept()
@@ -238,19 +241,18 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
 
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event) -> None:
         if self._resizing:
             self.update_resize(event.scenePos())
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag
             maybe_start_port_drag(self, event.scenePos())
             event.accept()
             return
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event) -> None:
         if self._resizing:
             changed = self.finish_resize()
             if changed and self.scene() and hasattr(self.scene(), "undo_stack"):
@@ -260,7 +262,6 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import cancel_port_drag
             cancel_port_drag(self)
             event.accept()
             return
@@ -270,8 +271,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         self._label.setFocus()
         super().mouseDoubleClickEvent(event)
 
-    def show_context_menu(self, screen_pos):
-        import qtawesome as qta
+    def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
@@ -291,13 +291,12 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         self.show_context_menu(event.screenPos())
         event.accept()
 
-    def _remove_self(self):
+    def _remove_self(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
@@ -330,7 +329,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
     def text(self):
         return self._label.toPlainText()
 
-    def get_column_anchor_pos(self, column_name=None, side="left"):
+    def get_column_anchor_pos(self, column_name: str | None = None, side: str = "left") -> QPointF:
         r = item_visual_scene_rect(self)
         cx, cy = r.center().x(), r.center().y()
         if side == "left":
@@ -342,7 +341,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         else:
             return QPointF(cx, r.bottom())
 
-    def serialize_view_state(self):
+    def serialize_view_state(self) -> dict:
         state = self.capture_geometry_state()
         state.update({
             "type": "attribute",

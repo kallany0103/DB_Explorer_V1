@@ -1,10 +1,11 @@
+import qtawesome as qta
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem, QMenu, QStyle
 )
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter
 from PySide6.QtCore import Qt, QSizeF
 
-from widgets.erd.commands import ResizeItemCommand
+from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.items.resizable import ResizableItemMixin
 
 
@@ -46,7 +47,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
         """Compatibility property for ERD routing."""
         return self.text()
 
-    def __init__(self, title="Subject Area", width=400, height=300, color_idx=None):
+    def __init__(self, title: str = "Subject Area", width: float = 400, height: float = 300, color_idx: int | None = None) -> None:
         super().__init__(0, 0, width, height)
         self._init_resizable()
         self.connections = []
@@ -77,7 +78,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
         self._title.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self._title.setPos(12, 8)
 
-    def minimum_size(self):
+    def minimum_size(self) -> QSizeF:
         return QSizeF(200.0, 120.0)
 
     def _apply_style(self):
@@ -89,7 +90,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
     def resize_bounds(self):
         return self.rect()
 
-    def apply_size(self, width, height):
+    def apply_size(self, width: float, height: float) -> None:
         self.prepareGeometryChange()
         self.setRect(0, 0, width, height)
 
@@ -184,8 +185,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
     # Context menu
     # ------------------------------------------------------------------
 
-    def contextMenuEvent(self, event):
-        import qtawesome as qta
+    def contextMenuEvent(self, event) -> None:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu { background:#ffffff; border:1px solid #d1d5db; border-radius:6px; padding:4px; }
@@ -215,25 +215,24 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
         self._title.setDefaultTextColor(self._stroke.darker(130))
         self.update()
 
-    def _remove_self(self):
+    def _remove_self(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
 
-    def text(self):
+    def text(self) -> str:
         return self._title.toPlainText()
 
-    def auto_size(self):
+    def auto_size(self) -> None:
         self.size_mode = "auto"
         self._after_geometry_changed()
 
-    def serialize_view_state(self):
+    def serialize_view_state(self) -> dict:
         state = self.capture_geometry_state()
         state.update({
             "type": "subject_area",

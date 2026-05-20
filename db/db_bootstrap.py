@@ -6,7 +6,7 @@ DEFAULT_CONNECTION_TYPES = (
     ("POSTGRES", "PostgreSQL Databases"),
     ("ORACLE", "Oracle Databases"),
     ("SQLITE", "SQLite Databases"),
-    ("CSV", "CSV Datastore"),
+    ("CSV", "CSV DataStore"),
     ("SERVICENOW", "ServiceNow"),
 )
 

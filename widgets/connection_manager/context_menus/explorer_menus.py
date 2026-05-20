@@ -106,6 +106,30 @@ class ExplorerMenuBuilder:
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(lambda: self.manager.connection_dialogs.show_connection_details(item))
         menu.addAction(act)
+
+        parent_item = item.parent()
+        grandparent_item = parent_item.parent() if parent_item else None
+        code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        if code == 'SQLITE' and conn_data and conn_data.get("db_path"):
+            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection(item))
+            menu.addAction(act)
+        elif code == 'POSTGRES' and conn_data and conn_data.get("host"):
+            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.edit_pg_connection(item))
+            menu.addAction(act)
+        elif code in ['ORACLE_FA', 'ORACLE_DB']:
+            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.edit_oracle_connection(item))
+            menu.addAction(act)
+        elif code == 'CSV' and conn_data and conn_data.get("db_path"):
+            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.edit_csv_connection(item))
+            menu.addAction(act)
+        elif code == 'SERVICENOW':
+            act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.edit_servicenow_connection(item))
+            menu.addAction(act)
         
         menu.addSeparator()
         

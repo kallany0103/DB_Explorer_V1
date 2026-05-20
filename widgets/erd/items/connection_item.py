@@ -1,20 +1,56 @@
+# NOTE: This file exceeds the 500-line soft limit.  Animation/line-style logic
+# lives in connection_anim.py (ERDConnectionAnimMixin) and context-menu
+# construction lives in connection_menu.py (build_connection_context_menu).
+# What remains here is path computation, crow's-foot rendering, hit-testing,
+# serialisation, and Qt event lifecycle — concerns that are tightly coupled to
+# the QGraphicsPathItem subclass and cannot be cleanly separated further.
 import math
 import qtawesome as qta
 from PySide6.QtWidgets import (
     QGraphicsPathItem, QGraphicsItem, QGraphicsTextItem,
-    QStyle, QMenu
+    QStyle,
 )
-from PySide6.QtGui import QPen, QBrush, QColor, QPainterPath, QPainterPathStroker, QFont
-from PySide6.QtCore import Qt, QPointF, QObject, Property, QPropertyAnimation, QEasingCurve
-from widgets.erd.constants import RELATION_TYPES
-from widgets.erd.routing import ERDConnectionPathPlanner
-from widgets.erd.commands import ChangeRelationTypeCommand
+from PySide6.QtGui import QPen, QColor, QPainterPath, QPainterPathStroker, QFont
+from PySide6.QtCore import Qt, QPointF, QObject
+from widgets.erd.constants import (
+    RELATION_TYPES,
+    DRAG_ENDPOINT_RADIUS,
+    SELF_LOOP_STUB, SELF_LOOP_LOOP_DIST_BASE, SELF_LOOP_LOOP_DIST_STEP,
+)
+from widgets.erd.items.connection_anim import ERDConnectionAnimMixin
+from widgets.erd.items.connection_menu import build_connection_context_menu
+from widgets.erd.path_planner import ERDConnectionPathPlanner
+from widgets.erd.items.connection_paint import (
+    draw_crows_foot as _draw_cf,
+    draw_crows_foot_direct as _draw_cf_direct,
+    draw_crows_foot_at as _draw_cf_at,
+    draw_crows_foot_ends as _draw_cf_ends,
+    draw_chen_connection_ends as _draw_chen_ends,
+    draw_arrow as _draw_arrow_fn,
+    align_marker_origin as _align_marker_origin,
+    find_direction_point as _find_direction_point,
+)
+# commands are safe to import at module level (no back-reference to this file)
+from widgets.erd.commands import ChangeRelationTypeCommand, DeleteItemCommand, DetachConnectionCommand
+# ERDFloatingConnectionItem is deferred below to break the mutual import cycle:
+#   connection_item → floating_connection → connection_item
+
+
+def _get_item_display_name(item) -> str:
+    """Return a human-readable name for any ERD graphics item."""
+    if hasattr(item, "table_name"):
+        return item.table_name
+    if hasattr(item, "text"):
+        return item.text()
+    if hasattr(item, "label"):
+        return item.label
+    return "Item"
 
 
 class _ConnLabelItem(QGraphicsTextItem):
     """Inline-editable label that floats at the midpoint of a connection."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QGraphicsItem | None = None) -> None:
         super().__init__(parent)
         self.setFont(QFont("Segoe UI", 9, QFont.Weight.Normal))
         self.setDefaultTextColor(QColor("#374151"))
@@ -39,12 +75,21 @@ class _ConnLabelItem(QGraphicsTextItem):
         super().paint(painter, option, widget)
 
 
-class ERDConnectionItem(QObject, QGraphicsPathItem):
+class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
     # ── Relationship Types Registry (Moved to constants.py) ──
     RELATION_TYPES = RELATION_TYPES
 
-    def __init__(self, source_item, target_item, source_col, target_col,
-                 is_identifying=False, is_unique=False, relation_name=None, fk_meta=None):
+    def __init__(
+        self,
+        source_item: QGraphicsItem,
+        target_item: QGraphicsItem,
+        source_col: str | None,
+        target_col: str | None,
+        is_identifying: bool = False,
+        is_unique: bool = False,
+        relation_name: str | None = None,
+        fk_meta: dict | None = None,
+    ) -> None:
         QObject.__init__(self)
         QGraphicsPathItem.__init__(self)
         self.source_item = source_item
@@ -61,18 +106,8 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         self._label.hide()
         self.label_text = ""
 
-        # Get display names
-        def get_name(it):
-            if hasattr(it, "table_name"):
-                return it.table_name
-            if hasattr(it, "text"):
-                return it.text()
-            if hasattr(it, "label"):
-                return it.label
-            return "Item"
-
-        s_name = get_name(source_item)
-        t_name = get_name(target_item)
+        s_name = _get_item_display_name(source_item)
+        t_name = _get_item_display_name(target_item)
 
         # Determine Plain-English Cardinality
         if is_unique:
@@ -111,77 +146,14 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setToolTip(self.tooltip_text)
 
-        # Robust features
-        self._line_style = "solid"  # solid, dashed, dotted
-        self._flow_mode = "none"    # none, forward, backward, bidirectional
-        self._is_animated = False
-        self._dash_offset = 0.0
-        
-        self._animation = QPropertyAnimation(self, b"dash_offset")
-        self._animation.setDuration(800)
-        self._animation.setStartValue(0.0)
-        self._animation.setEndValue(14.0)  # = 8+6, one full dash-cycle for seamless loop
-        self._animation.setLoopCount(-1)
-        self._animation.setEasingCurve(QEasingCurve.Type.Linear)
+        self._init_anim()
 
         source_item.connections.append(self)
         target_item.connections.append(self)
 
         self.updatePath()
 
-    # --- Animated Property ---
-    def get_dash_offset(self):
-        return self._dash_offset
-
-    def set_dash_offset(self, val):
-        self._dash_offset = val
-        self.update()
-
-    dash_offset = Property(float, get_dash_offset, set_dash_offset)
-
-    def set_animated(self, animated):
-        self._is_animated = animated
-        if animated:
-            self._animation.start()
-        else:
-            self._animation.stop()
-            self._dash_offset = 0.0
-        self.update()
-
-    def set_flow_mode(self, mode):
-        self._flow_mode = mode
-        self.update()
-
-    def set_line_style(self, style):
-        self._line_style = style
-        pen = self.pen()
-        if style == "dashed":
-            pen.setStyle(Qt.PenStyle.DashLine)
-        elif style == "dotted":
-            pen.setStyle(Qt.PenStyle.DotLine)
-        else:
-            pen.setStyle(Qt.PenStyle.SolidLine)
-        self.setPen(pen)
-        self.update()
-
-    def _apply_line_style_to_pen(self, pen, hovered=False):
-        if self._line_style == "dashed":
-            pen.setStyle(Qt.PenStyle.DashLine)
-        elif self._line_style == "dotted":
-            pen.setStyle(Qt.PenStyle.DotLine)
-        else:
-            pen.setStyle(Qt.PenStyle.SolidLine)
-
-        if hovered:
-            pen.setColor(QColor("#1A73E8"))
-            if self._line_style == "solid":
-                pen.setWidthF(2.5)
-        else:
-            pen.setColor(self.pen().color())
-
-        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-        return pen
+    # Animation/line-style methods are provided by ERDConnectionAnimMixin.
 
     def _is_chen_connection(self):
         return (
@@ -190,160 +162,17 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         )
 
     @staticmethod
-    def _align_marker_origin(origin, bridge_point):
-        dx = bridge_point.x() - origin.x()
-        dy = bridge_point.y() - origin.y()
-        if abs(dx) > abs(dy):
-            return QPointF(origin.x(), bridge_point.y())
-        return QPointF(bridge_point.x(), origin.y())
+    def _align_marker_origin(origin: QPointF, bridge_point: QPointF) -> QPointF:
+        return _align_marker_origin(origin, bridge_point)
 
     def _draw_crows_foot(self, painter, origin, bridge_point, rel_part, is_hovered, bridge_pen):
-        if rel_part == 'none':
-            return
-
-        marker_origin = self._align_marker_origin(origin, bridge_point)
-        # Calculate angle from actual origin (table edge) to bridge_point
-        # This ensures symbol rotation matches the actual bridge line direction
-        angle = math.atan2(bridge_point.y() - origin.y(), bridge_point.x() - origin.x())
-
-        bridge = QPen(bridge_pen)
-        bridge.setStyle(Qt.PenStyle.SolidLine)
-        bridge.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        bridge.setCapStyle(Qt.PenCapStyle.FlatCap)
-        painter.setPen(bridge)
-        # Draw bridge line from actual shape edge (origin) to trimmed path endpoint
-        # This ensures no gap due to floating-point rounding errors
-        painter.drawLine(origin, bridge_point)
-            
-        painter.save()
-        painter.translate(marker_origin)
-        painter.rotate(math.degrees(angle))
-        
-        nx, ny = 1.0, 0.0
-        px, py = 0.0, 1.0
-        
-        pen = QPen(QColor("#1A73E8") if is_hovered else QColor("#5F6368"))
-        pen.setWidthF(1.7 if is_hovered else 1.3)
-        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-        pen.setStyle(Qt.PenStyle.SolidLine) # Notations always use solid lines
-        painter.setPen(pen)
-        
-        def draw_bar(offset):
-            c = QPointF(nx * offset, ny * offset)
-            p1 = QPointF(c.x() + px * 6, c.y() + py * 6)
-            p2 = QPointF(c.x() - px * 6, c.y() - py * 6)
-            painter.drawLine(p1, p2)
-            
-        def draw_circle(offset):
-            c = QPointF(nx * offset, ny * offset)
-            painter.setBrush(QBrush(Qt.GlobalColor.white))
-            painter.drawEllipse(c, 3.5, 3.5)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            
-        def draw_crows_foot(start_offset, spread_offset, spread_width):
-            start = QPointF(nx * start_offset, ny * start_offset)
-            end_center = QPointF(nx * spread_offset, ny * spread_offset)
-            p1 = QPointF(end_center.x() + px * spread_width, end_center.y() + py * spread_width)
-            p2 = QPointF(end_center.x() - px * spread_width, end_center.y() - py * spread_width)
-            painter.drawLine(start, p1)
-            painter.drawLine(start, p2)
-
-        if rel_part == 'one':
-            draw_bar(5)
-            draw_bar(13)
-        elif rel_part == 'many':
-            draw_crows_foot(0, 12, 6)
-            draw_bar(13)
-        elif rel_part == 'zero_or_one':
-            draw_bar(5)
-            draw_circle(14)
-        elif rel_part == 'zero_or_many':
-            draw_crows_foot(0, 12, 6)
-            draw_circle(16)
-        
-        painter.restore()
+        _draw_cf(painter, origin, bridge_point, rel_part, is_hovered, bridge_pen)
 
     def _draw_crows_foot_direct(self, painter, origin, next_point, rel_part, is_hovered, bridge_pen):
-        if rel_part == 'none':
-            return
-
-        dx = next_point.x() - origin.x()
-        dy = next_point.y() - origin.y()
-        length = math.hypot(dx, dy)
-        if length < 1e-5:
-            return
-
-        nx, ny = dx / length, dy / length
-        px, py = -ny, nx
-
-        bridge = QPen(bridge_pen)
-        bridge.setStyle(Qt.PenStyle.SolidLine)
-        bridge.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        bridge.setCapStyle(Qt.PenCapStyle.FlatCap)
-        painter.setPen(bridge)
-        painter.drawLine(origin, next_point)
-
-        pen = QPen(QColor("#1A73E8") if is_hovered else QColor("#5F6368"))
-        pen.setWidthF(1.7 if is_hovered else 1.3)
-        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-        pen.setStyle(Qt.PenStyle.SolidLine)
-        painter.setPen(pen)
-
-        def draw_bar(offset):
-            c = QPointF(origin.x() + nx * offset, origin.y() + ny * offset)
-            p1 = QPointF(c.x() + px * 6, c.y() + py * 6)
-            p2 = QPointF(c.x() - px * 6, c.y() - py * 6)
-            painter.drawLine(p1, p2)
-
-        def draw_circle(offset):
-            c = QPointF(origin.x() + nx * offset, origin.y() + ny * offset)
-            painter.setBrush(QBrush(Qt.GlobalColor.white))
-            painter.drawEllipse(c, 3.5, 3.5)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-
-        def draw_crows_foot(start_offset, spread_offset, spread_width):
-            start = QPointF(origin.x() + nx * start_offset, origin.y() + ny * start_offset)
-            end_center = QPointF(origin.x() + nx * spread_offset, origin.y() + ny * spread_offset)
-            p1 = QPointF(end_center.x() + px * spread_width, end_center.y() + py * spread_width)
-            p2 = QPointF(end_center.x() - px * spread_width, end_center.y() - py * spread_width)
-            painter.drawLine(start, p1)
-            painter.drawLine(start, p2)
-
-        if rel_part == 'one':
-            draw_bar(5)
-            draw_bar(13)
-        elif rel_part == 'many':
-            draw_crows_foot(0, 12, 6)
-            draw_bar(13)
-        elif rel_part == 'zero_or_one':
-            draw_bar(5)
-            draw_circle(14)
-        elif rel_part == 'zero_or_many':
-            draw_crows_foot(0, 12, 6)
-            draw_circle(16)
+        _draw_cf_direct(painter, origin, next_point, rel_part, is_hovered, bridge_pen)
 
     def _draw_arrow(self, painter, P, angle, is_hovered):
-        painter.save()
-        painter.translate(P)
-        painter.rotate(math.degrees(angle))
-        
-        pen = QPen(QColor("#1A73E8") if is_hovered else QColor("#5F6368"))
-        pen.setWidthF(2.0 if is_hovered else 1.5)
-        painter.setPen(pen)
-        painter.setBrush(QBrush(pen.color()))
-        
-        # Simple arrowhead pointing to positive X
-        arrow_size = 8
-        path = QPainterPath()
-        path.moveTo(0, 0)
-        path.lineTo(-arrow_size, arrow_size/2)
-        path.lineTo(-arrow_size, -arrow_size/2)
-        path.closeSubpath()
-        painter.drawPath(path)
-        
-        painter.restore()
+        _draw_arrow_fn(painter, P, angle, is_hovered)
 
     def boundingRect(self):
         return QGraphicsPathItem.boundingRect(self).adjusted(-40, -40, 40, 40)
@@ -396,13 +225,13 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
             dist_start = (event.scenePos() - self.mapToScene(QPointF(p0.x, p0.y))).manhattanLength()
             dist_end = (event.scenePos() - self.mapToScene(QPointF(pn.x, pn.y))).manhattanLength()
 
-            if dist_start < 25:
+            if dist_start < DRAG_ENDPOINT_RADIUS:
                 self._drag_side = "start"
                 self._current_mouse_pos = event.scenePos()
                 self.setSelected(True)
                 event.accept()
                 return
-            elif dist_end < 25:
+            elif dist_end < DRAG_ENDPOINT_RADIUS:
                 self._drag_side = "end"
                 self._current_mouse_pos = event.scenePos()
                 self.setSelected(True)
@@ -426,11 +255,9 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         self._label.setFocus()
         event.accept()
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event) -> None:
         if getattr(self, '_drag_side', None):
-            from widgets.erd.commands import DetachConnectionCommand
-            from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
-
+            from widgets.erd.items.floating_connection import ERDFloatingConnectionItem  # deferred: circular import guard
             if self._drag_side == "start":
                 p1 = event.scenePos()
                 p2 = self.target_item.get_column_anchor_pos(self.target_col, self._last_target_side or "left")
@@ -442,8 +269,9 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
 
             self._drag_side = None
 
+            from widgets.erd.widget import ERDWidget  # deferred: avoids circular import at module level
             widget = self.scene().parent()
-            while widget and getattr(widget, '__class__', None).__name__ != 'ERDWidget':
+            while widget and not isinstance(widget, ERDWidget):
                 widget = widget.parent()
 
             floating = ERDFloatingConnectionItem(self.relation_type)
@@ -623,7 +451,7 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         trimmed_points = self._trim_orthogonal_points(points, start_trim, end_trim)
         return self._build_path_from_points(trimmed_points)
 
-    def updatePath(self):
+    def updatePath(self) -> None:
         if getattr(self, '_drag_side', None):
             path = QPainterPath()
             if self._drag_side == "start":
@@ -695,12 +523,11 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         path = QPainterPath()
         path.moveTo(a1)
 
-        stub_len = 30
-        s_stub = QPointF(a1.x() + stub_len, a1.y())
-        t_stub = QPointF(a2.x() + stub_len, a2.y())
+        s_stub = QPointF(a1.x() + SELF_LOOP_STUB, a1.y())
+        t_stub = QPointF(a2.x() + SELF_LOOP_STUB, a2.y())
         path.lineTo(s_stub)
 
-        loop_dist = 30 + (col_idx * 10)
+        loop_dist = SELF_LOOP_LOOP_DIST_BASE + (col_idx * SELF_LOOP_LOOP_DIST_STEP)
         cp1 = QPointF(s_stub.x() + loop_dist, s_stub.y())
         cp2 = QPointF(t_stub.x() + loop_dist, t_stub.y())
         path.cubicTo(cp1, cp2, t_stub)
@@ -720,7 +547,7 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         br = self._label.boundingRect()
         self._label.setPos(mid - QPointF(br.width() / 2, br.height() / 2))
 
-    def set_label(self, text):
+    def set_label(self, text: str) -> None:
         """Programmatically set (or clear) the connection label."""
         self.label_text = text
         if text:
@@ -827,168 +654,29 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         self._update_label_pos()
 
     def _draw_crows_foot_ends(self, painter, raw_path, rendered_path, is_hovered, bridge_pen):
-        if raw_path.elementCount() < 2:
-            return
-
-        rel_info = self.RELATION_TYPES.get(self.relation_type, self.RELATION_TYPES['many-to-one'])
-        source_type = rel_info.get('source', 'many')
-        target_type = rel_info.get('target', 'one')
-
-        # Source end: use first point as origin and find direction to next non-coincident point
-        p0 = raw_path.elementAt(0)
-        origin_s = QPointF(p0.x, p0.y)
-        direction_s = self._find_direction_point(raw_path, 0, forward=True)
-        if direction_s is not None:
-            self._draw_crows_foot_at(
-                painter, origin_s, direction_s, source_type, is_hovered, bridge_pen,
-            )
-
-        # Target end: use last point as origin and find direction to previous non-coincident point
-        last_idx = raw_path.elementCount() - 1
-        pn = raw_path.elementAt(last_idx)
-        origin_t = QPointF(pn.x, pn.y)
-        direction_t = self._find_direction_point(raw_path, last_idx, forward=False)
-        if direction_t is not None:
-            self._draw_crows_foot_at(
-                painter, origin_t, direction_t, target_type, is_hovered, bridge_pen,
-            )
+        _draw_cf_ends(painter, raw_path, self.RELATION_TYPES, self.relation_type, is_hovered, bridge_pen)
 
     @staticmethod
-    def _find_direction_point(path, start_idx, forward=True):
-        """Find a path point sufficiently far from path[start_idx] to compute a stable direction."""
-        ref = path.elementAt(start_idx)
-        ref_pt = QPointF(ref.x, ref.y)
-        step = 1 if forward else -1
-        idx = start_idx + step
-        end = path.elementCount() if forward else -1
-        while idx != end:
-            elem = path.elementAt(idx)
-            pt = QPointF(elem.x, elem.y)
-            if (pt - ref_pt).manhattanLength() > 0.5:
-                return pt
-            idx += step
-        return None
+    def _find_direction_point(path, start_idx: int, forward: bool = True):
+        return _find_direction_point(path, start_idx, forward)
 
     def _draw_crows_foot_at(self, painter, origin, direction_point, rel_part, is_hovered, bridge_pen):
-        """Draw the crow's foot symbol at origin pointing toward direction_point.
-        Symbols are drawn directly on the line - no separate bridge line needed."""
-        if rel_part == 'none':
-            return
-
-        dx = direction_point.x() - origin.x()
-        dy = direction_point.y() - origin.y()
-        length = math.hypot(dx, dy)
-        if length < 1e-5:
-            return
-
-        # Snap angle to nearest 90° if very close, for crisp axis-aligned symbols
-        angle = math.atan2(dy, dx)
-        snap_threshold = math.radians(2.0)  # within 2 degrees
-        for snap_angle in (0, math.pi / 2, math.pi, -math.pi / 2):
-            if abs(angle - snap_angle) < snap_threshold:
-                angle = snap_angle
-                break
-
-        painter.save()
-        painter.translate(origin)
-        painter.rotate(math.degrees(angle))
-
-        nx, ny = 1.0, 0.0
-        px, py = 0.0, 1.0
-
-        pen = QPen(QColor("#1A73E8") if is_hovered else QColor("#5F6368"))
-        pen.setWidthF(1.7 if is_hovered else 1.3)
-        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-        pen.setStyle(Qt.PenStyle.SolidLine)
-        painter.setPen(pen)
-
-        def draw_bar(offset):
-            c = QPointF(nx * offset, ny * offset)
-            p1 = QPointF(c.x() + px * 6, c.y() + py * 6)
-            p2 = QPointF(c.x() - px * 6, c.y() - py * 6)
-            painter.drawLine(p1, p2)
-
-        def draw_circle(offset):
-            c = QPointF(nx * offset, ny * offset)
-            painter.setBrush(QBrush(Qt.GlobalColor.white))
-            painter.drawEllipse(c, 3.5, 3.5)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-
-        def draw_crows_foot(start_offset, spread_offset, spread_width):
-            start = QPointF(nx * start_offset, ny * start_offset)
-            end_center = QPointF(nx * spread_offset, ny * spread_offset)
-            p1 = QPointF(end_center.x() + px * spread_width, end_center.y() + py * spread_width)
-            p2 = QPointF(end_center.x() - px * spread_width, end_center.y() - py * spread_width)
-            painter.drawLine(start, p1)
-            painter.drawLine(start, p2)
-
-        if rel_part == 'one':
-            draw_bar(5)
-            draw_bar(13)
-        elif rel_part == 'many':
-            draw_crows_foot(0, 12, 6)
-            draw_bar(13)
-        elif rel_part == 'zero_or_one':
-            draw_bar(5)
-            draw_circle(14)
-        elif rel_part == 'zero_or_many':
-            draw_crows_foot(0, 12, 6)
-            draw_circle(16)
-
-        painter.restore()
+        _draw_cf_at(painter, origin, direction_point, rel_part, is_hovered)
 
     def _draw_chen_connection_ends(self, painter, raw_path, rendered_path, is_hovered, bridge_pen):
-        if raw_path.elementCount() < 2 or rendered_path.elementCount() < 2:
-            return
-
-        rel_info = self.RELATION_TYPES.get(self.relation_type, self.RELATION_TYPES['many-to-one'])
-        source_type = rel_info.get('source', 'many')
-        target_type = rel_info.get('target', 'one')
-
-        # Use raw_path for origin (actual shape edge) to avoid gaps
-        raw_p0 = raw_path.elementAt(0)
-        p1 = rendered_path.elementAt(1)
-        self._draw_crows_foot_direct(
-            painter,
-            QPointF(raw_p0.x, raw_p0.y),
-            QPointF(p1.x, p1.y),
-            source_type,
-            is_hovered,
-            bridge_pen,
-        )
-
-        pn_1 = rendered_path.elementAt(rendered_path.elementCount() - 2)
-        raw_pn = raw_path.elementAt(raw_path.elementCount() - 1)
-        self._draw_crows_foot_direct(
-            painter,
-            QPointF(raw_pn.x, raw_pn.y),
-            QPointF(pn_1.x, pn_1.y),
-            target_type,
-            is_hovered,
-            bridge_pen,
-        )
+        _draw_chen_ends(painter, raw_path, rendered_path, self.RELATION_TYPES, self.relation_type, is_hovered, bridge_pen)
 
     # ------------------------------------------------------------------
     # Relation type management
     # ------------------------------------------------------------------
 
-    def _apply_relation_type(self, type_key):
+    def _apply_relation_type(self, type_key: str) -> None:
         self.relation_type = type_key
         rel_info = self.RELATION_TYPES[type_key]
         self.cardinality_label = rel_info['label']
         
-        def get_name(it):
-            if hasattr(it, "table_name"):
-                return it.table_name
-            if hasattr(it, "text"):
-                return it.text()
-            if hasattr(it, "label"):
-                return it.label
-            return "Item"
-
-        s_name = get_name(self.source_item)
-        t_name = get_name(self.target_item)
+        s_name = _get_item_display_name(self.source_item)
+        t_name = _get_item_display_name(self.target_item)
         
         source_str = f"{s_name}.{self.source_col}" if self.source_col else s_name
         target_str = f"{t_name}.{self.target_col}" if self.target_col else t_name
@@ -1003,7 +691,7 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
         self.prepareGeometryChange()
         self.update()
 
-    def set_relation_type(self, type_key):
+    def set_relation_type(self, type_key: str) -> None:
         if type_key not in self.RELATION_TYPES or type_key == self.relation_type:
             return
 
@@ -1018,139 +706,15 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
     # ------------------------------------------------------------------
 
     def contextMenuEvent(self, event):
-        _SS = """
-            QMenu {
-                min-width: 220px;
-                background: #ffffff;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 4px;
-                font-family: 'Segoe UI';
-            }
-            QMenu::item {
-                padding: 7px 16px 7px 10px;
-                font-size: 10pt;
-                color: #1f2937;
-                border-radius: 4px;
-                margin: 1px 4px;
-            }
-            QMenu::item:selected  { background: #eff6ff; color: #1d4ed8; }
-            QMenu::item:checked   { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
-            QMenu::item:disabled  {
-                color: #9ca3af;
-                font-size: 8pt;
-                font-weight: 700;
-                padding: 6px 16px 2px 10px;
-                background: transparent;
-                margin: 0px 4px;
-            }
-            QMenu::separator { height: 1px; background: #e5e7eb; margin: 4px 8px; }
-            QMenu::right-arrow { width: 8px; height: 8px; }
-        """
-
-        def _make_menu(parent=None):
-            m = QMenu(parent)
-            m.setStyleSheet(_SS)
-            return m
-
-        def _header(m, text):
-            a = m.addAction(text.upper())
-            a.setEnabled(False)
-            return a
-
-        menu = _make_menu()
-
-        # ── Section: Cardinality ──────────────────────────────────────
-        _header(menu, "Cardinality")
-        for type_key, info in self.RELATION_TYPES.items():
-            action = menu.addAction(
-                qta.icon(info['icon'], color='#5F6368'), info['label']
-            )
-            action.setCheckable(True)
-            action.setChecked(type_key == self.relation_type)
-            action.triggered.connect(lambda checked, k=type_key: self.set_relation_type(k))
-
-        # ── Section: Label ────────────────────────────────────────────
-        menu.addSeparator()
-        _header(menu, "Label")
-        if self._label.isVisible():
-            menu.addAction(
-                qta.icon('fa5s.edit', color='#374151'), "Edit Label"
-            ).triggered.connect(self._open_label_editor)
-            menu.addAction(
-                qta.icon('fa5s.times', color='#374151'), "Clear Label"
-            ).triggered.connect(lambda: self.set_label(""))
-        else:
-            menu.addAction(
-                qta.icon('fa5s.tag', color='#374151'), "Add Label"
-            ).triggered.connect(self._open_label_editor)
-
-        # ── Section: Actions ──────────────────────────────────────────
-        menu.addSeparator()
-        _header(menu, "Actions")
-        menu.addAction(
-            qta.icon('mdi.link-off', color='#374151'), "Detach Relationship"
-        ).triggered.connect(self.detach_relationship)
-
-        # ── Section: Style & Animation ────────────────────────────────
-        menu.addSeparator()
-        _header(menu, "Style & Animation")
-
-        style_menu = _make_menu(menu)
-        style_menu.setTitle("Line Style")
-        style_menu.setIcon(qta.icon('mdi.format-line-style', color='#374151'))
-        _style_icons = {
-            'solid':  ('mdi.minus',                          '#374151'),
-            'dashed': ('mdi.dots-horizontal',                '#374151'),
-            'dotted': ('mdi.dots-horizontal-circle-outline', '#374151'),
-        }
-        for style in ['solid', 'dashed', 'dotted']:
-            ico, col = _style_icons[style]
-            act = style_menu.addAction(qta.icon(ico, color=col), style.capitalize())
-            act.setCheckable(True)
-            act.setChecked(self._line_style == style)
-            act.triggered.connect(lambda checked, s=style: self.set_line_style(s))
-        menu.addMenu(style_menu)
-
-        flow_menu = _make_menu(menu)
-        flow_menu.setTitle("Flow Direction")
-        flow_menu.setIcon(qta.icon('mdi.transit-connection-variant', color='#374151'))
-        _flow_icons = {
-            'none':          ('mdi.block-helper',               '#374151'),
-            'forward':       ('mdi.arrow-right',                '#374151'),
-            'backward':      ('mdi.arrow-left',                 '#374151'),
-            'bidirectional': ('mdi.arrow-left-right',           '#374151'),
-        }
-        for mode in ['none', 'forward', 'backward', 'bidirectional']:
-            ico, col = _flow_icons[mode]
-            act = flow_menu.addAction(qta.icon(ico, color=col), mode.capitalize())
-            act.setCheckable(True)
-            act.setChecked(self._flow_mode == mode)
-            act.triggered.connect(lambda checked, m=mode: self.set_flow_mode(m))
-        menu.addMenu(flow_menu)
-
-        anim_icon = 'fa5s.pause' if self._is_animated else 'fa5s.play'
-        anim_act = menu.addAction(qta.icon(anim_icon, color='#374151'), "Animate Flow")
-        anim_act.setCheckable(True)
-        anim_act.setChecked(self._is_animated)
-        anim_act.triggered.connect(self.set_animated)
-
-        # ── Destructive ───────────────────────────────────────────────
-        menu.addSeparator()
-        remove_act = menu.addAction(
-            qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Relationship"
-        )
-        remove_act.triggered.connect(self._remove_self)
-
+        menu = build_connection_context_menu(self)
         menu.exec(event.screenPos())
 
-    def _remove_self(self):
+    def _remove_self(self) -> None:
         scene = self.scene()
         if not scene:
             return
         self.setSelected(True)
         if hasattr(scene, "undo_stack"):
-            from widgets.erd.commands import DeleteItemCommand
             scene.undo_stack.push(DeleteItemCommand(scene, [self]))
         else:
             scene.removeItem(self)
@@ -1164,14 +728,14 @@ class ERDConnectionItem(QObject, QGraphicsPathItem):
     # Detach
     # ------------------------------------------------------------------
 
-    def detach_relationship(self):
+    def detach_relationship(self) -> None:
         if not self.scene() or not hasattr(self.scene(), 'undo_stack'):
             return
 
-        from widgets.erd.commands import DetachConnectionCommand
-        from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+        from widgets.erd.items.floating_connection import ERDFloatingConnectionItem  # deferred: circular import guard
+        from widgets.erd.widget import ERDWidget  # deferred: avoids circular import at module level
         widget = self.scene().parent()
-        while widget and getattr(widget, '__class__', None).__name__ != 'ERDWidget':
+        while widget and not isinstance(widget, ERDWidget):
             widget = widget.parent()
 
         floating = ERDFloatingConnectionItem(self.relation_type)

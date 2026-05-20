@@ -1,14 +1,15 @@
 from copy import deepcopy
+from typing import Any
 
 DEFAULT_SCHEMA = "public"
 
 
-def full_name(schema_name, table_name):
+def full_name(schema_name: str | None, table_name: str) -> str:
     schema = schema_name or DEFAULT_SCHEMA
     return f"{schema}.{table_name}"
 
 
-def normalize_column(column):
+def normalize_column(column: dict[str, Any] | None) -> dict[str, Any]:
     col = deepcopy(column or {})
     col.setdefault("name", "")
     col.setdefault("type", "TEXT")
@@ -21,7 +22,7 @@ def normalize_column(column):
     return col
 
 
-def normalize_foreign_key(fk):
+def normalize_foreign_key(fk: dict[str, Any] | None) -> dict[str, Any]:
     item = deepcopy(fk or {})
     item.setdefault("name", "")
     item.setdefault("from", "")
@@ -35,7 +36,7 @@ def normalize_foreign_key(fk):
     return item
 
 
-def normalize_entity(entity_data):
+def normalize_entity(entity_data: dict[str, Any] | None) -> dict[str, Any]:
     data = deepcopy(entity_data or {})
     data.setdefault("table", "")
     data.setdefault("schema", DEFAULT_SCHEMA)
@@ -45,7 +46,7 @@ def normalize_entity(entity_data):
     return data
 
 
-def apply_fk_flags(columns, foreign_keys):
+def apply_fk_flags(columns: list[dict[str, Any]], foreign_keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
     fk_cols = {fk.get("from") for fk in foreign_keys if fk.get("from")}
     normalized = []
     for col in columns:
