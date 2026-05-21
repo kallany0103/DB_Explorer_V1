@@ -43,7 +43,7 @@ ELEMENTS = [
 ]
 
 TILE_W = 88
-TILE_H = 64
+TILE_H = 44
 ICON_SIZE = 22
 EXPANDED_W = 288
 COLLAPSED_W = 36
@@ -84,11 +84,20 @@ class ElementTile(QPushButton):
             QPushButton:pressed {
                 background: #E0E7FF;
             }
+            QToolTip {
+                background-color: #FFFFFF;
+                color: #1F2937;
+                border: 1px solid #CBD5E1;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+            }
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 8, 4, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         icon_lbl = QLabel()
         if comp_type in _ERD_TILE_SHAPE_TYPES:
@@ -104,37 +113,7 @@ class ElementTile(QPushButton):
         icon_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         icon_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
-        text_lbl = QLabel(label)
-        text_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        text_lbl.setWordWrap(True)
-        text_lbl.setStyleSheet("color: #374151; font-size: 10px; background: transparent; border: none;")
-        text_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
         layout.addWidget(icon_lbl)
-        layout.addWidget(text_lbl)
-
-    # ------------------------------------------------------------------
-    # Hover / Preview Support
-    # ------------------------------------------------------------------
-
-    def event(self, event):
-        # Explicitly block all native tooltip events to prevent "black box" bar
-        from PySide6.QtCore import QEvent
-        if event.type() == QEvent.Type.ToolTip:
-            return True
-        return super().event(event)
-
-    def enterEvent(self, event):
-        """Show the realistic shape preview on hover (draw.io style)."""
-        if self.palette:
-            self.palette.show_preview(self._comp_type, self.mapToGlobal(QPoint(self.width() + 10, 0)))
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        """Hide the preview."""
-        if self.palette:
-            self.palette.hide_preview()
-        super().leaveEvent(event)
 
     # ------------------------------------------------------------------
     # Drag support
@@ -151,10 +130,6 @@ class ElementTile(QPushButton):
             and (event.pos() - self._drag_start).manhattanLength() > 8
         ):
             self._drag_start = None
-            # Hide preview when drag starts
-            palette = self.window().findChild(ERDPalette)
-            if palette:
-                palette.hide_preview()
             self._start_drag()
             return
         super().mouseMoveEvent(event)
@@ -173,51 +148,9 @@ class ElementTile(QPushButton):
         drag.setHotSpot(pix.rect().center())
 
         drag.exec(Qt.DropAction.CopyAction)
-        
-        # Ensure preview is hidden and state is refreshed after drag
-        palette = self.window().findChild(ERDPalette)
-        if palette:
-            palette.hide_preview()
         self.update()
 
 
-
-
-class ShapePreviewPopup(QFrame):
-    """
-    Floating popup that shows a large, realistic preview of an ERD shape.
-    Used for the draw.io-style hover feature.
-    """
-    def __init__(self, parent=None):
-        # Use ToolTip flag instead of Window to ensure it stays on top and is transient
-        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint | Qt.WindowType.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setFixedSize(160, 120)
-        self.setStyleSheet("""
-            ShapePreviewPopup {
-                background: white;
-                border: 1px solid #94A3B8;
-                border-radius: 4px;
-            }
-        """)
-
-        self.layout = QVBoxLayout(self)
-        self.img_label = QLabel()
-        self.img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.img_label)
-        
-        self.title_label = QLabel()
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setStyleSheet("color: #64748B; font-size: 11px; font-weight: 500;")
-        self.layout.addWidget(self.title_label)
-
-    def set_preview(self, comp_type, label_text):
-        self.title_label.setText(label_text)
-        pix = _make_shape_preview(comp_type)
-        # Scale it up slightly for the preview popup
-        scaled = pix.scaled(140, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        self.img_label.setPixmap(scaled)
 
 
 # ---------------------------------------------------------------------------
@@ -235,10 +168,6 @@ class ERDPalette(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedWidth(COLLAPSED_W)
-        
-        # Hover Preview Popup - parent it to this palette for correct lifecycle
-        self._preview_popup = ShapePreviewPopup(parent=self)
-        
         self.setStyleSheet("""
             ERDPalette {
                 background-color: #F8FAFC;
@@ -302,22 +231,3 @@ class ERDPalette(QFrame):
             self.header_btn.setText("  Elements")
             self.header_btn.setIcon(qta.icon("fa5s.chevron-down", color="#374151"))
 
-    # ------------------------------------------------------------------
-    # Preview Popup Management
-    # ------------------------------------------------------------------
-
-    def show_preview(self, comp_type, pos):
-        """Called by tiles to trigger the draw.io-style preview."""
-        # Find label for the comp_type
-        label = comp_type.replace("_", " ").title()
-        for element_label, ct, *_ in ELEMENTS:
-            if ct == comp_type:
-                label = element_label
-                break
-        
-        self._preview_popup.set_preview(comp_type, label)
-        self._preview_popup.move(pos)
-        self._preview_popup.show()
-
-    def hide_preview(self):
-        self._preview_popup.hide()

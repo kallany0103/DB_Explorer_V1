@@ -38,6 +38,10 @@ if __name__ == "__main__":
     palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#1f2937"))
     palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#9CA3AF"))
     app.setPalette(palette)
+    app.setStyleSheet(
+        "QToolTip { background-color: #FFFFFF; color: #1F2937; border: 1px solid #CBD5E1;"
+        " border-radius: 4px; padding: 4px 8px; font-size: 11px; }"
+    )
 
     try:
         window = MainWindow()
