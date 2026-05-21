@@ -298,7 +298,12 @@ class StateWidget(QWidget):
 
         for row_data in data:
             if not row_data: continue
-            pid = int(row_data[0]) if row_data[0] is not None else None
+            pid = None
+            if is_sessions and row_data[0] is not None:
+                try:
+                    pid = int(row_data[0])
+                except (ValueError, TypeError):
+                    pass
             
             # Check filter
             if search_text:

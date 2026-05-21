@@ -485,6 +485,9 @@ class DashboardWidget(QWidget):
         self.refresh_timer.timeout.connect(self.request_stats_update)
         
         self.prev_stats = None
+        self.prev_time = None
+        self.current_conn_data = None
+        self.last_processed_conn = None
         # Holds workers that are stopping — keeps Python reference alive until
         # the thread finishes so Qt never destroys a running QThread.
         self._dying_workers = []
@@ -575,12 +578,6 @@ class DashboardWidget(QWidget):
         self.tuples_in_chart = LiveChartWidget("Tuples In", ["Inserts", "Updates", "Deletes"], ["#1f77b4", "#f59e0b", "#10b981"])
         self.tuples_out_chart = LiveChartWidget("Tuples Out", ["Fetched", "Returned"], ["#1f77b4", "#f59e0b"])
         self.block_io_chart = LiveChartWidget("Block I/O (Count)", ["Reads", "Hits"], ["#1f77b4", "#f59e0b"])
-
-        
-        self.no_connection_lbl = QLabel("Please select a PostgreSQL connection in the Explorer to see live metrics.")
-        self.no_connection_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.no_connection_lbl.setStyleSheet("color: #64748b; font-style: italic; font-size: 13px; padding: 10px; background: #f8fafc; border-radius: 4px; border: 1px dashed #cbd5e1;")
-        self.no_connection_lbl.hide()
         
         # Row 0: 2 charts (each spans 3 columns)
         grid_layout.addWidget(self.sessions_chart, 0, 0, 1, 3)
@@ -593,7 +590,6 @@ class DashboardWidget(QWidget):
         
         # Grid for charts ... (code removed for brevity, will replace carefully)
         
-        main_layout.addWidget(self.no_connection_lbl)
         main_layout.addLayout(grid_layout)
         main_layout.addStretch()
 
@@ -639,15 +635,8 @@ class DashboardWidget(QWidget):
             conn_data = item.data(Qt.ItemDataRole.UserRole)
             self.current_conn_data = conn_data
             current_db_only = True
-        elif depth == 2:
-            # Group level -> Show server-wide for the first connection in group
-            if item.hasChildren():
-                child = item.child(0)
-                conn_data = child.data(Qt.ItemDataRole.UserRole)
-                self.current_conn_data = conn_data
-            current_db_only = False
         else:
-            # depth 1 or unknown -> placeholder state
+            # depth 1, 2 or unknown -> placeholder state
             conn_data = None
 
         # Always ensure charts are visible
@@ -656,9 +645,15 @@ class DashboardWidget(QWidget):
         self.tuples_in_chart.setVisible(True)
         self.tuples_out_chart.setVisible(True)
         self.block_io_chart.setVisible(True)
-        self.no_connection_lbl.setVisible(False)
 
         if not conn_data:
+            self.current_conn_data = None
+            self.last_processed_conn = None
+            self.prev_stats = None
+            self.prev_time = None
+            if hasattr(self, 'dashboard_worker'):
+                self._retire_worker(self.dashboard_worker)
+                self.dashboard_worker = None
             self.sessions_chart.title_lbl.setText("Sessions")
             self.tps_chart.title_lbl.setText("Transactions")
             self.reset_all_charts()
@@ -685,10 +680,6 @@ class DashboardWidget(QWidget):
         # Note: We keep them visible as per user request to avoid UI "jumping"
         
         if not has_live_metrics:
-            if db_type_val in ["servicenow", "csv"]:
-                self.no_connection_lbl.setText(f"Dashboard is not supported for {db_type_val.upper()} connections.")
-            else:
-                self.no_connection_lbl.setText("Please select a PostgreSQL or SQLite connection to see live metrics.")
             return
 
         # State tab is now supported for both PostgreSQL and SQLite
@@ -789,6 +780,9 @@ class DashboardWidget(QWidget):
 
     def get_local_sqlite_sessions(self, db_path):
         """Calculates session counts for SQLite based on open worksheets in the app."""
+        if not db_path:
+            return 1, 1, 0
+            
         main_window = self._get_main_window()
         if not main_window or not hasattr(main_window, 'tab_widget'):
             return 1, 1, 0
@@ -797,7 +791,7 @@ class DashboardWidget(QWidget):
         active = 0
         
         import os
-        target_path = os.path.normpath(db_path).lower() if db_path else ""
+        target_path = os.path.normpath(db_path).lower()
         
         from PySide6.QtWidgets import QComboBox
         for i in range(main_window.tab_widget.count()):
@@ -820,13 +814,16 @@ class DashboardWidget(QWidget):
 
     def get_sqlite_session_details_list(self, db_path):
         """Collects detailed session info for SQLite worksheets to show in the State tab."""
+        if not db_path:
+            return []
+            
         main_window = self._get_main_window()
         if not main_window or not hasattr(main_window, 'tab_widget'):
             return []
             
         sessions = []
         import os
-        target_path = os.path.normpath(db_path).lower() if db_path else ""
+        target_path = os.path.normpath(db_path).lower()
         
         from PySide6.QtWidgets import QComboBox
         for i in range(main_window.tab_widget.count()):
@@ -889,7 +886,9 @@ class DashboardWidget(QWidget):
             if is_sqlite:
                 stats = {
                     "sessions_total": 1, "sessions_active": 0, "sessions_idle": 1,
-                    "xact_commit": 0, "xact_rollback": 0, "app_tup_ins": 0, "app_tup_upd": 0,
+                    "xact_commit": 0, "xact_rollback": 0,
+                    "app_commit": 0, "app_rollback": 0,
+                    "app_tup_ins": 0, "app_tup_upd": 0,
                     "app_tup_del": 0, "app_tup_fet": 0, "app_tup_ret": 0, "app_exec_time": 0
                 }
             else:

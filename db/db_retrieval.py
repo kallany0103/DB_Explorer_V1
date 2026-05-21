@@ -186,6 +186,8 @@ def get_sqlite_state_details(conn_data, local_sessions=None):
             try:
                 cur.execute("PRAGMA lock_status")
                 lock_data = cur.fetchall()
+                if not lock_data:
+                    lock_data = [("main", "unlocked")]
             except:
                 # Fallback: check if we can get at least the journal mode or sync status
                 cur.execute("PRAGMA journal_mode")
@@ -322,6 +324,10 @@ def get_sqlite_session_stats(conn_data):
         if not db_path:
             return None
         
+        # Get application-tracked transactions and tuples to filter out system noise
+        from workers.signals import tracker
+        app_stats = tracker.get_stats()
+        
         # Use a fresh connection with a short timeout
         conn = sqlite.connect(db_path, timeout=1.0)
         try:
@@ -359,6 +365,14 @@ def get_sqlite_session_stats(conn_data):
                 "sessions_idle": 0,
                 "xact_commit": version + schema_ver,
                 "xact_rollback": 0,
+                "app_commit": app_stats["commits"],
+                "app_rollback": app_stats["rollbacks"],
+                "app_tup_ins": app_stats["tup_ins"],
+                "app_tup_upd": app_stats["tup_upd"],
+                "app_tup_del": app_stats["tup_del"],
+                "app_tup_fet": app_stats["tup_fet"],
+                "app_tup_ret": app_stats["tup_ret"],
+                "app_exec_time": app_stats["exec_time"],
                 "tup_ins": total_rows, # Exact row count
                 "tup_upd": version,
                 "tup_del": 0,

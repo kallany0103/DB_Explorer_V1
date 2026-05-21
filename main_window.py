@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
         self.connection_manager = ConnectionManager(self)
         self.results_manager = ResultsManager(self)
         self.worksheet_manager = WorksheetManager(self)
+        self.dashboard_widget = None
 
         # --- Compatibility Aliases ---
         self.tree = self.connection_manager.tree
@@ -210,10 +211,13 @@ class MainWindow(QMainWindow):
         # Prevent multiple dashboard tabs
         for i in range(self.tab_widget.count()):
             if self.tab_widget.tabText(i) == "Dashboard":
+                widget = self.tab_widget.widget(i)
+                self.dashboard_widget = widget
                 self.tab_widget.setCurrentIndex(i)
                 return
 
         dashboard_widget = DashboardWidget(self)
+        self.dashboard_widget = dashboard_widget
         tab_title = "Dashboard"
         index = self.tab_widget.addTab(dashboard_widget, tab_title)
         self.tab_widget.setTabIcon(index, qta.icon('fa5s.th-large', color='#555555'))
@@ -293,13 +297,18 @@ class MainWindow(QMainWindow):
             
         source_index = self.proxy_model.mapToSource(current)
         item = self.model.itemFromIndex(source_index)
-        if not item or self.connection_manager.get_item_depth(item) != 3:
+        if not item:
             return
-            
+
+        depth = self.connection_manager.get_item_depth(item)
         item_data = item.data(Qt.ItemDataRole.UserRole)
         name = item.text()
-        
-        if not item_data:
+
+        # Update the dashboard immediately when a database type, group, or connection is selected.
+        if self.dashboard_widget is not None:
+            self.dashboard_widget.request_stats_update(manual=True)
+
+        if depth != 3 or not item_data:
             return
             
         # Add a type tag if missing for clarity
@@ -477,6 +486,10 @@ class MainWindow(QMainWindow):
         close_all_tabs_action(self)
 
     def close_tab(self, index):
+        # Keep dashboard reference accurate when the dashboard tab is closed.
+        widget = self.tab_widget.widget(index)
+        if widget is not None and widget is self.dashboard_widget:
+            self.dashboard_widget = None
         close_tab_action(self, index)
 
     # =========================================================================
