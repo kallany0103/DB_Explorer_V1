@@ -101,14 +101,31 @@ class PostgresConnectionPool:
             return None
     
     def _is_connection_alive(self, conn) -> bool:
-        """Check if connection is still alive."""
+        """Check if connection is still alive using psycopg2 status attributes.
+
+        Avoids executing any SQL (e.g. SELECT 1) so that no implicit
+        transaction is opened.  Such implicit transactions would show up in
+        Aiven / pg_stat_activity TPS metrics as
+        'Transactions: 1, Commits: 0, Rollbacks: 1' every time a connection
+        is checked out or returned to the pool.
+        """
         try:
-            # Try a simple query to verify connection is alive
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
+            # conn.closed == 0  →  connection is open
+            # conn.status is one of the STATUS_* constants; STATUS_READY (1)
+            # and STATUS_BEGIN (2) mean the connection is usable.
+            if conn.closed != 0:
+                return False
+            # STATUS_IN_TRANSACTION_INERROR means the connection needs a
+            # rollback before it can be reused – treat as unusable here;
+            # the caller's rollback() in get_connection / return_connection
+            # will handle the cleanup path.
+            if conn.status not in (
+                psycopg2.extensions.STATUS_READY,
+                psycopg2.extensions.STATUS_BEGIN,
+            ):
+                return False
             return True
-        except (OperationalError, psycopg2.DatabaseError):
+        except Exception:
             return False
     
     def _recycle_connection(self, conn):
@@ -156,11 +173,13 @@ class PostgresConnectionPool:
                     
                     # Check connection health
                     if self._is_connection_alive(conn):
-                        # _is_connection_alive runs SELECT 1 which opens an implicit
-                        # transaction in psycopg2. Roll it back so the connection is
-                        # in a clean state (required before callers can call set_session).
+                        # Only rollback if there is actually an open transaction.
+                        # Calling rollback() on an idle connection (STATUS_READY)
+                        # still sends ROLLBACK to PostgreSQL and shows up in TPS
+                        # stats as a spurious rollback.
                         try:
-                            conn.rollback()
+                            if conn.status == psycopg2.extensions.STATUS_BEGIN:
+                                conn.rollback()
                         except Exception:
                             pass
                         self._in_use.add(conn_id)
@@ -215,9 +234,15 @@ class PostgresConnectionPool:
             
             # Return to pool
             if self._is_connection_alive(conn):
-                # Rollback any uncommitted transactions
+                # Only rollback if there is actually an open / error transaction.
+                # An unconditional rollback() on a STATUS_READY connection still
+                # sends ROLLBACK to the server and inflates TPS rollback counters.
                 try:
-                    conn.rollback()
+                    if conn.status in (
+                        psycopg2.extensions.STATUS_BEGIN,
+                        psycopg2.extensions.STATUS_IN_TRANSACTION,
+                    ):
+                        conn.rollback()
                 except Exception:
                     pass
                 

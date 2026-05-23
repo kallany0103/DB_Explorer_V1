@@ -230,7 +230,7 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
                     query_sessions = f"""
                         SELECT 
                             count(*) FILTER (WHERE state IS NOT NULL AND (state != 'idle' OR state_change > now() - interval '10 second'))::int as total_active,
-                            count(*) FILTER (WHERE COALESCE(application_name, '') NOT ILIKE '%Universal%SQL%Client%')::int as other_total,
+                            count(*) FILTER (WHERE COALESCE(application_name, '') NOT ILIKE '%Universal%SQL%Client%' AND (state IS NOT NULL AND (state != 'idle' OR state_change > now() - interval '10 second')))::int as other_total,
                             count(*) FILTER (WHERE application_name ILIKE '%Universal%SQL%Client%(Worksheet)%' AND (state IS NOT NULL AND (state != 'idle' OR state_change > now() - interval '10 second')))::int as our_active,
                             count(*) FILTER (WHERE COALESCE(application_name, '') NOT ILIKE '%Universal%SQL%Client%' AND (state IS NOT NULL AND (state != 'idle' OR state_change > now() - interval '10 second')))::int as other_active_running
                         FROM pg_stat_activity
@@ -250,55 +250,88 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
                 except Exception:
                     res.update({"total_active": 0, "other_total": 0, "our_active": 0, "other_active_running": 0})
 
-                # 2. Database stats (Isolated try-block)
+                # 2. TPS stats from pg_stat_database (xact_commit/rollback only).
+                # NOTE: We only use this view for transaction counts since it's
+                # the only source for commit/rollback data. Tuple and block I/O
+                # stats from this view are NOT used because they include noise
+                # from the dashboard's own system-catalog reads.
                 try:
-                    query_stats = f"""
+                    query_xact = f"""
                         SELECT 
-                            sum(xact_commit)::bigint, sum(xact_rollback)::bigint,
-                            sum(tup_inserted)::bigint, sum(tup_updated)::bigint, sum(tup_deleted)::bigint,
-                            sum(tup_returned)::bigint, sum(tup_fetched)::bigint,
-                            sum(blks_read)::bigint, sum(blks_hit)::bigint
+                            sum(xact_commit)::bigint, sum(xact_rollback)::bigint
                         FROM pg_stat_database
                         {"WHERE datname = current_database()" if current_db_only else ""}
                     """
-                    cur.execute(query_stats)
-                    row_stats = cur.fetchone()
+                    cur.execute(query_xact)
+                    row_xact = cur.fetchone()
                     res.update({
-                        "xact_commit": row_stats[0] or 0,
-                        "xact_rollback": row_stats[1] or 0,
-                        "app_commit": app_stats["commits"],
-                        "app_rollback": app_stats["rollbacks"],
-                        "app_tup_ins": app_stats["tup_ins"],
-                        "app_tup_upd": app_stats["tup_upd"],
-                        "app_tup_del": app_stats["tup_del"],
-                        "app_tup_fet": app_stats["tup_fet"],
-                        "app_tup_ret": app_stats["tup_ret"],
+                        "xact_commit":   row_xact[0] or 0,
+                        "xact_rollback": row_xact[1] or 0,
+                        "app_commit":    app_stats["commits"],
+                        "app_rollback":  app_stats["rollbacks"],
+                        "app_tup_ins":   app_stats["tup_ins"],
+                        "app_tup_upd":   app_stats["tup_upd"],
+                        "app_tup_del":   app_stats["tup_del"],
+                        "app_tup_fet":   app_stats["tup_fet"],
+                        "app_tup_ret":   app_stats["tup_ret"],
                         "app_exec_time": app_stats["exec_time"],
-                        "tup_ins": row_stats[2] or 0,
-
-                        "tup_upd": row_stats[3] or 0,
-                        "tup_del": row_stats[4] or 0,
-                        "tup_ret": row_stats[5] or 0,
-                        "tup_fet": row_stats[6] or 0,
-                        "blks_read": row_stats[7] or 0,
-                        "blks_hit": row_stats[8] or 0
                     })
-
-
                 except Exception:
-                    res.update({k: 0 for k in ["xact_commit", "xact_rollback", "tup_ins", "tup_upd", "tup_del", "tup_ret", "tup_fet", "blks_read", "blks_hit"]})
+                    res.update({k: 0 for k in ["xact_commit", "xact_rollback"]})
+                    res.update({k: app_stats.get(k.replace("app_",""), 0)
+                                for k in ["app_commit","app_rollback","app_tup_ins",
+                                          "app_tup_upd","app_tup_del","app_tup_fet",
+                                          "app_tup_ret","app_exec_time"]})
 
-                # 3. Tuple stats (Isolated try-block)
-                if current_db_only:
-                    try:
-                        cur.execute("SELECT sum(n_tup_ins)::bigint, sum(n_tup_upd)::bigint, sum(n_tup_del)::bigint FROM pg_stat_user_tables")
-                        row_tuples = cur.fetchone()
-                        if row_tuples:
-                            res["tup_ins"] = row_tuples[0] or res.get("tup_ins", 0)
-                            res["tup_upd"] = row_tuples[1] or res.get("tup_upd", 0)
-                            res["tup_del"] = row_tuples[2] or res.get("tup_del", 0)
-                    except Exception:
-                        pass
+                # 3. Tuples In/Out from pg_stat_user_tables.
+                # This view only counts actual DML on user tables — no system
+                # catalog reads, no autovacuum internal pages, no dashboard noise.
+                try:
+                    cur.execute("""
+                        SELECT
+                            sum(n_tup_ins)::bigint,
+                            sum(n_tup_upd)::bigint,
+                            sum(n_tup_del)::bigint,
+                            sum(seq_tup_read)::bigint,
+                            sum(idx_tup_fetch)::bigint
+                        FROM pg_stat_user_tables
+                    """)
+                    row_ut = cur.fetchone()
+                    if row_ut:
+                        res["tup_ins"] = row_ut[0] or 0
+                        res["tup_upd"] = row_ut[1] or 0
+                        res["tup_del"] = row_ut[2] or 0
+                        # tup_ret = rows scanned (seq reads); tup_fet = rows fetched via index
+                        res["tup_ret"] = row_ut[3] or 0
+                        res["tup_fet"] = row_ut[4] or 0
+                    else:
+                        res.update({k: 0 for k in ["tup_ins","tup_upd","tup_del","tup_ret","tup_fet"]})
+                except Exception:
+                    res.update({k: 0 for k in ["tup_ins","tup_upd","tup_del","tup_ret","tup_fet"]})
+
+                # 4. Block I/O from pg_statio_user_tables.
+                # Only tracks buffer reads/hits for actual user table heap and
+                # index pages — completely ignores system catalog page accesses
+                # caused by the dashboard's own monitoring queries.
+                try:
+                    cur.execute("""
+                        SELECT
+                            sum(COALESCE(heap_blks_read,0) + COALESCE(idx_blks_read,0)
+                                + COALESCE(toast_blks_read,0) + COALESCE(tidx_blks_read,0))::bigint,
+                            sum(COALESCE(heap_blks_hit,0)  + COALESCE(idx_blks_hit,0)
+                                + COALESCE(toast_blks_hit,0) + COALESCE(tidx_blks_hit,0))::bigint
+                        FROM pg_statio_user_tables
+                    """)
+                    row_io = cur.fetchone()
+                    if row_io:
+                        res["blks_read"] = row_io[0] or 0
+                        res["blks_hit"]  = row_io[1] or 0
+                    else:
+                        res["blks_read"] = 0
+                        res["blks_hit"]  = 0
+                except Exception:
+                    res["blks_read"] = 0
+                    res["blks_hit"]  = 0
                 
                 return res
 
@@ -373,11 +406,11 @@ def get_sqlite_session_stats(conn_data):
                 "app_tup_fet": app_stats["tup_fet"],
                 "app_tup_ret": app_stats["tup_ret"],
                 "app_exec_time": app_stats["exec_time"],
-                "tup_ins": total_rows, # Exact row count
-                "tup_upd": version,
-                "tup_del": 0,
-                "tup_fet": total_rows + pages,
-                "tup_ret": pages,
+                "tup_ins": app_stats["tup_ins"],
+                "tup_upd": app_stats["tup_upd"],
+                "tup_del": app_stats["tup_del"],
+                "tup_fet": app_stats["tup_fet"],
+                "tup_ret": app_stats["tup_ret"],
                 "blks_read": pages,
                 "blks_hit": used_pages
             }

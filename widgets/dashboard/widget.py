@@ -116,20 +116,41 @@ class DashboardWorker(QThread):
                 if "sqlite" in db_type:
                     stats = db.get_sqlite_session_stats(self.conn_data)
                 else:
-                    # Use pooled connection for PostgreSQL (more efficient)
+                    # Use pooled connection for PostgreSQL (more efficient).
+                    # IMPORTANT: autocommit=False so every poll's queries run inside
+                    # a single implicit transaction that we rollback at the end.
+                    # This means the dashboard contributes 0 to xact_commit (no TPS
+                    # noise) and 1 to xact_rollback per poll (handled in the UI).
                     if conn is None:
                         db_name = self.conn_data.get("database", "postgres")
                         app_name = f"Universal SQL Client (Dashboard) - {db_name}"
                         conn = db.get_pooled_postgres_connection(
-                            self.conn_data, 
+                            self.conn_data,
                             application_name=app_name,
                             use_pool=True
                         )
                         if conn:
-                            conn.set_session(readonly=True, autocommit=True)
-                    
+                            # Ensure no open transaction before configuring the session
+                            # (psycopg2 raises if set_session is called mid-transaction).
+                            try:
+                                conn.rollback()
+                            except Exception:
+                                pass
+                            # readonly=True, autocommit=False — all queries in one
+                            # rolled-back read-only transaction per poll.
+                            conn.set_session(readonly=True, autocommit=False)
+
                     stats = db.get_postgres_session_stats(self.conn_data, self.current_db_only, conn=conn)
-                
+
+                    # End the implicit read-only transaction so the connection
+                    # returns to a clean idle state.  This adds 1 to xact_rollback
+                    # instead of N commits (one per sub-query) to xact_commit.
+                    if conn:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+
                 if self._is_running and not self._needs_reconnect:
                     self.finished.emit(stats, self.conn_data)
             except Exception as e:
@@ -146,7 +167,7 @@ class DashboardWorker(QThread):
                 if self._is_running and not self._needs_reconnect:
                     if "timeout" not in err_msg and "connection" not in err_msg and "unreachable" not in err_msg:
                         self.error.emit(str(e))
-            
+
             # Sleep for 1 second, but check for stop/reconnect signals frequently
             for _ in range(10):
                 if not self._is_running or self._needs_reconnect:
@@ -457,7 +478,7 @@ class DashboardWidget(QWidget):
             self.refresh_timer.stop()
         
         # Stop active worker and wait for it to exit cleanly
-        if hasattr(self, 'dashboard_worker') and self.dashboard_worker.isRunning():
+        if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
             self.dashboard_worker.stop()
             self.dashboard_worker.wait(5000)  # Wait up to 5 seconds
         
@@ -686,7 +707,7 @@ class DashboardWidget(QWidget):
         self.tabs.setTabVisible(1, True)
 
         # 2. Activity Stats Update (Use persistent worker)
-        if hasattr(self, 'dashboard_worker') and self.dashboard_worker.isRunning():
+        if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
             # Simply update the existing worker's targets
             self.dashboard_worker.update_connection(conn_data, current_db_only)
         else:
@@ -912,9 +933,9 @@ class DashboardWidget(QWidget):
                     self.sessions_chart.chart_view.update_values([t, a, i])
                 else:
                     ws_total, _ = self.get_local_postgres_sessions(self.current_conn_data.get("database"))
-                    other_total_sql = stats.get("other_total", 0)
+                    other_active_sql = stats.get("other_total", 0)
                     total_active_sql = stats.get("total_active", 0)
-                    graph_total = ws_total + other_total_sql
+                    graph_total = ws_total + other_active_sql
                     graph_active = total_active_sql
                     graph_idle = max(0, graph_total - graph_active)
                     self.sessions_chart.chart_view.update_values([graph_total, graph_active, graph_idle])
@@ -923,46 +944,57 @@ class DashboardWidget(QWidget):
             if self.prev_stats and self.prev_time:
                 dt = (now - self.prev_time).total_seconds()
                 if dt > 0:
-                    # TPS (Your Activity)
+                    if "sqlite" in db_type:
+                        has_user_activity = True
+                    else:
+                        our_active = stats.get("our_active", 0)
+                        other_active = stats.get("other_active_running", 0)
+                        has_user_activity = (our_active + other_active) > 0
+
+                    # TPS (Local Application Activity only to avoid Cloud DB background noise)
                     if hasattr(self, "tps_chart"):
                         app_c_diff = stats.get("app_commit", 0) - self.prev_stats.get("app_commit", 0)
                         app_r_diff = stats.get("app_rollback", 0) - self.prev_stats.get("app_rollback", 0)
+
+                        if not has_user_activity:
+                            app_c_diff = app_r_diff = 0
+
                         self.tps_chart.chart_view.update_values([
-                            max(0, app_c_diff + app_r_diff), 
-                            max(0, app_c_diff), 
+                            max(0, app_c_diff + app_r_diff),
+                            max(0, app_c_diff),
                             max(0, app_r_diff)
                         ])
                     
-                    # Tuples In (Your Activity)
+                    # Tuples In (Global Activity)
                     if hasattr(self, "tuples_in_chart"):
-                        t_ins = stats.get("app_tup_ins", 0) - self.prev_stats.get("app_tup_ins", 0)
-                        t_upd = stats.get("app_tup_upd", 0) - self.prev_stats.get("app_tup_upd", 0)
-                        t_del = stats.get("app_tup_del", 0) - self.prev_stats.get("app_tup_del", 0)
+                        t_ins = stats.get("tup_ins", 0) - self.prev_stats.get("tup_ins", 0)
+                        t_upd = stats.get("tup_upd", 0) - self.prev_stats.get("tup_upd", 0)
+                        t_del = stats.get("tup_del", 0) - self.prev_stats.get("tup_del", 0)
+                        
+                        if not has_user_activity:
+                            t_ins = t_upd = t_del = 0
+
                         self.tuples_in_chart.chart_view.update_values([max(0, t_ins), max(0, t_upd), max(0, t_del)])
                     
-                    # Tuples Out (Your Activity)
+                    # Tuples Out (Global Activity)
                     if hasattr(self, "tuples_out_chart"):
-                        t_fet = stats.get("app_tup_fet", 0) - self.prev_stats.get("app_tup_fet", 0)
-                        t_ret = stats.get("app_tup_ret", 0) - self.prev_stats.get("app_tup_ret", 0)
+                        t_fet = stats.get("tup_fet", 0) - self.prev_stats.get("tup_fet", 0)
+                        t_ret = stats.get("tup_ret", 0) - self.prev_stats.get("tup_ret", 0)
+                        
+                        if not has_user_activity:
+                            t_fet = t_ret = 0
+
                         self.tuples_out_chart.chart_view.update_values([max(0, t_fet), max(0, t_ret)])
                     
-                    # Block I/O (Filtered to hide noise)
+                    # Block I/O
                     if hasattr(self, "block_io_chart"):
                         b_read_global = stats.get("blks_read", 0) - self.prev_stats.get("blks_read", 0)
                         b_hit_global = stats.get("blks_hit", 0) - self.prev_stats.get("blks_hit", 0)
                         
-                        # Show only if we had app activity
-                        app_work = (
-                            (stats.get("app_commit", 0) != self.prev_stats.get("app_commit", 0)) or
-                            (stats.get("app_rollback", 0) != self.prev_stats.get("app_rollback", 0)) or
-                            (stats.get("app_tup_fet", 0) != self.prev_stats.get("app_tup_fet", 0)) or
-                            (stats.get("app_tup_ins", 0) != self.prev_stats.get("app_tup_ins", 0))
-                        )
-                        
-                        if app_work:
-                            self.block_io_chart.chart_view.update_values([max(0, b_read_global), max(0, b_hit_global)])
-                        else:
-                            self.block_io_chart.chart_view.update_values([0, 0])
+                        if not has_user_activity:
+                            b_read_global = b_hit_global = 0
+
+                        self.block_io_chart.chart_view.update_values([max(0, b_read_global), max(0, b_hit_global)])
                     
             self.prev_stats = stats
             self.prev_time = now
