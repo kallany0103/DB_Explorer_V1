@@ -6,6 +6,7 @@ schema nodes, group nodes (Tables/Views/Functions/etc.), schemas_root,
 FDW nodes, foreign servers, and user mappings.
 """
 
+from functools import partial
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
 
@@ -78,7 +79,7 @@ class SchemaMenuBuilder:
         elif node_type == "extension_root":
             self._extension_root_menu(menu, item_data, index)
         elif node_type == "schemas_root":
-            self._schemas_root_menu(menu, item_data)
+            self._schemas_root_menu(menu, item_data, index)
         elif node_type == "fdw_root":
             self._fdw_root_menu(menu, item_data, db_type, index)
         elif node_type == "fdw":
@@ -252,9 +253,7 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
         menu.addAction(act)
 
         act = action(self.manager, "Backup...", "mdi.backup-restore")
@@ -316,7 +315,7 @@ class SchemaMenuBuilder:
     # Schemas root  ("Schemas" group node)
     # =========================================================================
 
-    def _schemas_root_menu(self, menu, item_data):
+    def _schemas_root_menu(self, menu, item_data, index):
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
 
         # *** WIRED — opens the Create Schema dialog ***
@@ -333,11 +332,10 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.schema_loader.load_postgres_schema(item_data.get("conn_data"))
-        )
-        menu.addAction(act)
+        # Refresh disabled for schemas root
+        # act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
+        # act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        # menu.addAction(act)
 
         menu.addSeparator()
         conn = item_data.get("conn_data") or {}
@@ -401,9 +399,7 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
         menu.addAction(act)
 
         menu.addSeparator()
@@ -544,9 +540,7 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
         menu.addAction(act)
 
         menu.addSeparator()
@@ -557,11 +551,10 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _language_root_menu(self, menu, item_data, index):
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
-        menu.addAction(act)
+        # Refresh disabled for languages root
+        # act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
+        # act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        # menu.addAction(act)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Languages")
@@ -580,9 +573,7 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
         menu.addAction(act)
 
         menu.addSeparator()
@@ -611,9 +602,7 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
         menu.addAction(act)
 
         menu.addSeparator()
@@ -655,9 +644,7 @@ class SchemaMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(
-            lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
-        )
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
         menu.addAction(act)
 
         menu.addSeparator()
