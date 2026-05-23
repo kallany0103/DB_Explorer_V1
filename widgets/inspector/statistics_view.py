@@ -87,7 +87,11 @@ class StatisticsWorkbench(QWidget):
     def _on_stats_loaded(self, data):
         self.progress.setVisible(False)
         stats_results = data.get("stats", [])
-        
+
+        if not stats_results:
+            self.stats_view.display_data([], [])
+            return
+
         first = True
         for result in stats_results:
             # We need to manually populate the stats_view since load_stats is designed for sync execution

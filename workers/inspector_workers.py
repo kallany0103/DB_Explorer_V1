@@ -92,14 +92,15 @@ class InspectorWorker(QRunnable):
             row = cursor.fetchone()
             if row:
                 data["details"] = dict(zip([d[0] for d in cursor.description], row))
-            data["sql"] = f"CREATE SCHEMA {self.obj_name}\n    AUTHORIZATION {data['details'].get('owner', 'postgres')};"
+            owner = data["details"].get("Owner") or data["details"].get("owner", "postgres")
+            data["sql"] = f"CREATE SCHEMA {self.obj_name}\n    AUTHORIZATION {owner};"
             
         elif obj_type == 'function':
             cursor.execute(pg_queries.GET_FUNCTION_DETAILS, (schema_name, self.obj_name))
             row = cursor.fetchone()
             if row:
                 data["details"] = dict(zip([d[0] for d in cursor.description], row))
-                data["sql"] = data["details"].get('definition', '')
+                data["sql"] = data["details"].get("definition") or data["details"].get("Definition", "")
                 
         elif obj_type == 'sequence':
             cursor.execute(pg_queries.GET_SEQUENCE_DETAILS, (schema_name, self.obj_name))
@@ -126,39 +127,5 @@ class InspectorWorker(QRunnable):
         return data
 
     def _fetch_statistics(self, cursor):
-        from dialogs.properties import pg_queries
-        obj_type = self.item_data.get('type')
-        table_type = self.item_data.get('table_type', '').upper()
-        schema_name = self.item_data.get('schema_name', 'public')
-        group_name = self.item_data.get('group_name')
-
-        if not group_name and obj_type == 'schemas_root':
-             group_name = "Schemas"
-
-        stats_data = []
-        
-        if obj_type == 'connection':
-            db_name = self.item_data.get('database')
-            if db_name:
-                cursor.execute(pg_queries.GET_DATABASE_STATS, (db_name,))
-                stats_data.append({"query": pg_queries.GET_DATABASE_STATS, "params": (db_name,)})
-        elif obj_type == 'table' or 'TABLE' in table_type or 'VIEW' in table_type:
-            stats_data.append({"query": pg_queries.GET_TABLE_SIZE_STATS, "params": (schema_name, self.obj_name)})
-            stats_data.append({"query": pg_queries.GET_TABLE_STATS, "params": (schema_name, self.obj_name)})
-        elif obj_type == 'schema' or group_name == 'Schemas':
-            stats_data.append({"query": pg_queries.GET_SCHEMA_STATS, "params": (self.obj_name, self.obj_name, self.obj_name)})
-        elif 'FUNCTION' in table_type:
-            func_name = self.obj_name.split('(')[0]
-            stats_data.append({"query": pg_queries.GET_FUNCTION_STATS, "params": (schema_name, func_name)})
-        elif 'SEQUENCE' in table_type:
-            stats_data.append({"query": pg_queries.GET_SEQUENCE_STATS, "params": (schema_name, self.obj_name)})
-            
-        # Actually fetch the data to avoid cursor issues in main thread
-        final_results = []
-        for item in stats_data:
-            cursor.execute(item["query"], item["params"])
-            cols = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            final_results.append({"columns": cols, "rows": rows})
-            
-        return {"stats": final_results}
+        from workers.inspector_stats import fetch_statistics_results
+        return fetch_statistics_results(cursor, self.item_data, self.obj_name)

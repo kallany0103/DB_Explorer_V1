@@ -8,14 +8,23 @@ Centralized PostgreSQL catalog queries for database object properties.
 
 GET_TABLE_DETAILS = """
     SELECT 
-        c.oid,
-        pg_get_userbyid(c.relowner) as owner,
-        n.nspname as schema_name,
-        obj_description(c.oid, 'pg_class') as comment,
-        c.relkind,
-        reltablespace,
-        relispartition as is_partitioned,
-        reltuples as rows_estimated
+        pg_get_userbyid(c.relowner) AS "Owner",
+        n.nspname AS "Schema",
+        CASE c.relkind
+            WHEN 'r' THEN 'Table'
+            WHEN 'p' THEN 'Partitioned table'
+            WHEN 'v' THEN 'View'
+            WHEN 'm' THEN 'Materialized view'
+            WHEN 'f' THEN 'Foreign table'
+            WHEN 'S' THEN 'Sequence'
+            ELSE c.relkind::text
+        END AS "Object type",
+        obj_description(c.oid, 'pg_class') AS "Comment",
+        c.relispartition AS "Partitioned",
+        COALESCE(c.reltuples::bigint, 0) AS "Estimated rows",
+        pg_size_pretty(pg_total_relation_size(c.oid)) AS "Total size",
+        (SELECT count(*) FROM pg_attribute a
+         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped) AS "Columns"
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = %s AND c.relname = %s;
@@ -66,11 +75,19 @@ GET_TABLE_PRIVILEGES = """
 
 GET_SCHEMA_DETAILS = """
     SELECT 
-        oid,
-        pg_get_userbyid(nspowner) as owner,
-        obj_description(oid, 'pg_namespace') as comment
-    FROM pg_namespace
-    WHERE nspname = %s;
+        pg_get_userbyid(n.oid) AS "Owner",
+        obj_description(n.oid, 'pg_namespace') AS "Comment",
+        count(*) FILTER (WHERE c.relkind IN ('r', 'p')) AS "Tables",
+        count(*) FILTER (WHERE c.relkind = 'v') AS "Views",
+        count(*) FILTER (WHERE c.relkind = 'm') AS "Mat. views",
+        count(*) FILTER (WHERE c.relkind = 'S') AS "Sequences",
+        (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = n.oid) AS "Functions",
+        pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid))
+            FILTER (WHERE c.relkind IN ('r', 'p', 'm')), 0)) AS "Total size"
+    FROM pg_namespace n
+    LEFT JOIN pg_class c ON c.relnamespace = n.oid
+    WHERE n.nspname = %s
+    GROUP BY n.oid, n.nspowner;
 """
 
 GET_SCHEMA_PRIVILEGES = """
@@ -251,19 +268,24 @@ GET_USER_MAPPING_DETAILS = """
 
 GET_TABLE_STATS = """
     SELECT 
-        seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, 
-        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, 
-        n_live_tup, n_dead_tup,
-        last_vacuum, last_autovacuum, last_analyze, last_autoanalyze
+        seq_scan AS "Sequential scans",
+        idx_scan AS "Index scans",
+        n_tup_ins AS "Inserts",
+        n_tup_upd AS "Updates",
+        n_tup_del AS "Deletes",
+        last_vacuum AS "Last vacuum",
+        last_autovacuum AS "Last autovacuum",
+        last_analyze AS "Last analyze",
+        last_autoanalyze AS "Last autoanalyze"
     FROM pg_stat_user_tables 
     WHERE schemaname = %s AND relname = %s;
 """
 
 GET_TABLE_SIZE_STATS = """
     SELECT 
-        pg_size_pretty(pg_total_relation_size(c.oid)) as total_size,
-        pg_size_pretty(pg_relation_size(c.oid)) as table_size,
-        pg_size_pretty(pg_total_relation_size(c.oid) - pg_relation_size(c.oid)) as index_size
+        pg_size_pretty(pg_total_relation_size(c.oid)) AS "Total size",
+        pg_size_pretty(pg_relation_size(c.oid)) AS "Table size",
+        pg_size_pretty(pg_total_relation_size(c.oid) - pg_relation_size(c.oid)) AS "Index size"
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = %s AND c.relname = %s;
@@ -271,11 +293,79 @@ GET_TABLE_SIZE_STATS = """
 
 GET_FUNCTION_STATS = """
     SELECT 
-        calls, 
-        total_time || ' ms' as total_time, 
-        self_time || ' ms' as self_time
+        calls AS "Calls",
+        total_exec_time::text || ' ms' AS "Total time",
+        self_exec_time::text || ' ms' AS "Self time"
     FROM pg_stat_user_functions
     WHERE schemaname = %s AND funcname = %s;
+"""
+
+GET_TABLES_GROUP_STATS = """
+    SELECT 
+        count(*) AS "Object count",
+        pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid)), 0)) AS "Total size",
+        COALESCE(sum(c.reltuples)::bigint, 0) AS "Estimated rows"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind IN ('r', 'p');
+"""
+
+GET_VIEWS_GROUP_STATS = """
+    SELECT count(*) AS "Object count"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'v';
+"""
+
+GET_MATVIEWS_GROUP_STATS = """
+    SELECT 
+        count(*) AS "Object count",
+        pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid)), 0)) AS "Total size"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'm';
+"""
+
+GET_SEQUENCES_GROUP_STATS = """
+    SELECT count(*) AS "Object count"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'S';
+"""
+
+GET_FUNCTIONS_GROUP_STATS = """
+    SELECT count(*) AS "Object count"
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = %s;
+"""
+
+GET_FOREIGN_TABLES_GROUP_STATS = """
+    SELECT count(*) AS "Object count"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'f';
+"""
+
+GET_TRIGGER_FUNCTIONS_GROUP_STATS = """
+    SELECT count(*) AS "Object count"
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = %s AND p.prorettype = 'trigger'::regtype;
+"""
+
+GET_ALL_SCHEMAS_STATS = """
+    SELECT 
+        n.nspname AS "Schema",
+        count(*) FILTER (WHERE c.relkind IN ('r', 'p')) AS "Tables",
+        count(*) FILTER (WHERE c.relkind = 'v') AS "Views",
+        pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid))
+            FILTER (WHERE c.relkind IN ('r', 'p', 'm')), 0)) AS "Total size"
+    FROM pg_namespace n
+    LEFT JOIN pg_class c ON c.relnamespace = n.oid
+    WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema'
+    GROUP BY n.nspname
+    ORDER BY n.nspname;
 """
 
 GET_SCHEMA_STATS = """
@@ -325,9 +415,8 @@ GET_SCHEMA_STATS = """
 
 GET_SEQUENCE_STATS = """
     SELECT 
-        last_value, 
-        log_cnt, 
-        is_called
+        last_value AS "Last value",
+        is_called AS "Called"
     FROM pg_sequences
     WHERE schemaname = %s AND sequencename = %s;
 """
