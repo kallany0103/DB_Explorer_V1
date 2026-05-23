@@ -223,55 +223,78 @@ class MainWindow(QMainWindow):
     def renumber_tabs(self):
         self.worksheet_manager.renumber_tabs()
 
-    def add_properties_tab(self):
-        prop_widget = PropertiesWorkbench(self)
-        index = self.tab_widget.addTab(prop_widget, "Properties")
-        self.tab_widget.setTabIcon(index, qta.icon('mdi.tune'))
-        self.tab_widget.setCurrentIndex(index)
-        
-        # Try to populate with current selection immediately
+    def _find_inspector_tab(self, workbench_cls):
+        for i in range(self.tab_widget.count()):
+            widget = self.tab_widget.widget(i)
+            if isinstance(widget, workbench_cls):
+                return i, widget
+        return None, None
+
+    def _populate_inspector_from_tree_selection(self, widget):
         schema_item, schema_data, schema_name = self.connection_manager._get_current_schema_item_data()
         if schema_data:
-            prop_widget.update_view(schema_data, schema_name)
-        else:
-            current_conn_idx = self.tree.selectionModel().currentIndex()
-            if current_conn_idx.isValid():
-                source_idx = self.proxy_model.mapToSource(current_conn_idx)
-                item = self.model.itemFromIndex(source_idx)
-                if item and self.connection_manager.get_item_depth(item) == 3:
-                    item_data = item.data(Qt.ItemDataRole.UserRole)
-                    if item_data:
-                        if 'type' not in item_data:
-                            item_data['type'] = 'connection'
-                        prop_widget.update_view(item_data, item.text())
+            prepared = self.connection_manager.prepare_inspector_item_data(schema_data, schema_name)
+            widget.update_view(prepared, schema_name)
+            return
+
+        current_conn_idx = self.tree.selectionModel().currentIndex()
+        if not current_conn_idx.isValid():
+            return
+        source_idx = self.proxy_model.mapToSource(current_conn_idx)
+        item = self.model.itemFromIndex(source_idx)
+        if item and self.connection_manager.get_item_depth(item) == 3:
+            item_data = item.data(Qt.ItemDataRole.UserRole)
+            if item_data:
+                prepared = self.connection_manager.prepare_inspector_item_data(
+                    item_data, item.text()
+                )
+                widget.update_view(prepared, item.text())
+
+    def _ensure_properties_workbench(self):
+        _, widget = self._find_inspector_tab(PropertiesWorkbench)
+        if widget is not None:
+            return widget
+        widget = PropertiesWorkbench(self)
+        index = self.tab_widget.addTab(widget, "Properties")
+        self.tab_widget.setTabIcon(index, qta.icon('mdi.tune'))
+        return widget
+
+    def _ensure_statistics_workbench(self):
+        _, widget = self._find_inspector_tab(StatisticsWorkbench)
+        if widget is not None:
+            return widget
+        widget = StatisticsWorkbench(self)
+        index = self.tab_widget.addTab(widget, "Statistics")
+        self.tab_widget.setTabIcon(index, qta.icon('mdi.chart-bar'))
+        return widget
+
+    def show_properties_workbench(self, item_data, obj_name):
+        if item_data is None:
+            QMessageBox.warning(self, "Properties", "No object selected.")
+            return
+        prepared = self.connection_manager.prepare_inspector_item_data(item_data, obj_name)
+        widget = self._ensure_properties_workbench()
+        self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(widget))
+        widget.update_view(prepared, obj_name)
+
+    def show_statistics_workbench(self, item_data, obj_name):
+        if item_data is None:
+            QMessageBox.warning(self, "Statistics", "No object selected.")
+            return
+        prepared = self.connection_manager.prepare_inspector_item_data(item_data, obj_name)
+        widget = self._ensure_statistics_workbench()
+        self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(widget))
+        widget.update_view(prepared, obj_name)
+
+    def add_properties_tab(self):
+        widget = self._ensure_properties_workbench()
+        self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(widget))
+        self._populate_inspector_from_tree_selection(widget)
 
     def add_statistics_tab(self):
-        # Check for existing Statistics tab
-        for i in range(self.tab_widget.count()):
-            if isinstance(self.tab_widget.widget(i), StatisticsWorkbench):
-                self.tab_widget.setCurrentIndex(i)
-                return
-
-        stat_widget = StatisticsWorkbench(self)
-        index = self.tab_widget.addTab(stat_widget, "Statistics")
-        self.tab_widget.setTabIcon(index, qta.icon('mdi.chart-bar'))
-        self.tab_widget.setCurrentIndex(index)
-        
-        # Try to populate with current selection immediately
-        schema_item, schema_data, schema_name = self.connection_manager._get_current_schema_item_data()
-        if schema_data:
-            stat_widget.update_view(schema_data, schema_name)
-        else:
-            current_conn_idx = self.tree.selectionModel().currentIndex()
-            if current_conn_idx.isValid():
-                source_idx = self.proxy_model.mapToSource(current_conn_idx)
-                item = self.model.itemFromIndex(source_idx)
-                if item and self.connection_manager.get_item_depth(item) == 3:
-                    item_data = item.data(Qt.ItemDataRole.UserRole)
-                    if item_data:
-                        if 'type' not in item_data:
-                            item_data['type'] = 'connection'
-                        stat_widget.update_view(item_data, item.text())
+        widget = self._ensure_statistics_workbench()
+        self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(widget))
+        self._populate_inspector_from_tree_selection(widget)
 
     def _on_schema_selection_changed(self, current, previous):
         if not current.isValid():
@@ -282,10 +305,11 @@ class MainWindow(QMainWindow):
             return
             
         # Update all open inspector tabs
+        prepared = self.connection_manager.prepare_inspector_item_data(item_data, name)
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
             if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
-                widget.update_view(item_data, name)
+                widget.update_view(prepared, name)
 
     def _on_connection_selection_changed(self, current, previous):
         if not current.isValid():
@@ -302,15 +326,13 @@ class MainWindow(QMainWindow):
         if not item_data:
             return
             
-        # Add a type tag if missing for clarity
-        if 'type' not in item_data:
-            item_data['type'] = 'connection'
-            
+        prepared = self.connection_manager.prepare_inspector_item_data(item_data, name)
+
         # Update all open inspector tabs
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
             if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
-                widget.update_view(item_data, name)
+                widget.update_view(prepared, name)
 
 
     def load_data(self):

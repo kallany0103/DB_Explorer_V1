@@ -31,14 +31,18 @@ def stub(*_):
     return lambda: None
 
 
-def add_properties_statistics_stubs(menu, manager):
-    """Add Properties/Statistics items (not yet wired to workbench or dialogs)."""
+def add_properties_statistics_actions(menu, manager, item_data, obj_name):
+    """Add Properties/Statistics items that open or refresh inspector workbench tabs."""
     act = action(manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-    act.triggered.connect(stub("properties"))
+    act.triggered.connect(
+        lambda _checked=False, data=item_data, name=obj_name: manager.open_properties_workbench(data, name)
+    )
     menu.addAction(act)
 
     act = action(manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-    act.triggered.connect(stub("statistics"))
+    act.triggered.connect(
+        lambda _checked=False, data=item_data, name=obj_name: manager.open_statistics_workbench(data, name)
+    )
     menu.addAction(act)
 
 

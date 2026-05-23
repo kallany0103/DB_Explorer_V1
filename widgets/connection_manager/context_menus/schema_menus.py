@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QMenu
 from widgets.connection_manager.menu_style import apply_menu_style
 from widgets.connection_manager.context_menus._helpers import (
     action,
-    add_properties_statistics_stubs,
+    add_properties_statistics_actions,
     stub,
     submenu,
 )
@@ -156,7 +156,7 @@ class SchemaMenuBuilder:
             menu.addAction(act)
 
             menu.addSeparator()
-            add_properties_statistics_stubs(menu, self.manager)
+            add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
             menu.addSeparator()
             act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
@@ -206,7 +206,7 @@ class SchemaMenuBuilder:
 
         if hide_pg_style_actions:
             menu.addSeparator()
-            add_properties_statistics_stubs(menu, self.manager)
+            add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Schema node  (e.g. "public")
@@ -310,7 +310,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, schema_name)
 
     # =========================================================================
     # Schemas root  ("Schemas" group node)
@@ -340,7 +340,10 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        conn = item_data.get("conn_data") or {}
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, conn.get("database") or "Schemas"
+        )
 
     # =========================================================================
     # Schema group node  (Tables, Views, Functions, Sequences, etc.)
@@ -404,7 +407,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("group_name") or item.text()
+        )
 
     # =========================================================================
     # Sequence
@@ -441,7 +446,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Function / Trigger Function
@@ -479,7 +484,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Language
@@ -509,7 +514,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Extension (individual item)
@@ -545,7 +550,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # language_root
@@ -559,7 +564,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, "Languages")
 
     # =========================================================================
     # extension_root
@@ -581,7 +586,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, "Extensions")
 
     # =========================================================================
     # FDW root
@@ -612,7 +617,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(menu, self.manager, item_data, "Foreign Data Wrappers")
 
     # =========================================================================
     # FDW node
@@ -656,7 +661,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("fdw_name", "Foreign Data Wrapper")
+        )
 
     # =========================================================================
     # Foreign Server
@@ -691,7 +698,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("server_name", "Foreign Server")
+        )
 
     # =========================================================================
     # User Mapping
@@ -718,4 +727,6 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        add_properties_statistics_stubs(menu, self.manager)
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("user_name", "User Mapping")
+        )
