@@ -10,7 +10,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
 
 from widgets.connection_manager.menu_style import apply_menu_style
-from widgets.connection_manager.context_menus._helpers import action, stub, submenu
+from widgets.connection_manager.context_menus._helpers import (
+    action,
+    add_properties_statistics_stubs,
+    stub,
+    submenu,
+)
 from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
 
 
@@ -151,6 +156,9 @@ class SchemaMenuBuilder:
             menu.addAction(act)
 
             menu.addSeparator()
+            add_properties_statistics_stubs(menu, self.manager)
+
+            menu.addSeparator()
             act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
             act.triggered.connect(
                 lambda: self.manager.generate_erd_for_item(item_data, display_name)
@@ -195,6 +203,10 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        if hide_pg_style_actions:
+            menu.addSeparator()
+            add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # Schema node  (e.g. "public")
@@ -297,6 +309,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     # =========================================================================
     # Schemas root  ("Schemas" group node)
     # =========================================================================
@@ -323,6 +338,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.schema_loader.load_postgres_schema(item_data.get("conn_data"))
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # Schema group node  (Tables, Views, Functions, Sequences, etc.)
@@ -385,6 +403,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     # =========================================================================
     # Sequence
     # =========================================================================
@@ -418,6 +439,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_sequence(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # Function / Trigger Function
@@ -454,6 +478,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     # =========================================================================
     # Language
     # =========================================================================
@@ -480,6 +507,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_language(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # Extension (individual item)
@@ -514,6 +544,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     # =========================================================================
     # language_root
     # =========================================================================
@@ -524,6 +557,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # extension_root
@@ -543,6 +579,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # FDW root
@@ -571,6 +610,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
     # =========================================================================
     # FDW node
@@ -613,6 +655,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     # =========================================================================
     # Foreign Server
     # =========================================================================
@@ -645,6 +690,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     # =========================================================================
     # User Mapping
     # =========================================================================
@@ -668,3 +716,6 @@ class SchemaMenuBuilder:
             lambda: self.manager.script_generator.script_user_mapping_as_create(item_data, item.text())
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)

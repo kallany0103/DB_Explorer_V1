@@ -2,7 +2,7 @@
 """Modular context menu builder for the Object Explorer (top QTreeView)."""
 
 from PySide6.QtCore import Qt
-from widgets.connection_manager.context_menus._helpers import action, stub, submenu
+from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_stubs, stub, submenu
 
 class ExplorerMenuBuilder:
     def __init__(self, manager):
@@ -48,6 +48,9 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_type(item))
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     def _connection_group_menu(self, menu, item):
         parent_item = item.parent()
         code = parent_item.data(Qt.ItemDataRole.UserRole) if parent_item else None
@@ -82,6 +85,9 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_group(item))
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
     def _connection_menu(self, menu, item, index):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         
@@ -105,6 +111,10 @@ class ExplorerMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
         act.triggered.connect(lambda: self.manager.connection_dialogs.show_connection_details(item))
+        menu.addAction(act)
+
+        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
+        act.triggered.connect(stub("statistics"))
         menu.addAction(act)
 
         parent_item = item.parent()
@@ -191,6 +201,9 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_actions.delete_table(item_data, display_name))
         menu.addAction(act)
         
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
+
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))

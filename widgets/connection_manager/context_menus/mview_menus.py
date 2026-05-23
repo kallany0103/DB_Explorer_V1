@@ -1,7 +1,7 @@
 # widgets/connection_manager/context_menus/mview_menus.py
 """Modular context menu builder for Materialized Views."""
 
-from widgets.connection_manager.context_menus._helpers import action, submenu
+from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_stubs, submenu
 
 class MaterializedViewMenuBuilder:
     def __init__(self, manager):
@@ -102,6 +102,9 @@ class MaterializedViewMenuBuilder:
             lambda: self.manager.connection_actions.open_backup_dialog(item_data)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_stubs(menu, self.manager)
 
         menu.addSeparator()
 
