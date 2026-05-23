@@ -192,10 +192,6 @@ class ExplorerMenuBuilder:
         menu.addAction(act)
         
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(lambda: self.manager.connection_actions.show_table_properties(item_data, display_name))
-        menu.addAction(act)
-
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))
         menu.addAction(act)
