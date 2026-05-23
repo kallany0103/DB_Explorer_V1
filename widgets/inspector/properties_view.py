@@ -12,6 +12,18 @@ from dialogs.properties import pg_queries
 from workers.inspector_workers import InspectorWorker
 import db
 
+HIDDEN_PROPERTY_KEYS = frozenset({
+    "oid", "relkind", "reltablespace", "nspname", "sql", "schema_name",
+})
+
+PROPERTY_LABELS = {
+    "owner": "Owner",
+    "comment": "Comment",
+    "rows_estimated": "Estimated rows",
+    "is_partitioned": "Partitioned",
+}
+
+
 class CollapsibleCard(QFrame):
     def __init__(self, title, parent=None):
         super().__init__(parent)
@@ -237,7 +249,10 @@ class PropertiesWorkbench(QWidget):
         gen = CollapsibleCard("General")
         gen.add_row("Name", self.obj_name)
         for k, v in details.items():
-            if k not in ['sql', 'relkind', 'nspname', 'reltablespace']: gen.add_row(k.replace('_', ' ').capitalize(), v)
+            if k in HIDDEN_PROPERTY_KEYS:
+                continue
+            label = PROPERTY_LABELS.get(k, k.replace("_", " ").capitalize())
+            gen.add_row(label, v)
         self.container_layout.addWidget(gen)
         
         if data.get("sql"):

@@ -1,7 +1,7 @@
 # widgets/connection_manager/context_menus/mview_menus.py
 """Modular context menu builder for Materialized Views."""
 
-from widgets.connection_manager.context_menus._helpers import action, submenu
+from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
 
 class MaterializedViewMenuBuilder:
     def __init__(self, manager):
@@ -103,20 +103,11 @@ class MaterializedViewMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
-        )
-        menu.addAction(act)
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
         menu.addSeparator()
-        
+
         act = action(self.manager, "Drop Materialized View", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_table(item_data, display_name) # delete_table update handles this

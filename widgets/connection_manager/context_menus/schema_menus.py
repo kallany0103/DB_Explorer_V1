@@ -10,7 +10,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
 
 from widgets.connection_manager.menu_style import apply_menu_style
-from widgets.connection_manager.context_menus._helpers import action, stub, submenu
+from widgets.connection_manager.context_menus._helpers import (
+    action,
+    add_properties_statistics_actions,
+    stub,
+    submenu,
+)
 from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
 
 
@@ -150,17 +155,8 @@ class SchemaMenuBuilder:
             )
             menu.addAction(act)
 
-            act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.show_table_properties(item_data, display_name)
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
-            )
-            menu.addAction(act)
+            menu.addSeparator()
+            add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
             menu.addSeparator()
             act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
@@ -207,6 +203,10 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        if hide_pg_style_actions:
+            menu.addSeparator()
+            add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Schema node  (e.g. "public")
@@ -310,17 +310,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_schema_properties(item_data, schema_name)
-        )
-        menu.addAction(act)
-
-        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_statistics(item_data, schema_name)
-        )
-        menu.addAction(act)
+        add_properties_statistics_actions(menu, self.manager, item_data, schema_name)
 
     # =========================================================================
     # Schemas root  ("Schemas" group node)
@@ -348,6 +338,12 @@ class SchemaMenuBuilder:
             lambda: self.manager.schema_loader.load_postgres_schema(item_data.get("conn_data"))
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        conn = item_data.get("conn_data") or {}
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, conn.get("database") or "Schemas"
+        )
 
     # =========================================================================
     # Schema group node  (Tables, Views, Functions, Sequences, etc.)
@@ -410,6 +406,11 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        menu.addSeparator()
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("group_name") or item.text()
+        )
+
     # =========================================================================
     # Sequence
     # =========================================================================
@@ -432,19 +433,6 @@ class SchemaMenuBuilder:
         scripts_sub.addAction(act)
         
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_sequence_properties(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Drop Sequence", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_sequence(item_data, display_name)
@@ -456,6 +444,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_sequence(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Function / Trigger Function
@@ -480,19 +471,6 @@ class SchemaMenuBuilder:
         scripts_sub.addAction(act)
         
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_function_properties(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_statistics(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_function(item_data, display_name)
@@ -504,6 +482,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_function(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Language
@@ -520,13 +501,6 @@ class SchemaMenuBuilder:
         scripts_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_language_properties(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Drop Language", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_language(item_data, display_name)
@@ -538,6 +512,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_language(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Extension (individual item)
@@ -566,18 +543,14 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_extension_properties(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # language_root
@@ -589,6 +562,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, "Languages")
 
     # =========================================================================
     # extension_root
@@ -608,6 +584,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, "Extensions")
 
     # =========================================================================
     # FDW root
@@ -636,6 +615,9 @@ class SchemaMenuBuilder:
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, "Foreign Data Wrappers")
 
     # =========================================================================
     # FDW node
@@ -672,18 +654,16 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_fdw_properties(item_data, fdw_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(
             lambda: self.manager.table_details_loader.load_tables_on_expand(index, force=True)
         )
         menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("fdw_name", "Foreign Data Wrapper")
+        )
 
     # =========================================================================
     # Foreign Server
@@ -718,11 +698,9 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_foreign_server_properties(item_data, item.text())
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("server_name", "Foreign Server")
         )
-        menu.addAction(act)
 
     # =========================================================================
     # User Mapping
@@ -749,8 +727,6 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.show_user_mapping_properties(item_data, item.text())
+        add_properties_statistics_actions(
+            menu, self.manager, item_data, item_data.get("user_name", "User Mapping")
         )
-        menu.addAction(act)

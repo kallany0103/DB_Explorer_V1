@@ -2,11 +2,19 @@
 """Modular context menu builder for the Object Explorer (top QTreeView)."""
 
 from PySide6.QtCore import Qt
-from widgets.connection_manager.context_menus._helpers import action, stub, submenu
+from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
 
 class ExplorerMenuBuilder:
     def __init__(self, manager):
         self.manager = manager
+
+    @staticmethod
+    def _inspector_payload(item):
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        name = item.text() or ""
+        if isinstance(item_data, dict):
+            return item_data, name
+        return {}, name
 
     def show(self, pos):
         proxy_index = self.manager.tree.indexAt(pos)
@@ -48,6 +56,10 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_type(item))
         menu.addAction(act)
 
+        item_data, name = self._inspector_payload(item)
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, name)
+
     def _connection_group_menu(self, menu, item):
         parent_item = item.parent()
         code = parent_item.data(Qt.ItemDataRole.UserRole) if parent_item else None
@@ -82,6 +94,10 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_group(item))
         menu.addAction(act)
 
+        item_data, name = self._inspector_payload(item)
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, name)
+
     def _connection_menu(self, menu, item, index):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         
@@ -103,9 +119,10 @@ class ExplorerMenuBuilder:
         menu.addAction(act)
         
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(lambda: self.manager.connection_dialogs.show_connection_details(item))
-        menu.addAction(act)
+        conn_inspector = dict(conn_data) if conn_data else {}
+        conn_inspector.setdefault("type", "connection")
+        conn_inspector.setdefault("name", item.text())
+        add_properties_statistics_actions(menu, self.manager, conn_inspector, item.text())
 
         parent_item = item.parent()
         grandparent_item = parent_item.parent() if parent_item else None
@@ -192,10 +209,9 @@ class ExplorerMenuBuilder:
         menu.addAction(act)
         
         menu.addSeparator()
-        act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-        act.triggered.connect(lambda: self.manager.connection_actions.show_table_properties(item_data, display_name))
-        menu.addAction(act)
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
+        menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))
         menu.addAction(act)

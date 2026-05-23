@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from .stats_tab import StatisticsTab
-from dialogs.properties import pg_queries
+from workers.inspector_stats import fetch_statistics_results
 
 class ObjectStatisticsDialog(QDialog):
     def __init__(self, item_data, obj_name, parent=None):
@@ -50,19 +50,13 @@ class ObjectStatisticsDialog(QDialog):
             conn = self.manager.connection_actions.get_connection(self.item_data)
             cursor = conn.cursor()
 
-            obj_type = self.item_data.get('type')
-            table_type = self.item_data.get('table_type', '').upper()
-
-            if obj_type == 'table' or 'TABLE' in table_type or 'VIEW' in table_type or 'MATERIALIZED VIEW' in table_type:
-                self.stats_view.load_stats(cursor, pg_queries.GET_TABLE_SIZE_STATS, (self.schema_name, self.obj_name))
-                self.stats_view.load_stats(cursor, pg_queries.GET_TABLE_STATS, (self.schema_name, self.obj_name), append=True)
-            elif obj_type == 'schema' or self.item_data.get('group_name') == 'Schemas':
-                self.stats_view.load_stats(cursor, pg_queries.GET_SCHEMA_STATS, (self.obj_name, self.obj_name, self.obj_name))
-            elif 'FUNCTION' in table_type:
-                func_name = self.obj_name.split('(')[0]
-                self.stats_view.load_stats(cursor, pg_queries.GET_FUNCTION_STATS, (self.schema_name, func_name))
-            elif 'SEQUENCE' in table_type:
-                self.stats_view.load_stats(cursor, pg_queries.GET_SEQUENCE_STATS, (self.schema_name, self.obj_name))
+            result = fetch_statistics_results(cursor, self.item_data, self.obj_name)
+            first = True
+            for item in result.get("stats", []):
+                self.stats_view.display_data(item["columns"], item["rows"], append=not first)
+                first = False
+            if not result.get("stats"):
+                self.stats_view.display_data([], [])
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load statistics:\n{e}")

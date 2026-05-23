@@ -140,6 +140,35 @@ class ConnectionManager(QWidget):
         item_data = item.data(Qt.ItemDataRole.UserRole)
         return item, item_data, item.text() if item else None
 
+    def prepare_inspector_item_data(self, item_data, obj_name):
+        """Normalize tree UserRole payloads for inspector workbench workers."""
+        data = dict(item_data)
+        if data.get("type"):
+            return data
+
+        table_type = (data.get("table_type") or "").upper()
+        if data.get("table_name"):
+            if "FUNCTION" in table_type or "TRIGGER" in table_type:
+                data["type"] = "function"
+            elif "SEQUENCE" in table_type:
+                data["type"] = "sequence"
+            else:
+                data["type"] = "table"
+        elif data.get("schema_name"):
+            data["type"] = "schema"
+        elif data.get("group_name"):
+            data["type"] = "schema_group"
+        elif data.get("conn_data") or data.get("host") or data.get("database"):
+            data["type"] = "connection"
+            data.setdefault("name", obj_name)
+        return data
+
+    def open_properties_workbench(self, item_data, obj_name):
+        self.main_window.show_properties_workbench(item_data, obj_name)
+
+    def open_statistics_workbench(self, item_data, obj_name):
+        self.main_window.show_statistics_workbench(item_data, obj_name)
+
     def _get_selected_schema_item_data(self) -> dict | None:
         """Return the UserRole data dict for the currently selected schema-tree item."""
         _, item_data, _ = self._get_current_schema_item_data()
@@ -175,10 +204,10 @@ class ConnectionManager(QWidget):
 
     def _properties_object_from_menu(self):
         _, item_data, name = self._get_current_schema_item_data()
-        if item_data and item_data.get("table_name"):
-            self.connection_actions.show_table_properties(item_data, name)
+        if item_data:
+            self.open_properties_workbench(item_data, name)
         else:
-            QMessageBox.warning(self, "Warning", "Please select a table or view to view properties.")
+            QMessageBox.warning(self, "Warning", "Please select an object in the Database Schema tree first.")
 
     def eventFilter(self, obj, event):
         if self.tree_helpers.handle_event_filter(obj, event):
