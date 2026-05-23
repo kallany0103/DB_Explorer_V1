@@ -60,6 +60,7 @@ class ConnectionManager(QWidget):
         self.active_postgres_conn = None
         self._schema_states = {}
         self._current_conn_id = None
+        self._skip_expansion_restore = False
 
         self.erd_icon_key = "fa6s.sitemap"
         self.erd_icon_fallback_key = "fa5s.project-diagram"
@@ -214,28 +215,209 @@ class ConnectionManager(QWidget):
             return True
         return super().eventFilter(obj, event)
 
-    def refresh_object_explorer(self, *args, **kwargs):
+    def refresh_object_explorer(self, index=None):
+        """Scoped refresh: reloads only the connection or table subtree.
+        
+        Args:
+            index: QModelIndex of the item to refresh. If None, refreshes current selection.
+                   - Depth 3 (connection): reloads that connection's schema
+                   - Depth >= 4 (table/object): reloads that table's details
+        """
         try:
-            self._save_tree_expansion_state()
-            self._save_schema_tree_expansion_state(self._current_conn_id)
+            # Determine which index to use
+            if index is None:
+                current_index = self.tree.currentIndex()
+                if not current_index.isValid():
+                    return
+                proxy_index = current_index
+            else:
+                proxy_index = index
             
-            # Visually collapse everything first as requested
-            self.tree.collapseAll()
-            self.schema_tree.collapseAll()
+            # Check if index is from proxy model, if not, use it directly
+            if proxy_index.model() == self.proxy_model:
+                source_index = self.proxy_model.mapToSource(proxy_index)
+            else:
+                source_index = proxy_index
             
-            self.load_data()
-            self._restore_tree_expansion_state()
+            item = self.model.itemFromIndex(source_index)
+            if not item:
+                return
             
-            # Trigger item_clicked to refresh schema if a connection is selected
-            current_index = self.tree.currentIndex()
-            if current_index.isValid():
-                self.item_clicked(current_index)
+            depth = self.get_item_depth(item)
+            item_data = item.data(Qt.ItemDataRole.UserRole)
+            
+            if depth == 3 and item_data:
+                # Connection-level refresh: reload schema for this connection only
+                self._refresh_connection_subtree(item, item_data)
+            elif depth >= 4 and item_data:
+                # Table-level refresh: reload details for this table only
+                self._refresh_table_subtree(item, item_data)
+            else:
+                # Fallback: full refresh for unsupported levels
+                self._full_refresh()
                 
-            self.status.showMessage("Object Explorer refreshed.", 3000)
         except Exception as e:
             self.status.showMessage(f"Error refreshing explorer: {e}", 5000)
             import traceback
             traceback.print_exc()
+    
+    def _refresh_connection_subtree(self, item, conn_data):
+        """Refresh schema for a specific connection and collapse its subtree."""
+        conn_id = conn_data.get("id")
+        if not conn_id:
+            return
+        
+        # Clear schema tree without saving state
+        self.schema_model.clear()
+        self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+        
+        # Collapse the schema tree
+        self.schema_tree.collapseAll()
+        
+        # Determine connection type and reload schema
+        parent_group = item.parent()
+        if not parent_group:
+            return
+        
+        connection_type = parent_group.parent()
+        if not connection_type:
+            return
+        
+        connection_type_name = connection_type.text().lower()
+        conn_name = item.text()
+        
+        # Use the existing item_clicked mechanism to reload the schema
+        # This ensures consistency with the normal schema loading flow
+        self.item_clicked(self.proxy_model.mapFromSource(self.model.indexFromItem(item)))
+        
+        # Collapse after loading
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, lambda: self.schema_tree.collapseAll())
+        
+        self.status.showMessage(f"Connection '{conn_name}' refreshed.", 3000)
+    
+    def _refresh_table_subtree(self, item, item_data):
+        """Refresh details for a specific table and collapse its subtree."""
+        # Find the corresponding schema tree item
+        table_name = item_data.get('table_name')
+        if not table_name:
+            return
+        
+        # Set flag to skip expansion state restoration AND saving
+        self._skip_expansion_restore = True
+        
+        # Collapse the item in the schema tree
+        schema_index = self._find_schema_item_by_data(item_data)
+        if schema_index and schema_index.isValid():
+            # Collapse before reload
+            self.schema_tree.collapse(schema_index)
+            
+            # Force reload by calling load_tables_on_expand with force=True
+            # This will skip saving/restoring state due to the flag
+            self.table_details_loader.load_tables_on_expand(schema_index, force=True)
+            
+            # Re-find the index after model modification and collapse again
+            schema_index = self._find_schema_item_by_data(item_data)
+            if schema_index and schema_index.isValid():
+                self.schema_tree.collapse(schema_index)
+        
+        # Reset flag after a short delay to allow async operations to complete
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, lambda: setattr(self, '_skip_expansion_restore', False))
+        
+        self.status.showMessage(f"Table '{table_name}' refreshed.", 3000)
+    
+    def _find_schema_item_by_data(self, target_data):
+        """Find the schema tree item matching the given data."""
+        def search_items(parent_index):
+            for row in range(self.schema_model.rowCount(parent_index)):
+                index = self.schema_model.index(row, 0, parent_index)
+                item = self.schema_model.itemFromIndex(index)
+                if item:
+                    item_data = item.data(Qt.ItemDataRole.UserRole)
+                    if item_data and item_data.get('table_name') == target_data.get('table_name'):
+                        # Check if it's the same connection
+                        if item_data.get('conn_data', {}).get('id') == target_data.get('conn_data', {}).get('id'):
+                            return index
+                    # Search children
+                    child_result = search_items(index)
+                    if child_result:
+                        return child_result
+            return None
+        
+        return search_items(QModelIndex())
+    
+    def _full_refresh(self):
+        """Full refresh fallback - reloads entire Object Explorer."""
+        self._save_tree_expansion_state()
+        self._save_schema_tree_expansion_state(self._current_conn_id)
+        
+        self.tree.collapseAll()
+        self.schema_tree.collapseAll()
+        
+        self.load_data()
+        self._restore_tree_expansion_state()
+        
+        current_index = self.tree.currentIndex()
+        if current_index.isValid():
+            self.item_clicked(current_index)
+                
+        self.status.showMessage("Object Explorer refreshed.", 3000)
+    
+    def refresh_schema_tree_item(self, index):
+        """Scoped refresh for schema tree items - collapses only the refreshed item."""
+        if not index or not index.isValid():
+            return
+        
+        item = self.schema_model.itemFromIndex(index)
+        if not item:
+            return
+        
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        if not item_data:
+            return
+        
+        display_name = item.text()
+        node_type = item_data.get('type', '')
+        
+        # For schema groups, reload the parent schema but don't collapse the group
+        if node_type == 'schema_group':
+            # Find the parent schema item and reload it
+            parent_index = index.parent()
+            if parent_index and parent_index.isValid():
+                parent_item = self.schema_model.itemFromIndex(parent_index)
+                if parent_item:
+                    parent_data = parent_item.data(Qt.ItemDataRole.UserRole)
+                    if parent_data and parent_data.get('schema_name'):
+                        # Reload the parent schema
+                        self._skip_expansion_restore = True
+                        self.table_details_loader.load_tables_on_expand(parent_index, force=True)
+                        self._skip_expansion_restore = False
+                        # Don't collapse the schema group - let it stay in its current state
+                        self.status.showMessage(f"Group '{display_name}' refreshed.", 3000)
+                        return
+        
+        # Force reload with skip flag (don't collapse before load)
+        self._skip_expansion_restore = True
+        self.table_details_loader.load_tables_on_expand(index, force=True)
+        self._skip_expansion_restore = False
+        
+        # Only collapse if it's not a schema group
+        if node_type != 'schema_group':
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(500, lambda: self.schema_tree.collapse(index) if index.isValid() else None)
+        
+        # Get display name for status message
+        table_name = item_data.get('table_name', '')
+        
+        if table_name:
+            self.status.showMessage(f"Table '{display_name}' refreshed.", 3000)
+        elif node_type == 'schema':
+            self.status.showMessage(f"Schema '{display_name}' refreshed.", 3000)
+        elif node_type == 'schema_group':
+            self.status.showMessage(f"Group '{display_name}' refreshed.", 3000)
+        else:
+            self.status.showMessage(f"Item '{display_name}' refreshed.", 3000)
 
     def toggle_explorer_search(self):
         self.tree_helpers.toggle_explorer_search()
@@ -281,11 +463,15 @@ class ConnectionManager(QWidget):
         self.tree_helpers.restore_tree_expansion_state()
 
     def _save_schema_tree_expansion_state(self, conn_id=None):
+        if self._skip_expansion_restore:
+            return
         target_id = conn_id or self._current_conn_id
         if target_id:
             self.tree_helpers.save_schema_tree_expansion_state(target_id)
 
     def _restore_schema_tree_expansion_state(self, conn_id=None):
+        if self._skip_expansion_restore:
+            return
         target_id = conn_id or self._current_conn_id
         if target_id:
             self.tree_helpers.restore_schema_tree_expansion_state(target_id)
@@ -372,7 +558,7 @@ class ConnectionManager(QWidget):
         else:
             self.status.showMessage("Unknown connection type.", 3000)
 
-    def _start_schema_load(self, item, worker, populate_fn):
+    def _start_schema_load(self, item, worker, populate_fn, skip_restore=False):
         self._schema_load_token += 1
         current_token = self._schema_load_token
         self._spinner.start(item)
@@ -388,7 +574,10 @@ class ConnectionManager(QWidget):
                 self._spinner.stop()
                 self.schema_tree.repaint()
                 try:
-                    populate_fn(data)
+                    populate_fn(data, skip_restore=skip_restore)
+                    # Collapse after population if we're doing a scoped refresh
+                    if skip_restore:
+                        self.schema_tree.collapseAll()
                 except Exception as exc:
                     self.status.showMessage(f"Error populating schema: {exc}", 5000)
                     self.show_error_popup(f"Failed to populate schema:\n{exc}")

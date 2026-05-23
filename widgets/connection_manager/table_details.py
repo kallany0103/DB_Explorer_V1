@@ -202,8 +202,24 @@ class TableDetailsLoader:
                 
                 # --- Connection Check ---
                 if not hasattr(self.manager, 'pg_conn') or self.manager.pg_conn is None or self.manager.pg_conn.closed:
-                    item.appendRow(QStandardItem("Error: Connection lost"))
-                    return
+                    # Try to establish connection from conn_data
+                    conn_data = item_data.get('conn_data')
+                    if conn_data:
+                        try:
+                            import psycopg2
+                            self.manager.pg_conn = psycopg2.connect(
+                                host=conn_data["host"],
+                                database=conn_data["database"],
+                                user=conn_data["user"],
+                                password=conn_data["password"],
+                                port=int(conn_data["port"]),
+                            )
+                        except Exception as e:
+                            item.appendRow(QStandardItem(f"Error: Could not connect - {e}"))
+                            return
+                    else:
+                        item.appendRow(QStandardItem("Error: Connection lost"))
+                        return
 
                 try:
                     cursor = self.manager.pg_conn.cursor()
