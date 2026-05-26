@@ -3,7 +3,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QScrollArea, 
     QFormLayout, QFrame, QTableView, QHeaderView, QAbstractItemView,
-    QSizePolicy, QCheckBox, QPushButton, QProgressBar
+    QSizePolicy, QCheckBox, QPushButton, QProgressBar, QTabWidget
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor
@@ -109,7 +109,7 @@ class PropertiesWorkbench(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
+     
         # Toolbar-like header
         header_frame = QFrame()
         header_frame.setStyleSheet("background-color: white; border-bottom: 1px solid #e5e7eb;")
@@ -245,6 +245,126 @@ class PropertiesWorkbench(QWidget):
         table.resizeColumnsToContents()
 
     def _display_object(self, data):
+        obj_type = self.item_data.get('type', 'Unknown')
+        
+        # Use tabbed interface for tables
+        if obj_type == 'table':
+            self._display_table_with_tabs(data)
+        else:
+            self._display_object_with_cards(data)
+
+    def _display_table_with_tabs(self, data):
+        tab_widget = QTabWidget()
+        tab_widget.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #e5e7eb; background: white; border-radius: 4px; }
+            QTabBar::tab { 
+                background: #f3f4f6; color: #374151; padding: 8px 16px; 
+                border: 1px solid #e5e7eb; border-bottom: none; 
+                margin-right: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected { background: white; color: #111827; border-bottom: 2px solid #3b82f6; }
+            QTabBar::tab:hover:!selected { background: #e5e7eb; }
+        """)
+        
+        # General Tab
+        general_tab = self._create_general_tab(data)
+        tab_widget.addTab(general_tab, "General")
+        
+        # Columns Tab
+        columns_tab = self._create_columns_tab(data)
+        tab_widget.addTab(columns_tab, "Columns")
+        
+        # Constraints Tab
+        constraints_tab = self._create_constraints_tab(data)
+        tab_widget.addTab(constraints_tab, "Constraints")
+        
+        # SQL Tab
+        if data.get("sql"):
+            sql_tab = self._create_sql_tab(data)
+            tab_widget.addTab(sql_tab, "SQL")
+        
+        self.container_layout.addWidget(tab_widget)
+        self.container_layout.addStretch()
+
+    def _create_general_tab(self, data):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        
+        details = data.get("details", {})
+        gen = CollapsibleCard("General")
+        gen.add_row("Name", self.obj_name)
+        for k, v in details.items():
+            if k in HIDDEN_PROPERTY_KEYS:
+                continue
+            label = PROPERTY_LABELS.get(k, k.replace("_", " ").capitalize())
+            gen.add_row(label, v)
+        layout.addWidget(gen)
+        layout.addStretch()
+        return widget
+
+    def _create_columns_tab(self, data):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        
+        table = PropertyTable()
+        model = QStandardItemModel()
+        model.setHorizontalHeaderLabels(["Name", "Data type", "Nullable", "Default", "Comment"])
+        
+        columns = data.get("columns", [])
+        for col in columns:
+            items = [QStandardItem(str(col.get("name", ""))), 
+                     QStandardItem(str(col.get("data_type", ""))),
+                     QStandardItem("YES" if col.get("nullable", True) else "NO"),
+                     QStandardItem(str(col.get("default_value", "")) if col.get("default_value") else ""),
+                     QStandardItem(str(col.get("comment", "")) if col.get("comment") else "")]
+            model.appendRow(items)
+        
+        table.setModel(model)
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+        return widget
+
+    def _create_constraints_tab(self, data):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        
+        table = PropertyTable()
+        model = QStandardItemModel()
+        model.setHorizontalHeaderLabels(["Name", "Type", "Definition"])
+        
+        constraints = data.get("constraints", [])
+        for cons in constraints:
+            items = [QStandardItem(str(cons.get("name", ""))),
+                     QStandardItem(str(cons.get("type", ""))),
+                     QStandardItem(str(cons.get("definition", "")))]
+            model.appendRow(items)
+        
+        table.setModel(model)
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+        return widget
+
+    def _create_sql_tab(self, data):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        
+        editor = QTextEdit()
+        editor.setReadOnly(True)
+        editor.setPlainText(data["sql"])
+        editor.setStyleSheet("font-family: 'Consolas', monospace; font-size: 10pt; border: 1px solid #e5e7eb; background: #f9fafb; border-radius: 4px; padding: 8px;")
+        editor.setMinimumHeight(200)
+        layout.addWidget(editor)
+        return widget
+
+    def _display_object_with_cards(self, data):
         details = data.get("details", {})
         gen = CollapsibleCard("General")
         gen.add_row("Name", self.obj_name)

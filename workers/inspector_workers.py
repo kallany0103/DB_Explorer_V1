@@ -50,7 +50,11 @@ class InspectorWorker(QRunnable):
 
         data = {"type": "object", "details": {}, "sql": ""}
         
-        if group_name:
+        # Only treat as group if type is explicitly a group type or if obj_type is not a specific object type
+        # Prioritize explicit object types (table, view, schema, function, etc.) over group_name
+        is_specific_object = obj_type in ['table', 'view', 'schema', 'function', 'sequence', 'connection', 'extension', 'language', 'fdw', 'foreign_server', 'user_mapping']
+        
+        if group_name and not is_specific_object:
             data["type"] = "group"
             data["group_name"] = group_name
             query = None
@@ -83,9 +87,48 @@ class InspectorWorker(QRunnable):
             if row:
                 data["details"] = dict(zip([d[0] for d in cursor.description], row))
             
-            cursor.execute(f"SELECT pg_get_tabledef(%s, %s)", (schema_name, self.obj_name))
-            res = cursor.fetchone()
-            if res: data["sql"] = res[0]
+            # Fetch columns
+            cursor.execute(pg_queries.GET_TABLE_COLUMNS, (schema_name, self.obj_name))
+            columns = []
+            for row in cursor.fetchall():
+                columns.append({
+                    "name": row[0],
+                    "data_type": row[1],
+                    "nullable": row[2],
+                    "default_value": row[3],
+                    "comment": row[4]
+                })
+            data["columns"] = columns
+            
+            # Fetch constraints
+            cursor.execute(pg_queries.GET_TABLE_CONSTRAINTS, (schema_name, self.obj_name))
+            constraints = []
+            for row in cursor.fetchall():
+                constraints.append({
+                    "name": row[0],
+                    "type": row[1],
+                    "definition": row[2]
+                })
+            data["constraints"] = constraints
+            
+            # Generate SQL for table
+            sql_parts = []
+            sql_parts.append(f"-- Table: {schema_name}.{self.obj_name}")
+            sql_parts.append(f"CREATE TABLE {schema_name}.{self.obj_name} (")
+            
+            col_defs = []
+            for col in columns:
+                col_def = f"    {col['name']} {col['data_type']}"
+                if not col['nullable']:
+                    col_def += " NOT NULL"
+                if col['default_value']:
+                    col_def += f" DEFAULT {col['default_value']}"
+                col_defs.append(col_def)
+            
+            sql_parts.append(",\n".join(col_defs))
+            sql_parts.append(");")
+            
+            data["sql"] = "\n".join(sql_parts)
             
         elif obj_type == 'schema':
             cursor.execute(pg_queries.GET_SCHEMA_DETAILS, (self.obj_name,))
