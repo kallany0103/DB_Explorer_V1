@@ -54,8 +54,11 @@ def _extract_object_type(query_upper, fallback="Object"):
         idx = 1
         while idx < len(words):
             word = words[idx]
+            # Handle MATERIALIZED VIEW as a compound object type
+            if word == "MATERIALIZED" and idx + 1 < len(words) and words[idx + 1] == "VIEW":
+                return "MATERIALIZED VIEW"
             # Skip common qualifiers
-            if word in ["OR", "REPLACE", "TEMPORARY", "TEMP", "IF", "NOT", "EXISTS", "MATERIALIZED"]:
+            if word in ["OR", "REPLACE", "TEMPORARY", "TEMP", "IF", "NOT", "EXISTS"]:
                 idx += 1
                 continue
             # Return the first word that isn't a qualifier
@@ -499,7 +502,7 @@ def handle_query_result(
             tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("CREATE"):
             obj_type = _extract_object_type(match_query, "Object")
-            status_text = f"CREATE {obj_type.upper()}"
+            status_text = f"CREATED {obj_type.upper()}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
             should_refresh_tree = True
