@@ -338,6 +338,13 @@ class SchemaMenuBuilder:
         # menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("conn_data", {}).get("database") or "Schemas")
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         conn = item_data.get("conn_data") or {}
         add_properties_statistics_actions(
             menu, self.manager, item_data, conn.get("database") or "Schemas"
@@ -400,6 +407,13 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        menu.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("group_name") or item.text())
+        )
         menu.addAction(act)
 
         menu.addSeparator()
@@ -486,9 +500,16 @@ class SchemaMenuBuilder:
     # Language
     # =========================================================================
 
-    def _language_menu(self, menu, item, item_data):
+    def _language_menu(self, menu, item, item_data, index):
         display_name = item.text()
 
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
         act.triggered.connect(
@@ -516,9 +537,16 @@ class SchemaMenuBuilder:
     # Extension (individual item)
     # =========================================================================
 
-    def _extension_menu(self, menu, item, item_data):
+    def _extension_menu(self, menu, item, item_data, index):
         display_name = item.text()
 
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         act = action(self.manager, "Drop Extension", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.drop_extension(item_data, display_name)
@@ -557,6 +585,13 @@ class SchemaMenuBuilder:
         # menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Languages")
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Languages")
 
     # =========================================================================
@@ -574,6 +609,13 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        menu.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Extensions")
+        )
         menu.addAction(act)
 
         menu.addSeparator()
@@ -603,6 +645,13 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
         act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        menu.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Foreign Data Wrappers")
+        )
         menu.addAction(act)
 
         menu.addSeparator()
@@ -648,6 +697,13 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("fdw_name", "Foreign Data Wrapper"))
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         add_properties_statistics_actions(
             menu, self.manager, item_data, item_data.get("fdw_name", "Foreign Data Wrapper")
         )
@@ -685,6 +741,13 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("server_name", "Foreign Server"))
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
         add_properties_statistics_actions(
             menu, self.manager, item_data, item_data.get("server_name", "Foreign Server")
         )
@@ -710,6 +773,13 @@ class SchemaMenuBuilder:
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
         act.triggered.connect(
             lambda: self.manager.script_generator.script_user_mapping_as_create(item_data, item.text())
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("user_name", "User Mapping"))
         )
         menu.addAction(act)
 
