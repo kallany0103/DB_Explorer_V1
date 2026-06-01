@@ -57,6 +57,7 @@ class SchemaMenuBuilder:
         is_trigger_function = table_type == "TRIGGER FUNCTION"
         is_language         = table_type == "LANGUAGE"
         is_extension        = table_type == "EXTENSION"
+        is_trigger          = node_type == "trigger"
 
         if node_type == "schema_group":
             self._schema_group_menu(menu, item, item_data, index)
@@ -88,6 +89,8 @@ class SchemaMenuBuilder:
             self._foreign_server_menu(menu, item_data)
         elif node_type == "user_mapping":
             self._user_mapping_menu(menu, item_data)
+        elif is_trigger:
+            self._trigger_menu(menu, item, item_data)
 
         if not menu.isEmpty():
             menu.exec(self.manager.schema_tree.viewport().mapToGlobal(position))
@@ -490,6 +493,45 @@ class SchemaMenuBuilder:
         act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
         act.triggered.connect(
             lambda: self.manager.connection_actions.delete_function(item_data, display_name, cascade=True)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
+
+    # =========================================================================
+    # Trigger
+    # =========================================================================
+
+    def _trigger_menu(self, menu, item, item_data):
+        display_name = item.text()
+        trigger_def = item_data.get("trigger_def", "")
+
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
+        scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
+        
+        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_trigger_as_create(item_data, display_name)
+        )
+        scripts_sub.addAction(act)
+
+        act = action(self.manager, "DROP Script", "mdi.script-text-outline")
+        act.triggered.connect(
+            lambda: self.manager.script_generator.script_trigger_as_drop(item_data, display_name)
+        )
+        scripts_sub.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "Drop Trigger", "mdi.delete-outline", shortcut="Alt+Shift+D")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.delete_trigger(item_data, display_name)
         )
         menu.addAction(act)
 

@@ -529,3 +529,26 @@ LIST_INDEXES = """
     WHERE schemaname = %s AND tablename = %s
     ORDER BY indexname;
 """
+
+LIST_TRIGGERS = """
+    SELECT 
+        t.tgname as "Name",
+        pg_get_triggerdef(t.oid) as "Definition"
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relname = %s
+    AND NOT t.tgisinternal
+    ORDER BY t.tgname;
+"""
+
+GET_TABLE_TRIGGERS = """
+    SELECT 
+        t.tgname as name,
+        pg_get_triggerdef(t.oid) as definition
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relname = %s
+    AND NOT t.tgisinternal;
+"""

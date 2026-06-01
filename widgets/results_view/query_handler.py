@@ -489,15 +489,15 @@ def handle_query_result(
         time_str = format_time_pgadmin(elapsed_time)
 
         if q_type.startswith("INSERT"):
-            status_text = f"INSERT 0 {row_count}"
+            status_text = f"INSERTED 0 {row_count}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("UPDATE"):
-            status_text = f"UPDATE {row_count}"
+            status_text = f"UPDATED {row_count}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("DELETE"):
-            status_text = f"DELETE {row_count}"
+            status_text = f"DELETED {row_count}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
         elif q_type.startswith("CREATE"):
@@ -508,19 +508,19 @@ def handle_query_result(
             should_refresh_tree = True
         elif q_type.startswith("DROP"):
             obj_type = _extract_object_type(match_query, "Object")
-            status_text = f"DROP {obj_type.upper()}"
+            status_text = f"DROPED {obj_type.upper()}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
             should_refresh_tree = True
         elif q_type.startswith("ALTER"):
             obj_type = _extract_object_type(match_query, "Object")
-            status_text = f"ALTER {obj_type.upper()}"
+            status_text = f"ALTERED {obj_type.upper()}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
             should_refresh_tree = True
         elif q_type.startswith("TRUNCATE"):
             obj_type = _extract_object_type(match_query, "TABLE")
-            status_text = f"TRUNCATE {obj_type.upper()}"
+            status_text = f"TRUNCATED {obj_type.upper()}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
         else:

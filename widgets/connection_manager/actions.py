@@ -642,6 +642,45 @@ class ConnectionActions:
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete language:\n{e}")
 
+    def delete_trigger(self, item_data, trigger_name):
+        """Perform DROP TRIGGER on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+
+        confirm_msg = f"Are you sure you want to delete trigger '{trigger_name}' on table '{schema_name}.{table_name}'?"
+        confirm_msg += "\n\nThis action cannot be undone."
+
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Delete Trigger',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            schema_quoted = f'"{schema_name}"' if schema_name else ""
+            table_quoted = f'"{table_name}"' if table_name else ""
+            full_name = f'{schema_quoted}.{table_quoted}' if schema_quoted else table_quoted
+            sql = f'DROP TRIGGER "{trigger_name}" ON {full_name};'
+
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self._notify_deletion_success(trigger_name, "Trigger", sql, conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete trigger:\n{e}")
+
     def drop_extension(self, item_data, extension_name, cascade=False):
         """Perform DROP EXTENSION or DROP EXTENSION CASCADE on a PostgreSQL connection."""
         if not item_data:
