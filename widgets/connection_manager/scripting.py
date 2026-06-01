@@ -294,3 +294,22 @@ $$;"""
     def script_database_as_create(self, item_data, db_name):
         sql = f"-- Create Database Script\nCREATE DATABASE \"{db_name}\"\n    WITH \n    OWNER = postgres\n    ENCODING = 'UTF8'\n    CONNECTION LIMIT = -1;"
         self.open_script_in_editor(item_data, sql)
+
+    def script_trigger_as_create(self, item_data, trigger_name):
+        """Generate CREATE TRIGGER script from the trigger definition stored in item_data."""
+        trigger_def = item_data.get("trigger_def", "")
+        if not trigger_def:
+            QMessageBox.warning(self.manager, "Warning", "Trigger definition not found.")
+            return
+
+        # The trigger_def from pg_get_triggerdef already contains the full CREATE TRIGGER statement
+        # We just need to ensure it's properly formatted
+        sql = f"-- Trigger: {trigger_name}\n\n{trigger_def};"
+        self.open_script_in_editor(item_data, sql)
+
+    def script_trigger_as_drop(self, item_data, trigger_name):
+        """Generate DROP TRIGGER script."""
+        schema_name = item_data.get('schema_name', 'public')
+        table_name = item_data.get('table_name', '')
+        sql = f"-- Drop Trigger: {trigger_name}\n\nDROP TRIGGER {trigger_name} ON {schema_name}.{table_name};"
+        self.open_script_in_editor(item_data, sql)

@@ -77,6 +77,10 @@ class TreeHelpers:
             item.setIcon(QIcon("assets/column_icon.png"))
             return
 
+        if level == "TRIGGER":
+            item.setIcon(qta.icon("mdi.lightning-bolt", color="#FF9800"))
+            return
+
         if level in ["FDW_ROOT", "FDW", "SERVER", "FOREIGN_TABLE", "EXTENSION_ROOT", "EXTENSION", "LANGUAGE_ROOT", "LANGUAGE", "SEQUENCE", "FUNCTION", "TRIGGER_FUNCTION"]:
             if level == "FDW_ROOT":
                 item.setIcon(qta.icon("mdi.server-network", color="#9E9E9E"))

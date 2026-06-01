@@ -650,6 +650,45 @@ class TableDetailsLoader:
 
             table_item.appendRow(indexes_folder)
 
+            # Load triggers
+            trig_query = """
+            SELECT 
+                t.tgname as trigger_name,
+                pg_get_triggerdef(t.oid) as trigger_def
+            FROM pg_trigger t
+            JOIN pg_class c ON t.tgrelid = c.oid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = %s AND c.relname = %s
+            AND NOT t.tgisinternal
+            ORDER BY t.tgname;
+            """
+            cursor.execute(trig_query, (schema_name, table_name))
+            triggers = cursor.fetchall()
+
+            triggers_folder = QStandardItem(f"Triggers ({len(triggers)})")
+            triggers_folder.setEditable(False)
+
+            if not triggers:
+                triggers_folder.appendRow(QStandardItem("No triggers"))
+            else:
+                for trig_name, trig_def in triggers:
+                    # Extract timing and event from definition for display
+                    # Example: "EXECUTE FUNCTION insert_def_async_task_requests_table() AFTER INSERT ON celery_taskmeta"
+                    trig_item = QStandardItem(trig_name)
+                    trig_item.setEditable(False)
+                    self.manager._set_tree_item_icon(trig_item, level="TRIGGER")
+                    
+                    # Store trigger data in UserRole
+                    trig_data = item_data.copy()
+                    trig_data['type'] = 'trigger'
+                    trig_data['trigger_name'] = trig_name
+                    trig_data['trigger_def'] = trig_def
+                    trig_item.setData(trig_data, Qt.ItemDataRole.UserRole)
+                    
+                    triggers_folder.appendRow(trig_item)
+
+            table_item.appendRow(triggers_folder)
+
         except Exception as e:
             if hasattr(self.manager, 'pg_conn') and self.manager.pg_conn:
                 self.manager.pg_conn.rollback()
