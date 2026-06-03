@@ -18,6 +18,7 @@ from widgets.connection_manager.context_menus._helpers import (
     submenu,
 )
 from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
+from widgets.connection_manager.context_menus.trigger_menus import TriggerMenuBuilder
 from widgets.connection_manager.context_menus.psql_console import open_psql_console
 
 class SchemaMenuBuilder:
@@ -26,6 +27,7 @@ class SchemaMenuBuilder:
     def __init__(self, manager):
         self.manager = manager
         self.mview_builder = MaterializedViewMenuBuilder(manager)
+        self.trigger_builder = TriggerMenuBuilder(manager)
 
     # =========================================================================
     # Entry point
@@ -50,17 +52,20 @@ class SchemaMenuBuilder:
         table_type     = item_data.get("table_type", "").upper()
         node_type      = item_data.get("type", "")
 
-        is_table_or_view    = table_name is not None
-        is_schema           = schema_name is not None and not is_table_or_view
+        is_trigger          = node_type == "trigger"
+        is_triggers_group   = node_type == "triggers_group"
+        is_table_or_view    = table_name is not None and not is_trigger and not is_triggers_group
+        is_schema           = schema_name is not None and not is_table_or_view and not is_trigger and not is_triggers_group
         is_sequence         = table_type == "SEQUENCE"
         is_function         = table_type == "FUNCTION"
         is_trigger_function = table_type == "TRIGGER FUNCTION"
         is_language         = table_type == "LANGUAGE"
         is_extension        = table_type == "EXTENSION"
-        is_trigger          = node_type == "trigger"
 
         if node_type == "schema_group":
             self._schema_group_menu(menu, item, item_data, index)
+        elif is_triggers_group:
+            self.trigger_builder.build_group_menu(menu, item, item_data, index)
         elif table_type == "MATERIALIZED VIEW":
             self.mview_builder.build_menu(menu, item, item_data)
         elif is_table_or_view:
@@ -89,8 +94,10 @@ class SchemaMenuBuilder:
             self._foreign_server_menu(menu, item_data)
         elif node_type == "user_mapping":
             self._user_mapping_menu(menu, item_data)
+        elif node_type == "triggers_group":
+            self.trigger_builder.build_group_menu(menu, item, item_data, index)
         elif is_trigger:
-            self._trigger_menu(menu, item, item_data)
+            self.trigger_builder.build_menu(menu, item, item_data)
 
         if not menu.isEmpty():
             menu.exec(self.manager.schema_tree.viewport().mapToGlobal(position))
@@ -503,44 +510,6 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
-    # =========================================================================
-    # Trigger
-    # =========================================================================
-
-    def _trigger_menu(self, menu, item, item_data):
-        display_name = item.text()
-        trigger_def = item_data.get("trigger_def", "")
-
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
-        scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
-        
-        act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
-        act.triggered.connect(
-            lambda: self.manager.script_generator.script_trigger_as_create(item_data, display_name)
-        )
-        scripts_sub.addAction(act)
-
-        act = action(self.manager, "DROP Script", "mdi.script-text-outline")
-        act.triggered.connect(
-            lambda: self.manager.script_generator.script_trigger_as_drop(item_data, display_name)
-        )
-        scripts_sub.addAction(act)
-
-        menu.addSeparator()
-        act = action(self.manager, "Drop Trigger", "mdi.delete-outline", shortcut="Alt+Shift+D")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_trigger(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        menu.addSeparator()
-        add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
     # =========================================================================
     # Language

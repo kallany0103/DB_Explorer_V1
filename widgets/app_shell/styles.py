@@ -30,6 +30,7 @@ def apply_main_window_styles(main_window):
             color: #ffffff;
             font-weight: 600;
             border-bottom: 1px solid #8B929B;
+            text-align: left;
         }}
 
         #objectExplorerLabel {{

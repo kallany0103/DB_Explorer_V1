@@ -7,6 +7,7 @@ from .sequence_properties import SequencePropertiesDialog
 from .extension_properties import ExtensionPropertiesDialog
 from .language_properties import LanguagePropertiesDialog
 from .foreign_data_properties import FDWPropertiesDialog, ForeignServerPropertiesDialog, UserMappingPropertiesDialog
+from .trigger_properties import TriggerPropertiesDialog
 
 __all__ = [
     'TablePropertiesDialog', 
@@ -17,5 +18,6 @@ __all__ = [
     'LanguagePropertiesDialog',
     'FDWPropertiesDialog',
     'ForeignServerPropertiesDialog',
-    'UserMappingPropertiesDialog'
+    'UserMappingPropertiesDialog',
+    'TriggerPropertiesDialog'
 ]

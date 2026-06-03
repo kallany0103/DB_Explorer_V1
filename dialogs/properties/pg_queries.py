@@ -552,3 +552,31 @@ GET_TABLE_TRIGGERS = """
     WHERE n.nspname = %s AND c.relname = %s
     AND NOT t.tgisinternal;
 """
+
+GET_TRIGGER_DETAILS = """
+    SELECT 
+        t.tgname AS name,
+        c.relname AS table_name,
+        n.nspname AS schema_name,
+        t.tgenabled AS enabled,
+        p.proname AS function_name,
+        CASE 
+            WHEN (t.tgtype & 2) = 2 THEN 'BEFORE'
+            WHEN (t.tgtype & 64) = 64 THEN 'INSTEAD OF'
+            ELSE 'AFTER'
+        END AS timing,
+        TRIM(BOTH ' ' FROM (
+            CASE WHEN (t.tgtype & 4) = 4 THEN 'INSERT ' ELSE '' END ||
+            CASE WHEN (t.tgtype & 8) = 8 THEN 'DELETE ' ELSE '' END ||
+            CASE WHEN (t.tgtype & 16) = 16 THEN 'UPDATE ' ELSE '' END ||
+            CASE WHEN (t.tgtype & 32) = 32 THEN 'TRUNCATE ' ELSE '' END
+        )) AS events,
+        CASE WHEN (t.tgtype & 1) = 1 THEN 'ROW' ELSE 'STATEMENT' END AS level,
+        pg_get_triggerdef(t.oid) as definition,
+        obj_description(t.oid, 'pg_trigger') as comment
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_proc p ON p.oid = t.tgfoid
+    WHERE n.nspname = %s AND t.tgname = %s;
+"""

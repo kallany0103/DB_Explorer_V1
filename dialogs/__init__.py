@@ -15,6 +15,7 @@ from dialogs.properties import (
     FDWPropertiesDialog, ForeignServerPropertiesDialog, UserMappingPropertiesDialog
 )
 from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
+from dialogs.create_trigger_dialog import CreateTriggerDialog
 from dialogs.preferences_dialog import PreferencesDialog
 
 __all__ = [
@@ -39,5 +40,6 @@ __all__ = [
 	"UserMappingPropertiesDialog",
 
 	"CreateMaterializedViewDialog",
+	"CreateTriggerDialog",
 	"PreferencesDialog",
 ]

@@ -28,6 +28,7 @@ from dialogs import (
     ExportDialog, 
     SearchObjectsDialog,
     DatabaseStatisticsDialog,
+    CreateTriggerDialog,
 )
 from dialogs.properties import (
     TablePropertiesDialog,
@@ -39,6 +40,7 @@ from dialogs.properties import (
     FDWPropertiesDialog,
     ForeignServerPropertiesDialog,
     UserMappingPropertiesDialog,
+    TriggerPropertiesDialog,
 )
 from dialogs.statistics.stats_dialog import ObjectStatisticsDialog
 from widgets.backup_and_restore.backup.dialog import BackupDialog
@@ -681,6 +683,65 @@ class ConnectionActions:
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete trigger:\n{e}")
 
+    def enable_trigger(self, item_data, trigger_name, enable=True):
+        """Enable or disable a trigger on a PostgreSQL table."""
+        if not item_data:
+            return
+
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+
+        action_word = "enable" if enable else "disable"
+        action_sql = "ENABLE" if enable else "DISABLE"
+
+        try:
+            schema_quoted = f'"{schema_name}"' if schema_name else ""
+            table_quoted = f'"{table_name}"' if table_name else ""
+            full_name = f'{schema_quoted}.{table_quoted}' if schema_quoted else table_quoted
+            sql = f'ALTER TABLE {full_name} {action_sql} TRIGGER "{trigger_name}";'
+
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+
+            self.manager.status.showMessage(f"Trigger '{trigger_name}' {action_word}d.", 4000)
+            self.manager.status_message_label.setText(f"Trigger '{trigger_name}' {action_word}d.")
+
+            # Switch to message view and display the SQL run
+            current_tab = self.manager.tab_widget.currentWidget()
+            if current_tab:
+                from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QStackedWidget
+                message_view = current_tab.findChild(QPlainTextEdit, "message_view")
+                if not message_view:
+                    message_view = current_tab.findChild(QTextEdit, "message_view")
+                results_stack = current_tab.findChild(QStackedWidget, "results_stacked_widget")
+
+                if message_view and results_stack:
+                    results_stack.setCurrentIndex(1)
+                    msg = f"{sql}\n\nQuery returned successfully."
+                    message_view.setPlainText(msg)
+
+            # Refresh object explorer tree, preserving states
+            self.manager._save_tree_expansion_state()
+            self.manager.load_data()
+            self.manager._restore_tree_expansion_state()
+            
+            self.manager._save_schema_tree_expansion_state()
+            self.manager.schema_loader.load_postgres_schema(conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to {action_word} trigger:\n{e}")
+
+    def show_trigger_properties(self, item_data, trigger_name):
+        if not item_data:
+            return
+
+        dialog = TriggerPropertiesDialog(item_data, trigger_name, self.manager)
+        dialog.show()
+
     def drop_extension(self, item_data, extension_name, cascade=False):
         """Perform DROP EXTENSION or DROP EXTENSION CASCADE on a PostgreSQL connection."""
         if not item_data:
@@ -1050,6 +1111,86 @@ class ConnectionActions:
 
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to create Materialized View:\n{e}")
+
+    def open_create_trigger_dialog(self, item_data):
+        """Open a dialog to CREATE TRIGGER on a PostgreSQL table."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Triggers are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            # Get tables for the current schema
+            schema_name = item_data.get('schema_name', 'public')
+            cursor.execute("""
+                SELECT relname FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = %s AND c.relkind = 'r'
+                ORDER BY relname
+            """, (schema_name,))
+            tables = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateTriggerDialog(self.manager, schemas, tables, db_type="postgres")
+            
+            # Pre-fill schema and table if available from item_data
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            table_name = item_data.get('table_name')
+            if table_name:
+                index = dialog.table_combo.findText(table_name)
+                if index >= 0:
+                    dialog.table_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                if data.get("custom_sql"):
+                    sql = data["custom_sql"]
+                else:
+                    when_clause = f" WHEN ({data['when_condition']})" if data['when_condition'] else ""
+                    sql = f'CREATE TRIGGER "{data["name"]}" {data["timing"]} {data["event"]}{when_clause} ON "{data["schema"]}"."{data["table"]}" FOR EACH ROW EXECUTE FUNCTION {data["function"]};'
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Trigger", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Trigger:\n{e}")
+
+    def open_psql_tool(self, item_data):
+        """Open PSQL Tool for the connection (placeholder for terminal/console access)."""
+        if not item_data:
+            return
+        
+        # For now, this opens the query tool as a placeholder
+        # A full PSQL tool would require terminal integration
+        QMessageBox.information(
+            self.manager,
+            "PSQL Tool",
+            "PSQL Tool integration is not yet implemented.\n\nUse Query Tool for SQL execution instead."
+        )
 
     def refresh_materialized_view(self, item_data, name, concurrently=False):
         if not item_data:
