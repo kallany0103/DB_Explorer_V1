@@ -13,7 +13,7 @@ Internally the logic is split into:
 
 from widgets.connection_manager.context_menus.explorer_menus import ExplorerMenuBuilder
 from widgets.connection_manager.context_menus.schema_menus import SchemaMenuBuilder
-
+#from widgets.connection_manager.context_menus.psql_console import PSQLConsole
 
 class ContextMenuHandler:
     """Thin facade that wires ExplorerMenuBuilder and SchemaMenuBuilder to the manager."""
