@@ -5,8 +5,15 @@ from PySide6.QtWidgets import (
     QTableView, QHeaderView, QMessageBox, QCheckBox
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtCore import Qt
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
+
+class LeftAlignedHeaderModel(QStandardItemModel):
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
+            return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        return super().headerData(section, orientation, role)
 
 class SequencePropertiesDialog(BasePropertiesDialog):
     def __init__(self, item_data, sequence_name, parent=None):
@@ -60,7 +67,7 @@ class SequencePropertiesDialog(BasePropertiesDialog):
         if self.db_type == 'postgres':
             self.security_tab = QWidget()
             sec_layout = QVBoxLayout(self.security_tab)
-            self.security_model = QStandardItemModel()
+            self.security_model = LeftAlignedHeaderModel()
             self.security_model.setHorizontalHeaderLabels(["Grantee", "Privileges", "Grantor"])
             self.security_view = QTableView()
             self.security_view.setModel(self.security_model)

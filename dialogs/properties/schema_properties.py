@@ -5,8 +5,15 @@ from PySide6.QtWidgets import (
     QTableView, QHeaderView, QAbstractItemView, QMessageBox
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtCore import Qt
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
+
+class LeftAlignedHeaderModel(QStandardItemModel):
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
+            return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        return super().headerData(section, orientation, role)
 
 class SchemaPropertiesDialog(BasePropertiesDialog):
     def __init__(self, item_data, schema_name, parent=None):
@@ -31,7 +38,7 @@ class SchemaPropertiesDialog(BasePropertiesDialog):
         # Security Tab
         self.security_tab = QWidget()
         sec_layout = QVBoxLayout(self.security_tab)
-        self.security_model = QStandardItemModel()
+        self.security_model = LeftAlignedHeaderModel()
         self.security_model.setHorizontalHeaderLabels(["Grantee", "Privileges", "Grantor"])
         self.security_view = QTableView()
         self.security_view.setModel(self.security_model)
@@ -43,7 +50,7 @@ class SchemaPropertiesDialog(BasePropertiesDialog):
         # Default Privileges Tab
         self.default_privs_tab = QWidget()
         def_layout = QVBoxLayout(self.default_privs_tab)
-        self.default_privs_model = QStandardItemModel()
+        self.default_privs_model = LeftAlignedHeaderModel()
         self.default_privs_model.setHorizontalHeaderLabels(["Owner", "Object Type", "Privileges"])
         self.default_privs_view = QTableView()
         self.default_privs_view.setModel(self.default_privs_model)

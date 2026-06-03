@@ -10,6 +10,12 @@ from PySide6.QtCore import Qt
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
 
+class LeftAlignedHeaderModel(QStandardItemModel):
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
+            return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        return super().headerData(section, orientation, role)
+
 class TablePropertiesDialog(BasePropertiesDialog):
     def __init__(self, item_data, table_name, parent=None):
         super().__init__(item_data, table_name, parent)
@@ -48,7 +54,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
         # 3. Columns Tab
         self.columns_tab = QWidget()
         col_layout = QVBoxLayout(self.columns_tab)
-        self.columns_model = QStandardItemModel()
+        self.columns_model = LeftAlignedHeaderModel()
         self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "Nullable", "Default", "Comment"])
         self.columns_view = QTableView()
         self.columns_view.setModel(self.columns_model)
@@ -60,7 +66,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
         if not self.is_view or self.is_mview:
             self.constraints_tab = QWidget()
             cons_layout = QVBoxLayout(self.constraints_tab)
-            self.constraints_model = QStandardItemModel()
+            self.constraints_model = LeftAlignedHeaderModel()
             self.constraints_model.setHorizontalHeaderLabels(["Name", "Type", "Definition"])
             self.constraints_view = QTableView()
             self.constraints_view.setModel(self.constraints_model)
@@ -72,7 +78,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
         if self.db_type == 'postgres':
             self.security_tab = QWidget()
             sec_layout = QVBoxLayout(self.security_tab)
-            self.security_model = QStandardItemModel()
+            self.security_model = LeftAlignedHeaderModel()
             self.security_model.setHorizontalHeaderLabels(["Grantee", "Privileges", "Grantor"])
             self.security_view = QTableView()
             self.security_view.setModel(self.security_model)

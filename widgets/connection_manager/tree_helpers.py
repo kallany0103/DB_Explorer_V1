@@ -78,7 +78,10 @@ class TreeHelpers:
             return
 
         if level == "TRIGGER":
-            item.setIcon(qta.icon("mdi.lightning-bolt", color="#FF9800"))
+            if code == "D":
+                item.setIcon(qta.icon("mdi.lightning-bolt-outline", color="#9E9E9E"))
+            else:
+                item.setIcon(qta.icon("mdi.lightning-bolt", color="#FF9800"))
             return
 
         if level in ["FDW_ROOT", "FDW", "SERVER", "FOREIGN_TABLE", "EXTENSION_ROOT", "EXTENSION", "LANGUAGE_ROOT", "LANGUAGE", "SEQUENCE", "FUNCTION", "TRIGGER_FUNCTION"]:
