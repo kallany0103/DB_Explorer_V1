@@ -53,8 +53,9 @@ class SchemaMenuBuilder:
         node_type      = item_data.get("type", "")
 
         is_trigger          = node_type == "trigger"
-        is_table_or_view    = table_name is not None and not is_trigger
-        is_schema           = schema_name is not None and not is_table_or_view and not is_trigger
+        is_triggers_group   = node_type == "triggers_group"
+        is_table_or_view    = table_name is not None and not is_trigger and not is_triggers_group
+        is_schema           = schema_name is not None and not is_table_or_view and not is_trigger and not is_triggers_group
         is_sequence         = table_type == "SEQUENCE"
         is_function         = table_type == "FUNCTION"
         is_trigger_function = table_type == "TRIGGER FUNCTION"
@@ -63,6 +64,8 @@ class SchemaMenuBuilder:
 
         if node_type == "schema_group":
             self._schema_group_menu(menu, item, item_data, index)
+        elif is_triggers_group:
+            self.trigger_builder.build_group_menu(menu, item, item_data, index)
         elif table_type == "MATERIALIZED VIEW":
             self.mview_builder.build_menu(menu, item, item_data)
         elif is_table_or_view:

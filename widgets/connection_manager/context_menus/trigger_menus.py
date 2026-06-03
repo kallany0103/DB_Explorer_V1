@@ -14,7 +14,9 @@ class TriggerMenuBuilder:
         # Create submenu
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
         act = action(self.manager, "Trigger...", "mdi.lightning-bolt-outline")
-        act.triggered.connect(stub("create_trigger"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_create_trigger_dialog(item_data)
+        )
         create_sub.addAction(act)
 
         menu.addSeparator()
@@ -30,7 +32,9 @@ class TriggerMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "PSQL Tool", "mdi.console")
-        act.triggered.connect(stub("psql_tool"))
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_psql_tool(item_data)
+        )
         menu.addAction(act)
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
