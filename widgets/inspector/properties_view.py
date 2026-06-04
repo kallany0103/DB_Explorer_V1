@@ -89,6 +89,7 @@ class PropertyTable(QTableView):
         self.setAlternatingRowColors(True)
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.verticalHeader().setVisible(False)
         self.setShowGrid(False)
         self.setStyleSheet("""
