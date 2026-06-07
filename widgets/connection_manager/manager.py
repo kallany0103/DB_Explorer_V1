@@ -519,6 +519,11 @@ class ConnectionManager(QWidget):
             return
             
         new_conn_id = conn_data.get("id")
+        
+        # Always clear saved selection when clicking a database
+        if hasattr(self, '_schema_states') and new_conn_id in self._schema_states:
+            self._schema_states[new_conn_id]['selection'] = None
+                
         self._current_conn_id = new_conn_id
 
         parent_group = item.parent()
