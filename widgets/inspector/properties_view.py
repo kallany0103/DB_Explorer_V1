@@ -21,6 +21,12 @@ PROPERTY_LABELS = {
     "comment": "Comment",
     "rows_estimated": "Estimated rows",
     "is_partitioned": "Partitioned",
+    "table_name": "Table",
+    "function_name": "Trigger Function",
+    "status": "Status",
+    "timing": "Timing",
+    "events": "Events",
+    "level": "Level",
 }
 
 
@@ -186,6 +192,12 @@ class PropertiesWorkbench(QWidget):
         elif obj_type == 'connection': icon_name, icon_color = 'mdi.database', '#6366f1'
         elif obj_type == 'function': icon_name, icon_color = 'mdi.function', '#ec4899'
         elif obj_type == 'sequence': icon_name, icon_color = 'mdi.numeric', '#8b5cf6'
+        elif obj_type == 'trigger':
+            tgenabled = item_data.get('tgenabled')
+            if tgenabled == 'D':
+                icon_name, icon_color = 'mdi.lightning-bolt-outline', '#9fa6b2'
+            else:
+                icon_name, icon_color = 'mdi.lightning-bolt', '#f59e0b'
         
         if group_name: icon_name, icon_color = 'mdi.folder-outline', '#94a3b8'
         self.icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(24, 24))

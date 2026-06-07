@@ -580,3 +580,45 @@ GET_TRIGGER_DETAILS = """
     JOIN pg_proc p ON p.oid = t.tgfoid
     WHERE n.nspname = %s AND t.tgname = %s;
 """
+
+GET_TRIGGER_STATS = """
+    SELECT 
+        c.relname AS "Table",
+        p.proname AS "Function",
+        CASE 
+            WHEN (t.tgtype & 2) = 2 THEN 'BEFORE'
+            WHEN (t.tgtype & 64) = 64 THEN 'INSTEAD OF'
+            ELSE 'AFTER'
+        END AS "Timing",
+        TRIM(BOTH ' ' FROM (
+            CASE WHEN (t.tgtype & 4) = 4 THEN 'INSERT ' ELSE '' END ||
+            CASE WHEN (t.tgtype & 8) = 8 THEN 'DELETE ' ELSE '' END ||
+            CASE WHEN (t.tgtype & 16) = 16 THEN 'UPDATE ' ELSE '' END ||
+            CASE WHEN (t.tgtype & 32) = 32 THEN 'TRUNCATE ' ELSE '' END
+        )) AS "Events",
+        CASE WHEN (t.tgtype & 1) = 1 THEN 'ROW' ELSE 'STATEMENT' END AS "Level",
+        CASE t.tgenabled
+            WHEN 'O' THEN 'Enabled'
+            WHEN 'D' THEN 'Disabled'
+            WHEN 'A' THEN 'Always'
+            WHEN 'R' THEN 'Replica'
+            ELSE t.tgenabled::text
+        END AS "Status"
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_proc p ON p.oid = t.tgfoid
+    WHERE n.nspname = %s AND t.tgname = %s;
+"""
+
+GET_TRIGGERS_GROUP_STATS = """
+    SELECT 
+        count(*) AS "Object count",
+        count(*) FILTER (WHERE t.tgenabled IN ('O', 'A', 'R')) AS "Enabled",
+        count(*) FILTER (WHERE t.tgenabled = 'D') AS "Disabled"
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relname = %s
+    AND NOT t.tgisinternal;
+"""

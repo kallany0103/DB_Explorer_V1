@@ -1575,6 +1575,20 @@ class ConnectionActions:
                 lanname AS name,
                 'Language' AS type
             FROM pg_language
+
+            UNION ALL
+
+            -- Triggers
+            SELECT 
+                n.nspname AS schema,
+                t.tgname || ' ON ' || c.relname AS name,
+                'Trigger' AS type
+            FROM pg_trigger t
+            JOIN pg_class c ON t.tgrelid = c.oid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname NOT LIKE 'pg_%%' 
+            AND n.nspname != 'information_schema'
+            AND NOT t.tgisinternal
         ) sub
         WHERE name ILIKE %s
         ORDER BY type, schema, name
@@ -1664,6 +1678,85 @@ class ConnectionActions:
         # Expand "Schemas"
         tree.expand(schemas_root.index())
         
+        if obj_type == "Trigger":
+            parts = name.split(" ON ")
+            trigger_name = parts[0] if len(parts) > 0 else name
+            table_name = parts[1] if len(parts) > 1 else None
+            
+            if not table_name:
+                return
+                
+            # Navigate to Schema
+            schema_item = None
+            for i in range(schemas_root.rowCount()):
+                item = schemas_root.child(i)
+                if item and item.text() == schema:
+                    schema_item = item
+                    break
+            if not schema_item:
+                return
+            tree.expand(schema_item.index())
+            
+            # Load schema if not loaded
+            if schema_item.rowCount() == 1 and schema_item.child(0).text() == "Loading...":
+                self.manager.table_details_loader.load_tables_on_expand(schema_item.index())
+                
+            # Navigate to "Tables" group
+            tables_group = None
+            for i in range(schema_item.rowCount()):
+                item = schema_item.child(i)
+                if item and item.text() == "Tables":
+                    tables_group = item
+                    break
+            if not tables_group:
+                return
+            tree.expand(tables_group.index())
+            
+            if tables_group.rowCount() == 1 and tables_group.child(0).text() == "Loading...":
+                self.manager.table_details_loader.load_tables_on_expand(tables_group.index())
+                
+            # Navigate to the Table item
+            table_item = None
+            for i in range(tables_group.rowCount()):
+                item = tables_group.child(i)
+                if item and item.text() == table_name:
+                    table_item = item
+                    break
+            if not table_item:
+                return
+            tree.expand(table_item.index())
+            
+            # Expand table node if not loaded
+            if table_item.rowCount() == 1 and table_item.child(0).text() == "Loading...":
+                self.manager.table_details_loader.load_tables_on_expand(table_item.index())
+                
+            # Navigate to "Triggers" group folder
+            triggers_group = None
+            for i in range(table_item.rowCount()):
+                item = table_item.child(i)
+                # The text is "Triggers (count)", so we check if it starts with "Triggers"
+                if item and item.text().startswith("Triggers"):
+                    triggers_group = item
+                    break
+            if not triggers_group:
+                return
+            tree.expand(triggers_group.index())
+            
+            # Navigate to the Trigger item
+            target_item = None
+            for i in range(triggers_group.rowCount()):
+                item = triggers_group.child(i)
+                # The item text can be trigger_name or trigger_name + " (disabled)"
+                if item and (item.text() == trigger_name or item.text().startswith(trigger_name + " ")):
+                    target_item = item
+                    break
+                    
+            if target_item:
+                tree.setCurrentIndex(target_item.index())
+                tree.scrollTo(target_item.index())
+                self.manager.main_window.activateWindow()
+            return
+
         # 2. Find the specific Schema
         schema_item = None
         for i in range(schemas_root.rowCount()):
@@ -1696,7 +1789,7 @@ class ConnectionActions:
 
         # Check if we need to load children (if they are still "Loading...")
         if schema_item.rowCount() == 1 and schema_item.child(0).text() == "Loading...":
-            self.manager.schema_loader.load_tables_on_expand(schema_item.index())
+            self.manager.table_details_loader.load_tables_on_expand(schema_item.index())
 
         # Find the group node
         group_node = None
@@ -1714,7 +1807,7 @@ class ConnectionActions:
         
         # Check if group needs loading
         if group_node.rowCount() == 1 and group_node.child(0).text() == "Loading...":
-            self.manager.schema_loader.load_tables_on_expand(group_node.index())
+            self.manager.table_details_loader.load_tables_on_expand(group_node.index())
 
         # 4. Find the object itself
         target_name = name

@@ -11,6 +11,7 @@ _GROUP_STATS = {
     "Functions": pg_queries.GET_FUNCTIONS_GROUP_STATS,
     "Trigger Functions": pg_queries.GET_TRIGGER_FUNCTIONS_GROUP_STATS,
     "Foreign Tables": pg_queries.GET_FOREIGN_TABLES_GROUP_STATS,
+    "Triggers": pg_queries.GET_TRIGGERS_GROUP_STATS,
 }
 
 
@@ -40,6 +41,18 @@ def resolve_statistics_queries(item_data, obj_name):
         if db_name:
             queries.append((pg_queries.GET_DATABASE_STATS, (db_name,)))
 
+    # --- Trigger-specific: must come before generic table_type checks ---
+    # Trigger items inherit table_type from their parent table, so the
+    # generic "TABLE" in table_type check would incorrectly match them.
+    elif obj_type == "trigger":
+        trigger_name = item_data.get("trigger_name") or obj_name
+        queries.append((pg_queries.GET_TRIGGER_STATS, (schema_name, trigger_name)))
+
+    elif obj_type == "triggers_group":
+        table_name = item_data.get("table_name")
+        queries.append((pg_queries.GET_TRIGGERS_GROUP_STATS, (schema_name, table_name)))
+
+    # --- Generic type-based checks ---
     elif obj_type == "table" or any(
         k in table_type for k in ("TABLE", "VIEW", "MATERIALIZED")
     ):
