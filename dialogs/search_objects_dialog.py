@@ -51,7 +51,12 @@ class SearchObjectsDialog(QDialog):
 
         # Results Table
         self.results_table = QTableWidget(0, 3)
-        self.results_table.setHorizontalHeaderLabels(["Schema", "Name", "Type"])
+        headers = ["Schema", "Name", "Type"]
+        self.results_table.setColumnCount(len(headers))
+        for col, text in enumerate(headers):
+            item = QTableWidgetItem(text)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self.results_table.setHorizontalHeaderItem(col, item)
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.results_table.setAlternatingRowColors(True)
@@ -126,7 +131,8 @@ class SearchObjectsDialog(QDialog):
                         "Materialized View": "mdi.eye-settings",
                         "Schema": "mdi.folder-outline",
                         "Extension": "mdi.puzzle-outline",
-                        "Language": "mdi.translate"
+                        "Language": "mdi.translate",
+                        "Trigger": "mdi.lightning-bolt"
                     }
                     icon_str = icon_map.get(type_str, "mdi.database-outline")
                     name_item.setIcon(qta.icon(icon_str, color="#0078d4"))

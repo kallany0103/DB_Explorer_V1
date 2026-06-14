@@ -150,7 +150,7 @@ class BackupDialog(QDialog):
             objects_layout.addWidget(info_label)
             
             self.objects_tree = QTreeWidget()
-            self.objects_tree.setHeaderHidden(True)
+            self.objects_tree.setHeaderLabels(["Database Objects"])
             self.objects_tree.itemChanged.connect(self.handle_item_changed)
             objects_layout.addWidget(self.objects_tree)
             

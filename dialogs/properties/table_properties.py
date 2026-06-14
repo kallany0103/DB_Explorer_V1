@@ -3,12 +3,36 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
     QTableView, QHeaderView, QAbstractItemView, QMessageBox, QLabel, QPushButton,
-    QHBoxLayout, QToolButton
+    QHBoxLayout, QToolButton, QStyledItemDelegate
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
+
+class DataTypeDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.data_types = [
+            "integer", "bigint", "smallint", "boolean", "character varying", "character",
+            "text", "date", "timestamp", "timestamp without time zone", "timestamp with time zone",
+            "time", "time without time zone", "numeric", "double precision", "real",
+            "json", "jsonb", "uuid", "bytea", "serial", "bigserial", "smallserial"
+        ]
+
+    def createEditor(self, parent, option, index):
+        editor = QComboBox(parent)
+        editor.addItems(self.data_types)
+        editor.setEditable(True)
+        return editor
+
+    def setEditorData(self, editor, index):
+        value = index.model().data(index, Qt.ItemDataRole.EditRole)
+        editor.setCurrentText(value)
+
+    def setModelData(self, editor, model, index):
+        value = editor.currentText()
+        model.setData(index, value, Qt.ItemDataRole.EditRole)
 
 class LeftAlignedHeaderModel(QStandardItemModel):
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -55,10 +79,11 @@ class TablePropertiesDialog(BasePropertiesDialog):
         self.columns_tab = QWidget()
         col_layout = QVBoxLayout(self.columns_tab)
         self.columns_model = LeftAlignedHeaderModel()
-        self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "Nullable", "Default", "Comment"])
+        self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "PK", "Not Null", "Default", "Comment"])
         self.columns_view = QTableView()
         self.columns_view.setModel(self.columns_model)
         self.columns_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.columns_view.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_view))
         col_layout.addWidget(self.columns_view)
         self.tab_widget.addTab(self.columns_tab, "Columns")
 
@@ -122,8 +147,23 @@ class TablePropertiesDialog(BasePropertiesDialog):
                 # 3. Fetch Columns
                 cursor.execute(pg_queries.GET_TABLE_COLUMNS, (self.schema_name, self.table_name))
                 for row in cursor.fetchall():
-                    items = [QStandardItem(str(c)) for c in row]
-                    self.columns_model.appendRow(items)
+                    name_item = QStandardItem(str(row[0]) if row[0] is not None else "")
+                    type_item = QStandardItem(str(row[1]) if row[1] is not None else "")
+                    
+                    pk_item = QStandardItem()
+                    pk_item.setCheckable(True)
+                    pk_item.setEditable(False)
+                    pk_item.setCheckState(Qt.CheckState.Checked if row[2] else Qt.CheckState.Unchecked)
+                    
+                    not_null_item = QStandardItem()
+                    not_null_item.setCheckable(True)
+                    not_null_item.setEditable(False)
+                    not_null_item.setCheckState(Qt.CheckState.Checked if not row[3] else Qt.CheckState.Unchecked)
+                    
+                    default_item = QStandardItem(str(row[4]) if row[4] is not None else "")
+                    comment_item = QStandardItem(str(row[5]) if row[5] is not None else "")
+                    
+                    self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
 
                 # 4. Fetch Constraints
                 if not self.is_view or self.is_mview:
@@ -151,10 +191,24 @@ class TablePropertiesDialog(BasePropertiesDialog):
                 # Fetch columns
                 cursor.execute(f"PRAGMA table_info('{self.table_name}')")
                 for row in cursor.fetchall():
-                    # cid, name, type, notnull, dflt_value, pk
-                    items = [QStandardItem(str(row[1])), QStandardItem(str(row[2])), 
-                             QStandardItem("NO" if row[3] else "YES"), QStandardItem(str(row[4])), QStandardItem("")]
-                    self.columns_model.appendRow(items)
+                    # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+                    name_item = QStandardItem(str(row[1]))
+                    type_item = QStandardItem(str(row[2]))
+                    
+                    pk_item = QStandardItem()
+                    pk_item.setCheckable(True)
+                    pk_item.setEditable(False)
+                    pk_item.setCheckState(Qt.CheckState.Checked if row[5] else Qt.CheckState.Unchecked)
+                    
+                    not_null_item = QStandardItem()
+                    not_null_item.setCheckable(True)
+                    not_null_item.setEditable(False)
+                    not_null_item.setCheckState(Qt.CheckState.Checked if row[3] else Qt.CheckState.Unchecked)
+                    
+                    default_item = QStandardItem(str(row[4]) if row[4] is not None else "")
+                    comment_item = QStandardItem("")
+                    
+                    self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load table properties:\n{e}")

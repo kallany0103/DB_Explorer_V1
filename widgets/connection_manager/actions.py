@@ -29,6 +29,10 @@ from dialogs import (
     SearchObjectsDialog,
     DatabaseStatisticsDialog,
     CreateTriggerDialog,
+    CreateFunctionDialog,
+    CreateTriggerFunctionDialog,
+    CreateSequenceDialog,
+    CreateForeignTableDialog,
 )
 from dialogs.properties import (
     TablePropertiesDialog,
@@ -1041,7 +1045,8 @@ class ConnectionActions:
                 dialog = CreateViewDialog(self.manager, schemas, db_type="postgres")
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     data = dialog.get_data()
-                    sql = f'CREATE OR REPLACE VIEW "{data["schema"]}"."{data["name"]}" AS\n{data["definition"]};'
+                    cols = f" ({data['columns']})" if data.get('columns') else ""
+                    sql = f'CREATE OR REPLACE VIEW "{data["schema"]}"."{data["name"]}"{cols} AS\n{data["definition"]};'
 
                     conn = db.create_postgres_connection(conn_data)
                     cursor = conn.cursor()
@@ -1059,7 +1064,8 @@ class ConnectionActions:
                 dialog = CreateViewDialog(self.manager, schemas=None, db_type="sqlite")
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     data = dialog.get_data()
-                    sql = f'CREATE VIEW "{data["name"]}" AS\n{data["definition"]};'
+                    cols = f" ({data['columns']})" if data.get('columns') else ""
+                    sql = f'CREATE VIEW "{data["name"]}"{cols} AS\n{data["definition"]};'
 
                     conn = db.create_sqlite_connection(conn_data.get('db_path'))
                     cursor = conn.cursor()
@@ -1178,6 +1184,283 @@ class ConnectionActions:
 
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to create Trigger:\n{e}")
+
+    def open_create_function_dialog(self, item_data):
+        """Open a dialog to CREATE FUNCTION on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Functions are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateFunctionDialog(self.manager, schemas, current_user=conn_data.get('user', 'postgres'), db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                params = []
+                for param in data.get('parameters', []):
+                    mode = param.get('mode', '')
+                    if mode:
+                        params.append(f"{mode} {param['name']} {param['type']}")
+                    else:
+                        params.append(f"{param['name']} {param['type']}")
+                
+                params_str = ', '.join(params) if params else ''
+                
+                volatility = data.get('volatility', 'VOLATILE')
+                leakproof = 'LEAKPROOF' if data.get('leakproof') else ''
+                security = 'SECURITY DEFINER' if data.get('security_definer') else 'SECURITY INVOKER'
+                
+                sql = f'''CREATE OR REPLACE FUNCTION "{data["schema"]}"."{data["name"]}"({params_str})
+RETURNS {data["return_type"]}
+LANGUAGE {data["language"]}
+{volatility}
+{leakproof}
+{security}
+AS $$
+{data["body"]}
+$$;'''
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Function", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Function:\n{e}")
+
+    def open_create_trigger_function_dialog(self, item_data):
+        """Open a dialog to CREATE TRIGGER FUNCTION on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Trigger Functions are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateTriggerFunctionDialog(self.manager, schemas, current_user=conn_data.get('user', 'postgres'), db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                volatility = data.get('volatility', 'VOLATILE')
+                leakproof = 'LEAKPROOF' if data.get('leakproof') else ''
+                security = 'SECURITY DEFINER' if data.get('security_definer') else 'SECURITY INVOKER'
+                
+                sql = f'''CREATE OR REPLACE FUNCTION "{data["schema"]}"."{data["name"]}"()
+RETURNS TRIGGER
+LANGUAGE {data["language"]}
+{volatility}
+{leakproof}
+{security}
+AS $$
+{data["body"]}
+$$;'''
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Trigger Function", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Trigger Function:\n{e}")
+
+    def open_create_sequence_dialog(self, item_data):
+        """Open a dialog to CREATE SEQUENCE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Sequences are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateSequenceDialog(self.manager, schemas, current_user=conn_data.get('user', 'postgres'), db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                options = []
+                options.append(f"START WITH {data['start_value']}")
+                options.append(f"INCREMENT BY {data['increment']}")
+                
+                if data.get('min_value'):
+                    options.append(f"MINVALUE {data['min_value']}")
+                else:
+                    options.append("NO MINVALUE")
+                
+                if data.get('max_value'):
+                    options.append(f"MAXVALUE {data['max_value']}")
+                else:
+                    options.append("NO MAXVALUE")
+                
+                options.append(f"CACHE {data['cache']}")
+                
+                if data.get('cycle'):
+                    options.append("CYCLE")
+                else:
+                    options.append("NO CYCLE")
+                
+                if data.get('owned_by'):
+                    options.append(f"OWNED BY {data['owned_by']}")
+                
+                options_str = ' '.join(options)
+                
+                sql = f'CREATE SEQUENCE "{data["schema"]}"."{data["name"]}" {options_str};'
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Sequence", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Sequence:\n{e}")
+
+    def open_create_foreign_table_dialog(self, item_data):
+        """Open a dialog to CREATE FOREIGN TABLE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Foreign Tables are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            # Get foreign servers
+            cursor.execute("SELECT srvname FROM pg_foreign_server ORDER BY srvname")
+            servers = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateForeignTableDialog(self.manager, schemas, servers, db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                columns = []
+                for col in data.get('columns', []):
+                    columns.append(f"{col['name']} {col['type']}")
+                
+                columns_str = ', '.join(columns)
+                
+                server_options = []
+                for key, value in data.get('server_options', {}).items():
+                    server_options.append(f"{key} '{value}'")
+                
+                server_options_str = ', '.join(server_options) if server_options else ''
+                
+                foreign_table = data.get('foreign_table', '')
+                if foreign_table:
+                    foreign_table_str = f"OPTIONS (table_name '{foreign_table}')"
+                else:
+                    foreign_table_str = ''
+                
+                sql = f'''CREATE FOREIGN TABLE "{data["schema"]}"."{data["name"]}" ({columns_str})
+SERVER "{data["server"]}"
+{foreign_table_str}
+{server_options_str};'''
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Foreign Table", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Foreign Table:\n{e}")
 
     def open_psql_tool(self, item_data):
         """Open PSQL Tool for the connection (placeholder for terminal/console access)."""
@@ -1575,6 +1858,20 @@ class ConnectionActions:
                 lanname AS name,
                 'Language' AS type
             FROM pg_language
+
+            UNION ALL
+
+            -- Triggers
+            SELECT 
+                n.nspname AS schema,
+                t.tgname || ' ON ' || c.relname AS name,
+                'Trigger' AS type
+            FROM pg_trigger t
+            JOIN pg_class c ON t.tgrelid = c.oid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname NOT LIKE 'pg_%%' 
+            AND n.nspname != 'information_schema'
+            AND NOT t.tgisinternal
         ) sub
         WHERE name ILIKE %s
         ORDER BY type, schema, name
@@ -1664,6 +1961,85 @@ class ConnectionActions:
         # Expand "Schemas"
         tree.expand(schemas_root.index())
         
+        if obj_type == "Trigger":
+            parts = name.split(" ON ")
+            trigger_name = parts[0] if len(parts) > 0 else name
+            table_name = parts[1] if len(parts) > 1 else None
+            
+            if not table_name:
+                return
+                
+            # Navigate to Schema
+            schema_item = None
+            for i in range(schemas_root.rowCount()):
+                item = schemas_root.child(i)
+                if item and item.text() == schema:
+                    schema_item = item
+                    break
+            if not schema_item:
+                return
+            tree.expand(schema_item.index())
+            
+            # Load schema if not loaded
+            if schema_item.rowCount() == 1 and schema_item.child(0).text() == "Loading...":
+                self.manager.table_details_loader.load_tables_on_expand(schema_item.index())
+                
+            # Navigate to "Tables" group
+            tables_group = None
+            for i in range(schema_item.rowCount()):
+                item = schema_item.child(i)
+                if item and item.text() == "Tables":
+                    tables_group = item
+                    break
+            if not tables_group:
+                return
+            tree.expand(tables_group.index())
+            
+            if tables_group.rowCount() == 1 and tables_group.child(0).text() == "Loading...":
+                self.manager.table_details_loader.load_tables_on_expand(tables_group.index())
+                
+            # Navigate to the Table item
+            table_item = None
+            for i in range(tables_group.rowCount()):
+                item = tables_group.child(i)
+                if item and item.text() == table_name:
+                    table_item = item
+                    break
+            if not table_item:
+                return
+            tree.expand(table_item.index())
+            
+            # Expand table node if not loaded
+            if table_item.rowCount() == 1 and table_item.child(0).text() == "Loading...":
+                self.manager.table_details_loader.load_tables_on_expand(table_item.index())
+                
+            # Navigate to "Triggers" group folder
+            triggers_group = None
+            for i in range(table_item.rowCount()):
+                item = table_item.child(i)
+                # The text is "Triggers (count)", so we check if it starts with "Triggers"
+                if item and item.text().startswith("Triggers"):
+                    triggers_group = item
+                    break
+            if not triggers_group:
+                return
+            tree.expand(triggers_group.index())
+            
+            # Navigate to the Trigger item
+            target_item = None
+            for i in range(triggers_group.rowCount()):
+                item = triggers_group.child(i)
+                # The item text can be trigger_name or trigger_name + " (disabled)"
+                if item and (item.text() == trigger_name or item.text().startswith(trigger_name + " ")):
+                    target_item = item
+                    break
+                    
+            if target_item:
+                tree.setCurrentIndex(target_item.index())
+                tree.scrollTo(target_item.index())
+                self.manager.main_window.activateWindow()
+            return
+
         # 2. Find the specific Schema
         schema_item = None
         for i in range(schemas_root.rowCount()):
@@ -1696,7 +2072,7 @@ class ConnectionActions:
 
         # Check if we need to load children (if they are still "Loading...")
         if schema_item.rowCount() == 1 and schema_item.child(0).text() == "Loading...":
-            self.manager.schema_loader.load_tables_on_expand(schema_item.index())
+            self.manager.table_details_loader.load_tables_on_expand(schema_item.index())
 
         # Find the group node
         group_node = None
@@ -1714,7 +2090,7 @@ class ConnectionActions:
         
         # Check if group needs loading
         if group_node.rowCount() == 1 and group_node.child(0).text() == "Loading...":
-            self.manager.schema_loader.load_tables_on_expand(group_node.index())
+            self.manager.table_details_loader.load_tables_on_expand(group_node.index())
 
         # 4. Find the object itself
         target_name = name

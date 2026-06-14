@@ -6,6 +6,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt
 
+class LeftAlignedStatsModel(QStandardItemModel):
+    """Forces left-aligned column headers in the statistics table."""
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
+            return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        return super().headerData(section, orientation, role)
+
 class StatisticsTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -16,7 +23,7 @@ class StatisticsTab(QWidget):
         self.title_label.setObjectName("dialogSubtitle")
         self.layout.addWidget(self.title_label)
         
-        self.model = QStandardItemModel()
+        self.model = LeftAlignedStatsModel()
         self.model.setHorizontalHeaderLabels(["Property", "Value"])
         
         self.view = QTableView()
@@ -37,11 +44,16 @@ class StatisticsTab(QWidget):
             self.clear_stats()
             
         if rows:
+            _align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
             # If multiple rows, change to table view mode
             if len(rows) > 1:
                 self.model.setHorizontalHeaderLabels([c.replace('_', ' ').capitalize() for c in columns])
                 for row in rows:
-                    items = [QStandardItem(str(val) if val is not None else "-") for val in row]
+                    items = []
+                    for val in row:
+                        item = QStandardItem(str(val) if val is not None else "-")
+                        item.setTextAlignment(_align)
+                        items.append(item)
                     self.model.appendRow(items)
             else:
                 # Single row: Key-Value mode
@@ -49,7 +61,9 @@ class StatisticsTab(QWidget):
                 for col_name, value in zip(columns, row):
                     pretty_name = col_name.replace('_', ' ').capitalize()
                     item_name = QStandardItem(pretty_name)
+                    item_name.setTextAlignment(_align)
                     item_value = QStandardItem(str(value) if value is not None else "-")
+                    item_value.setTextAlignment(_align)
                     self.model.appendRow([item_name, item_value])
         else:
             self.model.appendRow([QStandardItem("No statistics available"), QStandardItem("")])

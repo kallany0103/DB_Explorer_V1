@@ -52,7 +52,7 @@ class InspectorWorker(QRunnable):
         
         # Only treat as group if type is explicitly a group type or if obj_type is not a specific object type
         # Prioritize explicit object types (table, view, schema, function, etc.) over group_name
-        is_specific_object = obj_type in ['table', 'view', 'schema', 'function', 'sequence', 'connection', 'extension', 'language', 'fdw', 'foreign_server', 'user_mapping']
+        is_specific_object = obj_type in ['table', 'view', 'schema', 'function', 'sequence', 'connection', 'extension', 'language', 'fdw', 'foreign_server', 'user_mapping', 'trigger']
         
         if group_name and not is_specific_object:
             data["type"] = "group"
@@ -66,6 +66,7 @@ class InspectorWorker(QRunnable):
             elif group_name.startswith("Columns"): query = pg_queries.LIST_COLUMNS
             elif group_name.startswith("Constraints"): query = pg_queries.LIST_CONSTRAINTS
             elif group_name.startswith("Indexes"): query = pg_queries.LIST_INDEXES
+            elif group_name == "Triggers": query = pg_queries.LIST_TRIGGERS
             
             if query:
                 table_name = self.item_data.get('table_name')
@@ -94,9 +95,10 @@ class InspectorWorker(QRunnable):
                 columns.append({
                     "name": row[0],
                     "data_type": row[1],
-                    "nullable": row[2],
-                    "default_value": row[3],
-                    "comment": row[4]
+                    "is_pk": row[2],
+                    "nullable": row[3],
+                    "default_value": row[4],
+                    "comment": row[5]
                 })
             data["columns"] = columns
             
@@ -166,6 +168,40 @@ class InspectorWorker(QRunnable):
                     "Short Name": self.item_data.get('short_name', '')
                 }
             data["sql"] = "-- Connection details fetched directly from database connection parameters."
+
+        elif obj_type == 'trigger':
+            trigger_name = self.item_data.get('trigger_name') or self.obj_name
+            cursor.execute(pg_queries.GET_TRIGGER_DETAILS, (schema_name, trigger_name))
+            row = cursor.fetchone()
+            if row:
+                cols = [desc[0] for desc in cursor.description]
+                row_dict = dict(zip(cols, row))
+                
+                # Format enabled status (O=origin/enabled, D=disabled, A=always, R=replica)
+                status_map = {
+                    'O': 'Enabled (fires normally)',
+                    't': 'Enabled',
+                    'D': 'Disabled',
+                    'A': 'Enabled (always)',
+                    'R': 'Enabled (replica only)'
+                }
+                enabled_val = row_dict.get('enabled')
+                row_dict['status'] = status_map.get(enabled_val, f"Unknown ({enabled_val})")
+                
+                # SQL definition formatting
+                definition = row_dict.get('definition')
+                table_name = row_dict.get('table_name')
+                if definition:
+                    data["sql"] = f"-- Trigger: {trigger_name} on {schema_name}.{table_name}\n\n{definition};"
+                else:
+                    data["sql"] = "-- Definition not found."
+                
+                # Remove fields that shouldn't clutter the properties grid
+                for k in ['enabled', 'definition', 'name']:
+                    if k in row_dict:
+                        del row_dict[k]
+                
+                data["details"] = row_dict
 
         return data
 

@@ -1,18 +1,19 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
-    QLineEdit, QComboBox, QTextEdit, QTableWidget, QHeaderView, 
-    QAbstractItemView, QHBoxLayout, QPushButton, QTableWidgetItem, QMessageBox, QLabel
+    QLineEdit, QComboBox, QLabel, QPlainTextEdit, QMessageBox, 
+    QHBoxLayout, QPushButton, QTableWidget, QHeaderView, 
+    QAbstractItemView, QTableWidgetItem
 )
 from PySide6.QtCore import Qt
 
-class CreateTableDialog(QDialog):
-    def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
+class CreateForeignTableDialog(QDialog):
+    def __init__(self, parent=None, schemas=None, servers=None, db_type="postgres"):
         super().__init__(parent)
-        self.setWindowTitle(f"Create Table ({db_type.capitalize()})")
-        self.resize(650, 520)
+        self.setWindowTitle(f"Create Foreign Table ({db_type.capitalize()})")
+        self.resize(700, 650)
         self.db_type = db_type
+        self.servers = servers or []
         
-        from PySide6.QtCore import Qt
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 
@@ -38,9 +39,9 @@ class CreateTableDialog(QDialog):
         main_layout.setSpacing(14)
 
         # Header
-        title_lbl = QLabel("Create Table")
+        title_lbl = QLabel("Create Foreign Table")
         title_lbl.setObjectName("dialogTitle")
-        subtitle_lbl = QLabel(f"Define a new table in the <b>{db_type}</b> database.")
+        subtitle_lbl = QLabel(f"Define a new foreign table in the <b>{db_type}</b> database.")
         subtitle_lbl.setObjectName("dialogSubtitle")
         subtitle_lbl.setTextFormat(Qt.TextFormat.RichText)
 
@@ -50,44 +51,56 @@ class CreateTableDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # --- Tab 1: General (Name, Owner, Schema) ---
+        # --- Tab 1: General (Name, Schema, Server) ---
         self.general_tab = QWidget()
         gen_layout = QFormLayout(self.general_tab)
         gen_layout.setContentsMargins(15, 15, 15, 15)
-        gen_layout.setSpacing(10)
+        gen_layout.setSpacing(12)
         
         self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("table_name")
-        self.owner_input = QLineEdit(current_user)
+        self.name_input.setPlaceholderText("foreign_table_name")
         self.schema_combo = QComboBox()
         self.schema_combo.setEditable(True)
+        self.server_combo = QComboBox()
+        self.server_combo.setEditable(True)
         
         if schemas:
             self.schema_combo.addItems(schemas)
         else:
             self.schema_combo.addItem("public" if db_type == 'postgres' else "main")
             
-        self.comment_input = QTextEdit()
-        self.comment_input.setPlaceholderText("Optional description")
-        self.comment_input.setMaximumHeight(80)
-
+        if self.servers:
+            self.server_combo.addItems(self.servers)
+        else:
+            self.server_combo.addItem("foreign_server")
+            
         gen_layout.addRow("Name:", self.name_input)
-        
         if self.db_type == 'postgres':
-            gen_layout.addRow("Owner:", self.owner_input)
             gen_layout.addRow("Schema:", self.schema_combo)
-        
-        gen_layout.addRow("Comment:", self.comment_input)
+        gen_layout.addRow("Foreign Server:", self.server_combo)
         
         self.tabs.addTab(self.general_tab, "General")
 
-        # --- Tab 2: Columns ---
+        # --- Tab 2: Foreign Options ---
+        self.options_tab = QWidget()
+        opt_layout = QFormLayout(self.options_tab)
+        opt_layout.setContentsMargins(15, 15, 15, 15)
+        opt_layout.setSpacing(12)
+        
+        self.foreign_table_input = QLineEdit()
+        self.foreign_table_input.setPlaceholderText("remote_table_name (optional)")
+        
+        opt_layout.addRow("Foreign Table Name:", self.foreign_table_input)
+        
+        self.tabs.addTab(self.options_tab, "Foreign Options")
+
+        # --- Tab 3: Columns ---
         self.columns_tab = QWidget()
         col_layout = QVBoxLayout(self.columns_tab)
         col_layout.setContentsMargins(15, 15, 15, 15)
         
-        self.col_table = QTableWidget(0, 3)
-        self.col_table.setHorizontalHeaderLabels(["Name", "Data Type", "Primary Key?"])
+        self.col_table = QTableWidget(0, 2)
+        self.col_table.setHorizontalHeaderLabels(["Name", "Data Type"])
         self.col_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.col_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.col_table.setAlternatingRowColors(True)
@@ -106,10 +119,23 @@ class CreateTableDialog(QDialog):
         col_layout.addLayout(btn_layout)
         col_layout.addWidget(self.col_table)
         
-        default_id_type = "SERIAL" if self.db_type == 'postgres' else "INTEGER"
-        self.add_column_row("id", default_id_type, True)
-        
         self.tabs.addTab(self.columns_tab, "Columns")
+
+        # --- Tab 4: Server Options ---
+        self.server_options_tab = QWidget()
+        server_opt_layout = QVBoxLayout(self.server_options_tab)
+        server_opt_layout.setContentsMargins(15, 15, 15, 15)
+        
+        opt_lbl = QLabel("Server Options (key=value pairs, one per line):")
+        opt_lbl.setStyleSheet("color: #4b5563; font-weight: 500;")
+        server_opt_layout.addWidget(opt_lbl)
+        
+        self.server_options_editor = QPlainTextEdit()
+        self.server_options_editor.setPlaceholderText("option1=value1\noption2=value2")
+        self.server_options_editor.setMaximumHeight(120)
+        
+        server_opt_layout.addWidget(self.server_options_editor)
+        self.tabs.addTab(self.server_options_tab, "Server Options")
 
         # --- Footer Buttons ---
         footer_btn_layout = QHBoxLayout()
@@ -127,7 +153,7 @@ class CreateTableDialog(QDialog):
         self.save_btn.clicked.connect(self.validate_and_accept)
         self.cancel_btn.clicked.connect(self.reject)
 
-    def add_column_row(self, name="", type="", is_pk=False):
+    def add_column_row(self, name="", type=""):
         row = self.col_table.rowCount()
         self.col_table.insertRow(row)
         
@@ -136,12 +162,6 @@ class CreateTableDialog(QDialog):
 
         self.col_table.setItem(row, 0, QTableWidgetItem(name))
         self.col_table.setItem(row, 1, QTableWidgetItem(type))
-        
-        pk_item = QTableWidgetItem()
-        pk_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-        pk_item.setCheckState(Qt.CheckState.Checked if is_pk else Qt.CheckState.Unchecked)
-        pk_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.col_table.setItem(row, 2, pk_item)
 
     def remove_column_row(self):
         current_row = self.col_table.currentRow()
@@ -150,7 +170,10 @@ class CreateTableDialog(QDialog):
 
     def validate_and_accept(self):
         if not self.name_input.text().strip():
-            QMessageBox.warning(self, "Error", "Table Name is required!")
+            QMessageBox.warning(self, "Error", "Foreign Table Name is required!")
+            return
+        if not self.server_combo.currentText().strip():
+            QMessageBox.warning(self, "Error", "Foreign Server is required!")
             return
         
         # Check if at least one column is defined
@@ -166,24 +189,30 @@ class CreateTableDialog(QDialog):
 
         self.accept()
 
-    def get_sql_data(self):
+    def get_data(self):
         columns = []
         for r in range(self.col_table.rowCount()):
             name_item = self.col_table.item(r, 0)
             type_item = self.col_table.item(r, 1)
-            pk_item = self.col_table.item(r, 2)
             
             if name_item:
                 name = name_item.text().strip()
                 dtype = type_item.text().strip() if type_item else ""
-                is_pk = pk_item.checkState() == Qt.CheckState.Checked if pk_item else False
                 if name:
-                    columns.append({"name": name, "type": dtype, "pk": is_pk})
-                
+                    columns.append({"name": name, "type": dtype})
+        
+        # Parse server options
+        server_options = {}
+        for line in self.server_options_editor.toPlainText().strip().split('\n'):
+            if '=' in line:
+                key, value = line.split('=', 1)
+                server_options[key.strip()] = value.strip()
+        
         return {
             "name": self.name_input.text().strip(),
-            "owner": self.owner_input.text().strip(),
             "schema": self.schema_combo.currentText(),
-            "columns": columns
+            "server": self.server_combo.currentText(),
+            "foreign_table": self.foreign_table_input.text().strip(),
+            "columns": columns,
+            "server_options": server_options
         }
-
