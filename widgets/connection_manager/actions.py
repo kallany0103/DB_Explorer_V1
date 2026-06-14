@@ -29,6 +29,10 @@ from dialogs import (
     SearchObjectsDialog,
     DatabaseStatisticsDialog,
     CreateTriggerDialog,
+    CreateFunctionDialog,
+    CreateTriggerFunctionDialog,
+    CreateSequenceDialog,
+    CreateForeignTableDialog,
 )
 from dialogs.properties import (
     TablePropertiesDialog,
@@ -1041,7 +1045,8 @@ class ConnectionActions:
                 dialog = CreateViewDialog(self.manager, schemas, db_type="postgres")
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     data = dialog.get_data()
-                    sql = f'CREATE OR REPLACE VIEW "{data["schema"]}"."{data["name"]}" AS\n{data["definition"]};'
+                    cols = f" ({data['columns']})" if data.get('columns') else ""
+                    sql = f'CREATE OR REPLACE VIEW "{data["schema"]}"."{data["name"]}"{cols} AS\n{data["definition"]};'
 
                     conn = db.create_postgres_connection(conn_data)
                     cursor = conn.cursor()
@@ -1059,7 +1064,8 @@ class ConnectionActions:
                 dialog = CreateViewDialog(self.manager, schemas=None, db_type="sqlite")
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     data = dialog.get_data()
-                    sql = f'CREATE VIEW "{data["name"]}" AS\n{data["definition"]};'
+                    cols = f" ({data['columns']})" if data.get('columns') else ""
+                    sql = f'CREATE VIEW "{data["name"]}"{cols} AS\n{data["definition"]};'
 
                     conn = db.create_sqlite_connection(conn_data.get('db_path'))
                     cursor = conn.cursor()
@@ -1178,6 +1184,283 @@ class ConnectionActions:
 
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to create Trigger:\n{e}")
+
+    def open_create_function_dialog(self, item_data):
+        """Open a dialog to CREATE FUNCTION on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Functions are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateFunctionDialog(self.manager, schemas, current_user=conn_data.get('user', 'postgres'), db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                params = []
+                for param in data.get('parameters', []):
+                    mode = param.get('mode', '')
+                    if mode:
+                        params.append(f"{mode} {param['name']} {param['type']}")
+                    else:
+                        params.append(f"{param['name']} {param['type']}")
+                
+                params_str = ', '.join(params) if params else ''
+                
+                volatility = data.get('volatility', 'VOLATILE')
+                leakproof = 'LEAKPROOF' if data.get('leakproof') else ''
+                security = 'SECURITY DEFINER' if data.get('security_definer') else 'SECURITY INVOKER'
+                
+                sql = f'''CREATE OR REPLACE FUNCTION "{data["schema"]}"."{data["name"]}"({params_str})
+RETURNS {data["return_type"]}
+LANGUAGE {data["language"]}
+{volatility}
+{leakproof}
+{security}
+AS $$
+{data["body"]}
+$$;'''
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Function", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Function:\n{e}")
+
+    def open_create_trigger_function_dialog(self, item_data):
+        """Open a dialog to CREATE TRIGGER FUNCTION on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Trigger Functions are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateTriggerFunctionDialog(self.manager, schemas, current_user=conn_data.get('user', 'postgres'), db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                volatility = data.get('volatility', 'VOLATILE')
+                leakproof = 'LEAKPROOF' if data.get('leakproof') else ''
+                security = 'SECURITY DEFINER' if data.get('security_definer') else 'SECURITY INVOKER'
+                
+                sql = f'''CREATE OR REPLACE FUNCTION "{data["schema"]}"."{data["name"]}"()
+RETURNS TRIGGER
+LANGUAGE {data["language"]}
+{volatility}
+{leakproof}
+{security}
+AS $$
+{data["body"]}
+$$;'''
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Trigger Function", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Trigger Function:\n{e}")
+
+    def open_create_sequence_dialog(self, item_data):
+        """Open a dialog to CREATE SEQUENCE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Sequences are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateSequenceDialog(self.manager, schemas, current_user=conn_data.get('user', 'postgres'), db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                options = []
+                options.append(f"START WITH {data['start_value']}")
+                options.append(f"INCREMENT BY {data['increment']}")
+                
+                if data.get('min_value'):
+                    options.append(f"MINVALUE {data['min_value']}")
+                else:
+                    options.append("NO MINVALUE")
+                
+                if data.get('max_value'):
+                    options.append(f"MAXVALUE {data['max_value']}")
+                else:
+                    options.append("NO MAXVALUE")
+                
+                options.append(f"CACHE {data['cache']}")
+                
+                if data.get('cycle'):
+                    options.append("CYCLE")
+                else:
+                    options.append("NO CYCLE")
+                
+                if data.get('owned_by'):
+                    options.append(f"OWNED BY {data['owned_by']}")
+                
+                options_str = ' '.join(options)
+                
+                sql = f'CREATE SEQUENCE "{data["schema"]}"."{data["name"]}" {options_str};'
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Sequence", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Sequence:\n{e}")
+
+    def open_create_foreign_table_dialog(self, item_data):
+        """Open a dialog to CREATE FOREIGN TABLE on a PostgreSQL connection."""
+        if not item_data:
+            return
+
+        db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data')
+
+        if db_type != 'postgres' or not conn_data:
+            QMessageBox.warning(self.manager, "Not Supported", "Foreign Tables are only supported for PostgreSQL.")
+            return
+
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            
+            # Get schemas
+            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            # Get foreign servers
+            cursor.execute("SELECT srvname FROM pg_foreign_server ORDER BY srvname")
+            servers = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+
+            dialog = CreateForeignTableDialog(self.manager, schemas, servers, db_type="postgres")
+            
+            # Pre-fill schema if available from item_data
+            schema_name = item_data.get('schema_name', 'public')
+            if schema_name:
+                index = dialog.schema_combo.findText(schema_name)
+                if index >= 0:
+                    dialog.schema_combo.setCurrentIndex(index)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                
+                # Generate SQL
+                columns = []
+                for col in data.get('columns', []):
+                    columns.append(f"{col['name']} {col['type']}")
+                
+                columns_str = ', '.join(columns)
+                
+                server_options = []
+                for key, value in data.get('server_options', {}).items():
+                    server_options.append(f"{key} '{value}'")
+                
+                server_options_str = ', '.join(server_options) if server_options else ''
+                
+                foreign_table = data.get('foreign_table', '')
+                if foreign_table:
+                    foreign_table_str = f"OPTIONS (table_name '{foreign_table}')"
+                else:
+                    foreign_table_str = ''
+                
+                sql = f'''CREATE FOREIGN TABLE "{data["schema"]}"."{data["name"]}" ({columns_str})
+SERVER "{data["server"]}"
+{foreign_table_str}
+{server_options_str};'''
+
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
+
+                self._notify_creation_success(data["name"], "Foreign Table", conn_data)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create Foreign Table:\n{e}")
 
     def open_psql_tool(self, item_data):
         """Open PSQL Tool for the connection (placeholder for terminal/console access)."""

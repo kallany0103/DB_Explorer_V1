@@ -95,9 +95,10 @@ class InspectorWorker(QRunnable):
                 columns.append({
                     "name": row[0],
                     "data_type": row[1],
-                    "nullable": row[2],
-                    "default_value": row[3],
-                    "comment": row[4]
+                    "is_pk": row[2],
+                    "nullable": row[3],
+                    "default_value": row[4],
+                    "comment": row[5]
                 })
             data["columns"] = columns
             

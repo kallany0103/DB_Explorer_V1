@@ -34,6 +34,11 @@ GET_TABLE_COLUMNS = """
     SELECT 
         a.attname as name,
         pg_catalog.format_type(a.atttypid, a.atttypmod) as data_type,
+        EXISTS (
+            SELECT 1 FROM pg_constraint pk
+            JOIN pg_attribute a2 ON a2.attnum = ANY(pk.conkey) AND a2.attrelid = pk.conrelid
+            WHERE pk.contype = 'p' AND pk.conrelid = a.attrelid AND a2.attnum = a.attnum
+        ) as is_pk,
         NOT a.attnotnull as nullable,
         pg_get_expr(d.adbin, d.adrelid) as default_value,
         col_description(a.attrelid, a.attnum) as comment

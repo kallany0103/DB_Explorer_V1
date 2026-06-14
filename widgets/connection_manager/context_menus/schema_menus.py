@@ -383,11 +383,19 @@ class SchemaMenuBuilder:
             ),
             "Functions": (
                 "Create Function...", "mdi.function-variant",
-                lambda: self.manager.script_generator.open_create_function_template(item_data)
+                lambda: self.manager.connection_actions.open_create_function_dialog(item_data)
             ),
             "Trigger Functions": (
                 "Create Trigger Function...", "mdi.lightning-bolt-outline",
-                lambda: self.manager.script_generator.open_create_trigger_function_template(item_data)
+                lambda: self.manager.connection_actions.open_create_trigger_function_dialog(item_data)
+            ),
+            "Sequences": (
+                "Create Sequence...", "mdi.numeric-1-box-multiple-outline",
+                lambda: self.manager.connection_actions.open_create_sequence_dialog(item_data)
+            ),
+            "Foreign Tables": (
+                "Create Foreign Table...", "mdi.table-network",
+                lambda: self.manager.connection_actions.open_create_foreign_table_dialog(item_data)
             ),
             "Materialized Views": (
                 "Create Materialized View...", "mdi.eye-settings-outline",
@@ -396,7 +404,6 @@ class SchemaMenuBuilder:
         }
         _stubbed = {
             "Procedures":           ("Create Procedure...",          "mdi.cog-play-outline"),
-            "Sequences":            ("Create Sequence...",           "mdi.numeric-1-box-multiple-outline"),
             "Aggregates":           ("Create Aggregate...",          "mdi.sigma"),
             "Collations":           ("Create Collation...",          "mdi.sort-alphabetical-ascending"),
             "Domains":              ("Create Domain...",             "mdi.shape-outline"),
@@ -404,7 +411,6 @@ class SchemaMenuBuilder:
             "Operators":            ("Create Operator...",           "mdi.math-compass"),
             "Rules":                ("Create Rule...",               "mdi.format-list-checks"),
             "Triggers":             ("Create Trigger...",            "mdi.lightning-bolt-outline"),
-            "Foreign Tables":       ("Create Foreign Table...",      "mdi.table-network"),
         }
 
         if group in _wired:

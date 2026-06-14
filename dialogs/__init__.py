@@ -16,6 +16,10 @@ from dialogs.properties import (
 )
 from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
 from dialogs.create_trigger_dialog import CreateTriggerDialog
+from dialogs.create_function_dialog import CreateFunctionDialog
+from dialogs.create_trigger_function_dialog import CreateTriggerFunctionDialog
+from dialogs.create_sequence_dialog import CreateSequenceDialog
+from dialogs.create_foreign_table_dialog import CreateForeignTableDialog
 from dialogs.preferences_dialog import PreferencesDialog
 
 __all__ = [
@@ -41,5 +45,9 @@ __all__ = [
 
 	"CreateMaterializedViewDialog",
 	"CreateTriggerDialog",
+	"CreateFunctionDialog",
+	"CreateTriggerFunctionDialog",
+	"CreateSequenceDialog",
+	"CreateForeignTableDialog",
 	"PreferencesDialog",
 ]

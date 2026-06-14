@@ -3,7 +3,8 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QScrollArea, 
     QFormLayout, QFrame, QTableView, QHeaderView, QAbstractItemView,
-    QSizePolicy, QCheckBox, QPushButton, QProgressBar, QTabWidget
+    QSizePolicy, QCheckBox, QPushButton, QProgressBar, QTabWidget,
+    QStyledItemDelegate, QComboBox, QMessageBox
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor
@@ -11,6 +12,31 @@ import qtawesome as qta
 from dialogs.properties import pg_queries
 from workers.inspector_workers import InspectorWorker
 import db
+
+class DataTypeDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.data_types = [
+            "integer", "bigint", "smallint", "boolean", "character varying", "character",
+            "text", "date", "timestamp", "timestamp without time zone", "timestamp with time zone",
+            "time", "time without time zone", "numeric", "double precision", "real",
+            "json", "jsonb", "uuid", "bytea", "serial", "bigserial", "smallserial"
+        ]
+
+    def createEditor(self, parent, option, index):
+        editor = QComboBox(parent)
+        editor.addItems(self.data_types)
+        editor.setEditable(True)
+        return editor
+
+    def setEditorData(self, editor, index):
+        value = index.model().data(index, Qt.ItemDataRole.EditRole)
+        editor.setCurrentText(value)
+
+    def setModelData(self, editor, model, index):
+        value = editor.currentText()
+        model.setData(index, value, Qt.ItemDataRole.EditRole)
+
 
 HIDDEN_PROPERTY_KEYS = frozenset({
     "oid", "relkind", "reltablespace", "nspname", "sql", "schema_name",
@@ -324,22 +350,168 @@ class PropertiesWorkbench(QWidget):
         layout.setSpacing(10)
         
         table = PropertyTable()
-        model = QStandardItemModel()
-        model.setHorizontalHeaderLabels(["Name", "Data type", "Nullable", "Default", "Comment"])
+        table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
         
-        columns = data.get("columns", [])
-        for col in columns:
-            items = [QStandardItem(str(col.get("name", ""))), 
-                     QStandardItem(str(col.get("data_type", ""))),
-                     QStandardItem("YES" if col.get("nullable", True) else "NO"),
-                     QStandardItem(str(col.get("default_value", "")) if col.get("default_value") else ""),
-                     QStandardItem(str(col.get("comment", "")) if col.get("comment") else "")]
-            model.appendRow(items)
+        self.columns_model = QStandardItemModel()
+        self.columns_model.setHorizontalHeaderLabels(["Name", "Data type", "PK", "Not Null", "Default", "Comment"])
+        self.original_columns_data = data.get("columns", [])
         
-        table.setModel(model)
+        for col in self.original_columns_data:
+            name_item = QStandardItem(str(col.get("name", "")))
+            type_item = QStandardItem(str(col.get("data_type", "")))
+            
+            pk_item = QStandardItem()
+            pk_item.setCheckable(True)
+            pk_item.setEditable(False)
+            pk_item.setCheckState(Qt.CheckState.Checked if col.get("is_pk") else Qt.CheckState.Unchecked)
+            
+            not_null_item = QStandardItem()
+            not_null_item.setCheckable(True)
+            not_null_item.setEditable(False)
+            not_null_item.setCheckState(Qt.CheckState.Checked if not col.get("nullable", True) else Qt.CheckState.Unchecked)
+            
+            default_item = QStandardItem(str(col.get("default_value", "")) if col.get("default_value") else "")
+            comment_item = QStandardItem(str(col.get("comment", "")) if col.get("comment") else "")
+            
+            self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
+        
+        table.setModel(self.columns_model)
+        table.setItemDelegateForColumn(1, DataTypeDelegate(table))
         table.resizeColumnsToContents()
         layout.addWidget(table)
+        
+        btn_layout = QHBoxLayout()
+        add_col_btn = QPushButton("Add Column")
+        add_col_btn.setIcon(qta.icon('mdi.plus', color='#10b981'))
+        add_col_btn.clicked.connect(self._add_column)
+        
+        save_btn = QPushButton("Save Changes")
+        save_btn.setIcon(qta.icon('mdi.content-save', color='#3b82f6'))
+        save_btn.clicked.connect(self._save_column_changes)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(add_col_btn)
+        btn_layout.addWidget(save_btn)
+        layout.addLayout(btn_layout)
+        
         return widget
+
+    def _add_column(self):
+        name_item = QStandardItem("new_column")
+        type_item = QStandardItem("integer")
+        
+        pk_item = QStandardItem()
+        pk_item.setCheckable(True)
+        pk_item.setEditable(False)
+        pk_item.setCheckState(Qt.CheckState.Unchecked)
+        
+        not_null_item = QStandardItem()
+        not_null_item.setCheckable(True)
+        not_null_item.setEditable(False)
+        not_null_item.setCheckState(Qt.CheckState.Unchecked)
+        
+        default_item = QStandardItem("")
+        comment_item = QStandardItem("")
+        
+        self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
+
+    def _save_column_changes(self):
+        conn_data = self.item_data.get('conn_data') or self.item_data
+        pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
+        try:
+            conn = db.create_postgres_connection(**pg_conn_data)
+            cursor = conn.cursor()
+        except Exception as e:
+            QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
+            return
+            
+        schema_name = self.item_data.get('schema_name', 'public')
+        table_name = self.obj_name
+        
+        alter_statements = []
+        new_pk_columns = []
+        old_pk_columns = [col['name'] for col in self.original_columns_data if col.get('is_pk')]
+        
+        for row in range(self.columns_model.rowCount()):
+            name = self.columns_model.item(row, 0).text()
+            data_type = self.columns_model.item(row, 1).text()
+            is_pk = self.columns_model.item(row, 2).checkState() == Qt.CheckState.Checked
+            not_null = self.columns_model.item(row, 3).checkState() == Qt.CheckState.Checked
+            default_val = self.columns_model.item(row, 4).text()
+            comment = self.columns_model.item(row, 5).text()
+            
+            if is_pk:
+                new_pk_columns.append(name)
+            
+            if row < len(self.original_columns_data):
+                # Existing column
+                orig = self.original_columns_data[row]
+                orig_name = orig['name']
+                if name != orig_name:
+                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" RENAME COLUMN "{orig_name}" TO "{name}";')
+                
+                if data_type != orig['data_type']:
+                    # Use USING clause to attempt cast if possible
+                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" TYPE {data_type} USING "{name}"::{data_type};')
+                
+                if not_null != (not orig.get('nullable', True)):
+                    action = "SET NOT NULL" if not_null else "DROP NOT NULL"
+                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" {action};')
+                
+                orig_default = str(orig.get('default_value', '')) if orig.get('default_value') else ""
+                if default_val != orig_default:
+                    if default_val:
+                        alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" SET DEFAULT {default_val};')
+                    else:
+                        alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" DROP DEFAULT;')
+                        
+                orig_comment = str(orig.get('comment', '')) if orig.get('comment') else ""
+                if comment != orig_comment:
+                    alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
+            else:
+                # New column
+                stmt = f'ALTER TABLE "{schema_name}"."{table_name}" ADD COLUMN "{name}" {data_type}'
+                if not_null:
+                    stmt += " NOT NULL"
+                if default_val:
+                    stmt += f" DEFAULT {default_val}"
+                stmt += ";"
+                alter_statements.append(stmt)
+                if comment:
+                    alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
+                    
+        # Handle PK constraint change
+        if new_pk_columns != old_pk_columns:
+            # Drop old constraint
+            cursor.execute("""
+                SELECT conname FROM pg_constraint 
+                WHERE contype = 'p' AND conrelid = (SELECT oid FROM pg_class WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s) AND relname = %s)
+            """, (schema_name, table_name))
+            pk_res = cursor.fetchone()
+            if pk_res:
+                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP CONSTRAINT "{pk_res[0]}";')
+            
+            if new_pk_columns:
+                pk_cols_str = ", ".join([f'"{c}"' for c in new_pk_columns])
+                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ADD PRIMARY KEY ({pk_cols_str});')
+                
+        if not alter_statements:
+            QMessageBox.information(self, "No Changes", "No column changes detected.")
+            conn.close()
+            return
+            
+        try:
+            for stmt in alter_statements:
+                cursor.execute(stmt)
+            conn.commit()
+            QMessageBox.information(self, "Success", "Table columns updated successfully.")
+            self.refresh_properties()
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Execution Error", f"Failed to execute changes:\n{e}\n\nTransaction rolled back.")
+        finally:
+            conn.close()
+
 
     def _create_constraints_tab(self, data):
         widget = QWidget()

@@ -25,8 +25,8 @@ class CreateMaterializedViewDialog(QDialog):
         if hasattr(parent, '_get_dialog_style'):
             self.setStyleSheet(parent._get_dialog_style() + """
                 QTabWidget::pane { border: 1px solid #d1d5db; border-radius: 4px; top: -1px; background: white; }
-                QTabBar::tab { background: #f3f4f6; border: 1px solid #d1d5db; padding: 6px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; }
-                QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 600; }
+                QTabBar::tab { background: #f3f4f6; border: 1px solid #d1d5db; padding: 6px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; color: #4b5563; }
+                QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 600; color: #111827; }
                 QPlainTextEdit { border: 1px solid #d1d5db; border-radius: 4px; background: #fafafa; }
             """)
 
@@ -67,7 +67,11 @@ class CreateMaterializedViewDialog(QDialog):
         self.with_no_data_check = QCheckBox("With No Data")
         self.with_no_data_check.setToolTip("Create the materialized view without populating it with data initially.")
             
+        self.columns_input = QLineEdit()
+        self.columns_input.setPlaceholderText("col1, col2 (optional)")
+            
         gen_layout.addRow("Name:", self.name_input)
+        gen_layout.addRow("Columns:", self.columns_input)
         gen_layout.addRow("Schema:", self.schema_combo)
         gen_layout.addRow("", self.with_no_data_check)
         
@@ -121,6 +125,7 @@ class CreateMaterializedViewDialog(QDialog):
     def get_data(self):
         return {
             "name": self.name_input.text().strip(),
+            "columns": self.columns_input.text().strip(),
             "schema": self.schema_combo.currentText(),
             "definition": self.sql_editor.toPlainText().strip(),
             "with_no_data": self.with_no_data_check.isChecked()

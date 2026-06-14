@@ -420,7 +420,7 @@ class ConnectionDialogs:
         title_label.setObjectName("dialogTitle")
         subtitle_label = QLabel("Update the name for this group.")
         subtitle_label.setObjectName("dialogSubtitle")
-        
+
         name_input = QLineEdit()
         name_input.setText(current_name)
         name_input.setPlaceholderText("Group name")
