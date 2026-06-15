@@ -4,10 +4,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QScrollArea, 
     QFormLayout, QFrame, QTableView, QHeaderView, QAbstractItemView,
     QSizePolicy, QCheckBox, QPushButton, QProgressBar, QTabWidget,
-    QStyledItemDelegate, QComboBox, QMessageBox
+    QStyledItemDelegate, QComboBox, QMessageBox, QToolButton
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor, QFont
 import qtawesome as qta
 from dialogs.properties import pg_queries
 from workers.inspector_workers import InspectorWorker
@@ -125,9 +125,37 @@ class PropertyTable(QTableView):
         self.verticalHeader().setVisible(False)
         self.setShowGrid(False)
         self.setStyleSheet("""
-            QTableView { border: 1px solid #e5e7eb; background-color: white; alternate-background-color: #f9fafb; gridline-color: #f3f4f6; border-radius: 4px; }
-            QHeaderView::section { background-color: #f3f4f6; padding: 8px; border: none; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151; }
+            QTableView {
+                border: none;
+                background-color: white;
+                alternate-background-color: #f8fafc;
+                outline: none;
+            }
+            QTableView::item {
+                padding: 6px 10px;
+                border-bottom: 1px solid #f1f5f9;
+                color: #1e293b;
+            }
+            QTableView::item:selected {
+                background-color: #eff6ff;
+                color: #1e40af;
+            }
+            QTableView::item:hover:!selected {
+                background-color: #f0f9ff;
+            }
+            QHeaderView::section {
+                background-color: #f8fafc;
+                padding: 8px 10px;
+                border: none;
+                border-bottom: 2px solid #e2e8f0;
+                font-weight: 600;
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                color: #64748b;
+            }
         """)
+        self.verticalHeader().setDefaultSectionSize(36)
 
 class PropertiesWorkbench(QWidget):
     def __init__(self, main_window):
@@ -345,75 +373,171 @@ class PropertiesWorkbench(QWidget):
 
     def _create_columns_tab(self, data):
         widget = QWidget()
+        widget.setStyleSheet("background-color: white;")
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
-        
-        table = PropertyTable()
-        table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
-        
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # ── Toolbar ───────────────────────────────────────────────────────────
+        toolbar = QFrame()
+        toolbar.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            QPushButton {
+                border: 1px solid #e2e8f0;
+                border-radius: 5px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 500;
+                background-color: white;
+                color: #374151;
+            }
+            QPushButton:hover { background-color: #f0f9ff; border-color: #bfdbfe; color: #1e40af; }
+            QPushButton#saveBtn {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+            }
+            QPushButton#saveBtn:hover { background-color: #2563eb; }
+        """)
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(10, 6, 10, 6)
+        toolbar_layout.setSpacing(6)
+
+        col_count_label = QLabel()
+        col_count_label.setStyleSheet("color: #64748b; font-size: 11px; background: transparent; border: none;")
+        toolbar_layout.addWidget(col_count_label)
+        toolbar_layout.addStretch()
+
+        add_col_btn = QPushButton(" Add Column")
+        add_col_btn.setIcon(qta.icon('mdi.table-column-plus-after', color='#10b981'))
+        add_col_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_col_btn.setFixedHeight(28)
+
+        save_btn = QPushButton(" Save Changes")
+        save_btn.setObjectName("saveBtn")
+        save_btn.setIcon(qta.icon('mdi.content-save-outline', color='white'))
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setFixedHeight(28)
+
+        toolbar_layout.addWidget(add_col_btn)
+        toolbar_layout.addWidget(save_btn)
+        layout.addWidget(toolbar)
+
+        # ── Table ─────────────────────────────────────────────────────────────
+        self.columns_table = PropertyTable()
+        self.columns_table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
+        self.columns_table.horizontalHeader().setStretchLastSection(False)
+
         self.columns_model = QStandardItemModel()
-        self.columns_model.setHorizontalHeaderLabels(["Name", "Data type", "PK", "Not Null", "Default", "Comment"])
+        self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "PK", "Not Null", "Default", "Comment", ""])
         self.original_columns_data = data.get("columns", [])
-        
+
         for col in self.original_columns_data:
-            name_item = QStandardItem(str(col.get("name", "")))
-            type_item = QStandardItem(str(col.get("data_type", "")))
-            
-            pk_item = QStandardItem()
-            pk_item.setCheckable(True)
-            pk_item.setEditable(False)
-            pk_item.setCheckState(Qt.CheckState.Checked if col.get("is_pk") else Qt.CheckState.Unchecked)
-            
-            not_null_item = QStandardItem()
-            not_null_item.setCheckable(True)
-            not_null_item.setEditable(False)
-            not_null_item.setCheckState(Qt.CheckState.Checked if not col.get("nullable", True) else Qt.CheckState.Unchecked)
-            
-            default_item = QStandardItem(str(col.get("default_value", "")) if col.get("default_value") else "")
-            comment_item = QStandardItem(str(col.get("comment", "")) if col.get("comment") else "")
-            
-            self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
-        
-        table.setModel(self.columns_model)
-        table.setItemDelegateForColumn(1, DataTypeDelegate(table))
-        table.resizeColumnsToContents()
-        layout.addWidget(table)
-        
-        btn_layout = QHBoxLayout()
-        add_col_btn = QPushButton("Add Column")
-        add_col_btn.setIcon(qta.icon('mdi.plus', color='#10b981'))
+            self._append_column_row(col.get("name", ""),
+                                    col.get("data_type", ""),
+                                    col.get("is_pk", False),
+                                    not col.get("nullable", True),
+                                    col.get("default_value") or "",
+                                    col.get("comment") or "",
+                                    orig_name=col.get("name", ""))
+
+        self.columns_table.setModel(self.columns_model)
+        self.columns_table.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_table))
+
+        # Column sizing
+        hh = self.columns_table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)        # Name
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Type
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed);  self.columns_table.setColumnWidth(2, 40)  # PK
+        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed);  self.columns_table.setColumnWidth(3, 60)  # Not Null
+        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # Default
+        hh.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Comment
+        hh.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed);  self.columns_table.setColumnWidth(6, 36)  # Delete
+
+        # Attach delete widgets
+        for row in range(self.columns_model.rowCount()):
+            self.columns_table.setIndexWidget(
+                self.columns_model.index(row, 6),
+                self._make_delete_btn(row)
+            )
+
+        layout.addWidget(self.columns_table)
+
+        # Update counter label
+        def _update_count():
+            n = self.columns_model.rowCount()
+            col_count_label.setText(f"{n} column{'s' if n != 1 else ''}")
+        self.columns_model.rowsInserted.connect(_update_count)
+        self.columns_model.rowsRemoved.connect(_update_count)
+        _update_count()
+
         add_col_btn.clicked.connect(self._add_column)
-        
-        save_btn = QPushButton("Save Changes")
-        save_btn.setIcon(qta.icon('mdi.content-save', color='#3b82f6'))
         save_btn.clicked.connect(self._save_column_changes)
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(add_col_btn)
-        btn_layout.addWidget(save_btn)
-        layout.addLayout(btn_layout)
-        
+
         return widget
 
-    def _add_column(self):
-        name_item = QStandardItem("new_column")
-        type_item = QStandardItem("integer")
-        
+    def _make_delete_btn(self, row):
+        """Return a flat red trash icon button that removes its row from the model."""
+        btn = QToolButton()
+        btn.setIcon(qta.icon('mdi.trash-can-outline', color='#cbd5e1'))
+        btn.setFixedSize(28, 28)
+        btn.setAutoRaise(True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet("""
+            QToolButton { border: none; border-radius: 4px; background: transparent; }
+            QToolButton:hover { background-color: #fee2e2; icon-color: #ef4444; }
+        """)
+        btn.setProperty("target_row", row)
+
+        def _delete():
+            # Find the button's current row by matching via loop (handles re-indexing)
+            for r in range(self.columns_model.rowCount()):
+                w = self.columns_table.indexWidget(self.columns_model.index(r, 6))
+                if w is btn:
+                    self.columns_model.removeRow(r)
+                    # Refresh delete-button row properties for rows below
+                    break
+        btn.clicked.connect(_delete)
+        return btn
+
+    def _append_column_row(self, name, data_type, is_pk, not_null, default_val, comment, orig_name=None):
+        """Build and append one column row to self.columns_model. Returns the row index."""
+        name_item = QStandardItem(name)
+        name_item.setData(orig_name if orig_name is not None else "", Qt.ItemDataRole.UserRole)
+
+        type_item = QStandardItem(data_type)
+
         pk_item = QStandardItem()
         pk_item.setCheckable(True)
         pk_item.setEditable(False)
-        pk_item.setCheckState(Qt.CheckState.Unchecked)
-        
-        not_null_item = QStandardItem()
-        not_null_item.setCheckable(True)
-        not_null_item.setEditable(False)
-        not_null_item.setCheckState(Qt.CheckState.Unchecked)
-        
-        default_item = QStandardItem("")
-        comment_item = QStandardItem("")
-        
-        self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
+        pk_item.setCheckState(Qt.CheckState.Checked if is_pk else Qt.CheckState.Unchecked)
+        pk_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        nn_item = QStandardItem()
+        nn_item.setCheckable(True)
+        nn_item.setEditable(False)
+        nn_item.setCheckState(Qt.CheckState.Checked if not_null else Qt.CheckState.Unchecked)
+        nn_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        default_item = QStandardItem(str(default_val) if default_val else "")
+        comment_item = QStandardItem(str(comment) if comment else "")
+        action_item  = QStandardItem()  # placeholder for the delete button column
+        action_item.setEditable(False)
+
+        self.columns_model.appendRow([name_item, type_item, pk_item, nn_item, default_item, comment_item, action_item])
+        return self.columns_model.rowCount() - 1
+
+    def _add_column(self):
+        row = self._append_column_row("new_column", "integer", False, False, "", "", orig_name="")
+        if hasattr(self, 'columns_table'):
+            self.columns_table.setIndexWidget(
+                self.columns_model.index(row, 6),
+                self._make_delete_btn(row)
+            )
+            self.columns_table.scrollToBottom()
 
     def _save_column_changes(self):
         conn_data = self.item_data.get('conn_data') or self.item_data
@@ -424,52 +548,68 @@ class PropertiesWorkbench(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
             return
-            
+
         schema_name = self.item_data.get('schema_name', 'public')
         table_name = self.obj_name
-        
+
         alter_statements = []
         new_pk_columns = []
         old_pk_columns = [col['name'] for col in self.original_columns_data if col.get('is_pk')]
-        
+
+        # Build a set of original column names for drop detection
+        orig_names_set = {col['name'] for col in self.original_columns_data}
+        orig_by_name   = {col['name']: col for col in self.original_columns_data}
+
+        # Columns still present in the grid (tracked by UserRole original name)
+        grid_orig_names = set()
+
         for row in range(self.columns_model.rowCount()):
-            name = self.columns_model.item(row, 0).text()
-            data_type = self.columns_model.item(row, 1).text()
-            is_pk = self.columns_model.item(row, 2).checkState() == Qt.CheckState.Checked
-            not_null = self.columns_model.item(row, 3).checkState() == Qt.CheckState.Checked
-            default_val = self.columns_model.item(row, 4).text()
-            comment = self.columns_model.item(row, 5).text()
-            
+            name       = self.columns_model.item(row, 0).text().strip()
+            data_type  = self.columns_model.item(row, 1).text().strip()
+            is_pk      = self.columns_model.item(row, 2).checkState() == Qt.CheckState.Checked
+            not_null   = self.columns_model.item(row, 3).checkState() == Qt.CheckState.Checked
+            default_val = self.columns_model.item(row, 4).text().strip()
+            comment    = self.columns_model.item(row, 5).text().strip()
+            orig_name  = self.columns_model.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""
+
             if is_pk:
                 new_pk_columns.append(name)
-            
-            if row < len(self.original_columns_data):
-                # Existing column
-                orig = self.original_columns_data[row]
-                orig_name = orig['name']
+
+            if orig_name and orig_name in orig_names_set:
+                # Existing column – diff against original
+                grid_orig_names.add(orig_name)
+                orig = orig_by_name[orig_name]
+
                 if name != orig_name:
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" RENAME COLUMN "{orig_name}" TO "{name}";')
-                
-                if data_type != orig['data_type']:
-                    # Use USING clause to attempt cast if possible
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" TYPE {data_type} USING "{name}"::{data_type};')
-                
+                    alter_statements.append(
+                        f'ALTER TABLE "{schema_name}"."{table_name}" RENAME COLUMN "{orig_name}" TO "{name}";')
+
+                if data_type != orig.get('data_type', ''):
+                    alter_statements.append(
+                        f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" TYPE {data_type} USING "{name}"::{data_type};')
+
                 if not_null != (not orig.get('nullable', True)):
                     action = "SET NOT NULL" if not_null else "DROP NOT NULL"
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" {action};')
-                
+                    alter_statements.append(
+                        f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" {action};')
+
                 orig_default = str(orig.get('default_value', '')) if orig.get('default_value') else ""
                 if default_val != orig_default:
                     if default_val:
-                        alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" SET DEFAULT {default_val};')
+                        alter_statements.append(
+                            f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" SET DEFAULT {default_val};')
                     else:
-                        alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" DROP DEFAULT;')
-                        
+                        alter_statements.append(
+                            f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" DROP DEFAULT;')
+
                 orig_comment = str(orig.get('comment', '')) if orig.get('comment') else ""
                 if comment != orig_comment:
-                    alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
+                    alter_statements.append(
+                        f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
             else:
-                # New column
+                # New column (orig_name is empty or not in original set)
+                if not name:
+                    continue
                 stmt = f'ALTER TABLE "{schema_name}"."{table_name}" ADD COLUMN "{name}" {data_type}'
                 if not_null:
                     stmt += " NOT NULL"
@@ -478,28 +618,40 @@ class PropertiesWorkbench(QWidget):
                 stmt += ";"
                 alter_statements.append(stmt)
                 if comment:
-                    alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
-                    
-        # Handle PK constraint change
-        if new_pk_columns != old_pk_columns:
-            # Drop old constraint
+                    alter_statements.append(
+                        f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
+
+        # Columns that existed originally but are no longer in the grid → DROP
+        dropped_cols = orig_names_set - grid_orig_names
+        for col_name in dropped_cols:
+            alter_statements.append(
+                f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}";')
+
+        # PK constraint changes
+        if sorted(new_pk_columns) != sorted(old_pk_columns):
             cursor.execute("""
-                SELECT conname FROM pg_constraint 
-                WHERE contype = 'p' AND conrelid = (SELECT oid FROM pg_class WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s) AND relname = %s)
+                SELECT conname FROM pg_constraint
+                WHERE contype = 'p'
+                  AND conrelid = (
+                      SELECT oid FROM pg_class
+                      WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s)
+                        AND relname = %s
+                  )
             """, (schema_name, table_name))
             pk_res = cursor.fetchone()
             if pk_res:
-                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP CONSTRAINT "{pk_res[0]}";')
-            
+                alter_statements.append(
+                    f'ALTER TABLE "{schema_name}"."{table_name}" DROP CONSTRAINT "{pk_res[0]}";')
             if new_pk_columns:
                 pk_cols_str = ", ".join([f'"{c}"' for c in new_pk_columns])
-                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ADD PRIMARY KEY ({pk_cols_str});')
-                
+                alter_statements.append(
+                    f'ALTER TABLE "{schema_name}"."{table_name}" ADD PRIMARY KEY ({pk_cols_str});')
+
         if not alter_statements:
             QMessageBox.information(self, "No Changes", "No column changes detected.")
             conn.close()
             return
-            
+
         try:
             for stmt in alter_statements:
                 cursor.execute(stmt)
@@ -508,7 +660,8 @@ class PropertiesWorkbench(QWidget):
             self.refresh_properties()
         except Exception as e:
             conn.rollback()
-            QMessageBox.critical(self, "Execution Error", f"Failed to execute changes:\n{e}\n\nTransaction rolled back.")
+            QMessageBox.critical(self, "Execution Error",
+                                 f"Failed to execute changes:\n{e}\n\nTransaction rolled back.")
         finally:
             conn.close()
 
