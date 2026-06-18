@@ -105,6 +105,15 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
         
+        parent_item = item.parent()
+        grandparent_item = parent_item.parent() if parent_item else None
+        code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        
+        if code == 'POSTGRES':
+            act = action(self.manager, "PSQL Tool", "mdi.console")
+            act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
+            menu.addAction(act)
+        
         menu.addSeparator()
         
         # Search Objects Dialog
