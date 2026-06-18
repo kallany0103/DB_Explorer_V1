@@ -1463,17 +1463,12 @@ SERVER "{data["server"]}"
             QMessageBox.critical(self.manager, "Error", f"Failed to create Foreign Table:\n{e}")
 
     def open_psql_tool(self, item_data):
-        """Open PSQL Tool for the connection (placeholder for terminal/console access)."""
+        """Open the native PSQL terminal tool for a PostgreSQL connection."""
         if not item_data:
             return
-        
-        # For now, this opens the query tool as a placeholder
-        # A full PSQL tool would require terminal integration
-        QMessageBox.information(
-            self.manager,
-            "PSQL Tool",
-            "PSQL Tool integration is not yet implemented.\n\nUse Query Tool for SQL execution instead."
-        )
+        conn_data = item_data.get("conn_data") or item_data
+        from widgets.db_terminal.terminal_widget import open_psql_terminal
+        open_psql_terminal(conn_data, self.manager)
 
     def refresh_materialized_view(self, item_data, name, concurrently=False):
         if not item_data:
