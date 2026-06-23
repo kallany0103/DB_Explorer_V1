@@ -19,7 +19,7 @@ from widgets.connection_manager.context_menus._helpers import (
 )
 from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
 from widgets.connection_manager.context_menus.trigger_menus import TriggerMenuBuilder
-from widgets.connection_manager.context_menus.psql_console import open_psql_console
+from widgets.db_terminal.terminal_widget import open_psql_terminal
 
 class SchemaMenuBuilder:
     """Builds context menus for the Schema Tree."""

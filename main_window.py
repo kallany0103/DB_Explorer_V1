@@ -510,6 +510,10 @@ class MainWindow(QMainWindow):
         widget = self.tab_widget.widget(index)
         if widget is not None and widget is self.dashboard_widget:
             self.dashboard_widget = None
+        # Cleanly terminate any embedded psql process before removing the tab.
+        from widgets.db_terminal.terminal_widget import PSQLTerminalWidget
+        if isinstance(widget, PSQLTerminalWidget):
+            widget.close_process()
         close_tab_action(self, index)
 
     # =========================================================================

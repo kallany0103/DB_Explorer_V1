@@ -8,7 +8,7 @@ def get_all_connections_from_db():
         c.execute("""
             SELECT 
                 i.id, c.name, c.code, sc.name, i.name, i.short_name, i.host, i.port, 
-                i."database", i.db_path, i.user, i.password, instance_url
+                i."database", i.db_path, i.user, i.password, instance_url, i.dsn
             FROM usf_connections i
             LEFT JOIN usf_connection_groups sc ON i.connection_group_id = sc.id
             LEFT JOIN usf_connection_types c ON sc.connection_type_id = c.id
@@ -19,7 +19,7 @@ def get_all_connections_from_db():
     connections = []
     for row in rows:
         (connection_id, connection_type_name, code, connection_group_name, connection_name, short_name, host,
-         port, dbname, db_path, user, password, instance_url) = row
+         port, dbname, db_path, user, password, instance_url, dsn) = row
         full_name = f"{connection_type_name} -> {connection_group_name} -> {connection_name} ({short_name})"
         connections.append({
             "id": connection_id,
@@ -33,7 +33,8 @@ def get_all_connections_from_db():
             "db_path": db_path,
             "user": user,
             "password": password,
-            "instance_url": instance_url
+            "instance_url": instance_url,
+            "dsn": dsn
         })
     return connections
 
