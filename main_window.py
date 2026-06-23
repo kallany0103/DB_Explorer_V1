@@ -742,9 +742,13 @@ class MainWindow(QMainWindow):
         self.results_manager.handle_process_started(process_id, data)
 
     def handle_process_finished(self, process_id, message, time_taken, row_count):
+        if hasattr(self, "_active_processes") and process_id in self._active_processes:
+            del self._active_processes[process_id]
         self.results_manager.handle_process_finished(process_id, message, time_taken, row_count)
 
     def handle_process_error(self, process_id, error_message):
+        if hasattr(self, "_active_processes") and process_id in self._active_processes:
+            del self._active_processes[process_id]
         self.results_manager.handle_process_error(process_id, error_message)
 
     def handle_process_output(self, process_id, text):
