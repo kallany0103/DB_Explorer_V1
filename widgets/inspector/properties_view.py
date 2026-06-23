@@ -128,34 +128,48 @@ class PropertyTable(QTableView):
             QTableView {
                 border: none;
                 background-color: white;
-                alternate-background-color: #f8fafc;
+                alternate-background-color: #fafafa;
                 outline: none;
+                font-size: 13px;
+                color: #262626;
             }
             QTableView::item {
-                padding: 6px 10px;
-                border-bottom: 1px solid #f1f5f9;
-                color: #1e293b;
+                padding: 4px 12px;
+                border-bottom: 1px solid #f0f0f0;
             }
             QTableView::item:selected {
-                background-color: #eff6ff;
-                color: #1e40af;
+                background-color: #e6f4ff;
+                color: #262626;
             }
             QTableView::item:hover:!selected {
-                background-color: #f0f9ff;
+                background-color: #f5f5f5;
             }
             QHeaderView::section {
-                background-color: #f8fafc;
-                padding: 8px 10px;
+                background-color: #fafafa;
+                padding: 10px 12px;
                 border: none;
-                border-bottom: 2px solid #e2e8f0;
+                border-bottom: 1px solid #d9d9d9;
+                border-right: 1px solid #f0f0f0;
                 font-weight: 600;
-                font-size: 10px;
+                font-size: 11px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
-                color: #64748b;
+                color: #595959;
+            }
+            QTableView::indicator {
+                width: 13px;
+                height: 13px;
+                border: 1px solid #d9d9d9;
+                border-radius: 3px;
+                background-color: white;
+                margin-left: 6px;
+            }
+            QTableView::indicator:checked {
+                background-color: #1677ff;
+                border-color: #1677ff;
             }
         """)
-        self.verticalHeader().setDefaultSectionSize(36)
+        self.verticalHeader().setDefaultSectionSize(42)
 
 class PropertiesWorkbench(QWidget):
     def __init__(self, main_window):
@@ -191,11 +205,16 @@ class PropertiesWorkbench(QWidget):
         
         header_layout.addStretch()
         
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        self.progress.setFixedHeight(4)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedWidth(100)
+        from PySide6.QtGui import QMovie
+        from PySide6.QtCore import QSize
+        self.progress = QLabel()
+        movie = QMovie("assets/spinner.gif")
+        if movie.isValid():
+            movie.setScaledSize(QSize(20, 20))
+            self.progress.setMovie(movie)
+            movie.start()
+        else:
+            self.progress.setText("Loading...")
         self.progress.setVisible(False)
         header_layout.addWidget(self.progress)
         
@@ -257,6 +276,13 @@ class PropertiesWorkbench(QWidget):
         self.icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(24, 24))
         self.sub_label.setText(f"{obj_type.capitalize() if not group_name else 'Collection'}")
         
+        # Save the current inner tab index before clearing
+        for i in range(self.container_layout.count()):
+            widget = self.container_layout.itemAt(i).widget()
+            if isinstance(widget, QTabWidget):
+                self._last_inner_tab_index = widget.currentIndex()
+                break
+
         self._clear_container()
         
         if not item_data: return
@@ -323,14 +349,30 @@ class PropertiesWorkbench(QWidget):
     def _display_table_with_tabs(self, data):
         tab_widget = QTabWidget()
         tab_widget.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #e5e7eb; background: white; border-radius: 4px; }
-            QTabBar::tab { 
-                background: #f3f4f6; color: #374151; padding: 8px 16px; 
-                border: 1px solid #e5e7eb; border-bottom: none; 
-                margin-right: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px;
+            QTabWidget::pane { 
+                border: 1px solid #e5e7eb; 
+                background: white; 
+                border-radius: 6px; 
+                top: -1px;
             }
-            QTabBar::tab:selected { background: white; color: #111827; border-bottom: 2px solid #3b82f6; }
-            QTabBar::tab:hover:!selected { background: #e5e7eb; }
+            QTabBar::tab { 
+                background: transparent; 
+                color: #64748b; 
+                padding: 10px 20px; 
+                border: 1px solid transparent; 
+                border-bottom: 2px solid transparent; 
+                margin-right: 4px; 
+                font-weight: 500; 
+                font-size: 13px; 
+            }
+            QTabBar::tab:selected { 
+                color: #3b82f6; 
+                border-bottom: 2px solid #3b82f6; 
+            }
+            QTabBar::tab:hover:!selected { 
+                color: #1e293b; 
+                border-bottom: 2px solid #cbd5e1; 
+            }
         """)
         
         # General Tab
@@ -351,7 +393,9 @@ class PropertiesWorkbench(QWidget):
             tab_widget.addTab(sql_tab, "SQL")
         
         self.container_layout.addWidget(tab_widget)
-        self.container_layout.addStretch()
+
+        if hasattr(self, '_last_inner_tab_index') and self._last_inner_tab_index < tab_widget.count():
+            tab_widget.setCurrentIndex(self._last_inner_tab_index)
 
     def _create_general_tab(self, data):
         widget = QWidget()
@@ -382,25 +426,31 @@ class PropertiesWorkbench(QWidget):
         toolbar = QFrame()
         toolbar.setStyleSheet("""
             QFrame {
-                background-color: #f8fafc;
-                border-bottom: 1px solid #e2e8f0;
+                background-color: white;
+                border-bottom: 1px solid #e5e7eb;
             }
             QPushButton {
-                border: 1px solid #e2e8f0;
-                border-radius: 5px;
-                padding: 4px 12px;
-                font-size: 11px;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-size: 13px;
                 font-weight: 500;
                 background-color: white;
                 color: #374151;
             }
-            QPushButton:hover { background-color: #f0f9ff; border-color: #bfdbfe; color: #1e40af; }
+            QPushButton:hover { 
+                background-color: #f8fafc; 
+                border-color: #3b82f6; 
+                color: #3b82f6; 
+            }
             QPushButton#saveBtn {
                 background-color: #3b82f6;
                 color: white;
                 border: none;
             }
-            QPushButton#saveBtn:hover { background-color: #2563eb; }
+            QPushButton#saveBtn:hover { 
+                background-color: #2563eb; 
+            }
         """)
         toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(10, 6, 10, 6)
@@ -432,7 +482,7 @@ class PropertiesWorkbench(QWidget):
         self.columns_table.horizontalHeader().setStretchLastSection(False)
 
         self.columns_model = QStandardItemModel()
-        self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "PK", "Not Null", "Default", "Comment", ""])
+        self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "PK", "Not Null", "Default", "", "Comment"])
         self.original_columns_data = data.get("columns", [])
 
         for col in self.original_columns_data:
@@ -447,20 +497,25 @@ class PropertiesWorkbench(QWidget):
         self.columns_table.setModel(self.columns_model)
         self.columns_table.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_table))
 
-        # Column sizing
+        # Column sizing — all Interactive so the user can drag, with a horizontal scrollbar
         hh = self.columns_table.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)        # Name
-        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Type
-        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed);  self.columns_table.setColumnWidth(2, 40)  # PK
-        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed);  self.columns_table.setColumnWidth(3, 60)  # Not Null
-        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # Default
-        hh.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Comment
-        hh.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed);  self.columns_table.setColumnWidth(6, 36)  # Delete
+        hh.setStretchLastSection(False)
+        hh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hh.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)  # Stretch comment column
+        self.columns_table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+
+        self.columns_table.setColumnWidth(0, 200)  # Name
+        self.columns_table.setColumnWidth(1, 180)  # Data Type
+        self.columns_table.setColumnWidth(2, 60)   # PK
+        self.columns_table.setColumnWidth(3, 80)   # Not Null
+        self.columns_table.setColumnWidth(4, 150)  # Default
+        self.columns_table.setColumnWidth(5, 40)   # Delete
+        # Column 6 (Comment) stretches automatically
 
         # Attach delete widgets
         for row in range(self.columns_model.rowCount()):
             self.columns_table.setIndexWidget(
-                self.columns_model.index(row, 6),
+                self.columns_model.index(row, 5),
                 self._make_delete_btn(row)
             )
 
@@ -480,25 +535,31 @@ class PropertiesWorkbench(QWidget):
         return widget
 
     def _make_delete_btn(self, row):
-        """Return a flat red trash icon button that removes its row from the model."""
+        """Return a styled trash icon button that removes its row from the model."""
         btn = QToolButton()
-        btn.setIcon(qta.icon('mdi.trash-can-outline', color='#cbd5e1'))
-        btn.setFixedSize(28, 28)
+        btn.setIcon(qta.icon('mdi.trash-can-outline', color='#000000'))
+        btn.setIconSize(QSize(20, 20))
+        btn.setFixedSize(32, 32)
         btn.setAutoRaise(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setToolTip("Delete this column")
         btn.setStyleSheet("""
-            QToolButton { border: none; border-radius: 4px; background: transparent; }
-            QToolButton:hover { background-color: #fee2e2; icon-color: #ef4444; }
+            QToolButton {
+                border: none;
+                border-radius: 4px;
+                background: transparent;
+            }
+            QToolButton:hover {
+                background-color: #fee2e2;
+                border: 1px solid #fca5a5;
+            }
         """)
-        btn.setProperty("target_row", row)
 
         def _delete():
-            # Find the button's current row by matching via loop (handles re-indexing)
             for r in range(self.columns_model.rowCount()):
-                w = self.columns_table.indexWidget(self.columns_model.index(r, 6))
+                w = self.columns_table.indexWidget(self.columns_model.index(r, 5))
                 if w is btn:
                     self.columns_model.removeRow(r)
-                    # Refresh delete-button row properties for rows below
                     break
         btn.clicked.connect(_delete)
         return btn
@@ -527,19 +588,23 @@ class PropertiesWorkbench(QWidget):
         action_item  = QStandardItem()  # placeholder for the delete button column
         action_item.setEditable(False)
 
-        self.columns_model.appendRow([name_item, type_item, pk_item, nn_item, default_item, comment_item, action_item])
+        self.columns_model.appendRow([name_item, type_item, pk_item, nn_item, default_item, action_item, comment_item])
         return self.columns_model.rowCount() - 1
 
     def _add_column(self):
         row = self._append_column_row("new_column", "integer", False, False, "", "", orig_name="")
         if hasattr(self, 'columns_table'):
             self.columns_table.setIndexWidget(
-                self.columns_model.index(row, 6),
+                self.columns_model.index(row, 5),
                 self._make_delete_btn(row)
             )
             self.columns_table.scrollToBottom()
 
     def _save_column_changes(self):
+        self.progress.setVisible(True)
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+
         conn_data = self.item_data.get('conn_data') or self.item_data
         pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
         try:
@@ -547,6 +612,7 @@ class PropertiesWorkbench(QWidget):
             cursor = conn.cursor()
         except Exception as e:
             QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
+            self.progress.setVisible(False)
             return
 
         schema_name = self.item_data.get('schema_name', 'public')
@@ -569,7 +635,7 @@ class PropertiesWorkbench(QWidget):
             is_pk      = self.columns_model.item(row, 2).checkState() == Qt.CheckState.Checked
             not_null   = self.columns_model.item(row, 3).checkState() == Qt.CheckState.Checked
             default_val = self.columns_model.item(row, 4).text().strip()
-            comment    = self.columns_model.item(row, 5).text().strip()
+            comment    = self.columns_model.item(row, 6).text().strip()
             orig_name  = self.columns_model.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""
 
             if is_pk:
@@ -624,8 +690,29 @@ class PropertiesWorkbench(QWidget):
         # Columns that existed originally but are no longer in the grid → DROP
         dropped_cols = orig_names_set - grid_orig_names
         for col_name in dropped_cols:
-            alter_statements.append(
-                f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}";')
+            deps = self._check_column_dependencies(cursor, schema_name, table_name, col_name)
+            if deps:
+                dep_lines = "\n".join(f"  • Constraint '{d[0]}' on table '{d[1]}'" for d in deps)
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Drop Cascade Required")
+                msg.setIcon(QMessageBox.Icon.Warning)
+                msg.setText(f'Column <b>"{col_name}"</b> cannot be dropped without CASCADE.')
+                msg.setInformativeText(
+                    f"The following dependent objects will also be dropped:\n\n{dep_lines}\n\n"
+                    "Do you want to proceed with DROP CASCADE?"
+                )
+                msg.setStandardButtons(
+                    QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+                )
+                msg.button(QMessageBox.StandardButton.Ok).setText("Drop CASCADE")
+                msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                if msg.exec() == QMessageBox.StandardButton.Ok:
+                    alter_statements.append(
+                        f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}" CASCADE;')
+                # If Cancel → skip this drop (leave col in DB untouched)
+            else:
+                alter_statements.append(
+                    f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}";')
 
         # PK constraint changes
         if sorted(new_pk_columns) != sorted(old_pk_columns):
@@ -650,6 +737,7 @@ class PropertiesWorkbench(QWidget):
         if not alter_statements:
             QMessageBox.information(self, "No Changes", "No column changes detected.")
             conn.close()
+            self.progress.setVisible(False)
             return
 
         try:
@@ -664,7 +752,29 @@ class PropertiesWorkbench(QWidget):
                                  f"Failed to execute changes:\n{e}\n\nTransaction rolled back.")
         finally:
             conn.close()
+            self.progress.setVisible(False)
 
+    def _check_column_dependencies(self, cursor, schema_name, table_name, col_name):
+        """Return list of (constraint_name, referencing_table) tuples for FK deps on col_name."""
+        cursor.execute("""
+            SELECT c.conname, cl.relname AS referencing_table
+            FROM pg_constraint c
+            JOIN pg_class cl ON cl.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = cl.relnamespace
+            WHERE c.contype = 'f'
+              AND c.confrelid = (
+                  SELECT c2.oid FROM pg_class c2
+                  JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
+                  WHERE n2.nspname = %s AND c2.relname = %s
+              )
+              AND EXISTS (
+                  SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = c.confrelid
+                    AND a.attnum = ANY(c.confkey)
+                    AND a.attname = %s
+              )
+        """, (schema_name, table_name, col_name))
+        return cursor.fetchall()
 
     def _create_constraints_tab(self, data):
         widget = QWidget()

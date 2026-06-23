@@ -151,8 +151,12 @@ class ExplorerMenuBuilder:
         menu.addSeparator()
         
         # Refresh Logic (Targeted)
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=False))
+        menu.addAction(act)
+        
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=True))
         menu.addAction(act)
         
         menu.addSeparator()
@@ -212,6 +216,10 @@ class ExplorerMenuBuilder:
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index))
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=False))
+        menu.addAction(act)
+        
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=True))
         menu.addAction(act)

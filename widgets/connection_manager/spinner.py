@@ -129,8 +129,7 @@ class ConnectionSpinner(QObject):
         self._timer.setInterval(_INTERVAL_MS)
         self._timer.timeout.connect(self._advance)
 
-        self._item       = None
-        self._saved_icon = None
+        self._items = []  # list of {'item': item, 'saved_icon': icon}
         self._frame_idx  = 0
         self._running    = False
 
@@ -140,39 +139,75 @@ class ConnectionSpinner(QObject):
 
     def start(self, item) -> None:
         """Attach the spinner to *item* and start animating."""
-        if self._timer.isActive():
-            self._stop_internal(restore=True)
         if item is None:
             return
-        self._item       = item
-        self._saved_icon = item.icon()
-        self._frame_idx  = 0
-        self._running    = True
-        self._item.setIcon(self._frames[0])
-        self._timer.start()
+            
+        for entry in self._items:
+            if entry['item'] is item:
+                return
+                
+        try:
+            saved_icon = item.icon()
+        except RuntimeError:
+            return # Item already deleted
+            
+        self._items.append({'item': item, 'saved_icon': saved_icon})
+                
+        self._running = True
+        try:
+            item.setIcon(self._frames[0])
+        except RuntimeError:
+            pass
+            
+        if not self._timer.isActive():
+            self._timer.start()
 
-    def stop(self) -> None:
-        """Stop animation and restore *item*'s original icon."""
-        self._stop_internal(restore=True)
+    def stop(self, item=None) -> None:
+        """Stop animation and restore *item*'s original icon. If item is None, stop all."""
+        if item is None:
+            for entry in self._items:
+                try:
+                    entry['item'].setIcon(entry['saved_icon'])
+                except RuntimeError:
+                    pass
+            self._items.clear()
+            self._timer.stop()
+            self._running = False
+        else:
+            for i, entry in enumerate(self._items):
+                if entry['item'] is item:
+                    try:
+                        item.setIcon(entry['saved_icon'])
+                    except RuntimeError:
+                        pass
+                    self._items.pop(i)
+                    break
+            if not self._items:
+                self._timer.stop()
+                self._running = False
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    def _stop_internal(self, restore: bool) -> None:
-        self._running = False
-        self._timer.stop()
-        item = self._item
-        saved_icon = self._saved_icon
-        self._item = None
-        self._saved_icon = None
-        self._frame_idx = 0
-        if restore and item is not None and saved_icon is not None:
-            item.setIcon(saved_icon)
-
     def _advance(self) -> None:
-        if not self._running or self._item is None:
+        if not self._running or not self._items:
             self._timer.stop()
             return
+            
         self._frame_idx = (self._frame_idx + 1) % _FRAME_COUNT
-        self._item.setIcon(self._frames[self._frame_idx])
+        frame = self._frames[self._frame_idx]
+        
+        alive_items = []
+        for entry in self._items:
+            try:
+                entry['item'].setIcon(frame)
+                alive_items.append(entry)
+            except RuntimeError:
+                pass
+                
+        self._items = alive_items
+            
+        if not self._items:
+            self._timer.stop()
+            self._running = False

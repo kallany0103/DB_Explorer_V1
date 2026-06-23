@@ -1,13 +1,15 @@
 import re
 
 import db
-# from PyQt6.QtCore import Qt
-# from PyQt6.QtGui import QStandardItem, QIcon
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItem, QIcon
-
 from workers.connection_workers import ServiceNowTableDetailsWorker
+
+def _create_loading_item(manager):
+    item = QStandardItem("Loading...")
+    item.setEditable(False)
+    manager._spinner.start(item)
+    return item
 
 
 
@@ -28,11 +30,11 @@ class TableDetailsLoader:
         if not force and not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
 
+        self.manager._save_schema_tree_expansion_state()
+
         if force:
             item.removeRows(0, item.rowCount())
-            item.appendRow(QStandardItem("Loading..."))
-
-        self.manager._save_schema_tree_expansion_state()
+            item.appendRow(_create_loading_item(self.manager))
 
         db_type = item_data.get('db_type')
 
@@ -64,7 +66,7 @@ class TableDetailsLoader:
                         group_data['type'] = 'schema_group'
                         group_data['group_name'] = internal_group_name
                         group_item.setData(group_data, Qt.ItemDataRole.UserRole)
-                        group_item.appendRow(QStandardItem("Loading..."))
+                        group_item.appendRow(_create_loading_item(self.manager))
 
                         type_item = QStandardItem(g_type)
                         type_item.setEditable(False)
@@ -88,7 +90,7 @@ class TableDetailsLoader:
                         fdw_data['type'] = 'fdw'
                         fdw_data['fdw_name'] = fdw_name
                         fdw_item.setData(fdw_data, Qt.ItemDataRole.UserRole)
-                        fdw_item.appendRow(QStandardItem("Loading..."))
+                        fdw_item.appendRow(_create_loading_item(self.manager))
 
                         type_item = QStandardItem("Foreign Data Wrapper")
                         type_item.setEditable(False)
@@ -116,7 +118,7 @@ class TableDetailsLoader:
                         srv_data['type'] = 'foreign_server'
                         srv_data['server_name'] = srv_name
                         srv_item.setData(srv_data, Qt.ItemDataRole.UserRole)
-                        srv_item.appendRow(QStandardItem("Loading..."))
+                        srv_item.appendRow(_create_loading_item(self.manager))
 
                         type_item = QStandardItem("Foreign Server")
                         type_item.setEditable(False)
@@ -251,7 +253,7 @@ class TableDetailsLoader:
                             table_data['table_type'] = group_name # Use group_name directly as type
                             table_item.setData(table_data, Qt.ItemDataRole.UserRole)
 
-                            table_item.appendRow(QStandardItem("Loading..."))
+                            table_item.appendRow(_create_loading_item(self.manager))
 
                             try:
                                 if group_name == "Tables":
@@ -569,6 +571,12 @@ class TableDetailsLoader:
 
             columns_folder = QStandardItem(f"Columns ({len(columns)})")
             columns_folder.setEditable(False)
+            
+            # Set type so we can route context menus
+            columns_group_data = item_data.copy()
+            columns_group_data['type'] = 'columns_group'
+            columns_group_data['group_name'] = 'Columns'
+            columns_folder.setData(columns_group_data, Qt.ItemDataRole.UserRole)
 
             for col in columns:
                 name, dtype, char_max, is_nullable, default, is_pk = col
@@ -585,6 +593,12 @@ class TableDetailsLoader:
                 col_item = QStandardItem(desc)
                 col_item.setEditable(False)
                 self.manager._set_tree_item_icon(col_item, level="COLUMN")
+                
+                col_data = item_data.copy()
+                col_data['type'] = 'column'
+                col_data['column_name'] = name
+                col_item.setData(col_data, Qt.ItemDataRole.UserRole)
+                
                 columns_folder.appendRow(col_item)
             table_item.appendRow(columns_folder)
 
@@ -611,6 +625,11 @@ class TableDetailsLoader:
 
             constraints_folder = QStandardItem(f"Constraints ({len(con_map)})")
             constraints_folder.setEditable(False)
+            
+            constraints_group_data = item_data.copy()
+            constraints_group_data['type'] = 'constraints_group'
+            constraints_group_data['group_name'] = 'Constraints'
+            constraints_folder.setData(constraints_group_data, Qt.ItemDataRole.UserRole)
 
             if not con_map:
                 constraints_folder.appendRow(QStandardItem("No constraints"))
@@ -620,6 +639,12 @@ class TableDetailsLoader:
                     desc = f"{name} [{data['type']}] ({cols_str})"
                     con_item = QStandardItem(desc)
                     con_item.setEditable(False)
+                    
+                    con_data = item_data.copy()
+                    con_data['type'] = 'constraint'
+                    con_data['constraint_name'] = name
+                    con_item.setData(con_data, Qt.ItemDataRole.UserRole)
+                    
                     constraints_folder.appendRow(con_item)
             table_item.appendRow(constraints_folder)
 
@@ -635,6 +660,11 @@ class TableDetailsLoader:
 
             indexes_folder = QStandardItem(f"Indexes ({len(user_indexes)})")
             indexes_folder.setEditable(False)
+            
+            indexes_group_data = item_data.copy()
+            indexes_group_data['type'] = 'indexes_group'
+            indexes_group_data['group_name'] = 'Indexes'
+            indexes_folder.setData(indexes_group_data, Qt.ItemDataRole.UserRole)
 
             if not user_indexes:
                 indexes_folder.appendRow(QStandardItem("No indexes"))
@@ -646,6 +676,12 @@ class TableDetailsLoader:
                     desc = f"{name} ({cols_str})"
                     idx_item = QStandardItem(desc)
                     idx_item.setEditable(False)
+                    
+                    idx_data = item_data.copy()
+                    idx_data['type'] = 'index'
+                    idx_data['index_name'] = name
+                    idx_item.setData(idx_data, Qt.ItemDataRole.UserRole)
+                    
                     indexes_folder.appendRow(idx_item)
 
             table_item.appendRow(indexes_folder)
@@ -718,13 +754,4 @@ class TableDetailsLoader:
             self.manager.status.showMessage("Connection or table data is missing for CData.", 5000)
             return
 
-        try:
-            column_item = QStandardItem("column_name TEXT")
-            column_item.setIcon(QIcon("assets/column_icon.png"))
-            column_item.setEditable(False)
-            item.appendRow(column_item)
-
-            self.manager.status.showMessage(f"Attempted to load details for CData table: {table_name}", 3000)
-
-        except Exception as e:
-            self.manager.status.showMessage(f"Error loading CData table details: {e}", 5000)
+        self.manager.status.showMessage(f"CData table details not yet supported for: {table_name}", 3000)

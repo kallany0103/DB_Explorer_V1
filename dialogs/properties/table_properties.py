@@ -126,12 +126,15 @@ class TablePropertiesDialog(BasePropertiesDialog):
                 cursor.execute(pg_queries.GET_TABLE_DETAILS, (self.schema_name, self.table_name))
                 res = cursor.fetchone()
                 if res:
-                    oid, owner, schema, comment, relkind, *rest = res
+                    owner = res[0]
+                    schema = res[1]
+                    object_type = res[2]
+                    comment = res[3]
                     self.comment_edit.setPlainText(comment or "")
                     self.original_owner = owner
                     
                     # 2. Definition for Views
-                    if relkind in ('v', 'm'):
+                    if self.is_view or self.is_mview:
                         cursor.execute("SELECT pg_get_viewdef(c.oid, true) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relname = %s", (self.schema_name, self.table_name))
                         def_res = cursor.fetchone()
                         if def_res:
@@ -183,7 +186,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
 
             elif self.db_type == 'sqlite':
                 # Simpler SQLite loading
-                cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (self.table_name,))
+                cursor.execute("SELECT sql FROM sqlite_master WHERE type IN ('table', 'view') AND name=?", (self.table_name,))
                 row = cursor.fetchone()
                 if row:
                     self.sql_display.setText(row[0] + ";")

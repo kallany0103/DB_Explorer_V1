@@ -69,11 +69,11 @@ class SchemaMenuBuilder:
         elif table_type == "MATERIALIZED VIEW":
             self.mview_builder.build_menu(menu, item, item_data)
         elif is_table_or_view:
-            self._table_menu(menu, item, item_data, db_type)
+            self._table_menu(menu, item, item_data, db_type, index)
         elif is_sequence:
-            self._sequence_menu(menu, item, item_data)
+            self._sequence_menu(menu, item, item_data, index)
         elif is_function or is_trigger_function:
-            self._function_menu(menu, item, item_data, table_type)
+            self._function_menu(menu, item, item_data, table_type, index)
         elif is_language:
             self._language_menu(menu, item, item_data, index)
         elif is_extension:
@@ -91,22 +91,130 @@ class SchemaMenuBuilder:
         elif node_type == "fdw":
             self._fdw_menu(menu, item_data, index)
         elif node_type == "foreign_server":
-            self._foreign_server_menu(menu, item_data)
+            self._foreign_server_menu(menu, item_data, index)
         elif node_type == "user_mapping":
-            self._user_mapping_menu(menu, item_data)
-        elif node_type == "triggers_group":
-            self.trigger_builder.build_group_menu(menu, item, item_data, index)
+            self._user_mapping_menu(menu, item_data, index)
+        elif node_type == "indexes_group":
+            self._indexes_group_menu(menu, item, item_data, index)
+        elif node_type == "index":
+            self._index_menu(menu, item, item_data, index)
+        elif node_type == "constraints_group":
+            self._constraints_group_menu(menu, item, item_data, index)
+        elif node_type == "constraint":
+            self._constraint_menu(menu, item, item_data, index)
+        elif node_type == "columns_group":
+            self._columns_group_menu(menu, item, item_data, index)
+        elif node_type == "column":
+            self._column_menu(menu, item, item_data, index)
         elif is_trigger:
             self.trigger_builder.build_menu(menu, item, item_data)
+        else:
+            # Fallback
+            menu.addAction(action(self.manager, f"Properties for {item.text()}"))
 
         if not menu.isEmpty():
             menu.exec(self.manager.schema_tree.viewport().mapToGlobal(position))
 
     # =========================================================================
+    # Shared helpers
+    # =========================================================================
+
+    def _add_refresh_actions(self, menu, index):
+        """Append a separator then Refresh / Reset Tree to *menu*."""
+        menu.addSeparator()
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, False))
+        menu.addAction(act)
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, True))
+        menu.addAction(act)
+
+    # =========================================================================
+    # Table details (Columns, Constraints, Indexes)
+    # =========================================================================
+
+    def _columns_group_menu(self, menu, item, item_data, index):
+        create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
+        act = action(self.manager, "Column...", "mdi.table-column-plus-after")
+        act.triggered.connect(stub("create_column"))
+        create_sub.addAction(act)
+        
+        self._add_refresh_actions(menu, index)
+
+    def _column_menu(self, menu, item, item_data, index):
+        act = action(self.manager, "Drop Column", "mdi.delete-outline", shortcut="Alt+Shift+D")
+        act.triggered.connect(stub("drop_column"))
+        menu.addAction(act)
+
+        act = action(self.manager, "Drop Column (Cascade)", "mdi.delete-sweep-outline")
+        act.triggered.connect(stub("drop_column_cascade"))
+        menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, item.text())
+
+    def _constraints_group_menu(self, menu, item, item_data, index):
+        create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
+        
+        act = action(self.manager, "Primary Key...", "mdi.key-outline")
+        act.triggered.connect(stub("create_pk"))
+        create_sub.addAction(act)
+        
+        act = action(self.manager, "Foreign Key...", "mdi.key-link")
+        act.triggered.connect(stub("create_fk"))
+        create_sub.addAction(act)
+        
+        act = action(self.manager, "Check...", "mdi.check-network-outline")
+        act.triggered.connect(stub("create_check"))
+        create_sub.addAction(act)
+        
+        act = action(self.manager, "Unique...", "mdi.fingerprint")
+        act.triggered.connect(stub("create_unique"))
+        create_sub.addAction(act)
+        
+        act = action(self.manager, "Exclude...", "mdi.minus-circle-outline")
+        act.triggered.connect(stub("create_exclude"))
+        create_sub.addAction(act)
+
+        self._add_refresh_actions(menu, index)
+
+    def _constraint_menu(self, menu, item, item_data, index):
+        act = action(self.manager, "Drop Constraint", "mdi.delete-outline", shortcut="Alt+Shift+D")
+        act.triggered.connect(stub("drop_constraint"))
+        menu.addAction(act)
+
+        act = action(self.manager, "Drop Constraint (Cascade)", "mdi.delete-sweep-outline")
+        act.triggered.connect(stub("drop_constraint_cascade"))
+        menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, item.text())
+
+    def _indexes_group_menu(self, menu, item, item_data, index):
+        create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
+        act = action(self.manager, "Index...", "mdi.sort-alphabetical-ascending")
+        act.triggered.connect(stub("create_index"))
+        create_sub.addAction(act)
+
+        self._add_refresh_actions(menu, index)
+
+    def _index_menu(self, menu, item, item_data, index):
+        act = action(self.manager, "Drop Index", "mdi.delete-outline", shortcut="Alt+Shift+D")
+        act.triggered.connect(stub("drop_index"))
+        menu.addAction(act)
+
+        act = action(self.manager, "Drop Index (Cascade)", "mdi.delete-sweep-outline")
+        act.triggered.connect(stub("drop_index_cascade"))
+        menu.addAction(act)
+
+        menu.addSeparator()
+        add_properties_statistics_actions(menu, self.manager, item_data, item.text())
+
+    # =========================================================================
     # Table / View
     # =========================================================================
 
-    def _table_menu(self, menu, item, item_data, db_type):
+    def _table_menu(self, menu, item, item_data, db_type, index):
         display_name = item.text()
         table_type   = item_data.get("table_type", "TABLE").upper()
         is_view      = "VIEW" in table_type
@@ -219,6 +327,8 @@ class SchemaMenuBuilder:
             menu.addSeparator()
             add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
+        self._add_refresh_actions(menu, index)
+
     # =========================================================================
     # Schema node  (e.g. "public")
     # =========================================================================
@@ -262,8 +372,12 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=False))
+        menu.addAction(act)
+        
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=True))
         menu.addAction(act)
 
         act = action(self.manager, "Backup...", "mdi.backup-restore")
@@ -300,20 +414,8 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        # if db_type == "postgres":
-        #     act = action(self.manager, "Import Foreign Schema...", "mdi.database-import")
-        #     # act.triggered.connect(
-        #     #     lambda: self.manager.connection_actions.import_foreign_schema_dialog(item_data)
-        #     # )
-        #     menu.addAction(act)
-
-        # menu.addSeparator()
-        # act = action(self.manager, "PSQL Tool", "mdi.console")
-        # act.triggered.connect(stub("psql_tool_schema"))
-        # menu.addAction(act)
         act = action(self.manager, "PSQL Tool", "mdi.console")
-        #act.triggered.connect(lambda: open_psql_console(item_data.get("conn_data", item_data), self.manager))
-        act.triggered.connect(lambda: open_psql_console(item_data.get("conn_data") or item_data,self.manager))
+        act.triggered.connect(lambda: open_psql_console(item_data.get("conn_data") or item_data, self.manager))
         menu.addAction(act)
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
@@ -345,11 +447,6 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.open_search_objects_dialog(item_data)
         )
         menu.addAction(act)
-
-        # Refresh disabled for schemas root
-        # act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        # act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
-        # menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
@@ -425,16 +522,13 @@ class SchemaMenuBuilder:
             menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("group_name") or item.text())
         )
         menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         add_properties_statistics_actions(
@@ -445,7 +539,7 @@ class SchemaMenuBuilder:
     # Sequence
     # =========================================================================
 
-    def _sequence_menu(self, menu, item, item_data):
+    def _sequence_menu(self, menu, item, item_data, index):
         display_name = item.text()
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
@@ -475,6 +569,8 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        self._add_refresh_actions(menu, index)
+
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
@@ -482,7 +578,7 @@ class SchemaMenuBuilder:
     # Function / Trigger Function
     # =========================================================================
 
-    def _function_menu(self, menu, item, item_data, table_type):
+    def _function_menu(self, menu, item, item_data, table_type, index):
         display_name = item.text()
         label = table_type.lower().capitalize()
 
@@ -512,6 +608,8 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.delete_function(item_data, display_name, cascade=True)
         )
         menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
@@ -551,6 +649,8 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        self._add_refresh_actions(menu, index)
+
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
@@ -574,7 +674,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Drop Extension (Cascade)", "mdi.delete-sweep-outline")
+        act = action(self.manager, "DROP Extension (Cascade)", "mdi.delete-sweep-outline")
         act.triggered.connect(
             lambda: self.manager.connection_actions.drop_extension(item_data, display_name, cascade=True)
         )
@@ -587,10 +687,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
-        menu.addAction(act)
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
@@ -600,17 +697,13 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _language_root_menu(self, menu, item_data, index):
-        # Refresh disabled for languages root
-        # act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        # act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
-        # menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Languages")
         )
         menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Languages")
@@ -620,24 +713,13 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _extension_root_menu(self, menu, item_data, index):
-        # act = action(self.manager, "Create Extension...", "mdi.puzzle-plus-outline")
-        # # act.triggered.connect(
-        # #     lambda: self.manager.connection_actions.create_extension_dialog(item_data)
-        # # )
-        # menu.addAction(act)
-        pass # To keep the function valid
-
-        menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
-        menu.addAction(act)
-
-        menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Extensions")
         )
         menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Extensions")
@@ -647,25 +729,14 @@ class SchemaMenuBuilder:
     # =========================================================================
 
     def _fdw_root_menu(self, menu, item_data, db_type, index):
-        # if db_type == "postgres":
-        #     act = action(self.manager, "Create postgres_fdw Extension", "mdi.puzzle-plus-outline")
-        #     # act.triggered.connect(
-        #     #     lambda: self.manager.connection_actions.execute_simple_sql(
-        #     #         item_data, "CREATE EXTENSION IF NOT EXISTS postgres_fdw;"
-        #     #     )
-        #     # )
-        #     menu.addAction(act)
-        #     menu.addSeparator()
-
-        # act = action(self.manager, "Create Foreign Data Wrapper...", "mdi.database-link-outline")
-        # # act.triggered.connect(
-        # #     lambda: self.manager.connection_actions.create_fdw_template(item_data)
-        # # )
-        # menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=False))
+        menu.addAction(act)
+        
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=True))
         menu.addAction(act)
 
         menu.addSeparator()
@@ -684,13 +755,6 @@ class SchemaMenuBuilder:
 
     def _fdw_menu(self, menu, item_data, index):
         fdw_name = item_data.get("fdw_name", "")
-        lbl = "Create Foreign Server (Postgres)..." if fdw_name == "postgres_fdw" else "Create Foreign Server..."
-
-        # act = action(self.manager, lbl, "mdi.server-plus")
-        # # act.triggered.connect(
-        # #     lambda: self.manager.connection_actions.create_foreign_server_template(item_data)
-        # # )
-        # menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Drop Foreign Data Wrapper", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -712,10 +776,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
-        menu.addAction(act)
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
@@ -733,13 +794,7 @@ class SchemaMenuBuilder:
     # Foreign Server
     # =========================================================================
 
-    def _foreign_server_menu(self, menu, item_data):
-        # act = action(self.manager, "Create User Mapping...", "mdi.account-plus-outline")
-        # # act.triggered.connect(
-        # #     lambda: self.manager.connection_actions.create_user_mapping_template(item_data)
-        # # )
-        # menu.addAction(act)
-        pass # To keep the function valid
+    def _foreign_server_menu(self, menu, item_data, index):
 
         menu.addSeparator()
         act = action(self.manager, "Drop Foreign Server", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -768,6 +823,8 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        self._add_refresh_actions(menu, index)
+
         menu.addSeparator()
         add_properties_statistics_actions(
             menu, self.manager, item_data, item_data.get("server_name", "Foreign Server")
@@ -777,7 +834,7 @@ class SchemaMenuBuilder:
     # User Mapping
     # =========================================================================
 
-    def _user_mapping_menu(self, menu, item_data):
+    def _user_mapping_menu(self, menu, item_data, index):
         act = action(self.manager, "Drop User Mapping", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.drop_user_mapping(item_data)
@@ -803,6 +860,8 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("user_name", "User Mapping"))
         )
         menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
         add_properties_statistics_actions(
