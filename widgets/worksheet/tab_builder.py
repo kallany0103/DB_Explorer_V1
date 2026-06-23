@@ -21,6 +21,7 @@ import qtawesome as qta
 from widgets.worksheet.connections import get_connection_icon
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.autocomplete import CompletionEngine
+from widgets.test_cases.test_cases_widget import TestCasesWidget
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFrame
 
@@ -358,16 +359,21 @@ def add_tab(manager):
 
     query_view_btn = QPushButton("Query")
     history_view_btn = QPushButton("Query History")
+    test_case_view_btn = QPushButton("Test Case")
     query_view_btn.setObjectName("query_view_btn")
     history_view_btn.setObjectName("history_view_btn")
+    test_case_view_btn.setObjectName("test_case_view_btn")
     query_view_btn.setMinimumWidth(120)
     history_view_btn.setMinimumWidth(120)
+    test_case_view_btn.setMinimumWidth(120)
     query_view_btn.setCheckable(True)
     history_view_btn.setCheckable(True)
+    test_case_view_btn.setCheckable(True)
     query_view_btn.setChecked(True)
 
     editor_header_layout.addWidget(query_view_btn)
     editor_header_layout.addWidget(history_view_btn)
+    editor_header_layout.addWidget(test_case_view_btn)
     editor_header_layout.addStretch()
     editor_layout.addWidget(editor_header)
 
@@ -375,6 +381,7 @@ def add_tab(manager):
     editor_button_group.setExclusive(True)
     editor_button_group.addButton(query_view_btn, 0)
     editor_button_group.addButton(history_view_btn, 1)
+    editor_button_group.addButton(test_case_view_btn, 2)
 
     editor_stack = QStackedWidget()
     editor_stack.setObjectName("editor_stack")
@@ -485,6 +492,9 @@ def add_tab(manager):
     history_widget.setSizes([400, 400])
     editor_stack.addWidget(history_widget)
 
+    test_cases_widget = TestCasesWidget()
+    editor_stack.addWidget(test_cases_widget)
+
     editor_layout.addWidget(editor_stack)
     editor_layout.setStretchFactor(editor_stack, 1)
     main_vertical_splitter.addWidget(editor_container)
@@ -496,6 +506,7 @@ def add_tab(manager):
 
     query_view_btn.clicked.connect(lambda: switch_editor_view(0))
     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
+    test_case_view_btn.clicked.connect(lambda: switch_editor_view(2))
 
     def _refresh_engine(skip_slow=False):
         data = db_combo_box.currentData()
