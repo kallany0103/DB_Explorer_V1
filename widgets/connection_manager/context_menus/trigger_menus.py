@@ -20,8 +20,12 @@ class TriggerMenuBuilder:
         create_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Refresh...", "mdi.refresh", shortcut="F5")
-        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index))
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=False))
+        menu.addAction(act)
+        
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=True))
         menu.addAction(act)
 
         act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+S")

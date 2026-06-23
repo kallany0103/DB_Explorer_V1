@@ -74,7 +74,7 @@ class TreeHelpers:
             return
 
         if level == "COLUMN":
-            item.setIcon(QIcon("assets/column_icon.png"))
+            item.setIcon(qta.icon("mdi.table-column", color="#607D8B"))
             return
 
         if level == "TRIGGER":

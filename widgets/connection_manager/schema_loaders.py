@@ -7,11 +7,18 @@ import psycopg2
 # from PyQt6.QtWidgets import QHeaderView
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QStandardItem
+from PySide6.QtGui import QStandardItem, QIcon
 from PySide6.QtWidgets import QHeaderView
 import qtawesome as qta
 
 import db
+
+
+def _create_loading_item(manager):
+    item = QStandardItem("Loading...")
+    item.setEditable(False)
+    manager._spinner.start(item)
+    return item
 
 
 class SchemaLoader:
@@ -64,7 +71,7 @@ class SchemaLoader:
             type_item.setEditable(False)
 
             if type_str in ['table', 'view']:
-                name_item.appendRow(QStandardItem("Loading..."))
+                name_item.appendRow(_create_loading_item(self.manager))
 
             self.manager.schema_model.appendRow([name_item, type_item])
 
@@ -125,7 +132,7 @@ class SchemaLoader:
             self.manager._set_tree_item_icon(schema_item, level="SCHEMA")
             schema_item.setData({'db_type': 'postgres', 'schema_name': schema_name,
                                  'type': 'schema', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-            schema_item.appendRow(QStandardItem("Loading..."))
+            schema_item.appendRow(_create_loading_item(self.manager))
             type_item = QStandardItem("Schema")
             type_item.setEditable(False)
             schemas_root.appendRow([schema_item, type_item])
@@ -138,7 +145,7 @@ class SchemaLoader:
         fdw_root.setEditable(False)
         self.manager._set_tree_item_icon(fdw_root, level="FDW_ROOT")
         fdw_root.setData({'db_type': 'postgres', 'type': 'fdw_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-        fdw_root.appendRow(QStandardItem("Loading..."))
+        fdw_root.appendRow(_create_loading_item(self.manager))
 
         fdw_type_item = QStandardItem("Group")
         fdw_type_item.setEditable(False)
@@ -148,7 +155,7 @@ class SchemaLoader:
         ext_root.setEditable(False)
         self.manager._set_tree_item_icon(ext_root, level="EXTENSION_ROOT")
         ext_root.setData({'db_type': 'postgres', 'type': 'extension_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-        ext_root.appendRow(QStandardItem("Loading..."))
+        ext_root.appendRow(_create_loading_item(self.manager))
 
         ext_type_item = QStandardItem("Group")
         ext_type_item.setEditable(False)
@@ -158,7 +165,7 @@ class SchemaLoader:
         lang_root.setEditable(False)
         self.manager._set_tree_item_icon(lang_root, level="LANGUAGE_ROOT")
         lang_root.setData({'db_type': 'postgres', 'type': 'language_root', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-        lang_root.appendRow(QStandardItem("Loading..."))
+        lang_root.appendRow(_create_loading_item(self.manager))
 
         lang_type_item = QStandardItem("Group")
         lang_type_item.setEditable(False)
@@ -249,10 +256,11 @@ class SchemaLoader:
             table_item.setEditable(False)
             table_item.setData({
                 'db_type': 'csv',
+                'type': 'table',
                 'table_name': file_name,
                 'conn_data': conn_data
             }, Qt.ItemDataRole.UserRole)
-            table_item.appendRow(QStandardItem("Loading..."))
+            table_item.appendRow(_create_loading_item(self.manager))
 
             type_item = QStandardItem("Table")
             type_item.setEditable(False)
@@ -281,7 +289,7 @@ class SchemaLoader:
                     'table_name': table_name,
                     'conn_data': conn_data,
                 }, Qt.ItemDataRole.UserRole)
-                table_item.appendRow(QStandardItem("Loading..."))
+                table_item.appendRow(_create_loading_item(self.manager))
 
                 type_item = QStandardItem("Table")
                 type_item.setEditable(False)

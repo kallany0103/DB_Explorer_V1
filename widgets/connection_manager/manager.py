@@ -55,6 +55,7 @@ class ConnectionManager(QWidget):
         self.connection_dialogs = ConnectionDialogs(self)
         self.context_menu_handler = ContextMenuHandler(self)
         self._spinner = ConnectionSpinner(self)
+        self._schema_spinner = ConnectionSpinner(self)
         self._active_schema_workers = []
         self._schema_load_token = 0
         self.active_postgres_conn = None
@@ -215,13 +216,14 @@ class ConnectionManager(QWidget):
             return True
         return super().eventFilter(obj, event)
 
-    def refresh_object_explorer(self, index=None):
+    def refresh_object_explorer(self, index=None, collapse=False):
         """Scoped refresh: reloads only the connection or table subtree.
         
         Args:
             index: QModelIndex of the item to refresh. If None, refreshes current selection.
                    - Depth 3 (connection): reloads that connection's schema
                    - Depth >= 4 (table/object): reloads that table's details
+            collapse: if True, collapses the tree node after refresh
         """
         try:
             # Determine which index to use
@@ -248,83 +250,82 @@ class ConnectionManager(QWidget):
             
             if depth == 3 and item_data:
                 # Connection-level refresh: reload schema for this connection only
-                self._refresh_connection_subtree(item, item_data)
+                self._refresh_connection_subtree(item, item_data, collapse=collapse)
             elif depth >= 4 and item_data:
                 # Table-level refresh: reload details for this table only
-                self._refresh_table_subtree(item, item_data)
+                self._refresh_table_subtree(item, item_data, collapse=collapse)
             else:
                 # Fallback: full refresh for unsupported levels
-                self._full_refresh()
+                self._full_refresh(collapse=collapse)
                 
         except Exception as e:
             self.status.showMessage(f"Error refreshing explorer: {e}", 5000)
             import traceback
             traceback.print_exc()
     
-    def _refresh_connection_subtree(self, item, conn_data):
-        """Refresh schema for a specific connection and collapse its subtree."""
+    def _refresh_connection_subtree(self, item, conn_data, collapse=False):
+        """Refresh schema for a specific connection.
+
+        collapse=False  → pgAdmin style: reload and restore expansion state.
+        collapse=True   → reset: reload then collapseAll().
+        """
         conn_id = conn_data.get("id")
         if not conn_id:
             return
-        
-        # Clear schema tree without saving state
-        self.schema_model.clear()
-        self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-        
-        # Collapse the schema tree
-        self.schema_tree.collapseAll()
-        
-        # Determine connection type and reload schema
-        parent_group = item.parent()
-        if not parent_group:
-            return
-        
-        connection_type = parent_group.parent()
-        if not connection_type:
-            return
-        
-        connection_type_name = connection_type.text().lower()
+
         conn_name = item.text()
-        
-        # Use the existing item_clicked mechanism to reload the schema
-        # This ensures consistency with the normal schema loading flow
-        self.item_clicked(self.proxy_model.mapFromSource(self.model.indexFromItem(item)))
-        
-        # Collapse after loading
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(500, lambda: self.schema_tree.collapseAll())
-        
+
+        # _skip_expansion_restore gates _save/_restore calls so that when
+        # collapse=True the saved state is never written and never restored,
+        # leaving the tree blank until we explicitly collapseAll() below.
+        self._skip_expansion_restore = collapse
+
+        # Delegate to item_clicked, passing collapse as skip_restore.
+        # _start_schema_load will call collapseAll() in on_finished when
+        # skip_restore is True, which is AFTER the async worker completes.
+        self.item_clicked(
+            self.proxy_model.mapFromSource(self.model.indexFromItem(item)),
+            skip_restore=collapse,
+        )
+
         self.status.showMessage(f"Connection '{conn_name}' refreshed.", 3000)
     
-    def _refresh_table_subtree(self, item, item_data):
-        """Refresh details for a specific table and collapse its subtree."""
-        # Find the corresponding schema tree item
+    def _refresh_table_subtree(self, item, item_data, collapse=False):
+        """Refresh details for a specific table."""
         table_name = item_data.get('table_name')
         if not table_name:
             return
-        
-        # Set flag to skip expansion state restoration AND saving
-        self._skip_expansion_restore = True
-        
-        # Collapse the item in the schema tree
+
+        self._skip_expansion_restore = collapse
+        self._spinner.start(item)
+
         schema_index = self._find_schema_item_by_data(item_data)
         if schema_index and schema_index.isValid():
-            # Collapse before reload
-            self.schema_tree.collapse(schema_index)
-            
-            # Force reload by calling load_tables_on_expand with force=True
-            # This will skip saving/restoring state due to the flag
-            self.table_details_loader.load_tables_on_expand(schema_index, force=True)
-            
-            # Re-find the index after model modification and collapse again
-            schema_index = self._find_schema_item_by_data(item_data)
-            if schema_index and schema_index.isValid():
+            schema_item = self.schema_model.itemFromIndex(schema_index)
+            if schema_item:
+                self._schema_spinner.start(schema_item)
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
+
+            if collapse:
                 self.schema_tree.collapse(schema_index)
-        
-        # Reset flag after a short delay to allow async operations to complete
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(500, lambda: setattr(self, '_skip_expansion_restore', False))
-        
+
+            self.table_details_loader.load_tables_on_expand(schema_index, force=True)
+
+            if schema_item:
+                self._schema_spinner.stop()
+
+            if collapse:
+                schema_index = self._find_schema_item_by_data(item_data)
+                if schema_index and schema_index.isValid():
+                    self.schema_tree.collapse(schema_index)
+
+        self._spinner.stop()
+
+        if collapse:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(500, lambda: setattr(self, '_skip_expansion_restore', False))
+
         self.status.showMessage(f"Table '{table_name}' refreshed.", 3000)
     
     def _find_schema_item_by_data(self, target_data):
@@ -347,16 +348,18 @@ class ConnectionManager(QWidget):
         
         return search_items(QModelIndex())
     
-    def _full_refresh(self):
+    def _full_refresh(self, collapse=False):
         """Full refresh fallback - reloads entire Object Explorer."""
         self._save_tree_expansion_state()
         self._save_schema_tree_expansion_state(self._current_conn_id)
         
-        self.tree.collapseAll()
-        self.schema_tree.collapseAll()
+        if collapse:
+            self.tree.collapseAll()
+            self.schema_tree.collapseAll()
         
         self.load_data()
         self._restore_tree_expansion_state()
+        self._restore_schema_tree_expansion_state(self._current_conn_id)
         
         current_index = self.tree.currentIndex()
         if current_index.isValid():
@@ -364,52 +367,55 @@ class ConnectionManager(QWidget):
                 
         self.status.showMessage("Object Explorer refreshed.", 3000)
     
-    def refresh_schema_tree_item(self, index):
-        """Scoped refresh for schema tree items - collapses only the refreshed item."""
+    def refresh_schema_tree_item(self, index, collapse=False):
+        """Scoped refresh for schema tree items."""
         if not index or not index.isValid():
             return
-        
+
         item = self.schema_model.itemFromIndex(index)
         if not item:
             return
-        
+
         item_data = item.data(Qt.ItemDataRole.UserRole)
         if not item_data:
             return
-        
+
         display_name = item.text()
         node_type = item_data.get('type', '')
-        
-        # For schema groups, reload the parent schema but don't collapse the group
+
+        # Spinner helper (sync ops: shows one frame; better than nothing)
+        def _spin_and_reload(target_index, target_item):
+            self._schema_spinner.start(target_item)
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
+            self.table_details_loader.load_tables_on_expand(target_index, force=True)
+            self._schema_spinner.stop()
+
         if node_type == 'schema_group':
-            # Find the parent schema item and reload it
             parent_index = index.parent()
             if parent_index and parent_index.isValid():
                 parent_item = self.schema_model.itemFromIndex(parent_index)
                 if parent_item:
                     parent_data = parent_item.data(Qt.ItemDataRole.UserRole)
                     if parent_data and parent_data.get('schema_name'):
-                        # Reload the parent schema
-                        self._skip_expansion_restore = True
-                        self.table_details_loader.load_tables_on_expand(parent_index, force=True)
-                        self._skip_expansion_restore = False
-                        # Don't collapse the schema group - let it stay in its current state
+                        self._skip_expansion_restore = collapse
+                        _spin_and_reload(parent_index, parent_item)
+                        if collapse:
+                            from PySide6.QtCore import QTimer
+                            QTimer.singleShot(300, lambda: self.schema_tree.collapse(parent_index) if parent_index.isValid() else None)
+                            QTimer.singleShot(600, lambda: setattr(self, '_skip_expansion_restore', False))
                         self.status.showMessage(f"Group '{display_name}' refreshed.", 3000)
                         return
-        
-        # Force reload with skip flag (don't collapse before load)
-        self._skip_expansion_restore = True
-        self.table_details_loader.load_tables_on_expand(index, force=True)
-        self._skip_expansion_restore = False
-        
-        # Only collapse if it's not a schema group
-        if node_type != 'schema_group':
+
+        self._skip_expansion_restore = collapse
+        _spin_and_reload(index, item)
+
+        if collapse and node_type != 'schema_group':
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(500, lambda: self.schema_tree.collapse(index) if index.isValid() else None)
-        
-        # Get display name for status message
+            QTimer.singleShot(300, lambda: self.schema_tree.collapse(index) if index.isValid() else None)
+            QTimer.singleShot(600, lambda: setattr(self, '_skip_expansion_restore', False))
+
         table_name = item_data.get('table_name', '')
-        
         if table_name:
             self.status.showMessage(f"Table '{display_name}' refreshed.", 3000)
         elif node_type == 'schema':
@@ -498,7 +504,7 @@ class ConnectionManager(QWidget):
             except Exception as exc:
                 QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{exc}")
 
-    def item_clicked(self, proxy_index):
+    def item_clicked(self, proxy_index, skip_restore=False):
         source_index = self.proxy_model.mapToSource(proxy_index)
         item = self.model.itemFromIndex(source_index)
         depth = self.get_item_depth(item)
@@ -543,19 +549,19 @@ class ConnectionManager(QWidget):
             self.active_postgres_conn = conn_data
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
             worker = PostgresSchemaWorker(conn_data)
-            self._start_schema_load(item, worker, self.schema_loader.populate_postgres_schema)
+            self._start_schema_load(item, worker, self.schema_loader.populate_postgres_schema, skip_restore=skip_restore)
         elif "sqlite" in connection_type_name and conn_data.get("db_path"):
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
             worker = SQLiteSchemaWorker(conn_data)
-            self._start_schema_load(item, worker, self.schema_loader.populate_sqlite_schema)
+            self._start_schema_load(item, worker, self.schema_loader.populate_sqlite_schema, skip_restore=skip_restore)
         elif "csv" in connection_type_name and conn_data.get("db_path"):
             self.status.showMessage(f"Loading CSV folder for {conn_data.get('name')}...", 3000)
             worker = CsvSchemaWorker(conn_data)
-            self._start_schema_load(item, worker, self.schema_loader.populate_csv_schema)
+            self._start_schema_load(item, worker, self.schema_loader.populate_csv_schema, skip_restore=skip_restore)
         elif "servicenow" in connection_type_name:
             self.status.showMessage(f"Loading ServiceNow schema for {conn_name}...", 3000)
             worker = ServiceNowSchemaWorker(conn_data)
-            self._start_schema_load(item, worker, self.schema_loader.populate_servicenow_schema)
+            self._start_schema_load(item, worker, self.schema_loader.populate_servicenow_schema, skip_restore=skip_restore)
 
         elif "oracle" in connection_type_name:
             self.status.showMessage("Oracle connections are not currently supported.", 5000)
@@ -580,12 +586,16 @@ class ConnectionManager(QWidget):
                 self.schema_tree.repaint()
                 try:
                     populate_fn(data, skip_restore=skip_restore)
-                    # Collapse after population if we're doing a scoped refresh
+                    # collapse=True (Reset Tree): collapseAll AFTER populate so
+                    # restore logic inside populate_fn has no effect.
                     if skip_restore:
                         self.schema_tree.collapseAll()
                 except Exception as exc:
                     self.status.showMessage(f"Error populating schema: {exc}", 5000)
                     self.show_error_popup(f"Failed to populate schema:\n{exc}")
+                finally:
+                    # Always clear the skip flag once the async work is done.
+                    self._skip_expansion_restore = False
 
         def on_error(message):
             _remove_worker()

@@ -76,7 +76,8 @@ class SchemaPropertiesDialog(BasePropertiesDialog):
             cursor.execute(pg_queries.GET_SCHEMA_DETAILS, (self.schema_name,))
             res = cursor.fetchone()
             if res:
-                oid, owner, comment = res
+                owner = res[0]
+                comment = res[1]
                 self.comment_edit.setPlainText(comment or "")
                 self.original_owner = owner
                 self.original_comment = comment or ""
