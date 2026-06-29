@@ -12,9 +12,9 @@ class BackupEngine(BackupRestoreBase):
 
         options = options or {}
         args = [
-            "-h", conn_data["host"],
-            "-p", str(conn_data["port"]),
-            "-U", conn_data["user"],
+            "-h", conn_data.get("host", "localhost"),
+            "-p", str(conn_data.get("port", 5432)),
+            "-U", conn_data.get("user", "postgres"),
             "-w", 
             "-f", final_output
         ]
@@ -28,13 +28,13 @@ class BackupEngine(BackupRestoreBase):
                 if obj["type"] == "schema":
                     args.extend(["-n", obj["name"]])
                 elif obj["type"] == "table":
-                    args.extend(["-t", f'"{obj["schema"]}"."{obj["name"]}"'])
+                    args.extend(["-t", f'{obj["schema"]}.{obj["name"]}'])
         else:
             if granularity == "schema" and object_name:
                 args.extend(["-n", object_name])
             elif granularity == "table" and object_name:
                 if schema_name:
-                    args.extend(["-t", f'"{schema_name}"."{object_name}"'])
+                    args.extend(["-t", f'{schema_name}.{object_name}'])
                 else:
                     args.extend(["-t", object_name])
         
@@ -58,7 +58,14 @@ class BackupEngine(BackupRestoreBase):
         if options.get("compress") is not None and str(options.get("compress")) != "0":
             args.extend(["--compress", str(options["compress"])])
             
-        args.append(conn_data["database"])
+        exclude_schemas_str = options.get("exclude_schemas", "")
+        if exclude_schemas_str:
+            for schema in exclude_schemas_str.split(","):
+                schema = schema.strip()
+                if schema:
+                    args.extend(["-N", schema])
+            
+        args.append(conn_data.get("database", "postgres"))
 
         if use_wsl:
             return ["pg_dump"] + args

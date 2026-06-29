@@ -2086,7 +2086,7 @@ SERVER "{data["server"]}"
         dialog = BackupDialog(self.manager.main_window, item_data)
         if dialog.exec():
             options = dialog.get_options()
-            conn_data = item_data.get("conn_data", {})
+            conn_data = item_data.get("conn_data") or item_data
 
             if db_type == "postgres":
                 # Build command
@@ -2107,13 +2107,22 @@ SERVER "{data["server"]}"
                     options=options
                 )
                 
+                selected_objs = options.get("selected_objects", [])
+                if selected_objs:
+                    if len(selected_objs) == 1:
+                        obj_name = selected_objs[0].get("name", "Unknown")
+                    else:
+                        obj_name = "Multiple Objects"
+                else:
+                    obj_name = object_name if granularity != "database" else "Full Database"
+                
                 # Start Worker
                 metadata = {
                     "pid": "BACKUP",
-                    "type": "Backup Database",
+                    "type": f"Backup {granularity.capitalize()}",
                     "status": "Running",
-                    "server": conn_data.get("short_name", "Unknown"),
-                    "object": object_name or conn_data.get("database"),
+                    "server": conn_data.get("database", "Unknown"),
+                    "object": obj_name,
                     "details": f"Backing up to {os.path.basename(options['filename'])}",
                     "_conn_id": conn_data.get("id")
                 }
@@ -2178,8 +2187,7 @@ SERVER "{data["server"]}"
         dialog = RestoreDialog(self.manager.main_window, item_data)
         if dialog.exec():
             options = dialog.get_options()
-            # Use the target connection selected in the dialog, or fall back to the item's connection
-            conn_data = options.get("target_conn_data") or item_data.get("conn_data", {})
+            conn_data = options.get("target_conn_data") or item_data.get("conn_data") or item_data
             
             if not conn_data:
                  QMessageBox.critical(self.manager.main_window, "Error", "No target connection found for restore.")
@@ -2189,20 +2197,34 @@ SERVER "{data["server"]}"
                 # Build command
                 binary = self.restore_engine.get_pg_binary("pg_restore")
                 
+                granularity = options.get("object_type", "database")
+                object_name = options.get("display_name") or item_data.get("table_name") or item_data.get("schema_name")
+                
                 args = self.restore_engine.build_pg_restore_args(
                     conn_data, 
                     options["filename"],
                     format=options.get("format", "custom"),
+                    granularity=granularity,
+                    object_name=object_name,
                     options=options
                 )
+                
+                selected_objs = options.get("selected_objects", [])
+                if selected_objs:
+                    if len(selected_objs) == 1:
+                        obj_name = selected_objs[0].get("name", "Unknown")
+                    else:
+                        obj_name = "Multiple Objects"
+                else:
+                    obj_name = object_name if granularity != "database" else "Full Database"
                 
                 # Start Worker
                 metadata = {
                     "pid": "RESTORE",
-                    "type": "Restore Database",
+                    "type": f"Restore {granularity.capitalize()}",
                     "status": "Running",
-                    "server": conn_data.get("short_name", "Unknown"),
-                    "object": item_data.get("table_name") or item_data.get("schema_name") or conn_data.get("database"),
+                    "server": conn_data.get("database", "Unknown"),
+                    "object": obj_name,
                     "details": f"Restoring from {os.path.basename(options['filename'])}",
                     "_conn_id": conn_data.get("id")
                 }
@@ -2254,3 +2276,140 @@ SERVER "{data["server"]}"
                 emit_process_started(signals, process_id, metadata)
                 
                 self.manager.main_window.thread_pool.start(worker)
+
+    def enable_rls(self, item_data, enable=True):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+        if not all([conn_data, schema_name, table_name]): return
+        
+        action_sql = "ENABLE" if enable else "DISABLE"
+        action_word = "enabled" if enable else "disabled"
+        try:
+            sql = f'ALTER TABLE "{schema_name}"."{table_name}" {action_sql} ROW LEVEL SECURITY;'
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            self._notify_deletion_success(table_name, "RLS", sql, conn_data)
+            self.manager.status.showMessage(f"RLS {action_word} on table '{table_name}'.", 4000)
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to {action_word[:-1]} RLS:\n{e}")
+
+    def force_rls(self, item_data, force=True):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+        if not all([conn_data, schema_name, table_name]): return
+        
+        action_sql = "FORCE" if force else "NO FORCE"
+        action_word = "forced" if force else "unforced"
+        try:
+            sql = f'ALTER TABLE "{schema_name}"."{table_name}" {action_sql} ROW LEVEL SECURITY;'
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            self._notify_deletion_success(table_name, "RLS Force", sql, conn_data)
+            self.manager.status.showMessage(f"RLS {action_word} on table '{table_name}'.", 4000)
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to modify RLS force setting:\n{e}")
+
+    def drop_policy(self, item_data, policy_name, cascade=False):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+        if not all([conn_data, schema_name, table_name]): return
+
+        confirm_msg = f"Are you sure you want to drop policy '{policy_name}' on table '{table_name}'?"
+        reply = QMessageBox.question(
+            self.manager,
+            'Confirm Drop Policy',
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        try:
+            cascade_sql = " CASCADE" if cascade else ""
+            sql = f'DROP POLICY "{policy_name}" ON "{schema_name}"."{table_name}"{cascade_sql};'
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            self._notify_deletion_success(policy_name, "Policy", sql, conn_data)
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to drop policy:\n{e}")
+
+    def open_create_policy_dialog(self, item_data):
+        if not item_data: return
+        conn_data = item_data.get('conn_data')
+        schema_name = item_data.get('schema_name')
+        table_name = item_data.get('table_name')
+        if not all([conn_data, schema_name, table_name]): return
+        
+        roles = []
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute("SELECT rolname FROM pg_roles ORDER BY rolname;")
+            roles = [row[0] for row in cursor.fetchall()]
+            conn.close()
+        except Exception as e:
+            self.manager.status.showMessage(f"Could not fetch roles: {e}", 4000)
+            
+        from dialogs.create_policy_dialog import CreatePolicyDialog
+        
+        dialog = CreatePolicyDialog(
+            parent=self.manager, 
+            schema_name=schema_name, 
+            table_name=table_name, 
+            roles=roles
+        )
+        if dialog.exec():
+            data = dialog.get_data()
+            self._create_policy(conn_data, schema_name, table_name, data)
+
+    def _create_policy(self, conn_data, schema_name, table_name, data):
+        name = data.get("name")
+        command = data.get("command", "ALL")
+        role = data.get("role", "public")
+        using_expr = data.get("using", "")
+        with_check = data.get("with_check", "")
+        
+        sql = f'CREATE POLICY "{name}" ON "{schema_name}"."{table_name}"\n'
+        
+        if command != "ALL":
+            sql += f'FOR {command}\n'
+            
+        if role and role != "public":
+            sql += f'TO {role}\n'
+            
+        if using_expr:
+            sql += f'USING ({using_expr})\n'
+            
+        if with_check:
+            sql += f'WITH CHECK ({with_check})\n'
+            
+        sql += ";"
+        
+        try:
+            conn = db.create_postgres_connection(conn_data)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            conn.commit()
+            conn.close()
+            
+            self._notify_creation_success(name, "Policy", sql, conn_data)
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to create policy:\n{e}")

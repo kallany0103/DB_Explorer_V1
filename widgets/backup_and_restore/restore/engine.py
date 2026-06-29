@@ -11,13 +11,26 @@ class RestoreEngine(BackupRestoreBase):
 
         options = options or {}
         args = [
-            "-h", conn_data["host"],
-            "-p", str(conn_data["port"]),
-            "-U", conn_data["user"],
+            "-h", conn_data.get("host", "localhost"),
+            "-p", str(conn_data.get("port", 5432)),
+            "-U", conn_data.get("user", "postgres"),
             "-w", 
-            "-d", conn_data["database"],
+            "-d", conn_data.get("database", "postgres"),
         ]
         
+        selected_objects = options.get("selected_objects", [])
+        if selected_objects:
+            for obj in selected_objects:
+                if obj["type"] == "schema":
+                    args.extend(["-n", obj["name"]])
+                elif obj["type"] == "table":
+                    args.extend(["-t", obj["name"]])
+        else:
+            if granularity == "schema" and object_name:
+                args.extend(["-n", object_name])
+            elif granularity == "table" and object_name:
+                args.extend(["-t", object_name])
+            
         format_map = {"custom": "c", "directory": "d", "tar": "t"}
         if format in format_map:
             args.extend(["-F", format_map[format]])

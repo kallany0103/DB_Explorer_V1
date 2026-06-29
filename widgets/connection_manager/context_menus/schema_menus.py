@@ -108,6 +108,10 @@ class SchemaMenuBuilder:
             self._column_menu(menu, item, item_data, index)
         elif is_trigger:
             self.trigger_builder.build_menu(menu, item, item_data)
+        elif node_type == "policies_group":
+            self._policies_group_menu(menu, item, item_data, index)
+        elif node_type == "policy":
+            self._policy_menu(menu, item, item_data, index)
         else:
             # Fallback
             menu.addAction(action(self.manager, f"Properties for {item.text()}"))
@@ -274,6 +278,33 @@ class SchemaMenuBuilder:
             )
             menu.addAction(act)
 
+            act = action(self.manager, "Restore...", "mdi.database-import")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+            )
+            menu.addAction(act)
+
+            menu.addSeparator()
+            security_sub = submenu(menu, "Security", "mdi.shield-lock-outline")
+            
+            act = action(self.manager, "Enable Row Level Security", "mdi.shield-check-outline")
+            act.triggered.connect(lambda: self.manager.connection_actions.enable_rls(item_data, True))
+            security_sub.addAction(act)
+
+            act = action(self.manager, "Disable Row Level Security", "mdi.shield-remove-outline")
+            act.triggered.connect(lambda: self.manager.connection_actions.enable_rls(item_data, False))
+            security_sub.addAction(act)
+
+            security_sub.addSeparator()
+
+            act = action(self.manager, "Force Row Level Security", "mdi.shield-alert-outline")
+            act.triggered.connect(lambda: self.manager.connection_actions.force_rls(item_data, True))
+            security_sub.addAction(act)
+
+            act = action(self.manager, "No Force Row Level Security", "mdi.shield-outline")
+            act.triggered.connect(lambda: self.manager.connection_actions.force_rls(item_data, False))
+            security_sub.addAction(act)
+
             menu.addSeparator()
             add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
@@ -386,6 +417,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        act = action(self.manager, "Restore...", "mdi.database-import")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+        )
+        menu.addAction(act)
+
         menu.addSeparator()
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
         act.triggered.connect(
@@ -400,13 +437,6 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Maintenance...", "mdi.wrench-outline")
-        act.triggered.connect(stub("maintenance_schema"))
-        menu.addAction(act)
-
-        act = action(self.manager, "Grant Wizard...", "mdi.account-key-outline")
-        act.triggered.connect(stub("grant_wizard_schema"))
-        menu.addAction(act)
 
         act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+F")
         act.triggered.connect(
@@ -454,6 +484,21 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("conn_data", {}).get("database") or "Schemas")
         )
         menu.addAction(act)
+
+        db_type = item_data.get("db_type", "")
+        if str(db_type).lower() not in ("csv", "servicenow"):
+            menu.addSeparator()
+            act = action(self.manager, "Backup...", "mdi.backup-restore")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+            )
+            menu.addAction(act)
+
+            act = action(self.manager, "Restore...", "mdi.database-import")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
         conn = item_data.get("conn_data") or {}
@@ -527,6 +572,21 @@ class SchemaMenuBuilder:
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("group_name") or item.text())
         )
         menu.addAction(act)
+
+        db_type = item_data.get("db_type", "")
+        if str(db_type).lower() not in ("csv", "servicenow"):
+            menu.addSeparator()
+            act = action(self.manager, "Backup...", "mdi.backup-restore")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+            )
+            menu.addAction(act)
+
+            act = action(self.manager, "Restore...", "mdi.database-import")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+            )
+            menu.addAction(act)
 
         self._add_refresh_actions(menu, index)
 

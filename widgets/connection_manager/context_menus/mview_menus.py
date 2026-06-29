@@ -103,6 +103,12 @@ class MaterializedViewMenuBuilder:
         )
         menu.addAction(act)
 
+        act = action(self.manager, "Restore...", "mdi.database-import")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+        )
+        menu.addAction(act)
+
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 

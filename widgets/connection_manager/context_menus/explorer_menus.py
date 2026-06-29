@@ -133,6 +133,15 @@ class ExplorerMenuBuilder:
         conn_inspector.setdefault("name", item.text())
         add_properties_statistics_actions(menu, self.manager, conn_inspector, item.text())
 
+        menu.addSeparator()
+        act = action(self.manager, "Backup...", "mdi.backup-restore")
+        act.triggered.connect(lambda: self.manager.connection_actions.open_backup_dialog(conn_data))
+        menu.addAction(act)
+
+        act = action(self.manager, "Restore...", "mdi.database-import")
+        act.triggered.connect(lambda: self.manager.connection_actions.open_restore_dialog(conn_data))
+        menu.addAction(act)
+
         parent_item = item.parent()
         grandparent_item = parent_item.parent() if parent_item else None
         code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None

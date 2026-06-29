@@ -135,6 +135,11 @@ class BackupDialog(QDialog):
             self.compression_spin.setValue(0)
             misc_layout.addRow("Compression (0-9):", self.compression_spin)
             
+            self.exclude_schemas_edit = QLineEdit()
+            self.exclude_schemas_edit.setPlaceholderText("e.g. schema1, schema2")
+            self.exclude_schemas_edit.setToolTip("Comma separated list of schemas to exclude (e.g. to avoid permission denied errors).")
+            misc_layout.addRow("Exclude Schemas:", self.exclude_schemas_edit)
+            
         elif self.db_type == "sqlite":
             misc_layout.addRow(QLabel("SQLite backups are direct file copies."))
 
@@ -252,20 +257,19 @@ class BackupDialog(QDialog):
             self.filename_edit.setText(base + ".tar")
 
     def populate_objects_tree(self):
-        conn_data = self.item_data.get("conn_data")
-        if not conn_data or self.db_type != "postgres":
+        conn_data = self.item_data.get("conn_data") or self.item_data
+        if not conn_data or not (conn_data.get("host") or conn_data.get("dsn")) or self.db_type != "postgres":
             return
             
         import db
+        from PySide6.QtWidgets import QMessageBox
+        import traceback
+        
+        conn = None
         try:
-            conn = db.create_postgres_connection(
-                host=conn_data["host"],
-                database=conn_data["database"],
-                user=conn_data["user"],
-                password=conn_data["password"],
-                port=int(conn_data.get("port", 5432))
-            )
+            conn = db.create_postgres_connection(conn_data)
             if not conn:
+                QMessageBox.warning(self, "Connection Error", "Failed to connect to the database to fetch objects.")
                 return
                 
             cursor = conn.cursor()
@@ -293,9 +297,15 @@ class BackupDialog(QDialog):
                     table_item.setData(0, Qt.UserRole, {"type": "table", "schema": schema, "name": table})
                     table_item.setFlags(table_item.flags() | Qt.ItemIsUserCheckable)
                     table_item.setCheckState(0, Qt.Unchecked)
-            conn.close()
+                    
         except Exception as e:
-            print(f"Error populating objects tree: {e}")
+            QMessageBox.critical(self, "Error Populating Tree", f"An error occurred:\n{str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+        finally:
+            if conn:
+                try:
+                    db.return_pooled_postgres_connection(conn_data, conn=conn)
+                except Exception:
+                    pass
 
     def handle_item_changed(self, item, column):
         self.objects_tree.blockSignals(True)
@@ -338,6 +348,7 @@ class BackupDialog(QDialog):
                 "verbose": self.verbose_check.isChecked(),
                 "no_comments": self.no_comments_check.isChecked(),
                 "compress": self.compression_spin.value(),
+                "exclude_schemas": self.exclude_schemas_edit.text().strip(),
                 "selected_objects": selected
             })
             
