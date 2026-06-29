@@ -11,11 +11,17 @@ from widgets.worksheet.code_editor import CodeEditor
 
 
 def save_main_window_session(main_window, session_file):
+    main_window.connection_manager._save_tree_expansion_state()
+    main_window.connection_manager._save_schema_tree_expansion_state()
+    
     session_data = {
         "window_geometry": main_window.saveGeometry().toBase64().data().decode(),
         "window_state": main_window.saveState().toBase64().data().decode(),
         "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
+        "saved_tree_paths": getattr(main_window.connection_manager, "_saved_tree_paths", []),
+        "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
+        "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
         "tabs": [],
     }
 
@@ -73,6 +79,34 @@ def restore_main_window_session(main_window, session_file):
   
         main_window.pg_bin_path = session_data.get("pg_bin_path", "")
         main_window.use_wsl = session_data.get("use_wsl", False)
+
+        main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
+        main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)
+        
+        # Convert schema_states paths back to tuples and keys to int
+        raw_schema_states = session_data.get("schema_states", {})
+        processed_schema_states = {}
+        for conn_id, state in raw_schema_states.items():
+            try:
+                # Connection IDs are integers in DB but JSON makes them strings
+                parsed_conn_id = int(conn_id)
+            except ValueError:
+                parsed_conn_id = conn_id
+                
+            processed_state = {"paths": [], "selection": None}
+            if "paths" in state:
+                processed_state["paths"] = [tuple(p) for p in state["paths"]]
+            if "selection" in state and state["selection"] is not None:
+                processed_state["selection"] = tuple(state["selection"])
+            processed_schema_states[parsed_conn_id] = processed_state
+        
+        main_window.connection_manager._schema_states = processed_schema_states
+        main_window.connection_manager._restore_tree_expansion_state()
+
+        # Trigger selection to load schema for the previously active connection
+        selected_indexes = main_window.connection_manager.tree.selectionModel().selectedIndexes()
+        if selected_indexes:
+            main_window.connection_manager.item_clicked(selected_indexes[0])
 
         tabs = session_data.get("tabs", [])
         if not tabs:

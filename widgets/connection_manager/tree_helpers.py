@@ -58,6 +58,9 @@ class TreeHelpers:
         if level == "GROUP_SEQUENCES":
             item.setIcon(qta.icon("mdi.numeric", color="#BF7200"))
             return
+        if level == "POLICIES_GROUP":
+            item.setIcon(qta.icon("mdi.folder-lock-outline", color="#9E9E9E"))
+            return
 
         if level == "SCHEMA":
             item.setIcon(qta.icon("mdi.cube-outline", color="#C49102"))
@@ -82,6 +85,10 @@ class TreeHelpers:
                 item.setIcon(qta.icon("mdi.lightning-bolt-outline", color="#9E9E9E"))
             else:
                 item.setIcon(qta.icon("mdi.lightning-bolt", color="#FF9800"))
+            return
+
+        if level == "POLICY":
+            item.setIcon(qta.icon("mdi.shield-lock-outline", color="#FF5722"))
             return
 
         if level in ["FDW_ROOT", "FDW", "SERVER", "FOREIGN_TABLE", "EXTENSION_ROOT", "EXTENSION", "LANGUAGE_ROOT", "LANGUAGE", "SEQUENCE", "FUNCTION", "TRIGGER_FUNCTION"]:

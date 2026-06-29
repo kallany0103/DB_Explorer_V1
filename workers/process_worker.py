@@ -69,6 +69,13 @@ class ProcessWorker(QObject):
         
         if exit_code == 0:
             msg = total_log or "Process completed successfully."
+            
+            try:
+                with open("e:\\C\\Documents\\CODES\\Projects\\PyQt6\\DB_Explorer_V1\\process_debug.log", "a") as f:
+                    f.write(f"=== PROCESS FINISHED ===\n{msg}\n========================\n")
+            except Exception:
+                pass
+                
             self.signals.finished.emit(self.process_id, msg, elapsed, 0)
         else:
             remaining = self.process.readAllStandardError().data().decode(errors='replace').strip()

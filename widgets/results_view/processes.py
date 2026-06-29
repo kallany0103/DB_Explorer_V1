@@ -336,13 +336,19 @@ def handle_process_finished(manager, process_id, message, time_taken, row_count)
     cursor.execute(
         """
         UPDATE usf_processes
-        SET status = ?, time_taken = ?, end_time = ?, details = ?
+        SET status = ?, 
+            time_taken = ?, 
+            end_time = ?, 
+            details = CASE 
+                WHEN type LIKE '%Backup%' OR type LIKE '%Restore%' THEN details 
+                ELSE ? 
+            END
         WHERE pid = ?
         """,
         (
             status,
             time_taken,
-            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
             message,
             process_id,
         ),
@@ -394,24 +400,13 @@ def refresh_processes_view(manager):
     conn = sqlite.connect(DB_FILE)
     cursor = conn.cursor()
 
-    if selected_server:
-        cursor.execute(
-            """
-            SELECT pid, type, status, server, object, time_taken, start_time, end_time, details
-            FROM usf_processes
-            WHERE server = ?
-            ORDER BY start_time DESC
-            """,
-            (selected_server,),
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT pid, type, status, server, object, time_taken, start_time, end_time, details
-            FROM usf_processes
-            ORDER BY start_time DESC
-            """
-        )
+    cursor.execute(
+        """
+        SELECT pid, type, status, server, object, time_taken, start_time, end_time, details
+        FROM usf_processes
+        ORDER BY start_time DESC
+        """
+    )
 
     data = cursor.fetchall()
     conn.close()

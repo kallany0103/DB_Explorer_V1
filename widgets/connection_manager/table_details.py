@@ -734,6 +734,8 @@ class TableDetailsLoader:
 
             table_item.appendRow(triggers_folder)
 
+            self._load_table_policies(table_item, item_data, cursor, schema_name, table_name)
+
         except Exception as e:
             if hasattr(self.manager, 'pg_conn') and self.manager.pg_conn:
                 self.manager.pg_conn.rollback()
@@ -755,3 +757,80 @@ class TableDetailsLoader:
             return
 
         self.manager.status.showMessage(f"CData table details not yet supported for: {table_name}", 3000)
+
+    def _load_table_policies(self, table_item, item_data, cursor, schema_name, table_name):
+        try:
+            # First, check if RLS is enabled on the table
+            rls_query = """
+            SELECT relrowsecurity, relforcerowsecurity 
+            FROM pg_class c 
+            JOIN pg_namespace n ON n.oid = c.relnamespace 
+            WHERE n.nspname = %s AND c.relname = %s;
+            """
+            cursor.execute(rls_query, (schema_name, table_name))
+            rls_info = cursor.fetchone()
+            
+            rls_enabled = False
+            rls_forced = False
+            if rls_info:
+                rls_enabled = rls_info[0]
+                rls_forced = rls_info[1]
+
+            # Next, fetch policies
+            pol_query = """
+            SELECT 
+                pol.polname as policy_name,
+                pol.polcmd as policy_cmd,
+                pol.polpermissive as policy_permissive
+            FROM pg_policy pol
+            JOIN pg_class c ON pol.polrelid = c.oid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = %s AND c.relname = %s
+            ORDER BY pol.polname;
+            """
+            cursor.execute(pol_query, (schema_name, table_name))
+            policies = cursor.fetchall()
+
+            status_text = "RLS Enabled" if rls_enabled else "RLS Disabled"
+            folder_text = f"Policies ({len(policies)}) [{status_text}]"
+            
+            policies_folder = QStandardItem(folder_text)
+            policies_folder.setEditable(False)
+            
+            # Use 'POLICIES_GROUP' for special icon handling if desired
+            self.manager._set_tree_item_icon(policies_folder, level="POLICIES_GROUP")
+            
+            policies_group_data = item_data.copy()
+            policies_group_data['type'] = 'policies_group'
+            policies_group_data['group_name'] = 'Policies'
+            policies_group_data['rls_enabled'] = rls_enabled
+            policies_group_data['rls_forced'] = rls_forced
+            policies_folder.setData(policies_group_data, Qt.ItemDataRole.UserRole)
+
+            if not policies:
+                policies_folder.appendRow(QStandardItem("No policies"))
+            else:
+                for pol_name, pol_cmd, pol_permissive in policies:
+                    cmd_str = pol_cmd.replace('*', 'ALL') if pol_cmd else 'ALL'
+                    perm_str = "PERMISSIVE" if pol_permissive else "RESTRICTIVE"
+                    display_name = f"{pol_name} ({cmd_str}, {perm_str})"
+                    
+                    pol_item = QStandardItem(display_name)
+                    pol_item.setEditable(False)
+                    self.manager._set_tree_item_icon(pol_item, level="POLICY")
+                    
+                    pol_data = item_data.copy()
+                    pol_data['type'] = 'policy'
+                    pol_data['policy_name'] = pol_name
+                    pol_data['policy_cmd'] = cmd_str
+                    pol_data['policy_permissive'] = pol_permissive
+                    pol_item.setData(pol_data, Qt.ItemDataRole.UserRole)
+                    
+                    policies_folder.appendRow(pol_item)
+
+            table_item.appendRow(policies_folder)
+        except Exception as e:
+            # Append error row quietly for policies
+            policies_folder = QStandardItem(f"Policies (Error)")
+            policies_folder.appendRow(QStandardItem(f"Error: {e}"))
+            table_item.appendRow(policies_folder)
