@@ -508,6 +508,13 @@ def add_tab(manager):
     history_view_btn.clicked.connect(lambda: switch_editor_view(1))
     test_case_view_btn.clicked.connect(lambda: switch_editor_view(2))
 
+    def _on_test_case_copy_to_editor(text):
+        text_edit.setPlainText(text)
+        query_view_btn.setChecked(True)
+        switch_editor_view(0)
+
+    test_cases_widget.copy_to_editor_requested.connect(_on_test_case_copy_to_editor)
+
     def _refresh_engine(skip_slow=False):
         data = db_combo_box.currentData()
         text_edit._conn_data = data

@@ -3,15 +3,18 @@ from PySide6.QtWidgets import (
     QGroupBox, QLabel, QTextEdit, QPushButton, QHBoxLayout,
     QApplication, QSplitter, QListWidget
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 import qtawesome as qta
 
 from widgets.test_cases.data.table import TABLE_COMMANDS
 from widgets.test_cases.data.view import VIEW_COMMANDS
 from widgets.test_cases.data.complex_queries import COMPLEX_QUERIES
 from widgets.test_cases.data.function import FUNCTION_COMMANDS
+from widgets.test_cases.data.rls import RLS_COMMANDS
 
 class TestCasesWidget(QWidget):
+    copy_to_editor_requested = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_data()
@@ -22,7 +25,8 @@ class TestCasesWidget(QWidget):
             "Tables": TABLE_COMMANDS,
             "Views": VIEW_COMMANDS,
             "Complex Queries": COMPLEX_QUERIES,
-            "Functions": FUNCTION_COMMANDS
+            "Functions": FUNCTION_COMMANDS,
+            "Row-Level Security": RLS_COMMANDS
         }
 
     def init_ui(self):
@@ -105,6 +109,25 @@ class TestCasesWidget(QWidget):
 
         commands = self.test_data.get(category, [])
 
+        action_btn_style = """
+            QPushButton {
+                min-height: 26px;
+                padding: 2px 10px;
+                border: 1px solid #cfd6df;
+                border-radius: 6px;
+                background: #ffffff;
+                color: #1f2937;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background: #f4f7fb;
+                border-color: #b8c2cf;
+            }
+            QPushButton:pressed {
+                background: #e9eef5;
+            }
+        """
+
         for cmd in commands:
             group = QGroupBox(cmd["title"])
             group_layout = QVBoxLayout(group)
@@ -117,19 +140,56 @@ class TestCasesWidget(QWidget):
             text_edit = QTextEdit()
             text_edit.setPlainText(cmd["sql"])
             text_edit.setReadOnly(True)
-            text_edit.setMaximumHeight(100)
+            text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            
+            line_count = cmd["sql"].count('\n') + 1
+            full_height = line_count * 18 + 16
+            
+            show_more_btn = None
+            if line_count > 6:
+                collapsed_height = 6 * 18 + 16
+                text_edit.setFixedHeight(collapsed_height)
+                
+                show_more_btn = QPushButton("Show More")
+                show_more_btn.setStyleSheet("color: #0052cc; border: none; text-align: left; font-size: 9pt; background: transparent; margin: 0; padding: 0;")
+                show_more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                
+                def make_toggle(te=text_edit, btn=show_more_btn, f_h=full_height, c_h=collapsed_height):
+                    def toggle(checked=False):
+                        if btn.text() == "Show More":
+                            te.setFixedHeight(f_h)
+                            btn.setText("Show Less")
+                        else:
+                            te.setFixedHeight(c_h)
+                            btn.setText("Show More")
+                    return toggle
+                
+                show_more_btn.clicked.connect(make_toggle())
+            else:
+                text_edit.setFixedHeight(full_height)
+                
             text_edit.setStyleSheet("background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px; font-family: Consolas, monospace;")
             group_layout.addWidget(text_edit)
+            
+            if show_more_btn:
+                group_layout.addWidget(show_more_btn)
 
             btn_layout = QHBoxLayout()
             copy_btn = QPushButton("Copy")
             copy_btn.setIcon(qta.icon("fa5s.copy", color="#555555"))
-            copy_btn.setFixedWidth(80)
-            # Use default argument binding to capture correct 'sql' string
+            copy_btn.setStyleSheet(action_btn_style)
+            copy_btn.setMinimumWidth(78)
             copy_btn.clicked.connect(lambda checked=False, text=cmd["sql"]: self.copy_to_clipboard(text))
+            
+            copy_editor_btn = QPushButton("Copy to Editor")
+            copy_editor_btn.setIcon(qta.icon("fa5s.external-link-alt", color="#555555"))
+            copy_editor_btn.setStyleSheet(action_btn_style)
+            copy_editor_btn.setMinimumWidth(132)
+            copy_editor_btn.clicked.connect(lambda checked=False, text=cmd["sql"]: self.copy_to_editor_requested.emit(text))
             
             btn_layout.addStretch()
             btn_layout.addWidget(copy_btn)
+            btn_layout.addWidget(copy_editor_btn)
             group_layout.addLayout(btn_layout)
 
             container_layout.addWidget(group)
