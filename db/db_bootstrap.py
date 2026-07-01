@@ -59,6 +59,7 @@ SCHEMA_STATEMENTS = (
     """
     CREATE TABLE IF NOT EXISTS usf_processes (
         pid TEXT PRIMARY KEY,
+        process_name TEXT,
         type TEXT,
         status TEXT,
         server TEXT,
@@ -86,6 +87,12 @@ def ensure_hierarchy_db():
         conn.execute("PRAGMA foreign_keys = ON")
         for statement in SCHEMA_STATEMENTS:
             conn.execute(statement)
+            
+        try:
+            conn.execute("ALTER TABLE usf_processes ADD COLUMN process_name TEXT")
+        except sqlite.OperationalError:
+            pass
+            
         conn.executemany(
             "INSERT OR IGNORE INTO usf_connection_types (code, name) VALUES (?, ?)",
             DEFAULT_CONNECTION_TYPES,
