@@ -2119,6 +2119,7 @@ SERVER "{data["server"]}"
                 # Start Worker
                 metadata = {
                     "pid": "BACKUP",
+                    "process_name": options.get("process_name", ""),
                     "type": f"Backup {granularity.capitalize()}",
                     "status": "Running",
                     "server": conn_data.get("database", "Unknown"),
@@ -2154,11 +2155,13 @@ SERVER "{data["server"]}"
                 process_id = f"BACKUP_SQLITE_{int(time.time())}"
                 metadata = {
                     "pid": process_id,
+                    "process_name": options.get("process_name", ""),
                     "type": "Backup SQLite",
                     "status": "Running",
                     "server": os.path.basename(db_path),
                     "object": "Full Database",
-                    "details": f"Copying to {os.path.basename(options['filename'])}",
+                    "details": f"Backing up to {os.path.basename(options['filename'])}",
+                    "_conn_id": conn_data.get("id")
                 }
                 
                 from workers.signals import ProcessSignals

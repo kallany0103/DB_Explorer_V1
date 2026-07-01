@@ -51,6 +51,7 @@ class BackupEngine(BackupRestoreBase):
         if options.get("no_privileges"): args.append("--no-privileges")
         if options.get("no_tablespaces"): args.append("--no-tablespaces")
         if options.get("no_comments"): args.append("--no-comments")
+        if options.get("enable_row_security"): args.append("--enable-row-security")
         if options.get("clean"): args.append("--clean")
         if options.get("inserts"): args.append("--inserts")
         if options.get("column_inserts"): args.append("--column-inserts")

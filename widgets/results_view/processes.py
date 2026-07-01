@@ -101,6 +101,7 @@ def create_processes_view(manager, tab_content):
     processes_view.horizontalHeader().setStretchLastSection(True)
     processes_view.setItemDelegate(ProcessRowDelegate(manager.PROCESS_STATUS_META, parent=processes_view))
     processes_view.clicked.connect(lambda idx: manager._handle_process_cell_click(tab_content, idx))
+    processes_view.doubleClicked.connect(lambda idx: manager._handle_view_log(tab_content))
     processes_view.horizontalHeader().sectionClicked.connect(
         lambda section: manager._handle_process_column_header_click(tab_content, section)
     )
@@ -236,7 +237,7 @@ def initialize_processes_model(manager, tab_content):
 
     tab_content.processes_model = QStandardItemModel()
     tab_content.processes_model.setHorizontalHeaderLabels(
-        ["PID", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Details"]
+        ["PID", "Name", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Message / Command"]
     )
     
     # Use proxy for filtering
@@ -308,11 +309,12 @@ def handle_process_started(manager, process_id, data):
     cursor.execute(
         """
         INSERT OR REPLACE INTO usf_processes
-        (pid, type, status, server, object, time_taken, start_time, end_time, details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (pid, process_name, type, status, server, object, time_taken, start_time, end_time, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             process_id,
+            data.get("process_name", ""),
             data.get("type", ""),
             "Running",
             data.get("server", ""),
@@ -402,7 +404,7 @@ def refresh_processes_view(manager):
 
     cursor.execute(
         """
-        SELECT pid, type, status, server, object, time_taken, start_time, end_time, details
+        SELECT pid, process_name, type, status, server, object, time_taken, start_time, end_time, details
         FROM usf_processes
         ORDER BY start_time DESC
         """
@@ -416,7 +418,7 @@ def refresh_processes_view(manager):
     filtered_data = []
 
     for row in data:
-        status_key = manager._normalize_process_status(row[2])
+        status_key = manager._normalize_process_status(row[3])
         if status_key in status_counts:
             status_counts[status_key] += 1
 
@@ -425,7 +427,7 @@ def refresh_processes_view(manager):
 
     model.clear()
     model.setHorizontalHeaderLabels(
-        ["PID", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Details"]
+        ["PID", "Name", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Message / Command"]
     )
 
     for _, row in enumerate(filtered_data):
@@ -433,13 +435,18 @@ def refresh_processes_view(manager):
         for item in items:
             item.setEditable(False)
 
-        if len(items) > 2:
-            items[2].setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if len(items) > 3:
+            items[3].setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
         model.appendRow(items)
 
     manager._update_process_summary_ui(current_tab, status_counts, len(data), len(filtered_data))
     processes_view.resizeColumnsToContents()
+    
+    last_col = model.columnCount() - 1
+    if last_col >= 0 and processes_view.columnWidth(last_col) > 600:
+        processes_view.setColumnWidth(last_col, 600)
+        
     processes_view.horizontalHeader().setStretchLastSection(True)
 
 
@@ -457,8 +464,8 @@ def handle_view_log(manager, tab_content):
     proxy_index = selection[0]
     model = processes_view.model() # This is the proxy
     
-    # Details is at column 8
-    details_index = model.index(proxy_index.row(), 8)
+    # Details is at column 9
+    details_index = model.index(proxy_index.row(), 9)
     details_text = str(details_index.data() or "No details available.")
     
     pid_index = model.index(proxy_index.row(), 0)

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QCheckBox, QTabWidget, QWidget,
     QTreeWidget, QTreeWidgetItem, QSpinBox
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QSettings
 from PySide6.QtGui import QIcon
 from datetime import datetime
 import qtawesome as qta
@@ -39,6 +39,11 @@ class BackupDialog(QDialog):
         general_layout.setContentsMargins(15, 15, 15, 15)
         general_layout.setSpacing(10)
         
+        # Process Name
+        self.process_name_edit = QLineEdit()
+        self.process_name_edit.setPlaceholderText("Optional process identifier...")
+        general_layout.addRow("Process Name:", self.process_name_edit)
+        
         # Output File
         self.filename_edit = QLineEdit()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -48,12 +53,18 @@ class BackupDialog(QDialog):
         else:
             default_ext = ".db"
             
+        settings = QSettings("DBExplorer", "BackupRestore")
+        
         home_dir = os.path.expanduser("~")
         desktop_dir = os.path.join(home_dir, "Desktop")
         if not os.path.exists(desktop_dir):
             desktop_dir = home_dir
             
-        default_path = os.path.join(desktop_dir, f"{self.display_name}_{timestamp}{default_ext}")
+        last_dir = settings.value("last_backup_dir", desktop_dir)
+        if not os.path.exists(last_dir):
+            last_dir = desktop_dir
+            
+        default_path = os.path.join(last_dir, f"{self.display_name}_{timestamp}{default_ext}")
         self.filename_edit.setText(default_path)
         
         browse_btn = QPushButton(qta.icon("fa5s.folder-open"), "")
@@ -126,9 +137,12 @@ class BackupDialog(QDialog):
             self.verbose_check = QCheckBox("Verbose messages")
             self.verbose_check.setChecked(True)
             self.no_comments_check = QCheckBox("Do not save comments")
+            self.enable_rls_check = QCheckBox("Enable Row Level Security (RLS)")
+            self.enable_rls_check.setToolTip("Dump only data the user has access to, based on Row Level Security policies.")
             
             misc_layout.addRow("", self.verbose_check)
             misc_layout.addRow("", self.no_comments_check)
+            misc_layout.addRow("", self.enable_rls_check)
             
             self.compression_spin = QSpinBox()
             self.compression_spin.setRange(0, 9)
@@ -245,6 +259,8 @@ class BackupDialog(QDialog):
         path, _ = QFileDialog.getSaveFileName(self, "Select Output File", self.filename_edit.text(), file_filter)
         if path:
             self.filename_edit.setText(path)
+            settings = QSettings("DBExplorer", "BackupRestore")
+            settings.setValue("last_backup_dir", os.path.dirname(path))
 
     def update_extension(self, format_text):
         path = self.filename_edit.text()
@@ -319,6 +335,7 @@ class BackupDialog(QDialog):
             "filename": self.filename_edit.text(),
             "db_type": self.db_type,
             "object_type": self.object_type,
+            "process_name": self.process_name_edit.text().strip(),
         }
         
         if self.db_type == "postgres":
@@ -347,6 +364,7 @@ class BackupDialog(QDialog):
                 "column_inserts": self.column_inserts_check.isChecked(),
                 "verbose": self.verbose_check.isChecked(),
                 "no_comments": self.no_comments_check.isChecked(),
+                "enable_row_security": self.enable_rls_check.isChecked(),
                 "compress": self.compression_spin.value(),
                 "exclude_schemas": self.exclude_schemas_edit.text().strip(),
                 "selected_objects": selected
