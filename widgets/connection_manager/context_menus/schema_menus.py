@@ -19,7 +19,7 @@ from widgets.connection_manager.context_menus._helpers import (
 )
 from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
 from widgets.connection_manager.context_menus.trigger_menus import TriggerMenuBuilder
-from widgets.db_terminal.terminal_widget import open_psql_terminal
+from widgets.usql_tool.terminal_widget import open_usql_tool
 
 class SchemaMenuBuilder:
     """Builds context menus for the Schema Tree."""
@@ -444,8 +444,8 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "PSQL Tool", "mdi.console")
-        act.triggered.connect(lambda: open_psql_console(item_data.get("conn_data") or item_data, self.manager))
+        act = action(self.manager, "USQL Tool", "mdi.console")
+        act.triggered.connect(lambda: open_usql_tool(item_data.get("conn_data") or item_data, self.manager))
         menu.addAction(act)
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")

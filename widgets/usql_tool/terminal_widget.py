@@ -1,6 +1,6 @@
-# widgets/db_terminal/terminal_widget.py
+# widgets/usql_tool/terminal_widget.py
 """
-Proper embedded psql terminal widget, wrapping native psql.exe using pywinpty.
+Proper embedded USQL tool widget, wrapping native psql.exe using pywinpty.
 """
 
 from __future__ import annotations
@@ -9,26 +9,28 @@ import json
 import os
 import re
 import threading
-from pathlib import Path
+import time
+import uuid
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-# Local imports
-from widgets.db_terminal.constants import _BANNER
-from widgets.db_terminal.constants import _HISTORY_FILE
-from widgets.db_terminal.constants import _APP_DATA_DIR
-from widgets.db_terminal.constants import _STYLE
-from widgets.db_terminal.editor import _TerminalEdit
-from widgets.db_terminal.discovery import find_psql
+from widgets.usql_tool.constants import _BANNER
+from widgets.usql_tool.constants import _HISTORY_FILE
+from widgets.usql_tool.constants import _APP_DATA_DIR
+from widgets.usql_tool.constants import _STYLE
+from widgets.usql_tool.editor import _TerminalEdit
+from widgets.usql_tool.discovery import find_psql
 
 try:
     from winpty import PTY
@@ -36,25 +38,58 @@ except ImportError:
     PTY = None
 
 
-class PSQLTerminalWidget(QWidget):
+_RESIZE_DEBOUNCE_MS = 350
+
+
+class USQLToolWidget(QWidget):
     """
-    Embedded native PSQL terminal tab widget.
+    Embedded native USQL tool tab widget.
 
     Backend: pywinpty wrapping psql.exe
+
+    Key design decisions vs. naive approach
+    ----------------------------------------
+    Problem 1 — Spurious blank prompts on startup / resize
+        psql responds to every meta-command (\\set, \\pset) with a new prompt
+        line.  During startup Qt fires showEvent + several resizeEvents, so
+        _update_pty_size was sending 3 meta-commands × N resize events =
+        many blank "dbname=>" lines before the user touched anything.
+
+        Fix:
+          • _session_ready flag — meta-commands are only sent AFTER psql has
+            printed its first real prompt (detected in _on_output_received).
+          • Debounced resize — a QTimer coalesces rapid resizeEvents into one
+            _update_pty_size call after _RESIZE_DEBOUNCE_MS ms of quiet.
+          • Startup quiet window — bare prompt lines are suppressed for
+            _STARTUP_QUIET_SECS after spawning, covering the banner phase.
+          • _BARE_PROMPT_RE strips any remaining lone prompt lines that are
+            the direct response to our injected meta-commands.
+
+    Problem 2 — LIMIT/OFFSET text visible in terminal
+        The PTY echoes everything written to it.  Pagination SQL was echoed
+        back verbatim.
+
+        Fix: wrap injected SQL in \\set QUIET on/off + regex-strip the echo.
+
+    Problem 3 — "\\set" Python string bug
+        "\\set" in an f-string is two chars: backslash + 's'.  Fixed everywhere.
     """
-    
+
     _output_received = Signal(str)
+    terminal_closed = Signal()
 
     def __init__(self, conn: dict, pg_bin_path: str = "") -> None:
         super().__init__()
         self._conn: dict = conn or {}
-        
+
         # Terminal state
         self._history: list[str] = []
         self._history_index: int = 0
+        self._pending_sql: str = ""  # accumulates multi-line SQL before history commit
         self._current_db: str = (
             self._conn.get("database") or self._conn.get("db") or "postgres"
         )
+        self._pending_db_switch_from: str = ""
         self._pg_bin_path = pg_bin_path
 
         self._pty = None
@@ -62,12 +97,17 @@ class PSQLTerminalWidget(QWidget):
         self._running = False
         self._output_received.connect(self._on_output_received)
 
+        # Debounce timer for resize events
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(_RESIZE_DEBOUNCE_MS)
+        self._resize_timer.timeout.connect(self._flush_resize)
+
         self._build_ui()
         self.setStyleSheet(_STYLE)
         self._load_history()
         self._start_session()
 
-    # UI construction
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -83,6 +123,8 @@ class PSQLTerminalWidget(QWidget):
         self._term.history_down.connect(self._on_history_down)
         self._term.interrupt.connect(self._on_interrupt)
         root.addWidget(self._term, 1)
+
+
 
     def _make_header(self) -> QWidget:
         header = QWidget()
@@ -120,6 +162,7 @@ class PSQLTerminalWidget(QWidget):
         layout.addWidget(self._err_lbl)
         return self._err_frame
 
+
     def _resolve_uri(self) -> str:
         c = self._conn
         return (
@@ -149,7 +192,6 @@ class PSQLTerminalWidget(QWidget):
     def _update_conn_label(self) -> None:
         self._conn_lbl.setText(self._conn_label_text())
 
-    # Process lifecycle
 
     def _start_session(self, reset_ui: bool = True) -> None:
         """Fresh start: reset the terminal pane and spawn psql.exe."""
@@ -159,7 +201,7 @@ class PSQLTerminalWidget(QWidget):
 
         self._hide_error()
         self._term.append_output("\n-- Connecting to database... --\n")
-        
+
         psql_path = self._pg_bin_path or find_psql()
         if not psql_path:
             self._show_error("Could not locate psql executable.")
@@ -168,14 +210,24 @@ class PSQLTerminalWidget(QWidget):
 
         if PTY is None:
             self._show_error("winpty module is not installed.")
-            self._term.append_output("\nERROR: winpty module is not installed. PTY support unavailable.\n")
+            self._term.append_output(
+                "\nERROR: winpty module is not installed. PTY support unavailable.\n"
+            )
             return
 
-        # Build arguments. Disable pager explicitly.
-        args = ["-P", "pager=off"]
+        fm = QFontMetrics(self._term.font())
+        char_w = fm.horizontalAdvance('W')
+        vbar_w = self._term.verticalScrollBar().sizeHint().width()
+        usable_w = self._term.viewport().width() - vbar_w
+        term_cols = max(80, usable_w // char_w) if char_w > 0 and usable_w > 0 else 80
+
+        args = [
+            "-P", "pager=off",
+            "-P", "columns=0",
+            "-P", "expanded=auto",
+        ]
         c = self._conn
-        
-        # Connection URI takes precedence
+
         uri = self._resolve_uri()
         if uri:
             args.append(uri)
@@ -190,40 +242,86 @@ class PSQLTerminalWidget(QWidget):
 
         if c.get("password"):
             os.environ["PGPASSWORD"] = c["password"]
-            
-        # Do not set PAGER=cat on Windows, as cat doesn't exist
-        if "PAGER" in os.environ:
-            del os.environ["PAGER"]
 
         try:
-            self._pty = PTY(200, 40)
+            self._pty = PTY(term_cols, 40)
             cmd_line = f'"{psql_path}" ' + " ".join(args)
             self._pty.spawn(cmd_line)
             self._running = True
-            
+            self._spawn_time = time.time()
+
             self._reader_thread = threading.Thread(target=self._pty_reader, daemon=True)
             self._reader_thread.start()
         except Exception as e:
             self._show_error(f"Failed to start psql process: {e}")
             self._term.append_output(f"\nERROR: Failed to start psql process: {e}\n")
-            return
 
     def _pty_reader(self) -> None:
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         while self._running and self._pty is not None:
             try:
                 data = self._pty.read(blocking=True)
                 if not data:
                     break
-                text = ansi_escape.sub('', data).replace('\r', '')
+
+                # Drain any immediately available bytes into one chunk
+                buffer = [data]
+                idle_start = time.time()
+                while time.time() - idle_start < 0.05:
+                    try:
+                        more = self._pty.read(blocking=False)
+                        if more:
+                            buffer.append(more)
+                            idle_start = time.time()
+                        else:
+                            time.sleep(0.005)
+                    except Exception:
+                        break
+
+                text = "".join(buffer).replace('\r\n', '\n')
                 self._output_received.emit(text)
             except Exception:
                 break
         self._running = False
         self._output_received.emit("\n[Process exited]\n")
 
+
     def _on_output_received(self, text: str) -> None:
+        if not text:
+            return
+
+        if self._pending_sentinel and self._pending_sentinel in text:
+            text = re.sub(
+                r'[^\n]*' + re.escape(self._pending_sentinel) + r'[^\n]*\n?',
+                '',
+                text,
+            )
+    def _on_output_received(self, text: str) -> None:
+        if not text:
+            return
+
         self._term.append_output(text)
+
+        # Scrollbar visibility can change mid-session as output accumulates;
+        # re-sync cols so psql's expanded=auto stays correct.
+        self._resize_timer.start()
+
+        if self._pending_db_switch_from:
+            text_lower = text.lower()
+            if (
+                "fatal:" in text_lower
+                or "error:" in text_lower
+                or "connection to server" in text_lower
+            ):
+                self._current_db = self._pending_db_switch_from
+                self._pending_db_switch_from = ""
+                self._update_tab_title(f"USQL Tool – {self._current_db}")
+                self._update_conn_label()
+            elif (
+                "you are now connected" in text_lower
+                or "=>" in text
+                or "=#" in text
+            ):
+                self._pending_db_switch_from = ""
 
     def close_process(self) -> None:
         """Terminate cleanly. Must be called before closing the tab."""
@@ -236,48 +334,64 @@ class PSQLTerminalWidget(QWidget):
                 pass
             self._pty = None
 
-    # I/O Handlers
 
     def _on_command_entered(self, cmd: str) -> None:
-        """Send *cmd* to psql stdin; manage history."""
+        """Send *cmd* to psql stdin; manage history and pagination."""
+        cmd = cmd.replace("\r", "")
         stripped = cmd.strip()
+
         if stripped:
-            if not self._history or self._history[-1] != stripped:
-                self._history.append(stripped)
+            # Accumulate multi-line SQL into one history entry.
+            # A statement is complete when it ends with ';' or is a meta-command ('\').
+            if self._pending_sql:
+                self._pending_sql = self._pending_sql + "\n" + stripped
+            else:
+                self._pending_sql = stripped
+
+            is_complete = stripped.endswith(";") or stripped.startswith("\\")
+            if is_complete:
+                full_cmd = self._pending_sql
+                if not self._history or self._history[-1] != full_cmd:
+                    self._history.append(full_cmd)
+                self._pending_sql = ""
+
             self._history_index = len(self._history)
-            
+
         if not self._running or self._pty is None:
             self._term.append_output("\n[Not connected — click Reconnect]\n")
             return
 
-        # Write to psql PTY
+        # Intercept \q or exit/quit to close terminal gracefully
+        if stripped in ("\\q", "exit", "quit"):
+            self.terminal_closed.emit()
+            return
+
+        # Replace internal \n with \r\n so winpty processes them as separate lines.
         try:
-            self._pty.write(cmd + "\r\n")
+            self._pty.write(cmd.replace("\n", "\r\n") + "\r\n")
         except Exception:
             self._term.append_output("\n[Error writing to process]\n")
-        
-        # Check if the command was \c or \connect to update our current_db state conceptually
-        if stripped.lower().startswith("\\c ") or stripped.lower().startswith("\\connect "):
+
+        # Track \c / \connect for db-name state
+        lower = stripped.lower()
+        if lower.startswith("\\c ") or lower.startswith("\\connect "):
             parts = stripped.split()
             if len(parts) >= 2:
+                self._pending_db_switch_from = self._current_db
                 self._current_db = parts[1]
-                self._update_tab_title(f"PSQL Tool – {self._current_db}")
+                self._update_tab_title(f"USQL Tool – {self._current_db}")
                 self._update_conn_label()
 
     def _on_interrupt(self) -> None:
-        """Cancel the current query.
-        With PTY, we can just send Ctrl+C (0x03).
-        """
+        """Cancel the current query via Ctrl+C (0x03)."""
         if self._running and self._pty is not None:
             try:
                 self._pty.write("\x03")
             except Exception:
                 pass
 
-    # History navigation + persistence
 
     def _history_key(self) -> str:
-        """Unique key for this connection's history bucket."""
         c = self._conn
         host = c.get("host") or "localhost"
         port = c.get("port") or 5432
@@ -285,7 +399,6 @@ class PSQLTerminalWidget(QWidget):
         return f"{user}@{host}:{port}/{self._current_db}"
 
     def _load_history(self) -> None:
-        """Load per-connection history from disk into _history."""
         try:
             if _HISTORY_FILE.exists():
                 data: dict = json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
@@ -295,7 +408,6 @@ class PSQLTerminalWidget(QWidget):
         self._history_index = len(self._history)
 
     def _save_history(self) -> None:
-        """Persist the last 500 commands for this connection to disk."""
         try:
             _APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
             existing: dict = {}
@@ -321,7 +433,8 @@ class PSQLTerminalWidget(QWidget):
         else:
             self._term.set_input_text("")
 
-    # Toolbar actions
+
+
 
     def _clear(self) -> None:
         self._term.setPlainText(_BANNER)
@@ -334,7 +447,6 @@ class PSQLTerminalWidget(QWidget):
         self._load_history()
         self._start_session(reset_ui=False)
 
-    # Error banner
 
     def _show_error(self, message: str) -> None:
         self._err_lbl.setText(f"⚠  {message}")
@@ -343,7 +455,6 @@ class PSQLTerminalWidget(QWidget):
     def _hide_error(self) -> None:
         self._err_frame.setVisible(False)
 
-    # Tab title
 
     def _update_tab_title(self, title: str) -> None:
         widget = self.parent()
@@ -355,19 +466,58 @@ class PSQLTerminalWidget(QWidget):
                     return
             widget = widget.parent()
 
-    # Widget lifecycle
 
-    def closeEvent(self, event) -> None:  # noqa: N802
+    def _update_pty_size(self) -> None:
+        """
+        Schedule a debounced resize.  Does NOT send anything to psql directly —
+        the actual write happens in _flush_resize after the debounce timer fires.
+        This prevents a flood of \\pset commands during window-drag resizing.
+        """
+        self._resize_timer.start()
+
+
+
+    def _flush_resize(self) -> None:
+        """
+        Actually resize the PTY and tell psql about the new column count.
+        """
+        if self._pty is None or not self._running:
+            return
+        try:
+            fm = QFontMetrics(self._term.font())
+            char_w = fm.horizontalAdvance('W')
+            if char_w <= 0:
+                return
+
+            vp = self._term.viewport()
+            vbar = self._term.verticalScrollBar()
+            scrollbar_w = vbar.sizeHint().width() if vbar else 0
+            usable_w = vp.width() - scrollbar_w
+            cols = max(80, usable_w // char_w)
+            rows = max(10, vp.height() // fm.height())
+            self._pty.set_size(cols, rows)
+            os.environ["COLUMNS"] = str(cols)
+        except Exception:
+            pass
+
+
+    def showEvent(self, event) -> None:          # noqa: N802
+        super().showEvent(event)
+        self._resize_timer.start()
+
+    def resizeEvent(self, event) -> None:        # noqa: N802
+        super().resizeEvent(event)
+        self._resize_timer.start()
+
+    def closeEvent(self, event) -> None:         # noqa: N802
+        self._resize_timer.stop()
         self.close_process()
         super().closeEvent(event)
 
 
-# Public factory
 
-def open_psql_terminal(conn: dict, manager=None) -> PSQLTerminalWidget:
-    """
-    Create a PSQLTerminalWidget and open it in the main tab widget.
-    """
+def open_usql_tool(conn: dict, manager=None) -> USQLToolWidget:
+    """Create a USQLToolWidget and open it in the main tab widget."""
     pg_bin_path = ""
     tab_widget = None
 
@@ -379,7 +529,7 @@ def open_psql_terminal(conn: dict, manager=None) -> PSQLTerminalWidget:
             pg_bin_path = getattr(main_win, "pg_bin_path", "") or ""
             tab_widget = getattr(main_win, "tab_widget", None)
 
-    widget = PSQLTerminalWidget(conn, pg_bin_path=pg_bin_path)
+    widget = USQLToolWidget(conn, pg_bin_path=pg_bin_path)
 
     if tab_widget is not None:
         try:
@@ -388,7 +538,7 @@ def open_psql_terminal(conn: dict, manager=None) -> PSQLTerminalWidget:
             icon = qta.icon("fa5s.terminal", color="#a6e3a1")
 
         db_name = (conn or {}).get("database") or (conn or {}).get("db") or "psql"
-        index = tab_widget.addTab(widget, icon, f"PSQL Tool – {db_name}")
+        index = tab_widget.addTab(widget, icon, f"USQL Tool – {db_name}")
         tab_widget.setCurrentIndex(index)
     else:
         widget.resize(960, 640)
