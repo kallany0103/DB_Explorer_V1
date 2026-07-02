@@ -1,6 +1,6 @@
-# widgets/db_terminal/constants.py
+# widgets/usql_tool/constants.py
 """
-Constants and style definitions for the DB Explorer embedded PSQL terminal.
+Constants and style definitions for the DB Explorer embedded USQL tool.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ _HISTORY_FILE: Path = _APP_DATA_DIR / "psql_history.json"
 
 _STYLE: str = """
 /* ---- terminal pane ---- */
-QPlainTextEdit#psql_term {
+QPlainTextEdit#usql_term {
     border           : none;
     font-family      : "Cascadia Code", "Consolas", "Courier New", monospace;
     font-size        : 10pt;
@@ -56,6 +56,14 @@ QLabel#term_err_lbl {
 """
 
 _BANNER: str = (
-    "-- PostgreSQL Terminal Session | Type \\? for help | "
-    "Ctrl+C to interrupt | Ctrl+Shift+C/V to copy/paste --\n"
+    "╔══════════════════════════════════════════════════════════════════╗\n"
+    "║  USQL Tool  •  PostgreSQL Interactive Terminal                   ║\n"
+    "╠══════════════════════════════════════════════════════════════════╣\n"
+    "║  \\?        Show all commands and help                            ║\n"
+    "║  \\l        List databases                                        ║\n"
+    "║  \\dt       List tables in current schema                         ║\n"
+    "║  \\c <db>   Switch database                                       ║\n"
+    "║  \\q        Quit terminal                                         ║\n"
+    "║  Ctrl+C    Interrupt query                                       ║\n"
+    "╚══════════════════════════════════════════════════════════════════╝\n"
 )

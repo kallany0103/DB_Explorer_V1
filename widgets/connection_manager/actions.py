@@ -1435,13 +1435,13 @@ SERVER "{data["server"]}"
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to create Foreign Table:\n{e}")
 
-    def open_psql_tool(self, item_data):
-        """Open the native PSQL terminal tool for a PostgreSQL connection."""
+    def open_usql_tool(self, item_data):
+        """Open the native USQL tool tool for a PostgreSQL connection."""
         if not item_data:
             return
         conn_data = item_data.get("conn_data") or item_data
-        from widgets.db_terminal.terminal_widget import open_psql_terminal
-        open_psql_terminal(conn_data, self.manager)
+        from widgets.usql_tool.terminal_widget import open_usql_tool
+        open_usql_tool(conn_data, self.manager)
 
     def refresh_materialized_view(self, item_data, name, concurrently=False):
         if not item_data:

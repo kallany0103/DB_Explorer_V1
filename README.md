@@ -10,6 +10,9 @@ DB Explorer is a desktop SQL client built with Python and Pyside66 for working a
 - Multi-tab workspace with session restore
 - Export query results to CSV/XLSX with progress tracking
 - Visual ERD (Entity-Relationship Diagram) designer
+- Integrated USQL tool for direct PostgreSQL database interactions
+- Test Cases Widget for managing and executing SQL query test cases
+- Modular context menus and advanced schema properties dialogs
 
 ## Architecture
 
