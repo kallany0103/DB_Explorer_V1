@@ -12,6 +12,13 @@ from pathlib import Path
 _APP_DATA_DIR: Path = Path(os.environ.get("APPDATA", "~")).expanduser() / "DBExplorer"
 _HISTORY_FILE: Path = _APP_DATA_DIR / "psql_history.json"
 
+# PTY I/O tuning
+_PTY_DRAIN_TIMEOUT_S: float = 0.05   # seconds to keep draining after first chunk
+_PTY_DRAIN_SLEEP_S: float = 0.005   # sleep between non-blocking drain polls
+
+# Terminal display limits
+_TERM_MAX_BLOCKS: int = 10_000       # maximum QPlainTextEdit block (line) count
+
 _STYLE: str = """
 /* ---- terminal pane ---- */
 QPlainTextEdit#usql_term {
@@ -65,5 +72,6 @@ _BANNER: str = (
     "║  \\c <db>   Switch database                                       ║\n"
     "║  \\q        Quit terminal                                         ║\n"
     "║  Ctrl+C    Interrupt query                                       ║\n"
+    "║  Ctrl+L    Clear screen                                          ║\n"
     "╚══════════════════════════════════════════════════════════════════╝\n"
 )

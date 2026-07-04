@@ -10,12 +10,12 @@ import os
 import re
 import threading
 import time
-import uuid
 
 import qtawesome as qta
 from PySide6.QtCore import QTimer, Signal
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFontMetrics, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -28,6 +28,9 @@ from PySide6.QtWidgets import (
 from widgets.usql_tool.constants import _BANNER
 from widgets.usql_tool.constants import _HISTORY_FILE
 from widgets.usql_tool.constants import _APP_DATA_DIR
+from widgets.usql_tool.constants import _PTY_DRAIN_TIMEOUT_S
+from widgets.usql_tool.constants import _PTY_DRAIN_SLEEP_S
+from widgets.usql_tool.constants import _TERM_MAX_BLOCKS
 from widgets.usql_tool.constants import _STYLE
 from widgets.usql_tool.editor import _TerminalEdit
 from widgets.usql_tool.discovery import find_psql
@@ -45,34 +48,16 @@ class USQLToolWidget(QWidget):
     """
     Embedded native USQL tool tab widget.
 
-    Backend: pywinpty wrapping psql.exe
+    Backend: pywinpty wrapping psql.exe.
 
-    Key design decisions vs. naive approach
-    ----------------------------------------
-    Problem 1 — Spurious blank prompts on startup / resize
-        psql responds to every meta-command (\\set, \\pset) with a new prompt
-        line.  During startup Qt fires showEvent + several resizeEvents, so
-        _update_pty_size was sending 3 meta-commands × N resize events =
-        many blank "dbname=>" lines before the user touched anything.
-
-        Fix:
-          • _session_ready flag — meta-commands are only sent AFTER psql has
-            printed its first real prompt (detected in _on_output_received).
-          • Debounced resize — a QTimer coalesces rapid resizeEvents into one
-            _update_pty_size call after _RESIZE_DEBOUNCE_MS ms of quiet.
-          • Startup quiet window — bare prompt lines are suppressed for
-            _STARTUP_QUIET_SECS after spawning, covering the banner phase.
-          • _BARE_PROMPT_RE strips any remaining lone prompt lines that are
-            the direct response to our injected meta-commands.
-
-    Problem 2 — LIMIT/OFFSET text visible in terminal
-        The PTY echoes everything written to it.  Pagination SQL was echoed
-        back verbatim.
-
-        Fix: wrap injected SQL in \\set QUIET on/off + regex-strip the echo.
-
-    Problem 3 — "\\set" Python string bug
-        "\\set" in an f-string is two chars: backslash + 's'.  Fixed everywhere.
+    Features & Design:
+    - Runs `psql.exe` inside a native Windows pseudo-terminal (PTY) using `pywinpty`.
+    - I/O is handled via a background reader thread (`_pty_reader`) that drains output
+      chunks and emits them to the Qt main thread via the `_output_received` signal.
+    - Window resizing is debounced using a QTimer (`_RESIZE_DEBOUNCE_MS`) to prevent
+      thrashing the PTY with rapid layout changes during window drag.
+    - Captures `\c` / `\connect` commands to automatically track and update the active
+      database in the UI tab and connection label.
     """
 
     _output_received = Signal(str)
@@ -89,12 +74,20 @@ class USQLToolWidget(QWidget):
         self._current_db: str = (
             self._conn.get("database") or self._conn.get("db") or "postgres"
         )
+        # _session_history_key is fixed at session-start so \c switches never
+        # cause history entries to be saved under a different key.
+        self._session_history_key: str = ""
         self._pending_db_switch_from: str = ""
         self._pg_bin_path = pg_bin_path
 
         self._pty = None
         self._reader_thread = None
         self._running = False
+        self._spawn_time: float = 0.0
+        # Position in the document just after psql's connection preamble
+        # (version info, WARNING, SSL line, "Type help").  Set on first prompt;
+        # Copy Output skips everything before this so boilerplate is not included.
+        self._first_prompt_pos: int = 0
         self._output_received.connect(self._on_output_received)
 
         # Debounce timer for resize events
@@ -140,6 +133,7 @@ class USQLToolWidget(QWidget):
         layout.addStretch()
 
         for icon_key, label, slot in (
+            ("fa5s.copy", "Copy Output", self._copy_output),
             ("fa5s.trash-alt", "Clear", self._clear),
             ("fa5s.redo-alt", "Reconnect", self._reconnect),
         ):
@@ -195,6 +189,7 @@ class USQLToolWidget(QWidget):
 
     def _start_session(self, reset_ui: bool = True) -> None:
         """Fresh start: reset the terminal pane and spawn psql.exe."""
+        self._first_prompt_pos = 0  # reset so the new preamble is skipped on copy
         if reset_ui:
             self._term.setPlainText(_BANNER)
             self._term.reset_input_start()
@@ -238,7 +233,7 @@ class USQLToolWidget(QWidget):
                 args.extend(["-p", str(c["port"])])
             if c.get("user"):
                 args.extend(["-U", c["user"]])
-            args.append(self._current_db)
+            args.append(f'"{self._current_db}"')
 
         if c.get("password"):
             os.environ["PGPASSWORD"] = c["password"]
@@ -255,8 +250,12 @@ class USQLToolWidget(QWidget):
         except Exception as e:
             self._show_error(f"Failed to start psql process: {e}")
             self._term.append_output(f"\nERROR: Failed to start psql process: {e}\n")
+        finally:
+            # Never leave the plaintext password in the process environment.
+            os.environ.pop("PGPASSWORD", None)
 
     def _pty_reader(self) -> None:
+        exit_reason: str = "clean"
         while self._running and self._pty is not None:
             try:
                 data = self._pty.read(blocking=True)
@@ -266,35 +265,29 @@ class USQLToolWidget(QWidget):
                 # Drain any immediately available bytes into one chunk
                 buffer = [data]
                 idle_start = time.time()
-                while time.time() - idle_start < 0.05:
+                while time.time() - idle_start < _PTY_DRAIN_TIMEOUT_S:
                     try:
                         more = self._pty.read(blocking=False)
                         if more:
                             buffer.append(more)
                             idle_start = time.time()
                         else:
-                            time.sleep(0.005)
+                            time.sleep(_PTY_DRAIN_SLEEP_S)
                     except Exception:
                         break
 
                 text = "".join(buffer).replace('\r\n', '\n')
                 self._output_received.emit(text)
-            except Exception:
+            except Exception as exc:
+                exit_reason = str(exc) or type(exc).__name__
                 break
         self._running = False
-        self._output_received.emit("\n[Process exited]\n")
+        if exit_reason == "clean":
+            self._output_received.emit("\n[Process exited]\n")
+        else:
+            self._output_received.emit(f"\n[Process exited unexpectedly: {exit_reason}]\n")
 
 
-    def _on_output_received(self, text: str) -> None:
-        if not text:
-            return
-
-        if self._pending_sentinel and self._pending_sentinel in text:
-            text = re.sub(
-                r'[^\n]*' + re.escape(self._pending_sentinel) + r'[^\n]*\n?',
-                '',
-                text,
-            )
     def _on_output_received(self, text: str) -> None:
         if not text:
             return
@@ -304,6 +297,12 @@ class USQLToolWidget(QWidget):
         # Scrollbar visibility can change mid-session as output accumulates;
         # re-sync cols so psql's expanded=auto stays correct.
         self._resize_timer.start()
+
+        # Detect the first psql prompt — everything before it is connection
+        # preamble (version, WARNING, SSL line, "Type help") and should be
+        # excluded from Copy Output.
+        if self._first_prompt_pos == 0 and ("=#" in text or "=>" in text):
+            self._first_prompt_pos = self._term._input_start
 
         if self._pending_db_switch_from:
             text_lower = text.lower()
@@ -369,16 +368,18 @@ class USQLToolWidget(QWidget):
         # Replace internal \n with \r\n so winpty processes them as separate lines.
         try:
             self._pty.write(cmd.replace("\n", "\r\n") + "\r\n")
-        except Exception:
-            self._term.append_output("\n[Error writing to process]\n")
+        except Exception as exc:
+            self._term.append_output(f"\n[Error writing to process: {exc}]\n")
 
         # Track \c / \connect for db-name state
+        # Use lowercased command to detect the meta-command prefix case-insensitively,
+        # but take the db name from the lowercased parts so psql receives it verbatim.
         lower = stripped.lower()
         if lower.startswith("\\c ") or lower.startswith("\\connect "):
-            parts = stripped.split()
-            if len(parts) >= 2:
+            lower_parts = lower.split()
+            if len(lower_parts) >= 2:
                 self._pending_db_switch_from = self._current_db
-                self._current_db = parts[1]
+                self._current_db = lower_parts[1]
                 self._update_tab_title(f"USQL Tool – {self._current_db}")
                 self._update_conn_label()
 
@@ -392,6 +393,9 @@ class USQLToolWidget(QWidget):
 
 
     def _history_key(self) -> str:
+        """Return the stable history key for this session (fixed at load time)."""
+        if self._session_history_key:
+            return self._session_history_key
         c = self._conn
         host = c.get("host") or "localhost"
         port = c.get("port") or 5432
@@ -399,10 +403,17 @@ class USQLToolWidget(QWidget):
         return f"{user}@{host}:{port}/{self._current_db}"
 
     def _load_history(self) -> None:
+        # Pin the history key now so \c switches later in the session
+        # don't redirect history entries to a different key on save.
+        c = self._conn
+        host = c.get("host") or "localhost"
+        port = c.get("port") or 5432
+        user = c.get("user") or "postgres"
+        self._session_history_key = f"{user}@{host}:{port}/{self._current_db}"
         try:
             if _HISTORY_FILE.exists():
                 data: dict = json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
-                self._history = data.get(self._history_key(), [])
+                self._history = data.get(self._session_history_key, [])
         except Exception:
             self._history = []
         self._history_index = len(self._history)
@@ -436,9 +447,37 @@ class USQLToolWidget(QWidget):
 
 
 
+    def _copy_output(self) -> None:
+        """Copy terminal output to the clipboard.
+
+        If the user has a selection, copies that selection only.
+        Otherwise copies from the first psql prompt onward (skipping the
+        banner and connection preamble) up to but not including the
+        in-progress input line.
+        """
+        cursor = self._term.textCursor()
+        if cursor.hasSelection():
+            QApplication.clipboard().setText(cursor.selectedText().replace("\u2029", "\n"))
+        else:
+            # Start after the psql connection preamble (banner + version + warnings).
+            # Fall back to 0 if the first prompt has not been seen yet.
+            start = self._first_prompt_pos
+            end = self._term._input_start
+            if start >= end:
+                return  # nothing meaningful to copy yet
+            doc_cursor = QTextCursor(self._term.document())
+            doc_cursor.setPosition(start)
+            doc_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            output_text = doc_cursor.selectedText().replace("\u2029", "\n").rstrip()
+            QApplication.clipboard().setText(output_text)
+
     def _clear(self) -> None:
+        """Reset output to the banner, preserving any in-progress typed input."""
+        pending = self._term.current_input()
         self._term.setPlainText(_BANNER)
         self._term.reset_input_start()
+        if pending:
+            self._term.set_input_text(pending)
 
     def _reconnect(self) -> None:
         self.close_process()
