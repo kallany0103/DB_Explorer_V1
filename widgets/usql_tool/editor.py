@@ -18,6 +18,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QMenu, QPlainTextEdit
 
+from widgets.usql_tool.constants import _TERM_MAX_BLOCKS
+
 
 class _TerminalEdit(QPlainTextEdit):
     """
@@ -87,7 +89,7 @@ class _TerminalEdit(QPlainTextEdit):
         super().__init__()
         self.setObjectName("usql_term")
         self._input_start: int = 0
-        self.setMaximumBlockCount(10_000)
+        self.setMaximumBlockCount(_TERM_MAX_BLOCKS)
         self.setUndoRedoEnabled(False)
         self.setAcceptDrops(True)
         self._default_font: QFont = self.font()
