@@ -15,12 +15,13 @@ class ProcessWorker(QObject):
     Executes external commands (like pg_dump) using QProcess.
     This ensures that the OS shell doesn't block the UI.
     """
-    def __init__(self, command, args, metadata=None, env=None):
+    def __init__(self, command, args, metadata=None, env=None, success_exit_codes=(0,)):
         super().__init__()
         self.command = command
         self.args = args
         self.metadata = metadata or {}
         self.env = env
+        self.success_exit_codes = success_exit_codes
         self.process_id = str(uuid.uuid4())[:8]
         self.signals = ProcessSignals()
         
@@ -67,7 +68,7 @@ class ProcessWorker(QObject):
         elapsed = time.time() - self.start_time
         total_log = "".join(self.full_output).strip()
         
-        if exit_code == 0:
+        if exit_code in self.success_exit_codes:
             msg = total_log or "Process completed successfully."
             
             try:

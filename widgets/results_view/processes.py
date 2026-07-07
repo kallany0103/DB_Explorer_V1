@@ -446,7 +446,7 @@ def refresh_processes_view(manager):
     last_col = model.columnCount() - 1
     if last_col >= 0 and processes_view.columnWidth(last_col) > 600:
         processes_view.setColumnWidth(last_col, 600)
-        
+  
     processes_view.horizontalHeader().setStretchLastSection(True)
 
 
@@ -454,26 +454,25 @@ def handle_view_log(manager, tab_content):
     processes_view = tab_content.findChild(QTableView, "processes_view")
     if not processes_view:
         return
-        
+  
     selection = processes_view.selectionModel().selectedRows()
     if not selection:
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(tab_content, "Select Process", "Please select a process from the table first.")
         return
-        
+
     proxy_index = selection[0]
     model = processes_view.model() # This is the proxy
-    
+
     # Details is at column 9
     details_index = model.index(proxy_index.row(), 9)
     details_text = str(details_index.data() or "No details available.")
-    
+
     pid_index = model.index(proxy_index.row(), 0)
     pid = str(pid_index.data() or "Unknown")
-    
+
     dialog = LogViewerDialog(f"Process Log - {pid}", details_text, tab_content)
     dialog.exec()
-
 
 def filter_processes_table(manager, tab_content, text):
     proxy = getattr(tab_content, "processes_proxy", None)
