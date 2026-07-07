@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import threading
 import time
 
@@ -19,21 +18,20 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from widgets.usql_tool.constants import _BANNER
+# from widgets.usql_tool.constants import _BANNER
 from widgets.usql_tool.constants import _HISTORY_FILE
 from widgets.usql_tool.constants import _APP_DATA_DIR
 from widgets.usql_tool.constants import _PTY_DRAIN_TIMEOUT_S
 from widgets.usql_tool.constants import _PTY_DRAIN_SLEEP_S
-from widgets.usql_tool.constants import _TERM_MAX_BLOCKS
 from widgets.usql_tool.constants import _STYLE
 from widgets.usql_tool.editor import _TerminalEdit
 from widgets.usql_tool.discovery import find_psql
+from widgets.worksheet.autocomplete import CompletionEngine
 
 try:
     from winpty import PTY
@@ -79,6 +77,7 @@ class USQLToolWidget(QWidget):
         self._session_history_key: str = ""
         self._pending_db_switch_from: str = ""
         self._pg_bin_path = pg_bin_path
+        self._completion_engine: CompletionEngine | None = None
 
         self._pty = None
         self._reader_thread = None
@@ -191,7 +190,7 @@ class USQLToolWidget(QWidget):
         """Fresh start: reset the terminal pane and spawn psql.exe."""
         self._first_prompt_pos = 0  # reset so the new preamble is skipped on copy
         if reset_ui:
-            self._term.setPlainText(_BANNER)
+            # self._term.setPlainText(_BANNER)
             self._term.reset_input_start()
 
         self._hide_error()
@@ -247,6 +246,10 @@ class USQLToolWidget(QWidget):
 
             self._reader_thread = threading.Thread(target=self._pty_reader, daemon=True)
             self._reader_thread.start()
+
+            self._completion_engine = CompletionEngine()
+            self._completion_engine.refresh(self._conn)
+            self._term.set_engine(self._completion_engine, self._conn)
         except Exception as e:
             self._show_error(f"Failed to start psql process: {e}")
             self._term.append_output(f"\nERROR: Failed to start psql process: {e}\n")
@@ -279,11 +282,17 @@ class USQLToolWidget(QWidget):
                 text = "".join(buffer).replace('\r\n', '\n')
                 self._output_received.emit(text)
             except Exception as exc:
-                exit_reason = str(exc) or type(exc).__name__
+                if type(exc).__name__ == "WinptyError":
+                    exit_reason = "clean"
+                else:
+                    exit_reason = str(exc) or type(exc).__name__
                 break
         self._running = False
         if exit_reason == "clean":
-            self._output_received.emit("\n[Process exited]\n")
+            msg = "\n[Process exited]\n"
+            if getattr(self, "_first_prompt_pos", 0) == 0:
+                msg += "[Hint: psql exited before showing a prompt. The connection may have failed, or the executable might be missing dependencies.]\n"
+            self._output_received.emit(msg)
         else:
             self._output_received.emit(f"\n[Process exited unexpectedly: {exit_reason}]\n")
 
@@ -382,6 +391,9 @@ class USQLToolWidget(QWidget):
                 self._current_db = lower_parts[1]
                 self._update_tab_title(f"USQL Tool – {self._current_db}")
                 self._update_conn_label()
+                if self._completion_engine is not None:
+                    updated_conn = {**self._conn, "database": self._current_db}
+                    self._completion_engine.refresh(updated_conn)
 
     def _on_interrupt(self) -> None:
         """Cancel the current query via Ctrl+C (0x03)."""
@@ -474,7 +486,7 @@ class USQLToolWidget(QWidget):
     def _clear(self) -> None:
         """Reset output to the banner, preserving any in-progress typed input."""
         pending = self._term.current_input()
-        self._term.setPlainText(_BANNER)
+        # self._term.setPlainText(_BANNER)
         self._term.reset_input_start()
         if pending:
             self._term.set_input_text(pending)
