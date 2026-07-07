@@ -16,7 +16,7 @@ from PySide6.QtGui import (
     QTextCursor,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QApplication, QMenu, QPlainTextEdit
+from PySide6.QtWidgets import QApplication, QLabel, QMenu, QPlainTextEdit
 
 from widgets.usql_tool.constants import _TERM_MAX_BLOCKS
 
@@ -95,6 +95,25 @@ class _TerminalEdit(QPlainTextEdit):
         self._default_font: QFont = self.font()
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        # Ghost-text autocomplete state
+        self._engine = None
+        self._conn_data: dict | None = None
+        self._ghost_text: str = ""
+        self._ghost_prefix: str = ""
+        self._ghost_full_match: str = ""
+        self._ghost_accepting: bool = False
+
+        self._ghost_label = QLabel(self.viewport())
+        self._ghost_label.setStyleSheet(
+            "QLabel { color: #5b6078; background: transparent; border: none; "
+            "margin: 0; padding: 0; }"
+        )
+        self._ghost_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._ghost_label.hide()
+
+        self.cursorPositionChanged.connect(self._on_cursor_moved)
+        self.updateRequest.connect(self._on_update_request)
 
     # ------------------------------------------------------------------
     # Public helpers called by USQLToolWidget
@@ -230,6 +249,113 @@ class _TerminalEdit(QPlainTextEdit):
         self.insertPlainText(clipboard_text)
 
     # ------------------------------------------------------------------
+    # Autocomplete — engine attachment + ghost-text helpers
+    # ------------------------------------------------------------------
+
+    def set_engine(self, engine, conn_data: dict | None = None) -> None:
+        """Attach a CompletionEngine for inline ghost-text autocomplete."""
+        self._engine = engine
+        self._conn_data = conn_data
+
+    def _current_word_prefix(self) -> str:
+        """Return the identifier fragment immediately left of the cursor, scoped to the input zone."""
+        cursor = self.textCursor()
+        pos = cursor.position()
+        # Only scan within [_input_start, pos] — never read protected terminal output.
+        input_text = self.document().toPlainText()[self._input_start:pos]
+        end = len(input_text)
+        while end > 0 and (input_text[end - 1].isalnum() or input_text[end - 1] == '_'):
+            end -= 1
+        return input_text[end:]
+
+    def _word_before_cursor(self) -> str:
+        """Return the full identifier immediately before the cursor (for dot-mode detection)."""
+        cursor = self.textCursor()
+        pos = cursor.position()
+        text = self.document().toPlainText()[self._input_start:pos]
+        match = re.search(r'(\w+)\s*$', text)
+        return match.group(1) if match else ""
+
+    def _compute_ghost(self) -> None:
+        """Find the best completion for the current prefix and show it as ghost text."""
+        if not self._engine:
+            return
+        prefix = self._current_word_prefix()
+        if not prefix:
+            self._clear_ghost()
+            return
+        best = self._engine.best_match(prefix)
+        if best:
+            self._ghost_prefix = prefix
+            self._ghost_full_match = best
+            self._ghost_text = best[len(prefix):]
+            self._update_ghost_label()
+        else:
+            self._clear_ghost()
+
+    def _accept_ghost(self) -> None:
+        """Insert the ghost suggestion into the document and reset state."""
+        if not self._ghost_text:
+            return
+        self._ghost_accepting = True
+        full_word = self._ghost_full_match or (self._ghost_prefix + self._ghost_text)
+        prefix_len = len(self._ghost_prefix)
+        cursor = self.textCursor()
+        if self._engine and self._engine.is_keyword(full_word):
+            # Replace what the user typed with the full uppercased keyword.
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Left,
+                QTextCursor.MoveMode.KeepAnchor,
+                prefix_len,
+            )
+            cursor.insertText(full_word.upper())
+        else:
+            cursor.insertText(self._ghost_text)
+        self.setTextCursor(cursor)
+        self._ghost_accepting = False
+        self._ghost_text = ""
+        self._ghost_prefix = ""
+        self._ghost_full_match = ""
+        self._ghost_label.hide()
+        if self._engine:
+            self._engine.reset_active_list()
+
+    def _clear_ghost(self) -> None:
+        """Hide the ghost label and discard any pending suggestion."""
+        self._ghost_text = ""
+        self._ghost_prefix = ""
+        self._ghost_full_match = ""
+        self._ghost_label.hide()
+
+    def _update_ghost_label(self) -> None:
+        """Refresh ghost label text, font, and position."""
+        if not self._ghost_text:
+            self._ghost_label.hide()
+            return
+        self._ghost_label.setFont(self.font())
+        self._ghost_label.setText(self._ghost_text)
+        self._ghost_label.adjustSize()
+        self._update_ghost_label_pos()
+        self._ghost_label.show()
+        self._ghost_label.raise_()
+
+    def _update_ghost_label_pos(self) -> None:
+        """Move the ghost label to sit immediately after the cursor."""
+        if self._ghost_text:
+            cr = self.cursorRect()
+            self._ghost_label.move(cr.right(), cr.top())
+
+    def _on_cursor_moved(self) -> None:
+        """Clear ghost text whenever the cursor moves (unless we caused it)."""
+        if not self._ghost_accepting:
+            self._clear_ghost()
+
+    def _on_update_request(self, _rect, dy: int) -> None:
+        """Reposition the ghost label when the viewport scrolls."""
+        if dy and self._ghost_text:
+            self._update_ghost_label_pos()
+
+    # ------------------------------------------------------------------
     # Key handling — the heart of the terminal feel
     # ------------------------------------------------------------------
 
@@ -241,6 +367,27 @@ class _TerminalEdit(QPlainTextEdit):
 
         ctrl = Qt.KeyboardModifier.ControlModifier
         shift = Qt.KeyboardModifier.ShiftModifier
+
+        # Ghost-text: Tab / Right → accept suggestion; Escape → dismiss
+        if self._engine and self._ghost_text:
+            if key in (Qt.Key.Key_Tab, Qt.Key.Key_Right):
+                self._accept_ghost()
+                return
+            if key == Qt.Key.Key_Escape:
+                self._clear_ghost()
+                return
+
+        # Ctrl+Space → force-show ghost for the current word prefix
+        if key == Qt.Key.Key_Space and mods == ctrl:
+            if self._engine:
+                prefix = self._current_word_prefix()
+                best = self._engine.best_match(prefix) if prefix else ""
+                if best:
+                    self._ghost_prefix = prefix
+                    self._ghost_full_match = best
+                    self._ghost_text = best[len(prefix):]
+                    self._update_ghost_label()
+            return
 
         # Ctrl+Shift+C → copy selection
         if key == Qt.Key.Key_C and mods == (ctrl | shift):
@@ -323,7 +470,32 @@ class _TerminalEdit(QPlainTextEdit):
                 cursor.movePosition(QTextCursor.MoveOperation.End)
                 self.setTextCursor(cursor)
 
+        # Dot → activate schema.table or table.column completion mode
+        if self._engine and event.text() == '.':
+            word = self._word_before_cursor()
+            self._clear_ghost()
+            super().keyPressEvent(event)
+            if word:
+                if self._engine.is_schema(word):
+                    items = self._engine.fetch_for_schema_dot(self._conn_data, word)
+                else:
+                    items = self._engine.get_columns_for_table(self._conn_data, word)
+                if items:
+                    self._ghost_prefix = ""
+                    self._ghost_full_match = ""
+                    self._ghost_text = items[0]
+                    self._update_ghost_label()
+            return
+
         super().keyPressEvent(event)
+
+        # After regular character input, compute a new ghost suggestion.
+        if self._engine:
+            text = event.text()
+            if text and text in ' \t\n\r;,()=!<>+-*/%|&\'\'"':
+                self._engine.reset_active_list()
+            elif text or key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+                self._compute_ghost()
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         super().mouseReleaseEvent(event)
