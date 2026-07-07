@@ -110,8 +110,8 @@ class ExplorerMenuBuilder:
         code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
         
         if code == 'POSTGRES':
-            act = action(self.manager, "PSQL Tool", "mdi.console")
-            act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
+            act = action(self.manager, "USQL Tool", "mdi.console")
+            act.triggered.connect(lambda: self.manager.connection_actions.open_usql_tool(conn_data))
             menu.addAction(act)
         
         menu.addSeparator()
