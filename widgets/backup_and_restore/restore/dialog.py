@@ -36,6 +36,11 @@ class RestoreDialog(QDialog):
         general_layout.setContentsMargins(15, 15, 15, 15)
         general_layout.setSpacing(10)
         
+        # Process Name
+        self.process_name_edit = QLineEdit()
+        self.process_name_edit.setPlaceholderText("Optional process identifier...")
+        general_layout.addRow("Process Name:", self.process_name_edit)
+        
         # Filename
         self.filename_edit = QLineEdit()
         self.filename_edit.setPlaceholderText("Select a backup file...")
@@ -201,6 +206,7 @@ class RestoreDialog(QDialog):
 
     def get_options(self):
         opts = {
+            "process_name": self.process_name_edit.text().strip(),
             "filename": self.filename_edit.text(),
             "db_type": self.db_type,
         }

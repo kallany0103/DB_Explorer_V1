@@ -2222,8 +2222,9 @@ SERVER "{data["server"]}"
                     obj_name = object_name if granularity != "database" else "Full Database"
                 
                 # Start Worker
+                process_name = options.get("process_name")
                 metadata = {
-                    "pid": "RESTORE",
+                    "pid": process_name if process_name else "RESTORE",
                     "type": f"Restore {granularity.capitalize()}",
                     "status": "Running",
                     "server": conn_data.get("database", "Unknown"),
@@ -2235,7 +2236,7 @@ SERVER "{data["server"]}"
                 # Environment for password handling
                 env = self.restore_engine.get_pg_environment(conn_data)
                 
-                worker = ProcessWorker(binary, args, metadata=metadata, env=env)
+                worker = ProcessWorker(binary, args, metadata=metadata, env=env, success_exit_codes=(0, 1))
                 
                 # Connect signals
                 worker.signals.started.connect(self.manager.main_window.handle_process_started)
@@ -2256,7 +2257,8 @@ SERVER "{data["server"]}"
                     QMessageBox.critical(self.manager.main_window, "Error", "SQLite database path not found.")
                     return
                 
-                process_id = f"RESTORE_SQLITE_{int(time.time())}"
+                process_name = options.get("process_name")
+                process_id = process_name if process_name else f"RESTORE_SQLITE_{int(time.time())}"
                 metadata = {
                     "pid": process_id,
                     "type": "Restore SQLite",
