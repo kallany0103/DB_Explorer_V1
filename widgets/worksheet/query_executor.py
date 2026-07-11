@@ -224,6 +224,14 @@ def handle_query_error(manager, current_tab, output_tab_index, conn_data, query,
 
     manager.save_query_to_history(conn_data, query, "Failure", row_count, elapsed_time)
 
+    # Push to Dashboard Logs tab (non-blocking, best-effort)
+    try:
+        dw = getattr(manager.main_window, "dashboard_widget", None)
+        if dw is not None and conn_data:
+            dw.log_query(conn_data, query, "Failure", elapsed_time, row_count)
+    except Exception:
+        pass
+
     set_tab_status(current_tab, "")
     append_error_message(current_tab, error_message)
 

@@ -116,7 +116,77 @@ class USQLToolWidget(QWidget):
         self._term.interrupt.connect(self._on_interrupt)
         root.addWidget(self._term, 1)
 
+        self._spinner_overlay = self._make_spinner_overlay()
+        self._spinner_overlay.setParent(self._term.viewport())
+        self._spinner_overlay.hide()
 
+
+
+    # ------------------------------------------------------------------
+    # Spinner overlay
+    # ------------------------------------------------------------------
+
+    _SPINNER_FRAMES: list[str] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def _make_spinner_overlay(self) -> QLabel:
+        """Build the connecting overlay label styled to match the app palette."""
+        lbl = QLabel("⠋  Connecting…")
+        lbl.setObjectName("spinner_overlay")
+        # Use palette() tokens so the pill always matches the active Qt theme.
+        # Avoid QGraphicsOpacityEffect — it composites on a black backing buffer
+        # and cannot see through to the widget behind it, causing a black box.
+        lbl.setStyleSheet(
+            "QLabel#spinner_overlay {"
+            "  color: palette(window-text);"
+            "  background: palette(button);"
+            "  border: 1px solid palette(window);"
+            "  border-radius: 6px;"
+            "  padding: 6px 16px;"
+            "  font-family: 'Cascadia Code', 'Consolas', monospace;"
+            "  font-size: 10pt;"
+            "}"
+        )
+        # Spin timer (frame advance)
+        self._spinner_frame_idx: int = 0
+        self._spinner_timer = QTimer(self)
+        self._spinner_timer.setInterval(80)
+        self._spinner_timer.timeout.connect(self._advance_spinner_frame)
+        return lbl
+
+    def _show_spinner(self) -> None:
+        """Show and animate the connecting spinner overlay."""
+        vp = self._term.viewport()
+        self._spinner_frame_idx = 0
+        lbl = self._spinner_overlay
+        lbl.setText(f"{self._SPINNER_FRAMES[0]}  Connecting…")
+        lbl.adjustSize()
+        # Centre in viewport
+        lbl.move(
+            (vp.width() - lbl.width()) // 2,
+            (vp.height() - lbl.height()) // 2,
+        )
+        lbl.show()
+        lbl.raise_()
+        self._spinner_timer.start()
+
+    def _hide_spinner(self) -> None:
+        """Stop and hide the connecting spinner overlay."""
+        self._spinner_timer.stop()
+        self._spinner_overlay.hide()
+
+    def _advance_spinner_frame(self) -> None:
+        """Rotate to the next Braille spinner frame."""
+        self._spinner_frame_idx = (self._spinner_frame_idx + 1) % len(self._SPINNER_FRAMES)
+        frame = self._SPINNER_FRAMES[self._spinner_frame_idx]
+        self._spinner_overlay.setText(f"{frame}  Connecting…")
+        self._spinner_overlay.adjustSize()
+        # Keep centred if the viewport was resized
+        vp = self._term.viewport()
+        lbl = self._spinner_overlay
+        lbl.move(
+            (vp.width() - lbl.width()) // 2,
+            (vp.height() - lbl.height()) // 2,
+        )
 
     def _make_header(self) -> QWidget:
         header = QWidget()
@@ -194,7 +264,7 @@ class USQLToolWidget(QWidget):
             self._term.reset_input_start()
 
         self._hide_error()
-        self._term.append_output("\n-- Connecting to database... --\n")
+        self._show_spinner()
 
         psql_path = self._pg_bin_path or find_psql()
         if not psql_path:
@@ -312,6 +382,7 @@ class USQLToolWidget(QWidget):
         # excluded from Copy Output.
         if self._first_prompt_pos == 0 and ("=#" in text or "=>" in text):
             self._first_prompt_pos = self._term._input_start
+            self._hide_spinner()
 
         if self._pending_db_switch_from:
             text_lower = text.lower()
@@ -484,16 +555,22 @@ class USQLToolWidget(QWidget):
             QApplication.clipboard().setText(output_text)
 
     def _clear(self) -> None:
-        """Reset output to the banner, preserving any in-progress typed input."""
+        """Wipe all terminal output, preserving any in-progress typed input."""
         pending = self._term.current_input()
-        # self._term.setPlainText(_BANNER)
+        self._term.clear()
         self._term.reset_input_start()
+        self._first_prompt_pos = 0
         if pending:
             self._term.set_input_text(pending)
+        # Ask the live psql process to re-print its prompt so the DB name is visible.
+        if self._running and self._pty is not None:
+            try:
+                self._pty.write("\r\n")
+            except Exception:
+                pass
 
     def _reconnect(self) -> None:
         self.close_process()
-        self._term.append_output("\n-- Reconnecting… --\n")
         self._hide_error()
         self._load_history()
         self._start_session(reset_ui=False)

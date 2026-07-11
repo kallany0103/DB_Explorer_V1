@@ -146,7 +146,8 @@ def get_postgres_state_details(conn_data, active_only=False, application_name=No
                 }
     except Exception as e:
         err_msg = str(e).lower()
-        if "server closed the connection" not in err_msg and "connection to server" not in err_msg:
+        is_conn_err = any(x in err_msg for x in ["closed", "connection", "timeout", "terminated"])
+        if not is_conn_err:
             print(f"Error fetching PG state details: {e}")
     finally:
         if conn:
@@ -340,8 +341,11 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
                 
     except Exception as e:
         err_msg = str(e).lower()
-        if "server closed the connection" not in err_msg and "connection to server" not in err_msg:
+        is_conn_err = any(x in err_msg for x in ["closed", "connection", "timeout", "terminated"])
+        if not is_conn_err:
             print(f"Error fetching PG stats: {e}")
+        if not should_close and is_conn_err:
+            raise e
     finally:
         if should_close and conn:
             try:
@@ -419,6 +423,37 @@ def get_sqlite_session_stats(conn_data):
             conn.close()
     except Exception as e:
         return None
+
+def get_postgres_server_logs(conn_data):
+    """Fetches up to 100KB of the current Postgres log file."""
+    conn = None
+    try:
+        conn = get_pooled_postgres_connection(conn_data, application_name="Logs viewer", use_pool=True)
+        if conn:
+            conn.set_session(readonly=True, autocommit=True)
+            with conn.cursor() as cur:
+                # Check if logging is enabled
+                cur.execute("SELECT setting FROM pg_settings WHERE name = 'logging_collector';")
+                row = cur.fetchone()
+                if not row or row[0] != 'on':
+                    return {"status": "error", "message": "logging_collector is off"}
+                
+                # Fetch logs
+                cur.execute("SELECT pg_read_file(pg_current_logfile(), 0, 100000);")
+                log_row = cur.fetchone()
+                return {"status": "success", "data": log_row[0] if log_row else ""}
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "permission denied" in err_msg or "must be superuser" in err_msg:
+            return {"status": "error", "message": "Permission denied: You do not have privileges to read server logs."}
+        return {"status": "error", "message": str(e)}
+    finally:
+        if conn:
+            try:
+                return_pooled_postgres_connection(conn_data, conn=conn)
+            except:
+                pass
+    return {"status": "error", "message": "Failed to connect"}
 
 def normalize_type(raw_type: str) -> str:
     """Standardizes database types for human-readable display."""
