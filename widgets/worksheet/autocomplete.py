@@ -76,14 +76,14 @@ def _fetch_db_words(conn_data):
         elif code == "POSTGRES":
             if psycopg2 is None:
                 return [], [], {}, {}
-            pg_conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password"),
-                port=int(conn_data.get("port", 5432)),
-                connect_timeout=3,
+            import db
+            pg_conn = db.get_pooled_postgres_connection(
+                conn_data,
+                application_name="Universal SQL Client (Autocomplete)",
+                use_pool=True
             )
+            if not pg_conn:
+                return [], [], {}, {}
             cur = pg_conn.cursor()
             cur.execute(
                 "SELECT nspname FROM pg_namespace "
@@ -104,7 +104,7 @@ def _fetch_db_words(conn_data):
                 "ORDER BY table_name, ordinal_position"
             )
             col_rows = cur.fetchall()
-            pg_conn.close()
+            db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
             tables = [r[1] for r in tbl_rows]
             schema_tables = {}
             for schema, tbl in tbl_rows:
@@ -180,14 +180,14 @@ def fetch_columns(conn_data, table_name):
         elif code == "POSTGRES":
             if psycopg2 is None:
                 return []
-            pg_conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password"),
-                port=int(conn_data.get("port", 5432)),
-                connect_timeout=3,
+            import db
+            pg_conn = db.get_pooled_postgres_connection(
+                conn_data,
+                application_name="Universal SQL Client (Autocomplete)",
+                use_pool=True
             )
+            if not pg_conn:
+                return []
             cur = pg_conn.cursor()
             cur.execute(
                 "SELECT column_name FROM information_schema.columns "
@@ -195,7 +195,7 @@ def fetch_columns(conn_data, table_name):
                 (table_name,),
             )
             rows = cur.fetchall()
-            pg_conn.close()
+            db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
             return [r[0] for r in rows]
 
         elif code == "CSV":

@@ -66,13 +66,17 @@ class PostgresSchemaWorker(QRunnable):
     def run(self):
         conn = None
         try:
-            conn = psycopg2.connect(
-                host=self.conn_data["host"],
-                database=self.conn_data["database"],
-                user=self.conn_data["user"],
-                password=self.conn_data["password"],
-                port=int(self.conn_data["port"]),
-            )
+            app_name = f"Universal SQL Client (Schema) - {self.conn_data.get('database', 'postgres')}"
+            conn = db.get_pooled_postgres_connection(self.conn_data, application_name=app_name, use_pool=True)
+            
+            if not conn:
+                # The connection failed, the error was already logged by the pool
+                try:
+                    self.signals.error.emit("Failed to establish database connection.")
+                except RuntimeError:
+                    pass
+                return
+
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT nspname FROM pg_namespace "
@@ -92,7 +96,10 @@ class PostgresSchemaWorker(QRunnable):
                 pass
         finally:
             if conn:
-                conn.close()
+                try:
+                    db.return_pooled_postgres_connection(self.conn_data, conn=conn)
+                except Exception:
+                    pass
 
 
 class CsvSchemaWorker(QRunnable):

@@ -165,7 +165,6 @@ class TableFrame(QFrame):
         self.layout.addWidget(self.table)
 
 class StateWidget(QWidget):
-    # Signal to request manual refresh from parent
     refresh_requested = Signal()
 
     def __init__(self, parent=None):

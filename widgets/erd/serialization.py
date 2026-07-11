@@ -1,7 +1,7 @@
 """ERD diagram serialization: save/load .erd files and image/PDF export."""
 import json
 import base64
-
+from widgets.erd.items.note_item import ERDNoteItem
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from PySide6.QtGui import QPixmap, QPainter, QPdfWriter, QPageSize, QPageLayout
 from PySide6.QtCore import Qt, QRectF, QSizeF, QMarginsF, QBuffer, QIODevice
@@ -140,8 +140,7 @@ def save_erd(widget) -> None:
 
 def load_erd_file(widget, file_path: str | None = None) -> None:
     """Prompt (if no path given) and load an ERD state file into the widget."""
-    from widgets.erd.items.note_item import ERDNoteItem
-
+   
     if not file_path:
         file_path, _ = QFileDialog.getOpenFileName(widget, "Open ERD State", "", "ERD Files (*.erd)")
     if not file_path:

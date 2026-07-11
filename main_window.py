@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
+from widgets.erd.widget import ERDWidget
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.dashboard import DashboardWidget
 from widgets.inspector.properties_view import PropertiesWorkbench
@@ -31,7 +32,6 @@ from widgets.app_shell import (
     save_main_window_session,
     reset_to_dashboard as reset_to_dashboard_action,
 )
-
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -197,7 +197,6 @@ class MainWindow(QMainWindow):
         return self.worksheet_manager.add_tab()
 
     def add_erd_tab(self):
-        from widgets.erd.widget import ERDWidget
         erd_widget = ERDWidget({})
         tab_title = f"ERD Tab {self.tab_widget.count() + 1}"
         index = self.tab_widget.addTab(erd_widget, tab_title)

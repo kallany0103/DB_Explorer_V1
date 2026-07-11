@@ -19,6 +19,7 @@ from db.db_retrieval import (
     get_sqlite_session_stats,
     get_postgres_state_details,
     get_sqlite_state_details,
+    get_postgres_server_logs,
 )
 
 from db.schema_retrieval import (
@@ -97,4 +98,5 @@ __all__ = [
     "get_sqlite_state_details",
     "terminate_postgres_backend",
     "cancel_postgres_backend",
+    "get_postgres_server_logs",
 ]

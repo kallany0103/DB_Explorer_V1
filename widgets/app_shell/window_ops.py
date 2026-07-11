@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QSplitter, QMessageBox, QStackedWidget, QTabWidget
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 import qtawesome as qta
-
+import traceback
 
 def close_current_tab(main_window):
     index = main_window.tab_widget.currentIndex()
@@ -100,7 +100,7 @@ def reset_to_dashboard(main_window):
         main_window.status.showMessage("Layout reset to Dashboard.", 4000)
     except Exception as e:
         main_window.status.showMessage(f"Error resetting layout: {e}", 5000)
-        import traceback
+       
         traceback.print_exc()
 
 def toggle_maximize(main_window):

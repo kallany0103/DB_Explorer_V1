@@ -112,14 +112,13 @@ class SchemaLoader:
             except Exception:
                 pass
 
-        self.manager.pg_conn = psycopg2.connect(
-            host=conn_data["host"],
-            database=conn_data["database"],
-            user=conn_data["user"],
-            password=conn_data["password"],
-            port=int(conn_data["port"]),
+        self.manager.pg_conn = db.get_pooled_postgres_connection(
+            conn_data,
+            application_name=f"Universal SQL Client (Object Explorer) - {conn_data.get('database', 'postgres')}",
+            use_pool=True
         )
-        self.manager.pg_conn.autocommit = True
+        if self.manager.pg_conn:
+            self.manager.pg_conn.autocommit = True
 
         schemas_root = QStandardItem("Schemas")
         schemas_root.setEditable(False)
@@ -178,18 +177,18 @@ class SchemaLoader:
     def load_postgres_schema(self, conn_data):
         pg_conn = None
         try:
-            pg_conn = psycopg2.connect(
-                host=conn_data["host"],
-                database=conn_data["database"],
-                user=conn_data["user"],
-                password=conn_data["password"],
-                port=int(conn_data["port"]),
+            pg_conn = db.get_pooled_postgres_connection(
+                conn_data,
+                application_name=f"Universal SQL Client (Schema Loader) - {conn_data.get('database', 'postgres')}",
+                use_pool=True
             )
+            if not pg_conn:
+                raise Exception("Failed to establish connection")
             cursor = pg_conn.cursor()
             cursor.execute(
                 "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%%' AND nspname != 'information_schema' ORDER BY nspname;")
             schemas = [row[0] for row in cursor.fetchall()]
-            pg_conn.close()
+            db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
             self.populate_postgres_schema({
                 "conn_data": conn_data,
                 "schemas": schemas,

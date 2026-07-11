@@ -3,7 +3,7 @@ import copy
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QFrame, QToolTip, QWidget
 from PySide6.QtCore import Signal, Qt, QPointF, QTimeLine, QTimer
 from PySide6.QtGui import QPainter, QTransform
-
+from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
 
 from widgets.erd.commands import MoveTableCommand, AddTableCommand, AddColumnCommand
 from widgets.erd.constants import NUDGE_STEP, DUPLICATE_OFFSET, DRAG_ENDPOINT_RADIUS
@@ -281,7 +281,6 @@ class ERDView(QGraphicsView):
 
     def _drop_relationship_line(self, comp_type: str, scene_pos: QPointF) -> None:
         """Place a floating connection line at the drop position."""
-        from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
         rel_type = comp_type.split(":")[1]
         floating_conn = ERDFloatingConnectionItem(rel_type)
         floating_conn.set_handles(scene_pos - QPointF(50, 0), scene_pos + QPointF(50, 0))
