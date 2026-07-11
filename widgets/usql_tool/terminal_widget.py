@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import threading
 import time
 
@@ -77,6 +78,7 @@ class USQLToolWidget(QWidget):
         self._session_history_key: str = ""
         self._pending_db_switch_from: str = ""
         self._pg_bin_path = pg_bin_path
+        self._psql_exe_path: str = ""  # resolved once _start_session runs
         self._completion_engine: CompletionEngine | None = None
 
         self._pty = None
@@ -271,6 +273,7 @@ class USQLToolWidget(QWidget):
             self._show_error("Could not locate psql executable.")
             self._term.append_output("\nERROR: Could not locate psql executable.\n")
             return
+        self._psql_exe_path = psql_path
 
         if PTY is None:
             self._show_error("winpty module is not installed.")
@@ -359,10 +362,15 @@ class USQLToolWidget(QWidget):
                 break
         self._running = False
         if exit_reason == "clean":
-            msg = "\n[Process exited]\n"
-            if getattr(self, "_first_prompt_pos", 0) == 0:
-                msg += "[Hint: psql exited before showing a prompt. The connection may have failed, or the executable might be missing dependencies.]\n"
-            self._output_received.emit(msg)
+            # Show the psql.exe directory as a Windows-style shell prompt,
+            # exactly as the real cmd.exe / pgAdmin console would.
+            psql_dir = ""
+            if getattr(self, "_psql_exe_path", ""):
+                psql_dir = str(Path(self._psql_exe_path).parent)
+            shell_prompt = f"\n{psql_dir}>" if psql_dir else "\n[Process exited]\n"
+            if getattr(self, "_first_prompt_pos", 0) == 0 and not psql_dir:
+                shell_prompt += "[Hint: psql exited before showing a prompt. The connection may have failed, or the executable might be missing dependencies.]\n"
+            self._output_received.emit(shell_prompt)
         else:
             self._output_received.emit(f"\n[Process exited unexpectedly: {exit_reason}]\n")
 
@@ -437,13 +445,21 @@ class USQLToolWidget(QWidget):
             self._history_index = len(self._history)
 
         if not self._running or self._pty is None:
-            self._term.append_output("\n[Not connected — click Reconnect]\n")
+            # After \q the user sees a shell-style prompt.
+            # Typing `psql` relaunches the session, just like the real console.
+            if stripped.lower() == "usql":
+                self._term.append_output("\n")
+                self._reconnect()
+            else:
+                psql_dir = ""
+                if self._psql_exe_path:
+                    psql_dir = str(Path(self._psql_exe_path).parent)
+                hint = f"\n'{stripped}' is not recognized. Type 'psql' to reconnect.\n{psql_dir}>"
+                self._term.append_output(hint)
             return
 
-        # Intercept \q or exit/quit to close terminal gracefully
-        if stripped in ("\\q", "exit", "quit"):
-            self.terminal_closed.emit()
-            return
+        # \q — send to psql so it exits naturally; the PTY reader will then
+        # display the psql.exe directory as a Windows shell prompt.
 
         # Replace internal \n with \r\n so winpty processes them as separate lines.
         try:
