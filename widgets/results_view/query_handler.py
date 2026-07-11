@@ -231,6 +231,14 @@ def handle_query_result(
 
     manager.main_window.worksheet_manager.save_query_to_history(conn_data, query, "Success", row_count, elapsed_time)
 
+    # Push to Dashboard Logs tab (non-blocking, best-effort)
+    try:
+        dw = getattr(manager.main_window, "dashboard_widget", None)
+        if dw is not None and conn_data:
+            dw.log_query(conn_data, query, "Success", elapsed_time, row_count)
+    except Exception:
+        pass
+
     manager._ensure_at_least_one_output_tab(target_tab)
     if output_mode == "new" and output_tab_index is None:
         output_tab_index = manager.add_output_tab_with_table_name(target_tab, query=query, activate=True)

@@ -67,6 +67,7 @@ class PostgresConnectionPool:
     def initialize(self, **conn_params):
         """
         Initialize pool with connection parameters.
+        Connections are created lazily on first use to avoid blocking the main thread.
         
         Args:
             **conn_params: psycopg2 connection parameters (host, port, database, user, etc.)
@@ -77,27 +78,24 @@ class PostgresConnectionPool:
                 return
                 
             self._conn_params = conn_params
-            
-            # Create minimum connections
-            for _ in range(self.min_connections):
-                try:
-                    conn = self._create_connection()
-                    if conn:
-                        self._pool.append((conn, time.time(), self._connection_counter))
-                        self._connection_counter += 1
-                except Exception as e:
-                    logger.warning(f"Failed to initialize connection: {e}")
+            # Lazy init: do NOT pre-create connections here.
+            # This avoids blocking the calling (UI) thread with TCP handshakes.
     
     def _create_connection(self):
         """Create a new database connection."""
+        if time.time() - getattr(self, '_last_failed_time', 0) < 15:
+            return None
+            
         try:
             conn = psycopg2.connect(
                 **self._conn_params,
                 connect_timeout=self.connection_timeout
             )
+            self._last_failed_time = 0 # reset on success
             return conn
         except OperationalError as e:
-            logger.error(f"Failed to create connection: {e}")
+            self._last_failed_time = time.time()
+            logger.debug(f"Failed to create connection: {e}")
             return None
     
     def _is_connection_alive(self, conn) -> bool:
@@ -167,25 +165,24 @@ class PostgresConnectionPool:
                 # Clean up idle connections
                 self._cleanup_idle_connections()
                 
-                # Try to get an available connection
+                # Try to get an available connection from the pool
                 while self._pool:
                     conn, created_time, conn_id = self._pool.pop(0)
                     
-                    # Check connection health
+                    # Remove from in-use tracking (it was put back by return_connection)
+                    # conn_id here is id(conn), consistent with return_connection
                     if self._is_connection_alive(conn):
                         # Only rollback if there is actually an open transaction.
-                        # Calling rollback() on an idle connection (STATUS_READY)
-                        # still sends ROLLBACK to PostgreSQL and shows up in TPS
-                        # stats as a spurious rollback.
                         try:
                             if conn.status == psycopg2.extensions.STATUS_BEGIN:
                                 conn.rollback()
                         except Exception:
                             pass
-                        self._in_use.add(conn_id)
+                        self._in_use.add(id(conn))  # use id(conn) as the tracking key
                         return conn
                     else:
-                        # Connection is dead, replace it
+                        # Connection is dead, discard it
+                        self._in_use.discard(id(conn))
                         try:
                             conn.close()
                         except Exception:
@@ -195,12 +192,13 @@ class PostgresConnectionPool:
                 if len(self._in_use) < self.max_connections:
                     conn = self._create_connection()
                     if conn:
-                        conn_id = self._connection_counter
-                        self._connection_counter += 1
-                        self._in_use.add(conn_id)
+                        self._in_use.add(id(conn))  # use id(conn) as the tracking key
                         return conn
+                    else:
+                        # Failed to create connection (host unreachable etc.)
+                        return None
             
-            # Wait a bit before retry
+            # All connections are in use and we're at max — wait a bit before retry
             elapsed = time.time() - start_time
             if elapsed > timeout:
                 logger.error(f"Timeout waiting for connection (waited {elapsed:.2f}s)")
@@ -223,16 +221,12 @@ class PostgresConnectionPool:
             return
         
         with self._lock:
-            # Find the connection ID (simple approach: use connection address)
-            conn_id = id(conn)
+            conn_id = id(conn)  # consistent with get_connection
             
-            # Remove from in-use set if present
-            for in_use_id in list(self._in_use):
-                if in_use_id == conn_id:
-                    self._in_use.discard(in_use_id)
-                    break
+            # Remove from in-use set
+            self._in_use.discard(conn_id)
             
-            # Return to pool
+            # Return to pool if still alive
             if self._is_connection_alive(conn):
                 # Only rollback if there is actually an open / error transaction.
                 # An unconditional rollback() on a STATUS_READY connection still
@@ -248,7 +242,7 @@ class PostgresConnectionPool:
                 
                 self._pool.append((conn, time.time(), conn_id))
             else:
-                # Connection is dead, don't return it
+                # Connection is dead, don't return it to pool
                 try:
                     conn.close()
                 except Exception:

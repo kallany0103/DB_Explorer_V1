@@ -62,13 +62,14 @@ class ScriptGenerator:
         elif db_type == 'postgres':
             schema_name = item_data.get('schema_name', 'public')
             try:
-                conn = psycopg2.connect(
-                    host=conn_data.get("host"),
-                    port=conn_data.get("port"),
-                    database=conn_data.get("database"),
-                    user=conn_data.get("user"),
-                    password=conn_data.get("password")
+                import db
+                conn = db.get_pooled_postgres_connection(
+                    conn_data,
+                    application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",
+                    use_pool=True
                 )
+                if not conn:
+                    raise Exception("Failed to establish database connection")
                 cursor = conn.cursor()
 
                 # Get relkind to distinguish table/view/mview
@@ -139,7 +140,7 @@ class ScriptGenerator:
                     if idxs:
                         sql_script += "\n\n" + "\n".join([r[0] + ";" for r in idxs])
 
-                conn.close()
+                db.return_pooled_postgres_connection(conn_data, conn=conn)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Could not generate Postgres script: {e}")
                 return
@@ -186,13 +187,14 @@ class ScriptGenerator:
     def script_sequence_as_create(self, item_data, seq_name):
         conn_data = item_data.get('conn_data')
         try:
-            conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                port=conn_data.get("port"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password")
+            import db
+            conn = db.get_pooled_postgres_connection(
+                conn_data,
+                application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",
+                use_pool=True
             )
+            if not conn:
+                raise Exception("Failed to establish database connection")
             cursor = conn.cursor()
             schema_name = item_data.get('schema_name', 'public')
             cursor.execute(
@@ -202,20 +204,21 @@ class ScriptGenerator:
             res = cursor.fetchone()
             if res:
                 self.open_script_in_editor(item_data, res[0])
-            conn.close()
+            db.return_pooled_postgres_connection(conn_data, conn=conn)
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to script sequence:\n{e}")
 
     def script_function_as_create(self, item_data, func_name):
         conn_data = item_data.get('conn_data')
         try:
-            conn = psycopg2.connect(
-                host=conn_data.get("host"),
-                port=conn_data.get("port"),
-                database=conn_data.get("database"),
-                user=conn_data.get("user"),
-                password=conn_data.get("password")
+            import db
+            conn = db.get_pooled_postgres_connection(
+                conn_data,
+                application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",
+                use_pool=True
             )
+            if not conn:
+                raise Exception("Failed to establish database connection")
             cursor = conn.cursor()
             schema = item_data.get('schema_name')
             query = """
@@ -234,7 +237,7 @@ class ScriptGenerator:
                 self.open_script_in_editor(item_data, sql + ";")
             else:
                 QMessageBox.warning(self.manager, "Warning", "Could not find function definition.")
-            conn.close()
+            db.return_pooled_postgres_connection(conn_data, conn=conn)
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to script function:\n{e}")
 

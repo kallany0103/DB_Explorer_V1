@@ -208,14 +208,14 @@ class TableDetailsLoader:
                     conn_data = item_data.get('conn_data')
                     if conn_data:
                         try:
-                            import psycopg2
-                            self.manager.pg_conn = psycopg2.connect(
-                                host=conn_data["host"],
-                                database=conn_data["database"],
-                                user=conn_data["user"],
-                                password=conn_data["password"],
-                                port=int(conn_data["port"]),
+                            import db
+                            self.manager.pg_conn = db.get_pooled_postgres_connection(
+                                conn_data,
+                                application_name=f"Universal SQL Client (Table Details) - {conn_data.get('database', 'postgres')}",
+                                use_pool=True
                             )
+                            if not self.manager.pg_conn:
+                                raise Exception("Failed to establish database connection")
                         except Exception as e:
                             item.appendRow(QStandardItem(f"Error: Could not connect - {e}"))
                             return

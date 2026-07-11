@@ -5,10 +5,571 @@ from PySide6.QtCore import Qt, QTimer, QRunnable, QObject, Signal, Slot, QPointF
 from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush  # QBrush kept for marker ellipses
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from widgets.dashboard.state_widget import StateWidget, StateWorker
+from widgets.dashboard.logs_widget import LogsWidget
 import qtawesome as qta
+from PySide6.QtWidgets import QComboBox
 import db
 from datetime import datetime
 import time
+import datetime as _dt
+from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QComboBox
+import os
+from PySide6.QtWidgets import QApplication
+
+class DashboardWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background-color: #ffffff;")
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.request_stats_update)
+        
+        self.prev_stats = None
+        self.prev_time = None
+        self.current_conn_data = None
+        self.last_processed_conn = None
+        self._dying_workers = []
+        self.setup_ui()
+        self.request_stats_update() # Initial call to set labels immediately
+        self.refresh_timer.start(1000) # 1 second refresh for activity
+       
+        app = QApplication.instance()
+        if app:
+            app.aboutToQuit.connect(self.cleanup)
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Tab Widget
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { 
+                border-top: 1px solid #B8BEC6;
+                background: #ffffff;
+            }
+            QTabBar::tab {
+                background: #ECEFF3;
+                color: #111827;
+                padding: 6px 12px;
+                border: 1px solid #B8BEC6;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                margin-right: 2px;
+                font-size: 9pt;
+            }
+            QTabBar::tab:selected {
+                background: #8E959E;
+                color: #ffffff;
+                border-bottom: 2px solid #8E959E;
+            }
+            QTabBar::tab:hover {
+                background: #DDE2E8;
+            }
+        """)
+
+        # 1. Activity Tab
+        self.activity_tab = QWidget()
+        self.setup_activity_ui()
+        self.tabs.addTab(self.activity_tab, qta.icon('mdi.chart-line', color="#121213"), "Activity")
+
+        # 2. State Tab
+        self.state_widget = StateWidget()
+        self.state_widget.refresh_requested.connect(self.refresh_requested)
+        self.tabs.addTab(self.state_widget, qta.icon('mdi.database-search', color="#121213"), "State")
+
+        # 3. Logs Tab
+        self.logs_widget = LogsWidget()
+        self.tabs.addTab(self.logs_widget, qta.icon('mdi.text-box-outline', color="#121213"), "Logs")
+
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        layout.addWidget(self.tabs)
+    
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)
+
+    def _retire_worker(self, worker):
+        """Gracefully stop a worker, keeping it alive until its thread exits."""
+        if worker is None:
+            return
+        self._dying_workers.append(worker)
+        worker.stop()
+        # Once the thread finishes Qt will call deleteLater; we also remove
+        # the Python reference from _dying_workers so it can be collected.
+        try:
+            worker.finished.disconnect()
+        except Exception:
+            pass
+        worker.finished.connect(lambda *_: self._dying_workers.remove(worker)
+                                if worker in self._dying_workers else None)
+        worker.finished.connect(worker.deleteLater)
+
+    def cleanup(self):
+        if hasattr(self, 'refresh_timer'):
+            self.refresh_timer.stop()
+        
+        # Stop active worker and wait for it to exit cleanly
+        if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
+            self.dashboard_worker.stop()
+            self.dashboard_worker.wait(5000)  # Wait up to 5 seconds
+        
+        # Also wait for any retiring workers that haven't finished yet
+        for w in list(self._dying_workers):
+            if w.isRunning():
+                w.wait(3000)
+
+    def hideEvent(self, event):
+        if hasattr(self, 'refresh_timer'):
+            self.refresh_timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        if hasattr(self, 'refresh_timer'):
+            self.refresh_timer.start(1000)
+    def refresh_requested(self, *args):
+        """Triggered by the manual refresh button or state tab refresh."""
+        self.request_stats_update(manual=True)
+
+    def log_query(self, conn_data: dict, query: str, status: str,
+                  duration: float, rows: int):
+        """Append a query log entry to the Logs tab.
+
+        Called from the query result / error handlers so that every executed
+        query shows up in the Dashboard Logs tab in real time.
+        """
+       
+        entry = {
+            "timestamp": _dt.datetime.now(),
+            "conn_name": conn_data.get("name", conn_data.get("short_name", "")),
+            "database":  conn_data.get("database") or conn_data.get("db_path", ""),
+            "status":    status,
+            "duration":  float(duration or 0),
+            "rows":      int(rows or 0),
+            "query":     str(query or "").strip(),
+            "conn_data": conn_data,
+        }
+        self.logs_widget.append_log_entry(entry)
+
+    def _on_tab_changed(self, index):
+        if self.tabs.widget(index) == self.state_widget:
+            self.request_stats_update(manual=True)
+        elif self.tabs.widget(index) == self.logs_widget:
+            # Sync connection scope when user switches to Logs tab
+            self.logs_widget.set_current_connection(self.current_conn_data)
+
+    def setup_activity_ui(self):
+        main_layout = QVBoxLayout(self.activity_tab)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(16)
+        
+        # Grid for charts - 6 column grid to allow 2-chart and 3-chart rows
+        grid_layout = QGridLayout()
+        grid_layout.setSpacing(16)
+        
+        # Sessions chart - show Total/Active/Idle legends
+        self.sessions_chart = LiveChartWidget(
+            "Database sessions",
+            ["Total", "Active", "Idle"],
+            ["#3b82f6", "#f59e0b", "#10b981"]
+        )
+        self.tps_chart = LiveChartWidget(
+            "Transactions", 
+            ["Transactions", "Commits", "Rollbacks"], 
+            ["#1f77b4", "#f59e0b", "#ef4444"] # blue, orange, red
+        )
+
+
+        
+        # Delta counts instead of rates for better row-level visibility
+        self.tuples_in_chart = LiveChartWidget("Tuples In", ["Inserts", "Updates", "Deletes"], ["#1f77b4", "#f59e0b", "#10b981"])
+        self.tuples_out_chart = LiveChartWidget("Tuples Out", ["Fetched", "Returned"], ["#1f77b4", "#f59e0b"])
+        self.block_io_chart = LiveChartWidget("Block I/O (Count)", ["Reads", "Hits"], ["#1f77b4", "#f59e0b"])
+        
+        # Row 0: 2 charts (each spans 3 columns)
+        grid_layout.addWidget(self.sessions_chart, 0, 0, 1, 3)
+        grid_layout.addWidget(self.tps_chart, 0, 3, 1, 3)
+        
+        # Row 1: 3 charts (each spans 2 columns)
+        grid_layout.addWidget(self.tuples_in_chart, 1, 0, 1, 2)
+        grid_layout.addWidget(self.tuples_out_chart, 1, 2, 1, 2)
+        grid_layout.addWidget(self.block_io_chart, 1, 4, 1, 2)
+        
+        # Grid for charts ... (code removed for brevity, will replace carefully)
+        
+        main_layout.addLayout(grid_layout)
+        main_layout.addStretch()
+
+    def request_stats_update(self, manual=False):
+        main_window = None
+        curr = self
+        while curr:
+            if curr.__class__.__name__ == "MainWindow":
+                main_window = curr
+                break
+            curr = curr.parent()
+        
+        if not main_window or not hasattr(main_window, "connection_manager"):
+            return
+
+        cm = main_window.connection_manager
+        
+        # 1. Detect Selection Type and get conn_data
+        index = cm.tree.currentIndex()
+        if not index.isValid():
+            return
+
+        source_idx = cm.proxy_model.mapToSource(index)
+        item = cm.model.itemFromIndex(source_idx)
+        if not item:
+            return
+        depth = cm.get_item_depth(item)
+        
+        conn_data = None
+        current_db_only = False
+
+        if depth == 3:
+            # Connection level
+            conn_data = item.data(Qt.ItemDataRole.UserRole)
+            self.current_conn_data = conn_data
+            current_db_only = True
+        else:
+            # depth 1, 2 or unknown -> placeholder state
+            conn_data = None
+
+        # Always ensure charts are visible
+        self.sessions_chart.setVisible(True)
+        self.tps_chart.setVisible(True)
+        self.tuples_in_chart.setVisible(True)
+        self.tuples_out_chart.setVisible(True)
+        self.block_io_chart.setVisible(True)
+
+        if not conn_data:
+            self.current_conn_data = None
+            self.last_processed_conn = None
+            self.prev_stats = None
+            self.prev_time = None
+            if hasattr(self, 'dashboard_worker'):
+                self._retire_worker(self.dashboard_worker)
+                self.dashboard_worker = None
+            self.sessions_chart.title_lbl.setText("Sessions")
+            self.tps_chart.title_lbl.setText("Transactions")
+            self.reset_all_charts()
+            self.logs_widget.set_current_connection(None)
+            return
+
+        # Show/Hide State tab based on connection type
+        db_type_val = str(conn_data.get("db_type", "")).lower()
+        is_postgres = "postgres" in db_type_val
+        is_sqlite = "sqlite" in db_type_val
+        
+        self.state_widget.set_db_type(db_type_val)
+        
+        # Track connection change to clear charts
+        if not hasattr(self, 'last_processed_conn') or self.last_processed_conn != conn_data:
+            self.last_processed_conn = conn_data
+            self.prev_stats = None
+            self.prev_time = None
+            self.reset_all_charts()
+            manual = True # Force a state refresh for the new connection
+            # Also update Logs tab immediately on connection change,
+            # regardless of whether it is the currently visible tab.
+            self.logs_widget.set_current_connection(conn_data)
+
+        has_live_metrics = is_postgres or is_sqlite
+        
+        if not has_live_metrics:
+            return
+
+        # State tab is now supported for both PostgreSQL and SQLite
+        self.tabs.setTabVisible(1, True)
+
+        # 2. Activity Stats Update (Use persistent worker)
+        if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
+            # Simply update the existing worker's targets
+            self.dashboard_worker.update_connection(conn_data, current_db_only)
+        else:
+            if hasattr(self, 'dashboard_worker'):
+                self._retire_worker(self.dashboard_worker)
+                self.dashboard_worker = None
+            # Start a fresh worker (no Qt parent — lifetime managed by self)
+            self.dashboard_worker = DashboardWorker(conn_data, current_db_only)
+            self.dashboard_worker.finished.connect(self.update_dashboard_stats)
+            self.dashboard_worker.start()
+
+        # 3. State Details Update 
+        # Only if: (State tab is active AND manual requested)
+        now_ts = time.time()
+        
+        is_state_active = self.tabs.currentWidget() == self.state_widget
+        # Disable automatic refresh as per user request (only refresh when manual is True)
+        should_refresh_state = manual
+
+        if should_refresh_state and is_state_active:
+            self.last_state_refresh = now_ts
+            self.state_widget.conn_data = conn_data
+            
+            local_sessions = None
+            if is_sqlite:
+                local_sessions = self.get_sqlite_session_details_list(conn_data.get("db_path"))
+            
+            state_worker = StateWorker(conn_data, self.state_widget.active_checkbox.isChecked(), local_sessions=local_sessions)
+            state_worker.signals.finished.connect(self.state_widget.update_state)
+            state_worker.signals.error.connect(lambda err: print(f"Dashboard state worker error: {err}"))
+            main_window.thread_pool.start(state_worker)
+        
+        # Update chart titles dynamically
+        prefix = "Sessions"
+        tps_prefix = "Transactions"
+        if depth == 3:
+            prefix = f"Sessions for: {item.text()}"
+            tps_prefix = f"TPS for: {item.text()}"
+        elif depth == 2:
+            prefix = f"Server Sessions: {item.text()}"
+            tps_prefix = f"Server TPS: {item.text()}"
+            
+        self.sessions_chart.title_lbl.setText(prefix)
+        self.tps_chart.title_lbl.setText(tps_prefix)
+        
+            
+    def get_local_postgres_sessions(self, db_name):
+        """Counts open and active worksheets for a specific PostgreSQL database."""
+        main_window = self._get_main_window()
+        if not main_window or not hasattr(main_window, 'tab_widget'):
+            return 0, 0
+            
+        total = 0
+        active = 0
+        target_db = str(db_name).lower().strip() if db_name else ""
+        for i in range(main_window.tab_widget.count()):
+            tab = main_window.tab_widget.widget(i)
+            # Search for the combo box specifically in the worksheet tab
+            combo = tab.findChild(QComboBox, "db_combo_box")
+            if combo:
+                data = combo.currentData()
+                if isinstance(data, dict):
+                    tab_db = str(data.get('database', '')).lower().strip()
+                    if tab_db == target_db:
+                        total += 1
+                        # Check if query is running in this tab
+                        if hasattr(main_window, 'worksheet_manager'):
+                            if tab in main_window.worksheet_manager.running_queries:
+                                active += 1
+        return total, active
+
+    def reset_all_charts(self):
+        """Wipes all data from charts and tables when switching databases."""
+        charts = [
+            self.sessions_chart, self.tps_chart, 
+            self.tuples_in_chart, self.tuples_out_chart, self.block_io_chart
+        ]
+        for chart_widget in charts:
+            if hasattr(chart_widget, 'chart_view'):
+                chart_widget.chart_view.reset_series()
+        
+        # Also clear the State tab tables
+        if hasattr(self, 'state_widget'):
+            self.state_widget.clear_state()
+        
+
+    def get_local_sqlite_sessions(self, db_path):
+        if not db_path:
+            return 1, 1, 0
+            
+        main_window = self._get_main_window()
+        if not main_window or not hasattr(main_window, 'tab_widget'):
+            return 1, 1, 0
+            
+        total = 0
+        active = 0
+        target_path = os.path.normpath(db_path).lower()
+     
+        for i in range(main_window.tab_widget.count()):
+            tab = main_window.tab_widget.widget(i)
+            # Find the connection combo in this tab
+            combo = tab.findChild(QComboBox, "db_combo_box")
+            if combo:
+                data = combo.currentData()
+                if isinstance(data, dict):
+                    path = data.get('db_path')
+                    if path and os.path.normpath(path).lower() == target_path:
+                        total += 1
+                        # Check if this tab is running a query in WorksheetManager
+                        if hasattr(main_window, 'worksheet_manager'):
+                            if tab in main_window.worksheet_manager.running_queries:
+                                active += 1
+        
+        # Return exact counts based on open worksheets
+        return total, active, max(total - active, 0)
+
+    def get_sqlite_session_details_list(self, db_path):
+        """Collects detailed session info for SQLite worksheets to show in the State tab."""
+        if not db_path:
+            return []
+            
+        main_window = self._get_main_window()
+        if not main_window or not hasattr(main_window, 'tab_widget'):
+            return []
+            
+        sessions = []
+
+        target_path = os.path.normpath(db_path).lower()
+    
+        for i in range(main_window.tab_widget.count()):
+            tab = main_window.tab_widget.widget(i)
+            # Find the connection combo in this tab
+            combo = tab.findChild(QComboBox, "db_combo_box")
+            if combo:
+                data = combo.currentData()
+                if isinstance(data, dict):
+                    path = data.get('db_path')
+                    if path and os.path.normpath(path).lower() == target_path:
+                        pid = os.getpid() # Current app process
+                        source = main_window.tab_widget.tabText(i)
+                        
+                        is_running = False
+                        if hasattr(main_window, 'worksheet_manager'):
+                            if tab in main_window.worksheet_manager.running_queries:
+                                is_running = True
+                                
+                        state = "Active" if is_running else "Idle"
+                        
+                        # Try to get query text if available
+                        last_query = ""
+                        # Searching for the editor in the worksheet
+                        editor = tab.findChild(QPlainTextEdit)
+                        if editor:
+                            last_query = editor.toPlainText()[:200]
+                        
+                        # Columns: ["PID", "Source", "State", "Database", "SQL"]
+                        sessions.append([
+                            pid, 
+                            source, 
+                            state, 
+                            os.path.basename(db_path), 
+                            last_query
+                        ])
+        
+        return sessions
+
+    def _get_main_window(self):
+        curr = self.parent()
+        while curr:
+            if curr.__class__.__name__ == "MainWindow":
+                return curr
+            curr = curr.parent()
+        return None
+
+    def update_dashboard_stats(self, stats, worker_conn_data=None):
+        if worker_conn_data and hasattr(self, "current_conn_data"):
+            if self.current_conn_data != worker_conn_data:
+                return # Ignore stale stats from previous connection
+
+        is_sqlite = False
+        if hasattr(self, "current_conn_data") and self.current_conn_data:
+            db_type = str(self.current_conn_data.get("db_type", "")).lower()
+            is_sqlite = "sqlite" in db_type
+
+        if stats is None:
+            if is_sqlite:
+                stats = {
+                    "sessions_total": 1, "sessions_active": 0, "sessions_idle": 1,
+                    "xact_commit": 0, "xact_rollback": 0,
+                    "app_commit": 0, "app_rollback": 0,
+                    "app_tup_ins": 0, "app_tup_upd": 0,
+                    "app_tup_del": 0, "app_tup_fet": 0, "app_tup_ret": 0, "app_exec_time": 0
+                }
+            else:
+                return
+
+        if is_sqlite and self.current_conn_data:
+            db_path = self.current_conn_data.get("db_path")
+            if db_path:
+                t, a, i = self.get_local_sqlite_sessions(db_path)
+                stats["sessions_total"] = t
+                stats["sessions_active"] = a
+                stats["sessions_idle"] = i
+
+        try:
+            now = datetime.now()
+            
+            # 1. Update Sessions Chart
+            if hasattr(self, "sessions_chart"):
+                if is_sqlite:
+                    t, a, i = self.get_local_sqlite_sessions(self.current_conn_data.get("db_path"))
+                    self.sessions_chart.chart_view.update_values([t, a, i])
+                else:
+                    ws_total, _ = self.get_local_postgres_sessions(self.current_conn_data.get("database"))
+                    other_active_sql = stats.get("other_total", 0)
+                    total_active_sql = stats.get("total_active", 0)
+                    graph_total = ws_total + other_active_sql
+                    graph_active = total_active_sql
+                    graph_idle = max(0, graph_total - graph_active)
+                    self.sessions_chart.chart_view.update_values([graph_total, graph_active, graph_idle])
+            
+            # 2. Update Other Charts
+            if self.prev_stats and self.prev_time:
+                dt = (now - self.prev_time).total_seconds()
+                if dt > 0:
+                    if "sqlite" in db_type:
+                        has_user_activity = True
+                    else:
+                        our_active = stats.get("our_active", 0)
+                        other_active = stats.get("other_active_running", 0)
+                        has_user_activity = (our_active + other_active) > 0
+
+                    # TPS (Local Application Activity only to avoid Cloud DB background noise)
+                    if hasattr(self, "tps_chart"):
+                        app_c_diff = stats.get("app_commit", 0) - self.prev_stats.get("app_commit", 0)
+                        app_r_diff = stats.get("app_rollback", 0) - self.prev_stats.get("app_rollback", 0)
+
+                        if not has_user_activity:
+                            app_c_diff = app_r_diff = 0
+
+                        self.tps_chart.chart_view.update_values([
+                            max(0, app_c_diff + app_r_diff),
+                            max(0, app_c_diff),
+                            max(0, app_r_diff)
+                        ])
+                    
+                    # Tuples In (Global Activity)
+                    if hasattr(self, "tuples_in_chart"):
+                        t_ins = stats.get("tup_ins", 0) - self.prev_stats.get("tup_ins", 0)
+                        t_upd = stats.get("tup_upd", 0) - self.prev_stats.get("tup_upd", 0)
+                        t_del = stats.get("tup_del", 0) - self.prev_stats.get("tup_del", 0)
+                        
+                        if not has_user_activity:
+                            t_ins = t_upd = t_del = 0
+
+                        self.tuples_in_chart.chart_view.update_values([max(0, t_ins), max(0, t_upd), max(0, t_del)])
+                    
+                    # Tuples Out (Global Activity)
+                    if hasattr(self, "tuples_out_chart"):
+                        t_fet = stats.get("tup_fet", 0) - self.prev_stats.get("tup_fet", 0)
+                        t_ret = stats.get("tup_ret", 0) - self.prev_stats.get("tup_ret", 0)
+                        
+                        if not has_user_activity:
+                            t_fet = t_ret = 0
+
+                        self.tuples_out_chart.chart_view.update_values([max(0, t_fet), max(0, t_ret)])
+                    
+                    # Block I/O
+                    if hasattr(self, "block_io_chart"):
+                        b_read_global = stats.get("blks_read", 0) - self.prev_stats.get("blks_read", 0)
+                        b_hit_global = stats.get("blks_hit", 0) - self.prev_stats.get("blks_hit", 0)
+                        
+                        if not has_user_activity:
+                            b_read_global = b_hit_global = 0
+
+                        self.block_io_chart.chart_view.update_values([max(0, b_read_global), max(0, b_hit_global)])
+                    
+            self.prev_stats = stats
+            self.prev_time = now
+        except Exception as e:
+            print(f"Error updating dashboard UI: {e}")
 
 class ChartTooltip(QFrame):
     def __init__(self, parent=None):
@@ -116,11 +677,7 @@ class DashboardWorker(QThread):
                 if "sqlite" in db_type:
                     stats = db.get_sqlite_session_stats(self.conn_data)
                 else:
-                    # Use pooled connection for PostgreSQL (more efficient).
-                    # IMPORTANT: autocommit=False so every poll's queries run inside
-                    # a single implicit transaction that we rollback at the end.
-                    # This means the dashboard contributes 0 to xact_commit (no TPS
-                    # noise) and 1 to xact_rollback per poll (handled in the UI).
+                    
                     if conn is None:
                         db_name = self.conn_data.get("database", "postgres")
                         app_name = f"Universal SQL Client (Dashboard) - {db_name}"
@@ -130,8 +687,6 @@ class DashboardWorker(QThread):
                             use_pool=True
                         )
                         if conn:
-                            # Ensure no open transaction before configuring the session
-                            # (psycopg2 raises if set_session is called mid-transaction).
                             try:
                                 conn.rollback()
                             except Exception:
@@ -142,9 +697,6 @@ class DashboardWorker(QThread):
 
                     stats = db.get_postgres_session_stats(self.conn_data, self.current_db_only, conn=conn)
 
-                    # End the implicit read-only transaction so the connection
-                    # returns to a clean idle state.  This adds 1 to xact_rollback
-                    # instead of N commits (one per sub-query) to xact_commit.
                     if conn:
                         try:
                             conn.rollback()
@@ -274,10 +826,6 @@ class LiveChartView(QChartView):
                 series.remove(0)
 
         self.axis_x.setRange(self.x_counter - self.max_points + 1, self.x_counter)
-
-        # Compute the true max across ALL visible points in the window,
-        # not just the current tick. This prevents the axis from snapping
-        # back down one tick after a spike while the spike is still visible.
         visible_min_x = self.x_counter - self.max_points + 1
         window_max = 0
         for series in self.series_list:
@@ -427,12 +975,7 @@ class LiveChartWidget(QFrame):
             else:
                 item.hide() # Keep the widget but hide it if requested
             
-        # Extra info container for labels like "Worksheets: 0"
-        self.extra_info_layout = QHBoxLayout()
-        self.extra_info_layout.setSpacing(15)
-        self.extra_info_layout.setContentsMargins(15, 0, 0, 0)
-        h_layout.addLayout(self.extra_info_layout)
-        self.extra_labels = {}
+
             
         self.chart_view = LiveChartView(series_names, colors)
         self.chart_view.setStyleSheet("border: none; border-radius: 0px;")
@@ -440,563 +983,3 @@ class LiveChartWidget(QFrame):
         layout.addWidget(header)
         layout.addWidget(self.chart_view)
 
-    def set_extra_info(self, key, label_text, value, color="#6366f1"):
-        """Adds or updates a text label in the header."""
-        if key not in self.extra_labels:
-            lbl = QLabel(f"{label_text}: {value}")
-            lbl.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {color}; border: none; background: transparent; margin-left: 15px;")
-            lbl.setMinimumWidth(200) # Ensure enough space for 'Universal SQL Client'
-            self.extra_info_layout.addWidget(lbl)
-            self.extra_labels[key] = (lbl, label_text)
-        else:
-            lbl, base_label = self.extra_labels[key]
-            lbl.setText(f"{base_label}: {value}")
-
-class DashboardWidget(QWidget):
-    def closeEvent(self, event):
-        self.cleanup()
-        super().closeEvent(event)
-
-    def _retire_worker(self, worker):
-        """Gracefully stop a worker, keeping it alive until its thread exits."""
-        if worker is None:
-            return
-        self._dying_workers.append(worker)
-        worker.stop()
-        # Once the thread finishes Qt will call deleteLater; we also remove
-        # the Python reference from _dying_workers so it can be collected.
-        try:
-            worker.finished.disconnect()
-        except Exception:
-            pass
-        worker.finished.connect(lambda *_: self._dying_workers.remove(worker)
-                                if worker in self._dying_workers else None)
-        worker.finished.connect(worker.deleteLater)
-
-    def cleanup(self):
-        if hasattr(self, 'refresh_timer'):
-            self.refresh_timer.stop()
-        
-        # Stop active worker and wait for it to exit cleanly
-        if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
-            self.dashboard_worker.stop()
-            self.dashboard_worker.wait(5000)  # Wait up to 5 seconds
-        
-        # Also wait for any retiring workers that haven't finished yet
-        for w in list(self._dying_workers):
-            if w.isRunning():
-                w.wait(3000)
-
-    def hideEvent(self, event):
-        if hasattr(self, 'refresh_timer'):
-            self.refresh_timer.stop()
-        super().hideEvent(event)
-
-    def showEvent(self, event):
-        if hasattr(self, 'refresh_timer'):
-            self.refresh_timer.start(1000)
-    def refresh_requested(self, *args):
-        """Triggered by the manual refresh button or state tab refresh."""
-        self.request_stats_update(manual=True)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setStyleSheet("background-color: #ffffff;")
-        self.refresh_timer = QTimer(self)
-        self.refresh_timer.timeout.connect(self.request_stats_update)
-        
-        self.prev_stats = None
-        self.prev_time = None
-        self.current_conn_data = None
-        self.last_processed_conn = None
-        # Holds workers that are stopping — keeps Python reference alive until
-        # the thread finishes so Qt never destroys a running QThread.
-        self._dying_workers = []
-        self.setup_ui()
-        self.request_stats_update() # Initial call to set labels immediately
-        self.refresh_timer.start(1000) # 1 second refresh for activity
-        
-        # Ensure cleanup on app exit
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app:
-            app.aboutToQuit.connect(self.cleanup)
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # Tab Widget
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { 
-                border-top: 1px solid #B8BEC6;
-                background: #ffffff;
-            }
-            QTabBar::tab {
-                background: #ECEFF3;
-                color: #111827;
-                padding: 6px 12px;
-                border: 1px solid #B8BEC6;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
-                font-size: 9pt;
-            }
-            QTabBar::tab:selected {
-                background: #8E959E;
-                color: #ffffff;
-                border-bottom: 2px solid #8E959E;
-            }
-            QTabBar::tab:hover {
-                background: #DDE2E8;
-            }
-        """)
-
-        # 1. Activity Tab
-        self.activity_tab = QWidget()
-        self.setup_activity_ui()
-        self.tabs.addTab(self.activity_tab, qta.icon('mdi.chart-line', color="#121213"), "Activity")
-
-        # 2. State Tab
-        self.state_widget = StateWidget()
-        self.state_widget.refresh_requested.connect(self.refresh_requested)
-        self.tabs.addTab(self.state_widget, qta.icon('mdi.database-search', color="#121213"), "State")
-
-        self.tabs.currentChanged.connect(self._on_tab_changed)
-        layout.addWidget(self.tabs)
-
-    def _on_tab_changed(self, index):
-        if self.tabs.widget(index) == self.state_widget:
-            self.request_stats_update(manual=True)
-
-    def setup_activity_ui(self):
-        main_layout = QVBoxLayout(self.activity_tab)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(16)
-        
-        # Grid for charts - 6 column grid to allow 2-chart and 3-chart rows
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(16)
-        
-        # Sessions chart - show Total/Active/Idle legends
-        self.sessions_chart = LiveChartWidget(
-            "Database sessions",
-            ["Total", "Active", "Idle"],
-            ["#3b82f6", "#f59e0b", "#10b981"]
-        )
-        self.tps_chart = LiveChartWidget(
-            "Transactions", 
-            ["Transactions", "Commits", "Rollbacks"], 
-            ["#1f77b4", "#f59e0b", "#ef4444"] # blue, orange, red
-        )
-
-
-        
-        # Delta counts instead of rates for better row-level visibility
-        self.tuples_in_chart = LiveChartWidget("Tuples In", ["Inserts", "Updates", "Deletes"], ["#1f77b4", "#f59e0b", "#10b981"])
-        self.tuples_out_chart = LiveChartWidget("Tuples Out", ["Fetched", "Returned"], ["#1f77b4", "#f59e0b"])
-        self.block_io_chart = LiveChartWidget("Block I/O (Count)", ["Reads", "Hits"], ["#1f77b4", "#f59e0b"])
-        
-        # Row 0: 2 charts (each spans 3 columns)
-        grid_layout.addWidget(self.sessions_chart, 0, 0, 1, 3)
-        grid_layout.addWidget(self.tps_chart, 0, 3, 1, 3)
-        
-        # Row 1: 3 charts (each spans 2 columns)
-        grid_layout.addWidget(self.tuples_in_chart, 1, 0, 1, 2)
-        grid_layout.addWidget(self.tuples_out_chart, 1, 2, 1, 2)
-        grid_layout.addWidget(self.block_io_chart, 1, 4, 1, 2)
-        
-        # Grid for charts ... (code removed for brevity, will replace carefully)
-        
-        main_layout.addLayout(grid_layout)
-        main_layout.addStretch()
-
-    def request_stats_update(self, manual=False):
-        # Activity (charts) always refresh every 1s for "live" feel
-        # State (tables) refresh every 3s OR if manual is requested
-        
-        # Locate the MainWindow
-        main_window = None
-        curr = self
-        while curr:
-            if curr.__class__.__name__ == "MainWindow":
-                main_window = curr
-                break
-            curr = curr.parent()
-        
-        if not main_window or not hasattr(main_window, "connection_manager"):
-            return
-
-        cm = main_window.connection_manager
-        
-        # 1. Detect Selection Type and get conn_data
-        index = cm.tree.currentIndex()
-        if not index.isValid():
-            return
-
-        source_idx = cm.proxy_model.mapToSource(index)
-        item = cm.model.itemFromIndex(source_idx)
-        if not item:
-            return
-
-        # Determine level:
-        # Depth 1: Type (e.g. PostgreSQL Databases)
-        # Depth 2: Group (e.g. aiven.io)
-        # Depth 3: Connection (e.g. AIVEN_TEST_DATABASE)
-        depth = cm.get_item_depth(item)
-        
-        conn_data = None
-        current_db_only = False
-
-        if depth == 3:
-            # Connection level
-            conn_data = item.data(Qt.ItemDataRole.UserRole)
-            self.current_conn_data = conn_data
-            current_db_only = True
-        else:
-            # depth 1, 2 or unknown -> placeholder state
-            conn_data = None
-
-        # Always ensure charts are visible
-        self.sessions_chart.setVisible(True)
-        self.tps_chart.setVisible(True)
-        self.tuples_in_chart.setVisible(True)
-        self.tuples_out_chart.setVisible(True)
-        self.block_io_chart.setVisible(True)
-
-        if not conn_data:
-            self.current_conn_data = None
-            self.last_processed_conn = None
-            self.prev_stats = None
-            self.prev_time = None
-            if hasattr(self, 'dashboard_worker'):
-                self._retire_worker(self.dashboard_worker)
-                self.dashboard_worker = None
-            self.sessions_chart.title_lbl.setText("Sessions")
-            self.tps_chart.title_lbl.setText("Transactions")
-            self.reset_all_charts()
-            return
-
-        # Show/Hide State tab based on connection type
-        db_type_val = str(conn_data.get("db_type", "")).lower()
-        is_postgres = "postgres" in db_type_val
-        is_sqlite = "sqlite" in db_type_val
-        
-        self.state_widget.set_db_type(db_type_val)
-        
-        # Track connection change to clear charts
-        if not hasattr(self, 'last_processed_conn') or self.last_processed_conn != conn_data:
-            self.last_processed_conn = conn_data
-            self.prev_stats = None
-            self.prev_time = None
-            self.reset_all_charts()
-            manual = True # Force a state refresh for the new connection
-
-        # Live metrics are currently supported for Postgres and SQLite
-        has_live_metrics = is_postgres or is_sqlite
-        
-        # Note: We keep them visible as per user request to avoid UI "jumping"
-        
-        if not has_live_metrics:
-            return
-
-        # State tab is now supported for both PostgreSQL and SQLite
-        self.tabs.setTabVisible(1, True)
-
-        # 2. Activity Stats Update (Use persistent worker)
-        if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
-            # Simply update the existing worker's targets
-            self.dashboard_worker.update_connection(conn_data, current_db_only)
-        else:
-            # Retire the old worker safely before replacing it.
-            # _retire_worker() keeps the Python reference alive via _dying_workers
-            # until the thread finishes, preventing the "destroyed while running" crash.
-            if hasattr(self, 'dashboard_worker'):
-                self._retire_worker(self.dashboard_worker)
-                self.dashboard_worker = None
-            # Start a fresh worker (no Qt parent — lifetime managed by self)
-            self.dashboard_worker = DashboardWorker(conn_data, current_db_only)
-            self.dashboard_worker.finished.connect(self.update_dashboard_stats)
-            self.dashboard_worker.start()
-
-        # 3. State Details Update 
-        # Only if: (State tab is active AND manual requested)
-        now_ts = time.time()
-        
-        is_state_active = self.tabs.currentWidget() == self.state_widget
-        # Disable automatic refresh as per user request (only refresh when manual is True)
-        should_refresh_state = manual
-
-        if should_refresh_state and is_state_active:
-            self.last_state_refresh = now_ts
-            self.state_widget.conn_data = conn_data
-            
-            local_sessions = None
-            if is_sqlite:
-                local_sessions = self.get_sqlite_session_details_list(conn_data.get("db_path"))
-            
-            state_worker = StateWorker(conn_data, self.state_widget.active_checkbox.isChecked(), local_sessions=local_sessions)
-            state_worker.signals.finished.connect(self.state_widget.update_state)
-            state_worker.signals.error.connect(lambda err: print(f"Dashboard state worker error: {err}"))
-            main_window.thread_pool.start(state_worker)
-        
-        # Update chart titles dynamically
-        prefix = "Sessions"
-        tps_prefix = "Transactions"
-        if depth == 3:
-            prefix = f"Sessions for: {item.text()}"
-            tps_prefix = f"TPS for: {item.text()}"
-        elif depth == 2:
-            prefix = f"Server Sessions: {item.text()}"
-            tps_prefix = f"Server TPS: {item.text()}"
-            
-        self.sessions_chart.title_lbl.setText(prefix)
-        self.tps_chart.title_lbl.setText(tps_prefix)
-        
-            
-    def get_local_postgres_sessions(self, db_name):
-        """Counts open and active worksheets for a specific PostgreSQL database."""
-        main_window = self._get_main_window()
-        if not main_window or not hasattr(main_window, 'tab_widget'):
-            return 0, 0
-            
-        total = 0
-        active = 0
-        target_db = str(db_name).lower().strip() if db_name else ""
-        
-        from PySide6.QtWidgets import QComboBox
-        for i in range(main_window.tab_widget.count()):
-            tab = main_window.tab_widget.widget(i)
-            # Search for the combo box specifically in the worksheet tab
-            combo = tab.findChild(QComboBox, "db_combo_box")
-            if combo:
-                data = combo.currentData()
-                if isinstance(data, dict):
-                    tab_db = str(data.get('database', '')).lower().strip()
-                    if tab_db == target_db:
-                        total += 1
-                        # Check if query is running in this tab
-                        if hasattr(main_window, 'worksheet_manager'):
-                            if tab in main_window.worksheet_manager.running_queries:
-                                active += 1
-        return total, active
-
-    def reset_all_charts(self):
-        """Wipes all data from charts and tables when switching databases."""
-        charts = [
-            self.sessions_chart, self.tps_chart, 
-            self.tuples_in_chart, self.tuples_out_chart, self.block_io_chart
-        ]
-        for chart_widget in charts:
-            if hasattr(chart_widget, 'chart_view'):
-                chart_widget.chart_view.reset_series()
-        
-        # Also clear the State tab tables
-        if hasattr(self, 'state_widget'):
-            self.state_widget.clear_state()
-        
-
-    def get_local_sqlite_sessions(self, db_path):
-        """Calculates session counts for SQLite based on open worksheets in the app."""
-        if not db_path:
-            return 1, 1, 0
-            
-        main_window = self._get_main_window()
-        if not main_window or not hasattr(main_window, 'tab_widget'):
-            return 1, 1, 0
-            
-        total = 0
-        active = 0
-        
-        import os
-        target_path = os.path.normpath(db_path).lower()
-        
-        from PySide6.QtWidgets import QComboBox
-        for i in range(main_window.tab_widget.count()):
-            tab = main_window.tab_widget.widget(i)
-            # Find the connection combo in this tab
-            combo = tab.findChild(QComboBox, "db_combo_box")
-            if combo:
-                data = combo.currentData()
-                if isinstance(data, dict):
-                    path = data.get('db_path')
-                    if path and os.path.normpath(path).lower() == target_path:
-                        total += 1
-                        # Check if this tab is running a query in WorksheetManager
-                        if hasattr(main_window, 'worksheet_manager'):
-                            if tab in main_window.worksheet_manager.running_queries:
-                                active += 1
-        
-        # Return exact counts based on open worksheets
-        return total, active, max(total - active, 0)
-
-    def get_sqlite_session_details_list(self, db_path):
-        """Collects detailed session info for SQLite worksheets to show in the State tab."""
-        if not db_path:
-            return []
-            
-        main_window = self._get_main_window()
-        if not main_window or not hasattr(main_window, 'tab_widget'):
-            return []
-            
-        sessions = []
-        import os
-        target_path = os.path.normpath(db_path).lower()
-        
-        from PySide6.QtWidgets import QComboBox
-        for i in range(main_window.tab_widget.count()):
-            tab = main_window.tab_widget.widget(i)
-            # Find the connection combo in this tab
-            combo = tab.findChild(QComboBox, "db_combo_box")
-            if combo:
-                data = combo.currentData()
-                if isinstance(data, dict):
-                    path = data.get('db_path')
-                    if path and os.path.normpath(path).lower() == target_path:
-                        pid = os.getpid() # Current app process
-                        source = main_window.tab_widget.tabText(i)
-                        
-                        is_running = False
-                        if hasattr(main_window, 'worksheet_manager'):
-                            if tab in main_window.worksheet_manager.running_queries:
-                                is_running = True
-                                
-                        state = "Active" if is_running else "Idle"
-                        
-                        # Try to get query text if available
-                        last_query = ""
-                        # Searching for the editor in the worksheet
-                        from PySide6.QtWidgets import QPlainTextEdit
-                        editor = tab.findChild(QPlainTextEdit)
-                        if editor:
-                            last_query = editor.toPlainText()[:200]
-                        
-                        # Columns: ["PID", "Source", "State", "Database", "SQL"]
-                        sessions.append([
-                            pid, 
-                            source, 
-                            state, 
-                            os.path.basename(db_path), 
-                            last_query
-                        ])
-        
-        return sessions
-
-    def _get_main_window(self):
-        curr = self.parent()
-        while curr:
-            if curr.__class__.__name__ == "MainWindow":
-                return curr
-            curr = curr.parent()
-        return None
-
-    def update_dashboard_stats(self, stats, worker_conn_data=None):
-        if worker_conn_data and hasattr(self, "current_conn_data"):
-            if self.current_conn_data != worker_conn_data:
-                return # Ignore stale stats from previous connection
-
-        is_sqlite = False
-        if hasattr(self, "current_conn_data") and self.current_conn_data:
-            db_type = str(self.current_conn_data.get("db_type", "")).lower()
-            is_sqlite = "sqlite" in db_type
-
-        if stats is None:
-            if is_sqlite:
-                stats = {
-                    "sessions_total": 1, "sessions_active": 0, "sessions_idle": 1,
-                    "xact_commit": 0, "xact_rollback": 0,
-                    "app_commit": 0, "app_rollback": 0,
-                    "app_tup_ins": 0, "app_tup_upd": 0,
-                    "app_tup_del": 0, "app_tup_fet": 0, "app_tup_ret": 0, "app_exec_time": 0
-                }
-            else:
-                return
-
-        if is_sqlite and self.current_conn_data:
-            db_path = self.current_conn_data.get("db_path")
-            if db_path:
-                t, a, i = self.get_local_sqlite_sessions(db_path)
-                stats["sessions_total"] = t
-                stats["sessions_active"] = a
-                stats["sessions_idle"] = i
-
-        try:
-            now = datetime.now()
-            
-            # 1. Update Sessions Chart
-            if hasattr(self, "sessions_chart"):
-                if is_sqlite:
-                    t, a, i = self.get_local_sqlite_sessions(self.current_conn_data.get("db_path"))
-                    self.sessions_chart.chart_view.update_values([t, a, i])
-                else:
-                    ws_total, _ = self.get_local_postgres_sessions(self.current_conn_data.get("database"))
-                    other_active_sql = stats.get("other_total", 0)
-                    total_active_sql = stats.get("total_active", 0)
-                    graph_total = ws_total + other_active_sql
-                    graph_active = total_active_sql
-                    graph_idle = max(0, graph_total - graph_active)
-                    self.sessions_chart.chart_view.update_values([graph_total, graph_active, graph_idle])
-            
-            # 2. Update Other Charts
-            if self.prev_stats and self.prev_time:
-                dt = (now - self.prev_time).total_seconds()
-                if dt > 0:
-                    if "sqlite" in db_type:
-                        has_user_activity = True
-                    else:
-                        our_active = stats.get("our_active", 0)
-                        other_active = stats.get("other_active_running", 0)
-                        has_user_activity = (our_active + other_active) > 0
-
-                    # TPS (Local Application Activity only to avoid Cloud DB background noise)
-                    if hasattr(self, "tps_chart"):
-                        app_c_diff = stats.get("app_commit", 0) - self.prev_stats.get("app_commit", 0)
-                        app_r_diff = stats.get("app_rollback", 0) - self.prev_stats.get("app_rollback", 0)
-
-                        if not has_user_activity:
-                            app_c_diff = app_r_diff = 0
-
-                        self.tps_chart.chart_view.update_values([
-                            max(0, app_c_diff + app_r_diff),
-                            max(0, app_c_diff),
-                            max(0, app_r_diff)
-                        ])
-                    
-                    # Tuples In (Global Activity)
-                    if hasattr(self, "tuples_in_chart"):
-                        t_ins = stats.get("tup_ins", 0) - self.prev_stats.get("tup_ins", 0)
-                        t_upd = stats.get("tup_upd", 0) - self.prev_stats.get("tup_upd", 0)
-                        t_del = stats.get("tup_del", 0) - self.prev_stats.get("tup_del", 0)
-                        
-                        if not has_user_activity:
-                            t_ins = t_upd = t_del = 0
-
-                        self.tuples_in_chart.chart_view.update_values([max(0, t_ins), max(0, t_upd), max(0, t_del)])
-                    
-                    # Tuples Out (Global Activity)
-                    if hasattr(self, "tuples_out_chart"):
-                        t_fet = stats.get("tup_fet", 0) - self.prev_stats.get("tup_fet", 0)
-                        t_ret = stats.get("tup_ret", 0) - self.prev_stats.get("tup_ret", 0)
-                        
-                        if not has_user_activity:
-                            t_fet = t_ret = 0
-
-                        self.tuples_out_chart.chart_view.update_values([max(0, t_fet), max(0, t_ret)])
-                    
-                    # Block I/O
-                    if hasattr(self, "block_io_chart"):
-                        b_read_global = stats.get("blks_read", 0) - self.prev_stats.get("blks_read", 0)
-                        b_hit_global = stats.get("blks_hit", 0) - self.prev_stats.get("blks_hit", 0)
-                        
-                        if not has_user_activity:
-                            b_read_global = b_hit_global = 0
-
-                        self.block_io_chart.chart_view.update_values([max(0, b_read_global), max(0, b_hit_global)])
-                    
-            self.prev_stats = stats
-            self.prev_time = now
-        except Exception as e:
-            print(f"Error updating dashboard UI: {e}")

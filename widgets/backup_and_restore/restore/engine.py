@@ -4,7 +4,7 @@ from ..core import BackupRestoreBase
 class RestoreEngine(BackupRestoreBase):
     """Engine for generating restore commands."""
 
-    def build_pg_restore_args(self, conn_data, input_file, format="custom", options=None):
+    def build_pg_restore_args(self, conn_data, input_file, format="custom", granularity=None, object_name=None, options=None):
         """Builds arguments for pg_restore."""
         use_wsl = getattr(self.main_window, "use_wsl", False)
         final_input = self.to_wsl_path(input_file) if use_wsl else input_file

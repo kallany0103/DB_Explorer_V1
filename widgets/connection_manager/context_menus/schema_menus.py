@@ -872,7 +872,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
         act.triggered.connect(
-            lambda: self.manager.script_generator.script_server_as_create(item_data, item.text())
+            lambda: self.manager.script_generator.script_server_as_create(item_data, item_data.get("server_name", ""))
         )
         menu.addAction(act)
 
@@ -910,7 +910,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
         act.triggered.connect(
-            lambda: self.manager.script_generator.script_user_mapping_as_create(item_data, item.text())
+            lambda: self.manager.script_generator.script_user_mapping_as_create(item_data, item_data.get("user_name", ""))
         )
         menu.addAction(act)
 

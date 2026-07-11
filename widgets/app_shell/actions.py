@@ -2,7 +2,6 @@ from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt
 import qtawesome as qta
 
-
 def build_main_window_actions(main_window):
     main_window.open_file_action = QAction(qta.icon("fa5s.folder-open", color="#555555"), "Open File", main_window)
     main_window.open_file_action.setShortcut("Ctrl+O")
