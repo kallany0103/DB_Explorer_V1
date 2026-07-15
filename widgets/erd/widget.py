@@ -23,6 +23,7 @@ from widgets.erd.view import ERDView
 from widgets.erd.property_panel import PropertyPanel
 from widgets.erd.palette import ERDPalette
 from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
+from ui.components import SearchBox
 from widgets.erd.commands import AddTableCommand, AddConnectionCommand, AddNoteCommand
 from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
 from widgets.erd.sql_generator import SQLPreviewDialog, generate_sql_script
@@ -223,20 +224,9 @@ class ERDWidget(QWidget):
 
     def _build_floating_search(self) -> None:
         """Create the floating search input overlay and its Ctrl+F shortcut."""
-        self.search_input = QLineEdit(self.view_container)
-        self.search_input.setPlaceholderText("Search...")
+        self.search_input = SearchBox("Search...", self.view_container)
         self.search_input.setFixedHeight(28)
         self.search_input.setFixedWidth(220)
-        self.search_input.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding-left: 8px;
-                padding-right: 8px;
-                background-color: #ffffff;
-            }
-            QLineEdit:focus { border: 1px solid #1A73E8; }
-        """)
         self.search_input.hide()
         self.search_input.textChanged.connect(self.on_search_text_changed)
         self.search_input.returnPressed.connect(self.on_search_return_pressed)

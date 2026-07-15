@@ -1,11 +1,12 @@
 # dialogs/statistics/stats_dialog.py
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QMessageBox, QApplication
+    QDialog, QVBoxLayout, QHBoxLayout, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
 from .stats_tab import StatisticsTab
 from workers.inspector_stats import fetch_statistics_results
+from ui.components import SecondaryButton
 
 class ObjectStatisticsDialog(QDialog):
     def __init__(self, item_data, obj_name, parent=None):
@@ -34,8 +35,7 @@ class ObjectStatisticsDialog(QDialog):
         # Close button
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        close_btn = QPushButton("Close")
-        close_btn.setObjectName("secondaryButton")
+        close_btn = SecondaryButton("Close")
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)

@@ -1,6 +1,5 @@
 from widgets.app_shell.actions import build_main_window_actions
 from widgets.app_shell.menus import build_main_window_menu
-from widgets.app_shell.styles import apply_main_window_styles
 from widgets.app_shell.session import save_main_window_session, restore_main_window_session
 from widgets.app_shell.file_ops import (
 	open_sql_file,
@@ -26,7 +25,6 @@ from widgets.app_shell.window_ops import (
 __all__ = [
 	"build_main_window_actions",
 	"build_main_window_menu",
-	"apply_main_window_styles",
 	"save_main_window_session",
 	"restore_main_window_session",
 	"open_sql_file",

@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-    QGridLayout, QPushButton, QFrame, QMessageBox, QApplication
+    QGridLayout, QFrame, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
 import qtawesome as qta
+from ui.components import SecondaryButton
 
 class DatabaseStatisticsDialog(QDialog):
     """
@@ -42,8 +43,7 @@ class DatabaseStatisticsDialog(QDialog):
         # Close button
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        close_btn = QPushButton("Close")
-        close_btn.setObjectName("secondaryButton")
+        close_btn = SecondaryButton("Close")
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)

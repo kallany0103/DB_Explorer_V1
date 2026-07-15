@@ -6,10 +6,10 @@ import copy
 from numbers import Number
 
 from PySide6.QtWidgets import (
-    QTableView, QMessageBox, QMenu, QComboBox,
-    QDialog, QToolButton, QStackedWidget,
-    QWidget, QLabel, QPushButton, QTextEdit,
-    QFormLayout, QSpinBox, QVBoxLayout, QHBoxLayout
+    QWidget, QLabel, QTextEdit, QPushButton,
+    QVBoxLayout, QHBoxLayout, QSplitter,
+    QMessageBox, QDialog, QSpinBox, QFormLayout,
+    QTableView, QMenu, QComboBox, QToolButton, QStackedWidget
 )
 from PySide6.QtCore import (
     Qt, QObject, QEvent
@@ -22,6 +22,7 @@ from db.query_context import resolve_writable_table_context
 import widgets.results_view.clipboard as clipboard
 import widgets.results_view.output_tabs as output_tabs
 import widgets.results_view.processes as processes
+from ui.components import PrimaryButton, SecondaryButton
 import widgets.results_view.query_handler as query_handler
 import widgets.results_view.row_crud as row_crud
 import widgets.results_view.ui as ui
@@ -565,43 +566,6 @@ class ResultsManager(QObject):
             QDialog {
                 background-color: #f6f8fb;
             }
-            QSpinBox {
-                min-height: 28px;
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                background: white;
-                padding-left: 6px;
-                padding-right: 20px;
-            }
-            QSpinBox:focus {
-                border: 1px solid #0078d4;
-            }
-            QPushButton {
-                min-height: 28px;
-                padding: 2px 14px;
-                border: 1px solid #c4c9d4;
-                background-color: #eef1f6;
-                color: #1f2937;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #e3e8f2;
-            }
-            QPushButton:pressed {
-                background-color: #d7deeb;
-            }
-            QPushButton#primaryButton {
-                border: 1px solid #006cbe;
-                background-color: #0078d4;
-                color: #ffffff;
-                font-weight: 600;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #006cbe;
-            }
-            QPushButton#primaryButton:pressed {
-                background-color: #005a9e;
-            }
         """)
 
         layout = QVBoxLayout(dialog)
@@ -633,11 +597,10 @@ class ResultsManager(QObject):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = SecondaryButton("Cancel")
         cancel_btn.clicked.connect(dialog.reject)
         
-        ok_btn = QPushButton("OK")
-        ok_btn.setObjectName("primaryButton")
+        ok_btn = PrimaryButton("OK")
         ok_btn.clicked.connect(dialog.accept)
         
         button_layout.addWidget(cancel_btn)

@@ -20,7 +20,11 @@ class InspectorWorker(QRunnable):
         try:
             conn_data = self.item_data.get('conn_data') or self.item_data
             pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
-            conn = db.create_postgres_connection(**pg_conn_data)
+            conn = db.create_postgres_connection(**pg_conn_data, bypass_cooldown=True)
+            
+            if not conn:
+                raise ConnectionError("Failed to establish database connection. The server might be unreachable or the connection parameters are incorrect.")
+                
             cursor = conn.cursor()
             
             result = {}

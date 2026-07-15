@@ -1,12 +1,13 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
                                 QTableWidget, QTableWidgetItem, QHeaderView, 
                                 QFrame, QSplitter, QLineEdit, QCheckBox, 
-                                QPushButton, QAbstractItemView, QMessageBox,QHBoxLayout,
+                                QAbstractItemView, QMessageBox,QHBoxLayout,
                                 QPlainTextEdit)
 from PySide6.QtCore import Qt, Signal, QObject, QRunnable, Slot
 import qtawesome as qta
 import db
 from db.db_modifications import terminate_postgres_backend, cancel_postgres_backend
+from ui.components import SecondaryButton, IconButton
 
 class StateWorkerSignals(QObject):
     finished = Signal(object)
@@ -188,21 +189,9 @@ class StateWidget(QWidget):
         
         toolbar_layout.addStretch()
         
-        self.refresh_btn = QPushButton(" Refresh")
+        self.refresh_btn = SecondaryButton(" Refresh")
         self.refresh_btn.setIcon(qta.icon('mdi.refresh', color='#0ea5e9'))
         self.refresh_btn.setFixedSize(100, 28)
-        self.refresh_btn.setStyleSheet("""
-            QPushButton { 
-                border: 1px solid #cbd5e1; 
-                border-radius: 4px; 
-                background: white; 
-                color: #0f172a;
-                font-weight: 600;
-                font-size: 13px;
-            }
-            QPushButton:hover { background: #f8fafc; border-color: #94a3b8; }
-            QPushButton:pressed { background: #f1f5f9; }
-        """)
         self.refresh_btn.clicked.connect(lambda: self.refresh_requested.emit())
         toolbar_layout.addWidget(self.refresh_btn)
         
@@ -360,11 +349,8 @@ class StateWidget(QWidget):
         table.horizontalScrollBar().setValue(h_scroll)
 
     def _add_action_btn(self, table, row, col, icon_name, color, tooltip, pid, callback):
-        btn = QPushButton()
-        btn.setIcon(qta.icon(icon_name, color=color))
-        btn.setToolTip(tooltip)
+        btn = IconButton(qta.icon(icon_name, color=color), tooltip=tooltip)
         btn.setFixedSize(24, 24)
-        btn.setStyleSheet("QPushButton { border: none; background: transparent; } QPushButton:hover { background: #f1f5f9; border-radius: 4px; }")
         # Use pid=pid to ensure the value is captured correctly
         btn.clicked.connect(lambda checked=False, p=pid: callback(p))
         

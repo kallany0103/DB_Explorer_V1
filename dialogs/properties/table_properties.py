@@ -2,11 +2,12 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
-    QTableView, QHeaderView, QAbstractItemView, QMessageBox, QLabel, QPushButton,
+    QTableView, QHeaderView, QAbstractItemView, QMessageBox, QLabel,
     QHBoxLayout, QToolButton, QStyledItemDelegate
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt
+from ui.components import PrimaryButton, SecondaryButton
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
 

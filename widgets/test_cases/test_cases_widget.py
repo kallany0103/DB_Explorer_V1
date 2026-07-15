@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 import qtawesome as qta
 
+from ui.components import SecondaryButton
+
 from widgets.test_cases.data.table import TABLE_COMMANDS
 from widgets.test_cases.data.view import VIEW_COMMANDS
 from widgets.test_cases.data.complex_queries import COMPLEX_QUERIES
@@ -109,25 +111,6 @@ class TestCasesWidget(QWidget):
 
         commands = self.test_data.get(category, [])
 
-        action_btn_style = """
-            QPushButton {
-                min-height: 26px;
-                padding: 2px 10px;
-                border: 1px solid #cfd6df;
-                border-radius: 6px;
-                background: #ffffff;
-                color: #1f2937;
-                font-size: 9pt;
-            }
-            QPushButton:hover {
-                background: #f4f7fb;
-                border-color: #b8c2cf;
-            }
-            QPushButton:pressed {
-                background: #e9eef5;
-            }
-        """
-
         for cmd in commands:
             group = QGroupBox(cmd["title"])
             group_layout = QVBoxLayout(group)
@@ -175,15 +158,11 @@ class TestCasesWidget(QWidget):
                 group_layout.addWidget(show_more_btn)
 
             btn_layout = QHBoxLayout()
-            copy_btn = QPushButton("Copy")
-            copy_btn.setIcon(qta.icon("fa5s.copy", color="#555555"))
-            copy_btn.setStyleSheet(action_btn_style)
+            copy_btn = SecondaryButton(qta.icon("fa5s.copy", color="#555555"), "Copy")
             copy_btn.setMinimumWidth(78)
             copy_btn.clicked.connect(lambda checked=False, text=cmd["sql"]: self.copy_to_clipboard(text))
             
-            copy_editor_btn = QPushButton("Copy to Editor")
-            copy_editor_btn.setIcon(qta.icon("fa5s.external-link-alt", color="#555555"))
-            copy_editor_btn.setStyleSheet(action_btn_style)
+            copy_editor_btn = SecondaryButton(qta.icon("fa5s.external-link-alt", color="#555555"), "Copy to Editor")
             copy_editor_btn.setMinimumWidth(132)
             copy_editor_btn.clicked.connect(lambda checked=False, text=cmd["sql"]: self.copy_to_editor_requested.emit(text))
             

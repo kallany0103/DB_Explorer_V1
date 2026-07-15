@@ -1,7 +1,7 @@
 # widgets/inspector/statistics_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QProgressBar, QFrame, QPushButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QProgressBar, QFrame
 )
 from PySide6.QtCore import Qt
 from dialogs.statistics.stats_tab import StatisticsTab
@@ -43,14 +43,24 @@ class StatisticsWorkbench(QWidget):
         header_layout.addLayout(text_layout)
         
         header_layout.addStretch()
-        
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        self.progress.setFixedHeight(4)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedWidth(100)
+        from PySide6.QtGui import QMovie
+        from PySide6.QtCore import QSize
+        self.progress = QLabel()
+        movie = QMovie("assets/spinner.gif")
+        if movie.isValid():
+            movie.setScaledSize(QSize(20, 20))
+            self.progress.setMovie(movie)
+            movie.start()
+        else:
+            self.progress.setText("Loading...")
         self.progress.setVisible(False)
         header_layout.addWidget(self.progress)
+        
+        # Add refresh button to match properties_view
+        from ui.components import IconButton
+        self.refresh_btn = IconButton(qta.icon('mdi.refresh', color='#6b7280'), tooltip="Refresh")
+        self.refresh_btn.clicked.connect(self.refresh_statistics)
+        header_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(header_frame)
         
@@ -64,7 +74,14 @@ class StatisticsWorkbench(QWidget):
         
         layout.addWidget(self.content_container)
 
-    def update_view(self, item_data, obj_name):
+    def refresh_statistics(self):
+        if self.item_data:
+            self.update_view(self.item_data, self.obj_name, force_refresh=True)
+
+    def update_view(self, item_data, obj_name, force_refresh=False):
+        if not force_refresh and self.item_data == item_data and self.obj_name == obj_name:
+            return
+            
         self.item_data = item_data
         self.obj_name = obj_name
         self.header_label.setText(f"Statistics - {obj_name}")
@@ -102,10 +119,8 @@ class StatisticsWorkbench(QWidget):
     def _on_load_error(self, error_msg):
         self.progress.setVisible(False)
         self.sub_label.setText(f"Error: {error_msg}")
+        self.stats_view.clear_stats()
+        self.stats_view.display_data(["Error"], [[str(error_msg)]])
 
     def _populate_stats_tab(self, result, append=False):
-        # Accessing private or internal methods of StatisticsTab if needed, 
-        # but let's assume we can pass data to it.
-        # Looking at StatisticsTab.load_stats, it takes a cursor. 
-        # I'll update StatisticsTab to handle raw data.
         self.stats_view.display_data(result["columns"], result["rows"], append=append)

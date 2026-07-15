@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QIcon, QStandardItemModel
 from PySide6.QtCore import Qt, QSize, QSortFilterProxyModel
+from ui.components import SearchBox
 
 
 class ConnectionUI:
@@ -28,12 +29,7 @@ class ConnectionUI:
         object_explorer_header.setFixedHeight(36)
         object_explorer_header.setObjectName("objectExplorerHeader")
         object_explorer_header.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        object_explorer_header.setStyleSheet("""
-            #objectExplorerHeader {
-                background-color: #9FA6AF;
-                border-bottom: 1px solid #8B929B;
-            }
-        """)
+
         object_explorer_header_layout = QHBoxLayout(object_explorer_header)
         object_explorer_header_layout.setContentsMargins(8, 4, 8, 4)
         object_explorer_header_layout.setSpacing(10)
@@ -41,7 +37,7 @@ class ConnectionUI:
         object_explorer_label = QLabel("Object Explorer")
         object_explorer_label.setObjectName("objectExplorerLabel")
         object_explorer_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        object_explorer_label.setStyleSheet("color: white; font-weight: bold; font-size: 10pt;")
+
         object_explorer_header_layout.addWidget(object_explorer_label)
 
         self.manager.explorer_search_container = QWidget()
@@ -49,30 +45,13 @@ class ConnectionUI:
         self.manager.explorer_search_layout.setContentsMargins(0, 0, 0, 0)
         self.manager.explorer_search_layout.setSpacing(0)
 
-        self.manager.explorer_search_box = QLineEdit()
-        self.manager.explorer_search_box.setPlaceholderText("Filter...")
+        self.manager.explorer_search_box = SearchBox("Filter...")
         self.manager.explorer_search_box.setFixedHeight(24)
         self.manager.explorer_search_box.setObjectName("explorer_search_box")
         self.manager.explorer_search_box.setMinimumWidth(120)
         self.manager.explorer_search_box.hide()
 
         search_icon_path = "assets/search.svg"
-        if os.path.exists(search_icon_path):
-            self.manager.explorer_search_box.addAction(QIcon(search_icon_path), QLineEdit.ActionPosition.LeadingPosition)
-
-        self.manager.explorer_search_box.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #A9A9A9;
-                border-radius: 4px;
-                padding-left: 2px;
-                background-color: #ffffff;
-                font-size: 9pt;
-            }
-            QLineEdit:focus {
-                border: 1px solid #0078d4;
-                background-color: #ffffff;
-            }
-        """)
         self.manager.explorer_search_box.textChanged.connect(self.manager.filter_object_explorer)
         self.manager.explorer_search_box.installEventFilter(self.manager)
 
@@ -82,19 +61,7 @@ class ConnectionUI:
         self.manager.explorer_search_btn.setFixedSize(24, 24)
         self.manager.explorer_search_btn.setIconSize(QSize(16, 16))
         self.manager.explorer_search_btn.setToolTip("Search Connections")
-        self.manager.explorer_search_btn.setStyleSheet("""
-            QToolButton {
-                border: none;
-                border-radius: 4px;
-                background-color: transparent;
-            }
-            QToolButton:hover {
-                background-color: #C9CFD8;
-            }
-            QToolButton:pressed {
-                background-color: #B8BEC6;
-            }
-        """)
+        self.manager.explorer_search_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.explorer_search_btn.clicked.connect(self.manager.toggle_explorer_search)
 
         self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_box)
@@ -106,19 +73,7 @@ class ConnectionUI:
         self.add_new_type_btn.setIconSize(QSize(16, 16))
         self.add_new_type_btn.setToolTip("Add New Connection")
         self.add_new_type_btn.setIcon(QIcon("assets/plus.svg"))
-        self.add_new_type_btn.setStyleSheet("""
-            QToolButton {
-                border: none;
-                border-radius: 4px;
-                background-color: transparent;
-            }
-            QToolButton:hover {
-                background-color: #C9CFD8;
-            }
-            QToolButton:pressed {
-                background-color: #B8BEC6;
-            }
-        """)
+        self.add_new_type_btn.setProperty("class", "sidebar-tool-btn")
         self.add_new_type_btn.clicked.connect(self.manager.add_connection_flow)
 
         object_explorer_header_layout.addStretch()
@@ -130,6 +85,7 @@ class ConnectionUI:
         self.manager.vertical_splitter.setStyleSheet("QSplitter { border: none; margin: 0; padding: 0; }")
 
         self.manager.tree = QTreeView()
+        self.manager.tree.setObjectName("connectionTree")
         self.manager.tree.setFrameShape(QFrame.Shape.NoFrame)
         self.manager.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.manager.tree.customContextMenuRequested.connect(self.manager.show_context_menu)
@@ -148,7 +104,7 @@ class ConnectionUI:
         self.manager.proxy_model.setRecursiveFilteringEnabled(True)
         self.manager.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.manager.tree.setModel(self.manager.proxy_model)
-        self.manager.tree.setStyleSheet("QTreeView { border: none; margin: 0; padding: 0; background-color: white; }")
+
 
         self.manager.vertical_splitter.addWidget(self.manager.tree)
 
@@ -174,22 +130,8 @@ class ConnectionUI:
 
     def apply_schema_header_style(self):
         header = self.manager.schema_tree.header()
+        header.setObjectName("schemaTreeHeader")
         header.setFixedHeight(36)
         header.setMinimumSectionSize(50)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        header.setStyleSheet("""
-            QHeaderView::section {
-                background-color: #9FA6AF;
-                color: #ffffff;
-                font-weight: bold;
-                font-size: 10pt;
-                padding: 3px 8px;
-                border: none;
-                border-bottom: 1px solid #8B929B;
-                border-right: 1px solid #B8BEC6;
-            }
-            QHeaderView::section:last {
-                border-right: none;
-            }
-        """)

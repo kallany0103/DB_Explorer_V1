@@ -1,11 +1,12 @@
 # dialogs/csv_dialog.py
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, 
-    QPushButton, QHBoxLayout, QFileDialog, QMessageBox, QLabel, QComboBox, QInputDialog, QWidget, QApplication
+    QHBoxLayout, QFileDialog, QMessageBox, QLabel, QComboBox, QInputDialog, QWidget, QApplication
 )
 from PySide6.QtCore import Qt
 import db
 from db.db_retrieval import get_groups_by_type
+from ui.components import PrimaryButton, SecondaryButton
 
 class CSVConnectionDialog(QDialog):
     def __init__(self, parent=None, conn_data=None, type_id=None, group_id=None):
@@ -47,17 +48,6 @@ class CSVConnectionDialog(QDialog):
                 border: 1px solid #0078d4;
                 background-color: #ffffff;
             }
-            QPushButton {
-                min-height: 32px;
-                padding: 2px 14px;
-                border: 1px solid #c4c9d4;
-                background-color: #eef1f6;
-                color: #1f2937;
-                border-radius: 6px;
-            }
-            QPushButton#primaryButton { border: 1px solid #006cbe; background-color: #0078d4; color: #ffffff; font-weight: 600; }
-            QPushButton#primaryButton:hover { background-color: #006cbe; }
-            QPushButton#primaryButton:pressed { background-color: #005a9e; }
             """
         )
 
@@ -82,9 +72,8 @@ class CSVConnectionDialog(QDialog):
 
         # Group Selection
         self.group_combo = QComboBox()
-        self.new_group_btn = QPushButton("New Group")
-        self.new_group_btn.setObjectName("secondaryButton")
-        self.new_group_btn.setFixedWidth(110)
+        self.new_group_btn = SecondaryButton("New Group")
+        self.new_group_btn.setFixedSize(90, 30)
         self.new_group_btn.clicked.connect(self._create_new_group)
         
         group_layout = QHBoxLayout()
@@ -134,7 +123,7 @@ class CSVConnectionDialog(QDialog):
         path_container.setSpacing(10)
         self.path_input = QLineEdit()
         self.path_input.setPlaceholderText("Path to folder containing CSV files")
-        browse_btn = QPushButton("Browse")
+        browse_btn = SecondaryButton("Browse")
         browse_btn.clicked.connect(self._browse_csv)
         path_container.addWidget(self.path_input)
         path_container.addWidget(browse_btn)
@@ -146,16 +135,13 @@ class CSVConnectionDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        self.test_btn = QPushButton("Test Connection")
-        self.test_btn.setObjectName("secondaryButton")
+        self.test_btn = SecondaryButton("Test Connection")
         self.test_btn.clicked.connect(self._test_connection)
         
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn = SecondaryButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
         
-        self.save_btn = QPushButton("Update" if conn_data else "Save")
-        self.save_btn.setObjectName("primaryButton")
+        self.save_btn = PrimaryButton("Update" if conn_data else "Save")
         self.save_btn.clicked.connect(self._on_save)
         
         button_layout.addWidget(self.test_btn)

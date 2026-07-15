@@ -70,29 +70,7 @@ class ElementTile(QPushButton):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCheckable(False)
 
-        self.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #E2E8F0;
-                border-radius: 6px;
-                background: #FFFFFF;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background: #EEF2FF;
-                border-color: #818CF8;
-            }
-            QPushButton:pressed {
-                background: #E0E7FF;
-            }
-            QToolTip {
-                background-color: #FFFFFF;
-                color: #1F2937;
-                border: 1px solid #CBD5E1;
-                border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 11px;
-            }
-        """)
+
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
@@ -168,12 +146,7 @@ class ERDPalette(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedWidth(COLLAPSED_W)
-        self.setStyleSheet("""
-            ERDPalette {
-                background-color: #F8FAFC;
-                border-right: 1px solid #E2E8F0;
-            }
-        """)
+
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -186,20 +159,7 @@ class ERDPalette(QFrame):
         self.header_btn.setIconSize(QSize(12, 12))
         self.header_btn.setFixedHeight(36)
         self.header_btn.clicked.connect(self.toggle_collapse)
-        self.header_btn.setStyleSheet("""
-            QPushButton#headerBtn {
-                text-align: left;
-                font-weight: bold;
-                font-size: 12px;
-                padding: 0px 8px;
-                color: #1E293B;
-                border: none;
-                border-bottom: 1px solid #E2E8F0;
-                background: #F1F5F9;
-                border-radius: 0px;
-            }
-            QPushButton#headerBtn:hover { background: #E2E8F0; }
-        """)
+
         outer.addWidget(self.header_btn)
 
         # --- Scroll area for the grid ---

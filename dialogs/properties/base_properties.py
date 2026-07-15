@@ -2,10 +2,11 @@
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QHBoxLayout, 
-    QPushButton, QMessageBox, QDialogButtonBox, QTextEdit
+    QMessageBox, QTextEdit
 )
 from PySide6.QtCore import Qt
 import db
+from ui.components import PrimaryButton, SecondaryButton
 
 class BasePropertiesDialog(QDialog):
     def __init__(self, item_data, object_name, parent=None):
@@ -29,10 +30,18 @@ class BasePropertiesDialog(QDialog):
         self.tab_widget = QTabWidget()
         self.main_layout.addWidget(self.tab_widget)
 
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.button_box.accepted.connect(self.save_properties)
-        self.button_box.rejected.connect(self.reject)
-        self.main_layout.addWidget(self.button_box)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        cancel_btn = SecondaryButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        save_btn = PrimaryButton("OK")
+        save_btn.clicked.connect(self.save_properties)
+        
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(save_btn)
+        self.main_layout.addLayout(btn_layout)
 
     def init_tabs(self):
         """To be implemented by subclasses."""
