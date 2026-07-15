@@ -1,12 +1,13 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTableWidget, QComboBox,
+    QTableWidget, QComboBox,
     QCheckBox, QMessageBox, QHeaderView,
     QWidget, QFormLayout
 )
 from PySide6.QtCore import Qt
 
 from widgets.erd.model import DEFAULT_SCHEMA
+from ui.components import PrimaryButton, SecondaryButton
 
 
 class TableDesignerDialog(QDialog):
@@ -78,9 +79,9 @@ class TableDesignerDialog(QDialog):
         layout.addWidget(self.col_table, 1)
 
         ctrl_layout = QHBoxLayout()
-        add_col_btn = QPushButton("Add Column")
+        add_col_btn = SecondaryButton("Add Column")
         add_col_btn.clicked.connect(self.add_column_row)
-        remove_col_btn = QPushButton("Remove Column")
+        remove_col_btn = SecondaryButton("Remove Column")
         remove_col_btn.clicked.connect(self.remove_column_row)
         ctrl_layout.addWidget(add_col_btn)
         ctrl_layout.addWidget(remove_col_btn)
@@ -89,11 +90,9 @@ class TableDesignerDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn = SecondaryButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
-        save_btn = QPushButton("Save")
-        save_btn.setObjectName("primaryButton")
+        save_btn = PrimaryButton("Save")
         save_btn.clicked.connect(self.accept)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(save_btn)
@@ -154,35 +153,6 @@ class TableDesignerDialog(QDialog):
             }
             QCheckBox {
                 color: #1f2937;
-            }
-            QPushButton {
-                min-height: 28px;
-                padding: 4px 16px;
-                border: 1px solid #d1d5db;
-                background-color: white;
-                color: #374151;
-                border-radius: 6px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #f3f4f6;
-            }
-            QPushButton#primaryButton {
-                border: 1px solid #006cbe;
-                background-color: #0078d4;
-                color: #ffffff;
-                font-weight: 600;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #006cbe;
-            }
-            QPushButton#secondaryButton {
-                border: 1px solid #c4c9d4;
-                background-color: #ffffff;
-                color: #1f2937;
-            }
-            QPushButton#secondaryButton:hover {
-                background-color: #f3f4f6;
             }
         """
 
@@ -346,12 +316,10 @@ class RelationDesignerDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn = SecondaryButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
 
-        save_btn = QPushButton("Create Relationship")
-        save_btn.setObjectName("primaryButton")
+        save_btn = PrimaryButton("Create Relationship")
         save_btn.clicked.connect(self.accept)
 
         btn_layout.addWidget(cancel_btn)

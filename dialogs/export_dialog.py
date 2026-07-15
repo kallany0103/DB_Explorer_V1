@@ -100,10 +100,11 @@
 #        }
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
-                             QLabel, QLineEdit, QPushButton, QHBoxLayout,
-                             QComboBox, QCheckBox, QDialogButtonBox, QFileDialog, QStyle)
+                             QLabel, QLineEdit, QHBoxLayout,
+                             QComboBox, QCheckBox, QFileDialog, QStyle)
 from PySide6.QtCore import Qt
 import os 
+from ui.components import PrimaryButton, SecondaryButton
 
 class ExportDialog(QDialog):
     def __init__(self, parent=None, default_filename="export.csv"):
@@ -149,7 +150,7 @@ class ExportDialog(QDialog):
         
         self.location_edit = QLineEdit(desktop_path)
         
-        browse_btn = QPushButton()
+        browse_btn = SecondaryButton("")
         browse_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
         browse_btn.setFixedSize(30, 25)
         browse_btn.setToolTip("Browse Folder")
@@ -195,12 +196,19 @@ class ExportDialog(QDialog):
         options_layout.addRow(self.delimiter_label, self.delimiter_combo)
         options_layout.addRow(self.quote_label, self.quote_edit)
         
-        # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        main_layout.addWidget(button_box)
+        # --- Bottom Buttons ---
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        cancel_btn = SecondaryButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        
+        ok_btn = PrimaryButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_btn)
+        
+        main_layout.addLayout(btn_layout)
         
         # Initial State trigger
         self.on_format_change(self.format_combo.currentText())

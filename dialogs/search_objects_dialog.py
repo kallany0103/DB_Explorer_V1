@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, 
+    QTableWidget, QTableWidgetItem, QHeaderView, 
     QAbstractItemView, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
 import qtawesome as qta
+from ui.components import PrimaryButton, SecondaryButton
 
 class SearchObjectsDialog(QDialog):
     """
@@ -40,9 +41,7 @@ class SearchObjectsDialog(QDialog):
         self.search_input.setPlaceholderText("Object name (supports % wildcards)...")
         self.search_input.returnPressed.connect(self.perform_search)
         
-        self.search_btn = QPushButton("Search")
-        self.search_btn.setObjectName("primaryButton")
-        self.search_btn.setIcon(qta.icon("mdi.magnify", color="white"))
+        self.search_btn = PrimaryButton(qta.icon("mdi.magnify", color="white"), "Search")
         self.search_btn.clicked.connect(self.perform_search)
 
         search_layout.addWidget(self.search_input)
@@ -68,12 +67,11 @@ class SearchObjectsDialog(QDialog):
 
         # Bottom Buttons
         btn_layout = QHBoxLayout()
-        self.goto_btn = QPushButton("Go to Object")
+        self.goto_btn = SecondaryButton("Go to Object")
         self.goto_btn.setEnabled(False)
         self.goto_btn.clicked.connect(self.navigate_to_selected)
         
-        close_btn = QPushButton("Close")
-        close_btn.setObjectName("secondaryButton")
+        close_btn = SecondaryButton("Close")
         close_btn.clicked.connect(self.reject)
 
         btn_layout.addStretch()

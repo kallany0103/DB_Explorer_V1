@@ -6,9 +6,10 @@ import datetime
 import re, datetime
 from typing import List, Dict, Any
 import re
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QComboBox, QMessageBox, QFileDialog
 import qtawesome as qta
-from PySide6.QtCore import Qt, QSortFilterProxyModel, QThread, Signal
+from PySide6.QtCore import Qt, QTimer, QSortFilterProxyModel, QThread, Signal
+from ui.components import IconButton
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -369,19 +370,8 @@ class LogsWidget(QWidget):
 
     
         # Download button
-        dl_btn = QPushButton()
-        dl_btn.setIcon(qta.icon("mdi.download", color="#374151"))
-        dl_btn.setToolTip("Download logs")
+        dl_btn = IconButton(qta.icon("mdi.download", color="#374151"), tooltip="Download logs")
         dl_btn.setFixedSize(28, 28)
-        dl_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d1d5db;
-                border-radius: 4px;
-                background: #ffffff;
-            }
-            QPushButton:hover { background: #f3f4f6; }
-            QPushButton:pressed { background: #e5e7eb; }
-        """)
         dl_btn.clicked.connect(self._download)
         tb_lay.addWidget(dl_btn)
 

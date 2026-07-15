@@ -1,9 +1,10 @@
 # dialogs/preferences_dialog.py
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
-    QLineEdit, QPushButton, QFileDialog, QDialogButtonBox, QLabel, QCheckBox
+    QLineEdit, QFileDialog, QLabel, QCheckBox
 )
 from PySide6.QtCore import Qt
+from ui.components import PrimaryButton, SecondaryButton
 
 class PreferencesDialog(QDialog):
     def __init__(self, main_window):
@@ -24,7 +25,7 @@ class PreferencesDialog(QDialog):
         self.pg_bin_edit.setText(getattr(self.main_window, "pg_bin_path", ""))
         self.pg_bin_edit.setPlaceholderText("Path to PostgreSQL bin directory (e.g. C:\\Program Files\\PostgreSQL\\15\\bin)")
         
-        pg_bin_btn = QPushButton("Browse...")
+        pg_bin_btn = SecondaryButton("Browse...")
         pg_bin_btn.clicked.connect(self.browse_pg_bin)
         
         pg_bin_layout = QHBoxLayout()
@@ -51,12 +52,17 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         
         # Buttons
-        self.buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
+        btn_layout = QHBoxLayout()
+        ok_btn = PrimaryButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = SecondaryButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(ok_btn)
+        
+        layout.addLayout(btn_layout)
 
     def browse_pg_bin(self):
         directory = QFileDialog.getExistingDirectory(self, "Select PostgreSQL Bin Directory", self.pg_bin_edit.text())

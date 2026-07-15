@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QLabel, QPlainTextEdit, QMessageBox, 
-    QHBoxLayout, QPushButton
+    QHBoxLayout
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
+from ui.components import PrimaryButton, SecondaryButton
 
 class CreatePolicyDialog(QDialog):
     def __init__(self, parent=None, schema_name="", table_name="", roles=None):
@@ -108,10 +109,8 @@ class CreatePolicyDialog(QDialog):
 
         # --- Footer Buttons ---
         footer_btn_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Create")
-        self.save_btn.setObjectName("primaryButton")
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setObjectName("secondaryButton")
+        self.save_btn = PrimaryButton("Create")
+        self.cancel_btn = SecondaryButton("Cancel")
         
         footer_btn_layout.addStretch()
         footer_btn_layout.addWidget(self.cancel_btn)

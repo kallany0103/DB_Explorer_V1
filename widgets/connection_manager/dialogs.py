@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QVBoxLayout,
     QFormLayout,
     QGridLayout,
@@ -29,6 +28,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize
 
+from ui.components import PrimaryButton, SecondaryButton
 import db
 from dialogs import (
     CSVConnectionDialog,
@@ -93,27 +93,6 @@ class ConnectionTypeSelectorDialog(QDialog):
                 background-color: #eff6ff;
                 border: 2px solid #3b82f6;
                 color: #1d4ed8;
-            }
-            QPushButton#primaryButton {
-                min-height: 32px;
-                padding: 4px 20px;
-                border: 1px solid #006cbe;
-                background-color: #0078d4;
-                color: #ffffff;
-                font-weight: 600;
-                border-radius: 6px;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #006cbe;
-            }
-            QPushButton#secondaryButton {
-                min-height: 32px;
-                padding: 4px 20px;
-                border: 1px solid #c4c9d4;
-                background-color: #ffffff;
-                color: #1f2937;
-                border-radius: 6px;
-            }
         """
 
     def init_ui(self):
@@ -224,13 +203,11 @@ class ConnectionTypeSelectorDialog(QDialog):
 
         # Buttons
         btn_layout = QHBoxLayout()
-        self.next_btn = QPushButton("Next")
-        self.next_btn.setObjectName("primaryButton")
+        self.next_btn = PrimaryButton("Next")
         self.next_btn.setEnabled(False)
         self.next_btn.clicked.connect(self.accept)
         
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn = SecondaryButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
         
         btn_layout.addStretch()
@@ -357,13 +334,12 @@ class ConnectionDialogs:
         title_label.setObjectName("dialogTitle")
         subtitle_label = QLabel("Enter a group name for organizing connections.")
         subtitle_label.setObjectName("dialogSubtitle")
+
         name_input = QLineEdit()
         name_input.setPlaceholderText("Group name")
 
-        save_btn = QPushButton("Create")
-        save_btn.setObjectName("primaryButton")
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        save_btn = PrimaryButton("Create")
+        cancel_btn = SecondaryButton("Cancel")
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -425,10 +401,8 @@ class ConnectionDialogs:
         name_input.setText(current_name)
         name_input.setPlaceholderText("Group name")
 
-        save_btn = QPushButton("Update")
-        save_btn.setObjectName("primaryButton")
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        save_btn = PrimaryButton("Update")
+        cancel_btn = SecondaryButton("Cancel")
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -553,10 +527,8 @@ class ConnectionDialogs:
         code_input.setReadOnly(True)
         code_input.setStyleSheet("background-color: #f0f0f0; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; padding: 3px 8px;")
 
-        save_btn = QPushButton("Update")
-        save_btn.setObjectName("primaryButton")
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        save_btn = PrimaryButton("Update")
+        cancel_btn = SecondaryButton("Cancel")
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()

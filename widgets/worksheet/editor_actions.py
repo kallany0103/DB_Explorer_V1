@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt, Signal
-
+from ui.components import PrimaryButton, SecondaryButton
 
 class FindReplaceDialog(QDialog):
     find_next = Signal(str, bool, bool)
@@ -72,15 +72,10 @@ class FindReplaceDialog(QDialog):
         btn_layout = QGridLayout()
         btn_layout.setSpacing(8)
 
-        self.btn_find_next = QPushButton("Find Next")
-        self.btn_find_prev = QPushButton("Find Previous")
-        self.btn_replace = QPushButton("Replace")
-        self.btn_replace_all = QPushButton("Replace All")
-        
-        self.btn_find_next.setObjectName("secondaryButton")
-        self.btn_find_prev.setObjectName("secondaryButton")
-        self.btn_replace.setObjectName("secondaryButton")
-        self.btn_replace_all.setObjectName("secondaryButton")
+        self.btn_find_next = SecondaryButton("Find Next")
+        self.btn_find_prev = SecondaryButton("Find Previous")
+        self.btn_replace = SecondaryButton("Replace")
+        self.btn_replace_all = SecondaryButton("Replace All")
 
         btn_layout.addWidget(self.btn_find_next, 0, 0)
         btn_layout.addWidget(self.btn_find_prev, 0, 1)
@@ -90,8 +85,7 @@ class FindReplaceDialog(QDialog):
         layout.addLayout(btn_layout)
         
         # Bottom Close Button (matches primary style as it's the main exit)
-        self.btn_close = QPushButton("Close")
-        self.btn_close.setObjectName("primaryButton")
+        self.btn_close = PrimaryButton("Close")
         layout.addWidget(self.btn_close)
 
         self.btn_find_next.clicked.connect(self.on_find_next)
@@ -129,27 +123,6 @@ class FindReplaceDialog(QDialog):
             QCheckBox {
                 color: #374151;
                 font-size: 9pt;
-            }
-            QPushButton {
-                min-height: 30px;
-                padding: 2px 12px;
-                border: 1px solid #c4c9d4;
-                background-color: #eef1f6;
-                color: #1f2937;
-                border-radius: 4px;
-                font-size: 9pt;
-            }
-            QPushButton:hover {
-                background-color: #e3e8f2;
-            }
-            QPushButton#primaryButton {
-                border: 1px solid #006cbe;
-                background-color: #0078d4;
-                color: #ffffff;
-                font-weight: 600;
-            }
-            QPushButton#primaryButton:hover {
-                background-color: #006cbe;
             }
         """)
 

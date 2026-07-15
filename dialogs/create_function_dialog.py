@@ -1,11 +1,13 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QLabel, QPlainTextEdit, QMessageBox, 
-    QHBoxLayout, QPushButton, QTableWidget, QHeaderView, 
+    QHBoxLayout, QTableWidget, QHeaderView, 
     QAbstractItemView, QTableWidgetItem, QCheckBox
 )
+
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
+from ui.components import PrimaryButton, SecondaryButton
 
 class CreateFunctionDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
@@ -97,9 +99,9 @@ class CreateFunctionDialog(QDialog):
         self.param_table.setStyleSheet("alternate-background-color: #f9fafb;")
         
         btn_layout = QHBoxLayout()
-        add_param_btn = QPushButton("Add Parameter")
+        add_param_btn = SecondaryButton("Add Parameter")
         add_param_btn.clicked.connect(lambda: self.add_parameter_row())
-        remove_param_btn = QPushButton("Remove Parameter")
+        remove_param_btn = SecondaryButton("Remove Parameter")
         remove_param_btn.clicked.connect(self.remove_parameter_row)
         
         btn_layout.addWidget(add_param_btn)
@@ -153,10 +155,8 @@ class CreateFunctionDialog(QDialog):
 
         # --- Footer Buttons ---
         footer_btn_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Create")
-        self.save_btn.setObjectName("primaryButton")
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setObjectName("secondaryButton")
+        self.save_btn = PrimaryButton("Create")
+        self.cancel_btn = SecondaryButton("Cancel")
         
         footer_btn_layout.addStretch()
         footer_btn_layout.addWidget(self.cancel_btn)

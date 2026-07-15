@@ -1,10 +1,14 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QLabel, QPlainTextEdit, QMessageBox, 
-    QHBoxLayout, QPushButton, QTableWidget, QHeaderView, 
+    QHBoxLayout, QTableWidget, QHeaderView, 
     QAbstractItemView, QTableWidgetItem
 )
 from PySide6.QtCore import Qt
+
+from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt
+from ui.components import PrimaryButton, SecondaryButton
 
 class CreateForeignTableDialog(QDialog):
     def __init__(self, parent=None, schemas=None, servers=None, db_type="postgres"):
@@ -107,9 +111,9 @@ class CreateForeignTableDialog(QDialog):
         self.col_table.setStyleSheet("alternate-background-color: #f9fafb;")
         
         btn_layout = QHBoxLayout()
-        add_col_btn = QPushButton("Add Column")
+        add_col_btn = SecondaryButton("Add Column")
         add_col_btn.clicked.connect(lambda: self.add_column_row())
-        remove_col_btn = QPushButton("Remove Column")
+        remove_col_btn = SecondaryButton("Remove Column")
         remove_col_btn.clicked.connect(self.remove_column_row)
         
         btn_layout.addWidget(add_col_btn)
@@ -139,10 +143,8 @@ class CreateForeignTableDialog(QDialog):
 
         # --- Footer Buttons ---
         footer_btn_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Create")
-        self.save_btn.setObjectName("primaryButton")
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setObjectName("secondaryButton")
+        self.save_btn = PrimaryButton("Create")
+        self.cancel_btn = SecondaryButton("Cancel")
         
         footer_btn_layout.addStretch()
         footer_btn_layout.addWidget(self.cancel_btn)

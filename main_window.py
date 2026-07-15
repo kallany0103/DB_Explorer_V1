@@ -1,9 +1,10 @@
 # main_window.py
-from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QPushButton, QMessageBox, QLabel, QMenu
+from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QMessageBox, QLabel, QMenu
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
+from ui.components import SecondaryButton
 from widgets.erd.widget import ERDWidget
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.dashboard import DashboardWidget
@@ -12,7 +13,6 @@ from widgets.inspector.statistics_view import StatisticsWorkbench
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
-    apply_main_window_styles,
     open_find_dialog,
     on_find_next,
     on_find_prev,
@@ -92,8 +92,7 @@ class MainWindow(QMainWindow):
         self.main_splitter.addWidget(self.tab_widget)
 
         # 6. Additional UI for Tab Widget
-        add_tab_btn = QPushButton("New ")
-        add_tab_btn.setObjectName("add_tab_btn")
+        add_tab_btn = SecondaryButton("New ")
         add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_tab_btn.setIcon(qta.icon('fa5s.caret-down', color='#1f2937'))
         add_tab_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -144,35 +143,12 @@ class MainWindow(QMainWindow):
             new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(0, add_tab_btn.height() + 2)))
 
         add_tab_btn.clicked.connect(show_new_tab_menu)
-
-        # Tab-integrated neutral style
-        add_tab_btn.setStyleSheet("""
-            QPushButton#add_tab_btn {
-                padding: 5px 12px;
-                border: 1px solid #B8BEC6;
-                background-color: #ECEFF3;
-                border-radius: 3px;
-                color: #1f2937;
-                font-weight: 600;
-                font-size: 9pt;
-                text-align: center;
-            }
-            QPushButton#add_tab_btn:hover {
-                background-color: #DDE2E8;
-                border: 1px solid #9FA6AF;
-            }
-            QPushButton#add_tab_btn:pressed {
-                background-color: #CED5DE;
-            }
-        """)
         self.tab_widget.setCornerWidget(add_tab_btn)
 
         self.thread_monitor_timer = QTimer()
         self.thread_monitor_timer.timeout.connect(self.update_thread_pool_status)
         self.thread_monitor_timer.start(1000)
 
-
-        self._apply_styles()
         self.restore_session_state()
         
         # Clamp geometry to available screen size to prevent geometry warnings
@@ -184,7 +160,10 @@ class MainWindow(QMainWindow):
         
         # Connect tree selections for Inspector workbenches
         self.schema_tree.selectionModel().currentChanged.connect(self._on_schema_selection_changed)
+        self.schema_tree.clicked.connect(lambda idx: self._on_schema_selection_changed(idx, None))
+        
         self.tree.selectionModel().currentChanged.connect(self._on_connection_selection_changed)
+        self.tree.clicked.connect(lambda idx: self._on_connection_selection_changed(idx, None))
         
         self.raise_()
         self.activateWindow()
@@ -547,10 +526,6 @@ class MainWindow(QMainWindow):
             # Save session immediately to persist settings
             save_main_window_session(self, self.SESSION_FILE)
    
-
-    def _apply_styles(self):
-        apply_main_window_styles(self)
-
 
     def closeEvent(self, event):
         """Confirm exit and save session state."""

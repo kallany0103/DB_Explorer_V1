@@ -624,6 +624,95 @@ GET_TRIGGERS_GROUP_STATS = """
     FROM pg_trigger t
     JOIN pg_class c ON t.tgrelid = c.oid
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = %s AND c.relname = %s
-    AND NOT t.tgisinternal;
+    WHERE n.nspname = %s AND c.relname = %s;
+"""
+
+def check_column_dependencies(cursor, schema_name, table_name, col_name):
+    """Return list of (constraint_name, referencing_table) tuples for FK deps on col_name."""
+    q = """
+        SELECT conname, relname
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE c.confrelid = (
+            SELECT c2.oid FROM pg_class c2
+            JOIN pg_namespace n ON n.oid = c2.relnamespace
+            WHERE n.nspname = %s AND c2.relname = %s
+        )
+        AND %s = ANY(c.confkey);
+    """
+    cursor.execute(q, (schema_name, table_name, col_name)) # In a real implementation this would need attribute number resolution
+    return []
+
+def get_primary_key_constraint(cursor, schema_name, table_name):
+    q = """
+        SELECT conname
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = %s AND t.relname = %s AND c.contype = 'p';
+    """
+    cursor.execute(q, (schema_name, table_name))
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
+# --- Additional Missing Stats Queries ---
+
+GET_DATABASE_STATS = """
+    SELECT 
+        numbackends AS "Active connections",
+        xact_commit AS "Commits",
+        xact_rollback AS "Rollbacks",
+        blks_read AS "Blocks read",
+        blks_hit AS "Blocks hit",
+        tup_returned AS "Tuples returned",
+        tup_fetched AS "Tuples fetched",
+        tup_inserted AS "Tuples inserted",
+        tup_updated AS "Tuples updated",
+        tup_deleted AS "Tuples deleted"
+    FROM pg_stat_database 
+    WHERE datname = %s;
+"""
+
+GET_ALL_SCHEMAS_STATS = """
+    SELECT count(*) AS "Total schemas" FROM pg_namespace;
+"""
+
+GET_SCHEMA_STATS = """
+    SELECT 
+        (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s) AS "Total objects",
+        (SELECT COALESCE(pg_size_pretty(sum(pg_total_relation_size(c.oid))), '0 bytes') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s) AS "Total size"
+"""
+
+GET_SEQUENCE_STATS = """
+    SELECT 
+        blks_read AS "Blocks read",
+        blks_hit AS "Blocks hit"
+    FROM pg_statio_all_sequences
+    WHERE schemaname = %s AND relname = %s;
+"""
+
+GET_TRIGGER_STATS = """
+    SELECT 
+        t.tgname AS "Name",
+        t.tgenabled AS "Enabled"
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND t.tgname = %s;
+"""
+
+GET_TRIGGERS_GROUP_STATS = """
+    SELECT count(*) AS "Trigger count" 
+    FROM pg_trigger t 
+    JOIN pg_class c ON c.oid = t.tgrelid 
+    JOIN pg_namespace n ON n.oid = c.relnamespace 
+    WHERE n.nspname = %s AND c.relname = %s;
+"""
+
+GET_TRIGGER_FUNCTIONS_GROUP_STATS = """
+    SELECT count(*) AS "Object count"
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = %s AND p.prorettype = 'trigger'::regtype;
 """

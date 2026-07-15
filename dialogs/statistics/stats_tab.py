@@ -1,58 +1,60 @@
-# dialogs/properties/statistics/stats_tab.py
-
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableView, QHeaderView, QLabel
+    QWidget, QVBoxLayout, QHeaderView, QLabel
 )
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont
 from PySide6.QtCore import Qt
-
-class LeftAlignedStatsModel(QStandardItemModel):
-    """Forces left-aligned column headers in the statistics table."""
-    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
-            return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        return super().headerData(section, orientation, role)
+from widgets.inspector.properties_ui import PropertyTable
 
 class StatisticsTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 10, 10, 10)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         
-        self.title_label = QLabel("Object Statistics")
-        self.title_label.setObjectName("dialogSubtitle")
-        self.layout.addWidget(self.title_label)
-        
-        self.model = LeftAlignedStatsModel()
+        self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(["Property", "Value"])
         
-        self.view = QTableView()
+        self.view = PropertyTable()
         self.view.setModel(self.model)
-        self.view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.view.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
-        self.view.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.view.setAlternatingRowColors(True)
+        
+        # Adjust sizing for the properties tab format
+        hh = self.view.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.view.setColumnWidth(0, 250)
         
         self.layout.addWidget(self.view)
 
     def clear_stats(self):
         self.model.removeRows(0, self.model.rowCount())
         self.model.setHorizontalHeaderLabels(["Property", "Value"])
+        self.view.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.view.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.view.setColumnWidth(0, 250)
 
     def display_data(self, columns, rows, append=False):
         if not append:
             self.clear_stats()
             
         if rows:
-            _align = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            # If multiple rows, change to table view mode
+            # If multiple rows, change to generic table view mode
             if len(rows) > 1:
-                self.model.setHorizontalHeaderLabels([c.replace('_', ' ').capitalize() for c in columns])
+                if not append:
+                    self.model.setHorizontalHeaderLabels([c.replace('_', ' ').capitalize() for c in columns])
+                    hh = self.view.horizontalHeader()
+                    for i in range(len(columns)):
+                        hh.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+                    if len(columns) > 0:
+                        hh.setSectionResizeMode(len(columns) - 1, QHeaderView.ResizeMode.Stretch)
+                
                 for row in rows:
                     items = []
                     for val in row:
-                        item = QStandardItem(str(val) if val is not None else "-")
-                        item.setTextAlignment(_align)
+                        if isinstance(val, (int, float)) and not isinstance(val, bool):
+                            display_val = f"{val:,}"
+                        else:
+                            display_val = str(val) if val is not None else "-"
+                        item = QStandardItem(display_val)
                         items.append(item)
                     self.model.appendRow(items)
             else:
@@ -60,13 +62,25 @@ class StatisticsTab(QWidget):
                 row = rows[0]
                 for col_name, value in zip(columns, row):
                     pretty_name = col_name.replace('_', ' ').capitalize()
+                    
                     item_name = QStandardItem(pretty_name)
-                    item_name.setTextAlignment(_align)
-                    item_value = QStandardItem(str(value) if value is not None else "-")
-                    item_value.setTextAlignment(_align)
+                    # Make property keys bold for readability
+                    font = item_name.font()
+                    font.setWeight(QFont.Weight.DemiBold)
+                    item_name.setFont(font)
+                    item_name.setForeground(Qt.GlobalColor.darkGray)
+                    
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        display_val = f"{value:,}"
+                    else:
+                        display_val = str(value) if value is not None else "-"
+                        
+                    item_value = QStandardItem(display_val)
+                    
                     self.model.appendRow([item_name, item_value])
         else:
-            self.model.appendRow([QStandardItem("No statistics available"), QStandardItem("")])
+            if not append:
+                self.model.appendRow([QStandardItem("No statistics available"), QStandardItem("")])
 
     def load_stats(self, cursor, query, params=(), append=False):
         try:
@@ -77,4 +91,11 @@ class StatisticsTab(QWidget):
         except Exception as e:
             if not append:
                 self.clear_stats()
-            self.model.appendRow([QStandardItem("Error"), QStandardItem(str(e))])
+            
+            item_err_key = QStandardItem("Error")
+            font = item_err_key.font()
+            font.setWeight(600)
+            item_err_key.setFont(font)
+            item_err_key.setForeground(Qt.GlobalColor.red)
+            
+            self.model.appendRow([item_err_key, QStandardItem(str(e))])

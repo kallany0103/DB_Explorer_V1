@@ -9,12 +9,13 @@ import qtawesome as qta
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
-    QFormLayout, QComboBox, QPushButton, QHBoxLayout,
+    QFormLayout, QComboBox, QHBoxLayout,
     QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QColor
 
+from ui.components import SecondaryButton
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.connection_item import ERDConnectionItem
 from widgets.erd.commands import ChangeRelationTypeCommand
@@ -26,23 +27,7 @@ class PropertyPanel(QWidget):
         self.view = view
         self.scene = view.scene()
         self.setFixedWidth(280)
-        self.setStyleSheet("""
-            PropertyPanel {
-                background-color: #ffffff;
-                border: 1px solid #d1d5db;
-                border-radius: 8px;
-            }
-            QLabel {
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
-            .panel-header {
-                font-size: 14px;
-                font-weight: bold;
-                padding: 12px;
-                background-color: transparent;
-                border-bottom: 1px solid #e5e7eb;
-            }
-        """)
+
         
         # Add Drop Shadow for Overlay Floating Effect
         shadow = QGraphicsDropShadowEffect(self)
@@ -139,22 +124,7 @@ class PropertyPanel(QWidget):
         form.addRow("Connections:", QLabel(str(conn_count)))
         self.content_layout.addLayout(form)
         
-        layout_btn = QPushButton("Auto Layout")
-        layout_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 12px;
-                border: 1px solid #d1d5db;
-                border-radius: 4px;
-                background-color: #ffffff;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #f3f4f6;
-            }
-            QPushButton:pressed {
-                background-color: #e5e7eb;
-            }
-        """)
+        layout_btn = SecondaryButton("Auto Layout")
         # Find ERDWidget to trigger auto layout
         parent_widget = self.view.parent()
         layout_btn.clicked.connect(lambda: parent_widget.auto_layout() if hasattr(parent_widget, "auto_layout") else None)
@@ -188,7 +158,7 @@ class PropertyPanel(QWidget):
             rfx.addWidget(icon_lbl)
             rfx.addWidget(QLabel(col['name']))
             type_lbl = QLabel(col.get('type', ''))
-            type_lbl.setStyleSheet("color: #70757A;")
+            type_lbl.setProperty("class", "erd-type-label")
             rfx.addWidget(type_lbl, 1, Qt.AlignmentFlag.AlignRight)
             
             w = QWidget()

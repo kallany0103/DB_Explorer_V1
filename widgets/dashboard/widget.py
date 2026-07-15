@@ -44,31 +44,7 @@ class DashboardWidget(QWidget):
 
         # Tab Widget
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { 
-                border-top: 1px solid #B8BEC6;
-                background: #ffffff;
-            }
-            QTabBar::tab {
-                background: #ECEFF3;
-                color: #111827;
-                padding: 6px 12px;
-                border: 1px solid #B8BEC6;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
-                font-size: 9pt;
-            }
-            QTabBar::tab:selected {
-                background: #8E959E;
-                color: #ffffff;
-                border-bottom: 2px solid #8E959E;
-            }
-            QTabBar::tab:hover {
-                background: #DDE2E8;
-            }
-        """)
+
 
         # 1. Activity Tab
         self.activity_tab = QWidget()

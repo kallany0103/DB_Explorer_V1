@@ -15,13 +15,13 @@ import qtawesome as qta
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QFontMetrics, QTextCursor
 from PySide6.QtWidgets import (
-    QApplication,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
     QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPlainTextEdit,
+    QLabel,
+    QFrame,
+    QMessageBox
 )
 
 # from widgets.usql_tool.constants import _BANNER
@@ -30,6 +30,7 @@ from widgets.usql_tool.constants import _APP_DATA_DIR
 from widgets.usql_tool.constants import _PTY_DRAIN_TIMEOUT_S
 from widgets.usql_tool.constants import _PTY_DRAIN_SLEEP_S
 from widgets.usql_tool.constants import _STYLE
+from ui.components import SecondaryButton
 from widgets.usql_tool.editor import _TerminalEdit
 from widgets.usql_tool.discovery import find_psql
 from widgets.worksheet.autocomplete import CompletionEngine
@@ -208,8 +209,7 @@ class USQLToolWidget(QWidget):
             ("fa5s.trash-alt", "Clear", self._clear),
             ("fa5s.redo-alt", "Reconnect", self._reconnect),
         ):
-            btn = QPushButton(qta.icon(icon_key, color="#a6adc8"), label)
-            btn.setObjectName("term_btn")
+            btn = SecondaryButton(qta.icon(icon_key, color="#a6adc8"), label)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
 

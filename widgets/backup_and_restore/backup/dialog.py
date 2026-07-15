@@ -2,7 +2,7 @@
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
-    QLineEdit, QPushButton, QFileDialog, QDialogButtonBox, 
+    QLineEdit, QFileDialog, 
     QLabel, QComboBox, QCheckBox, QTabWidget, QWidget,
     QTreeWidget, QTreeWidgetItem, QSpinBox
 )
@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QSize, QSettings
 from PySide6.QtGui import QIcon
 from datetime import datetime
 import qtawesome as qta
+from ui.components import PrimaryButton, SecondaryButton, IconButton
 
 class BackupDialog(QDialog):
     def __init__(self, parent=None, item_data=None):
@@ -67,7 +68,7 @@ class BackupDialog(QDialog):
         default_path = os.path.join(last_dir, f"{self.display_name}_{timestamp}{default_ext}")
         self.filename_edit.setText(default_path)
         
-        browse_btn = QPushButton(qta.icon("fa5s.folder-open"), "")
+        browse_btn = IconButton(qta.icon("fa5s.folder-open"))
         browse_btn.setFixedWidth(40)
         browse_btn.clicked.connect(self.browse_file)
         
@@ -176,10 +177,18 @@ class BackupDialog(QDialog):
             self.populate_objects_tree()
 
         # Footer Buttons
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.button_box.accepted.connect(self.handle_accept)
-        self.button_box.rejected.connect(self.reject)
-        main_layout.addWidget(self.button_box)
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        cancel_btn = SecondaryButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        ok_btn = PrimaryButton("OK")
+        ok_btn.clicked.connect(self.handle_accept)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(ok_btn)
+        main_layout.addLayout(button_layout)
 
         # Apply Styles
         self.setStyleSheet("""
@@ -216,25 +225,6 @@ class BackupDialog(QDialog):
             QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTreeWidget:focus {
                 border: 1px solid #0078d4;
             }
-            QPushButton {
-                min-height: 30px;
-                padding: 0 15px;
-                border: 1px solid #c4c9d4;
-                background-color: #eef1f6;
-                border-radius: 6px;
-                color: #1f2937;
-            }
-            QPushButton:hover {
-                background-color: #e3e8f2;
-            }
-            QPushButton[text="OK"] {
-                background-color: #0078d4;
-                color: white;
-                border: 1px solid #006cbe;
-                font-weight: bold;
-            }
-            QPushButton[text="OK"]:hover {
-                background-color: #006cbe;
             }
         """)
 

@@ -38,16 +38,7 @@ QLabel#term_conn_lbl {
     font-weight : bold;
     background  : transparent;
 }
-QPushButton#term_btn {
-    background    : transparent;
-    border        : 1px solid transparent;
-    border-radius : 4px;
-    font-size     : 9pt;
-    padding       : 3px 10px;
-    min-width     : 64px;
-}
-QPushButton#term_btn:hover  { background: palette(alternate-base); border-color: palette(mid); }
-QPushButton#term_btn:pressed { background: palette(mid); }
+
 
 /* ---- error banner ---- */
 QFrame#term_err_frame {
