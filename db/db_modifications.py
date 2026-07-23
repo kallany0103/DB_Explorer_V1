@@ -97,8 +97,8 @@ def add_connection(data, connection_group_id):
             c.execute(
                 """
                 INSERT INTO usf_connections
-                (name, short_name, connection_group_id, host, "database", "user", password, port)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (name, short_name, connection_group_id, host, "database", "user", password, port, dsn)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get("name"),
@@ -109,6 +109,7 @@ def add_connection(data, connection_group_id):
                     data.get("user"),
                     data.get("password"),
                     data.get("port"),
+                    data.get("dsn"),
                 )
             )
 
@@ -174,7 +175,7 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, connection_group_id = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?, dsn = ?
                 WHERE id = ?
                 """,
                 (
@@ -186,6 +187,7 @@ def update_connection(data):
                     data.get("user"),
                     data.get("password"),
                     data.get("port"),
+                    data.get("dsn"),
                     data.get("id")
                 )
             )

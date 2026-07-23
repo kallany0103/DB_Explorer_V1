@@ -142,9 +142,10 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             "application_name": safe_app_name
         }
         
-        # Determine if we should use SSL immediately (Aiven, Heroku, ElephantSQL, AWS)
+        # Determine if we should use SSL immediately (Aiven, Heroku, ElephantSQL, AWS, Supabase)
         is_cloud = any(cloud_domain in str(host).lower() for cloud_domain in [
-            "aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com", "cloud.google.com"
+            "aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com",
+            "cloud.google.com", "supabase.com", "supabase.io",
         ])
         
         if is_cloud:
@@ -184,6 +185,18 @@ def create_oracle_connection(host, port, service_name, user, password):
     """Establishes a connection to an Oracle database."""
     try:
         dsn = f"{host}:{port}/{service_name}"
+        conn = oracledb.connect(user=user, password=password, dsn=dsn)
+        return conn
+    except oracledb.DatabaseError as e:
+        print(f"Oracle connection error: {e}")
+        return None
+
+def create_oracle_connection_from_dict(conn_data):
+    """Establishes a connection to an Oracle database using a connection dictionary."""
+    try:
+        user = conn_data.get("user")
+        password = conn_data.get("password")
+        dsn = conn_data.get("dsn")
         conn = oracledb.connect(user=user, password=password, dsn=dsn)
         return conn
     except oracledb.DatabaseError as e:

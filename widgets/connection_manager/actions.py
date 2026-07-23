@@ -190,28 +190,32 @@ class ConnectionActions:
             schema = item_data.get("schema_name", "public")
             schema_quoted = f'"{schema}"'
             new_tab.table_name = f'{schema_quoted}.{table_name}'
-            query = f'SELECT * FROM {schema_quoted}.{table_name};'
+            query = f'SELECT * FROM {schema_quoted}.{table_name}'
         elif code == 'SQLITE':
             new_tab.table_name = f'{table_name}'
-            query = f'SELECT * FROM {table_name};'
+            query = f'SELECT * FROM {table_name}'
         elif code == 'CSV':
             new_tab.table_name = f'[{table_name}]'
-            query = f'SELECT * FROM {table_name};'
+            query = f'SELECT * FROM {table_name}'
         elif code == 'SERVICENOW':
             new_tab.table_name = table_name
             query = f'SELECT * FROM {table_name}'
+        elif code in ('ORACLE', 'ORACLE_DB'):
+            new_tab.table_name = table_name
+            query = f'SELECT * FROM {table_name}'
         else:
-            self.manager.show_info(f"Unsupported db_type: {code}")
+            self.manager.show_error_popup(f"Unsupported db_type: {code}")
             return
 
-        if order or limit:
-            query = query.rstrip(';')
-
-            if order:
-                query += f" ORDER BY 1 {order.upper()}"
-            if limit:
+        if order:
+            query += f" ORDER BY 1 {order.upper()}"
+        if limit:
+            if code in ('ORACLE', 'ORACLE_DB'):
+                query += f" FETCH FIRST {limit} ROWS ONLY"
+            else:
                 query += f" LIMIT {limit}"
 
+        if code not in ('ORACLE', 'ORACLE_DB'):
             query += ";"
 
         query_editor.setPlainText(query)

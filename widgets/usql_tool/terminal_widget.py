@@ -321,8 +321,16 @@ class USQLToolWidget(QWidget):
             self._reader_thread.start()
 
             self._completion_engine = CompletionEngine()
-            self._completion_engine.refresh(self._conn)
-            self._term.set_engine(self._completion_engine, self._conn)
+            _conn_with_db = {
+                **self._conn,
+                "database": self._current_db,
+                "code": "POSTGRES",
+                # Drop the old connection ID so the cache does not return
+                # schema data from the previous database/host.
+                "id": None,
+            }
+            self._completion_engine.refresh(_conn_with_db)
+            self._term.set_engine(self._completion_engine, _conn_with_db)
         except Exception as e:
             self._show_error(f"Failed to start psql process: {e}")
             self._term.append_output(f"\nERROR: Failed to start psql process: {e}\n")
@@ -388,9 +396,15 @@ class USQLToolWidget(QWidget):
         # Detect the first psql prompt — everything before it is connection
         # preamble (version, WARNING, SSL line, "Type help") and should be
         # excluded from Copy Output.
-        if self._first_prompt_pos == 0 and ("=#" in text or "=>" in text):
-            self._first_prompt_pos = self._term._input_start
-            self._hide_spinner()
+        if self._first_prompt_pos == 0:
+            text_lower = text.lower()
+            if "=#" in text or "=>" in text:
+                self._first_prompt_pos = self._term._input_start
+                self._hide_spinner()
+            elif "password" in text_lower and ":" in text_lower:
+                self._hide_spinner()
+            elif "[process exited" in text_lower or (">" in text and self._first_prompt_pos == 0):
+                self._hide_spinner()
 
         if self._pending_db_switch_from:
             text_lower = text.lower()
@@ -427,7 +441,7 @@ class USQLToolWidget(QWidget):
         cmd = cmd.replace("\r", "")
         stripped = cmd.strip()
 
-        if stripped:
+        if stripped and self._first_prompt_pos > 0:
             # Accumulate multi-line SQL into one history entry.
             # A statement is complete when it ends with ';' or is a meta-command ('\').
             if self._pending_sql:
@@ -447,14 +461,56 @@ class USQLToolWidget(QWidget):
         if not self._running or self._pty is None:
             # After \q the user sees a shell-style prompt.
             # Typing `psql` relaunches the session, just like the real console.
-            if stripped.lower() == "usql":
-                self._term.append_output("\n")
+            import shlex
+            try:
+                cmd_parts = shlex.split(stripped)
+            except ValueError:
+                cmd_parts = stripped.split()
+
+            base_cmd = cmd_parts[0].lower() if cmd_parts else ""
+            if base_cmd in ("usql", "psql"):
+                if len(cmd_parts) > 1:
+                    args = cmd_parts[1:]
+                    c = self._conn.copy()
+                    i = 0
+                    while i < len(args):
+                        arg = args[i]
+                        if arg in ("-h", "--host") and i + 1 < len(args):
+                            c["host"] = args[i+1]
+                            for k in ("uri", "connection_string", "service_uri", "dsn", "password"):
+                                c.pop(k, None)
+                            i += 2
+                        elif arg in ("-p", "--port") and i + 1 < len(args):
+                            c["port"] = args[i+1]
+                            i += 2
+                        elif arg in ("-U", "--username") and i + 1 < len(args):
+                            c["user"] = args[i+1]
+                            for k in ("uri", "connection_string", "service_uri", "dsn", "password"):
+                                c.pop(k, None)
+                            i += 2
+                        elif arg in ("-d", "--dbname") and i + 1 < len(args):
+                            self._current_db = args[i+1]
+                            i += 2
+                        elif arg.startswith("postgres://") or arg.startswith("postgresql://"):
+                            c["uri"] = arg
+                            c.pop("password", None)
+                            self._current_db = arg.split("/")[-1].split("?")[0]
+                            i += 1
+                        elif not arg.startswith("-"):
+                            self._current_db = arg
+                            i += 1
+                        else:
+                            i += 1
+                    self._conn = c
+                    self._update_tab_title(f"USQL Tool – {self._current_db}")
+                    self._update_conn_label()
+
                 self._reconnect()
             else:
                 psql_dir = ""
                 if self._psql_exe_path:
                     psql_dir = str(Path(self._psql_exe_path).parent)
-                hint = f"\n'{stripped}' is not recognized. Type 'psql' to reconnect.\n{psql_dir}>"
+                hint = f"\n'{stripped}' is not recognized. Type 'psql' to reconnect (e.g. 'psql -h <host> -U <user> <dbname>').\n{psql_dir}>"
                 self._term.append_output(hint)
             return
 
@@ -463,7 +519,7 @@ class USQLToolWidget(QWidget):
 
         # Replace internal \n with \r\n so winpty processes them as separate lines.
         try:
-            self._pty.write(cmd.replace("\n", "\r\n") + "\r\n")
+            self._pty.write(cmd.rstrip("\n").replace("\n", "\r\n") + "\r\n")
         except Exception as exc:
             self._term.append_output(f"\n[Error writing to process: {exc}]\n")
 
@@ -589,11 +645,12 @@ class USQLToolWidget(QWidget):
         self.close_process()
         self._hide_error()
         self._load_history()
+        self._term.append_output("\n")
         self._start_session(reset_ui=False)
 
 
     def _show_error(self, message: str) -> None:
-        self._err_lbl.setText(f"⚠  {message}")
+        self._err_lbl.setText(f"{message}")
         self._err_frame.setVisible(True)
 
     def _hide_error(self) -> None:
@@ -603,7 +660,7 @@ class USQLToolWidget(QWidget):
     def _update_tab_title(self, title: str) -> None:
         widget = self.parent()
         while widget is not None:
-            if hasattr(widget, "indexOf"):
+            if hasattr(widget, "indexOf") and hasattr(widget, "setTabText"):
                 idx = widget.indexOf(self)
                 if idx >= 0:
                     widget.setTabText(idx, title)

@@ -93,6 +93,7 @@ class ConnectionTypeSelectorDialog(QDialog):
                 background-color: #eff6ff;
                 border: 2px solid #3b82f6;
                 color: #1d4ed8;
+            }
         """
 
     def init_ui(self):
@@ -476,7 +477,7 @@ class ConnectionDialogs:
                 dialog = CSVConnectionDialog(self.manager, type_id=type_id)
             elif code == "SERVICENOW":
                 dialog = ServiceNowConnectionDialog(self.manager, type_id=type_id)
-            elif code == "ORACLE":
+            elif code in ("ORACLE", "ORACLE_DB", "ORACLE_FA") or code.startswith("ORACLE"):
                 dialog = OracleConnectionDialog(self.manager, type_id=type_id)
             else:
                 QMessageBox.warning(self.manager, "Not Supported", f"Connection type {code} is not yet supported.")

@@ -1,6 +1,7 @@
 from workers.workers import RunnableExport, RunnableExportFromModel, RunnableQuery
 from workers.connection_workers import (
     CsvSchemaWorker,
+    OracleSchemaWorker,
     PostgresSchemaWorker,
     ServiceNowSchemaWorker,
     ServiceNowTableDetailsWorker,
@@ -13,6 +14,7 @@ __all__ = [
     "RunnableExportFromModel",
     "RunnableQuery",
     "CsvSchemaWorker",
+    "OracleSchemaWorker",
     "PostgresSchemaWorker",
     "ServiceNowSchemaWorker",
     "ServiceNowTableDetailsWorker",

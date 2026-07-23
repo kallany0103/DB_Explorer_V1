@@ -183,6 +183,9 @@ class RunnableExport(QRunnable):
             elif code == 'CSV':
                  conn = db.create_csv_connection(conn_data)
                  query = f'SELECT * FROM [{self.table_name}]'
+            elif code in ('ORACLE', 'ORACLE_DB'):
+                 conn = db.create_oracle_connection_from_dict(conn_data)
+                 query = f'SELECT * FROM {self.table_name}'
             else:
                  raise ValueError(f"Unsupported database type: {code}")
 
@@ -470,6 +473,18 @@ class RunnableQuery(QRunnable):
                     raise ConnectionError("Failed to connect to PostgreSQL database")
                 cursor = self._conn.cursor()
                 cursor.execute(self.query)
+            elif code in ("ORACLE", "ORACLE_DB"):
+                self._conn = db.create_oracle_connection_from_dict(self.conn_data)
+                if not self._conn:
+                    raise ConnectionError("Failed to connect to Oracle database")
+                cursor = self._conn.cursor()
+                
+                oracle_query = self.query.strip()
+                # oracledb does not allow trailing semicolons for SQL, but requires them for PL/SQL blocks.
+                if oracle_query.endswith(';') and not oracle_query.upper().startswith(("BEGIN", "DECLARE")):
+                    oracle_query = oracle_query[:-1]
+                
+                cursor.execute(oracle_query)
             else:
                 if self.conn_data.get("db_path"):
                     self._conn = db.create_sqlite_connection(self.conn_data["db_path"])
@@ -501,7 +516,7 @@ class RunnableQuery(QRunnable):
             
             elapsed_time = time.time() - start_time
             
-            if self._conn and code == "POSTGRES":
+            if self._conn and code in ("POSTGRES", "ORACLE", "ORACLE_DB"):
                 self._conn.commit()
 
             conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
