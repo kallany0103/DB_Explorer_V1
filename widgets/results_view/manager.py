@@ -648,7 +648,7 @@ class ResultsManager(QObject):
             watched.hide()
             parent = watched.parent()
             if parent:
-                btn = parent.findChild(QToolButton, "table_search_btn")
+                btn = parent.findChild(QPushButton, "table_search_btn")
                 if btn:
                     btn.show()
             return False

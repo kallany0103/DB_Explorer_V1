@@ -200,31 +200,7 @@ class PropertiesWorkbench(QWidget):
     def _display_table_with_tabs(self, data):
         tab_widget = QTabWidget()
         tab_widget.setStyleSheet("""
-            QTabWidget::pane { 
-                border: 1px solid #e5e7eb; 
-                background: white; 
-                border-radius: 6px; 
-                top: -1px;
-            }
-            QTabBar::tab { 
-                background: transparent; 
-                color: #64748b; 
-                padding: 10px 20px; 
-                border: 1px solid transparent; 
-                border-bottom: 2px solid transparent; 
-                margin-right: 4px; 
-                font-weight: 500; 
-                font-size: 13px; 
-            }
-            QTabBar::tab:selected { 
-                color: #3b82f6; 
-                border-bottom: 2px solid #3b82f6; 
-            }
-            QTabBar::tab:hover:!selected { 
-                color: #1e293b; 
-                border-bottom: 2px solid #cbd5e1; 
-            }
-        """)
+            """)
         
         # General Tab
         general_tab = self._create_general_tab(data)

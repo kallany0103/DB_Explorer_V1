@@ -41,10 +41,10 @@ def build_main_window_actions(main_window):
     main_window.explain_action.setShortcut("Ctrl+E")
     main_window.explain_action.triggered.connect(main_window.explain_query)
 
-    main_window.explain_analyze_action = QAction("Explain Analyze", main_window)
+    main_window.explain_analyze_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain Analyze", main_window)
     main_window.explain_analyze_action.triggered.connect(main_window.explain_query)
 
-    main_window.explain_plan_action = QAction("Explain (Plan)", main_window)
+    main_window.explain_plan_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain (Plan)", main_window)
     main_window.explain_plan_action.triggered.connect(main_window.explain_plan_query)
 
     main_window.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", main_window)

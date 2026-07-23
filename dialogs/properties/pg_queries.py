@@ -660,6 +660,7 @@ def get_primary_key_constraint(cursor, schema_name, table_name):
 
 GET_DATABASE_STATS = """
     SELECT 
+        pg_size_pretty(pg_database_size(datname)) AS "Size",
         numbackends AS "Active connections",
         xact_commit AS "Commits",
         xact_rollback AS "Rollbacks",

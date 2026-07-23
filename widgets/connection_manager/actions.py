@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
+from ui.components import PrimaryButton, SecondaryButton
 
 from dialogs import (
     CreateTableDialog, 
@@ -1672,10 +1673,8 @@ SERVER "{data["server"]}"
 
         if_not_exists_chk = QCheckBox("IF NOT EXISTS  (skip if schema already exists)")
 
-        save_btn   = QPushButton("Create")
-        save_btn.setObjectName("primaryButton")
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
+        save_btn   = PrimaryButton("Create")
+        cancel_btn = SecondaryButton("Cancel")
 
         # --- Layout ---
         form = QFormLayout()

@@ -25,10 +25,7 @@ class CreateSequenceDialog(QDialog):
         # Apply style from parent/manager
         if hasattr(parent, '_get_dialog_style'):
             self.setStyleSheet(parent._get_dialog_style() + """
-                QTabWidget::pane { border: 1px solid #d1d5db; border-radius: 4px; top: -1px; background: white; }
-                QTabBar::tab { background: #f3f4f6; border: 1px solid #d1d5db; padding: 6px 12px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; color: #4b5563; }
-                QTabBar::tab:selected { background: white; border-bottom-color: white; font-weight: 600; color: #111827; }
-            """)
+                """)
 
         # Main Layout
         main_layout = QVBoxLayout(self)
