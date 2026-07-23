@@ -518,11 +518,19 @@ class MainWindow(QMainWindow):
    
     def show_preferences(self):
         from dialogs.preferences_dialog import PreferencesDialog
+        from ui.theme import setup_theme
+        
         dialog = PreferencesDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
             self.pg_bin_path = settings.get("pg_bin_path", "")
             self.use_wsl = settings.get("use_wsl", False)
+            
+            new_theme = settings.get("theme", "Light")
+            if getattr(self, "theme", "Light") != new_theme:
+                self.theme = new_theme
+                setup_theme(QApplication.instance(), new_theme)
+                
             # Save session immediately to persist settings
             save_main_window_session(self, self.SESSION_FILE)
    

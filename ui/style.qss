@@ -3,6 +3,14 @@
 QSplitter::handle { background: #e0e0e0; border: none; }
 QMainWindow, QToolBar { background-color: #ECEFF3; color: #1f2937; }
 QStatusBar { background-color: #F2F4F7; color: #1f2937; border-top: 1px solid #D1D6DD; }
+QToolTip {
+    background-color: #333333;
+    color: #ffffff;
+    border: 1px solid #777777;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 9pt;
+}
 QTreeView { background-color: white; alternate-background-color: #F7F8FA; border: 1px solid #B8BEC6; outline: none; }
 QTreeView::item { border: none; }
 QTreeView::item:selected, QTreeView::item:selected:active, QTreeView::item:selected:!active { background-color: #f0f0f0; color: black; border: none; outline: none; }
@@ -64,12 +72,13 @@ QMenuBar::item {
 QMenu {
     background-color: #ffffff;
     border: 1px solid #D3D8DF;
-    icon-size: 14px;
     padding: 3px 0px;
 }
 
 QMenu::item {
-    padding: 6px 24px 6px 6px;
+    padding: 4px 24px 4px 6px; /* Reduced left padding to bring text closer to the icon */
+    font-size: 9pt;
+    color: #333333;
 }
 
 QMenu::icon {
@@ -79,8 +88,8 @@ QMenu::icon {
 }
 
 QMenu::item:selected {
-    background-color: #DDE2E8;
-    color: #1f2937;
+    background-color: #e8e8e8;
+    color: #000000;
 }
 
 QMenuBar::item:selected {
@@ -132,11 +141,6 @@ QTableView QTableCornerButton::section { background-color: #9FA6AF; border: 1px 
     subcontrol-position: right center;
     margin-left: 4px;
 }
-
-QMenu { background-color: #ffffff; border: 1px solid #b9b9b9; padding: 3px 0px; }
-QMenu::item { padding: 4px 20px 4px 20px; font-size: 9pt; color: #333333; }
-QMenu::item:selected { background-color: #e8e8e8; color: #000000; }
-
 #messageView, #history_details_view, QTextEdit, QPlainTextEdit { font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid #B8BEC6; }
 #history_details_view { border-radius: 6px; padding: 8px; }
 
@@ -243,27 +247,32 @@ QMenu::item:selected { background-color: #e8e8e8; color: #000000; }
 
 QGroupBox { font-size: 9pt; font-weight: bold; color: #1f2937; }
 QTabWidget::pane { 
-    border-top: 1px solid #B8BEC6;
-    background: #ffffff;
+    border: none;
+    border-top: 1px solid #C9CFD8;
+    background: transparent;
+}
+QTabBar {
+    background: transparent;
 }
 QTabBar::tab {
-    background: #ECEFF3;
-    color: #111827;
-    padding: 6px 12px;
+    background: #ffffff;
+    color: #333333;
+    padding: 6px 15px;
     border: 1px solid #B8BEC6;
     border-bottom: none;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
-    margin-right: 2px;
+    margin-right: 4px;
+    min-width: 80px;
     font-size: 9pt;
 }
 QTabBar::tab:selected {
     background: #8E959E;
     color: #ffffff;
-    border-bottom: 2px solid #8E959E;
+    font-weight: bold;
 }
-QTabBar::tab:hover {
-    background: #DDE2E8;
+QTabBar::tab:hover:!selected {
+    background: #ECEFF3;
 }
 /* Dialog and Input Styles */
 #objectExplorerHeader {
@@ -489,4 +498,25 @@ QSpinBox {
 }
 QSpinBox:focus {
     border: 1px solid #0078d4;
+}
+
+/* Custom QTreeView Branches (Larger Chevrons) */
+QTreeView::branch:has-children:!has-siblings:closed,
+QTreeView::branch:closed:has-children:has-siblings {
+    border-image: none;
+    image: url(assets/chevron-right.svg);
+}
+
+QTreeView::branch:open:has-children:!has-siblings,
+QTreeView::branch:open:has-children:has-siblings  {
+    border-image: none;
+    image: url(assets/chevron-down.svg);
+}
+
+QTreeView::branch {
+    background: transparent;
+}
+
+QTreeView::branch:selected, QTreeView::branch:selected:active, QTreeView::branch:selected:!active {
+    background-color: #f0f0f0;
 }

@@ -33,7 +33,7 @@ def resolve_statistics_queries(item_data, obj_name):
 
     elif obj_type == "schema":
         schema = item_data.get("schema_name") or obj_name
-        queries.append((pg_queries.GET_SCHEMA_STATS, (schema, schema, schema)))
+        queries.append((pg_queries.GET_SCHEMA_STATS, (schema, schema)))
 
     elif obj_type == "connection":
         conn = item_data.get("conn_data") or item_data

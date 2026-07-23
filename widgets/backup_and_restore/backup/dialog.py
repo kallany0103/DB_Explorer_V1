@@ -195,26 +195,6 @@ class BackupDialog(QDialog):
             QDialog {
                 background-color: #f6f8fb;
             }
-            QTabWidget::pane {
-                border: 1px solid #d1d5db;
-                background: white;
-                border-radius: 4px;
-            }
-            QTabBar::tab {
-                background: #eef1f6;
-                padding: 8px 15px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                color: #555;
-            }
-            QTabBar::tab:selected {
-                background: white;
-                border: 1px solid #d1d5db;
-                border-bottom: none;
-                color: #1f2937;
-                font-weight: bold;
-            }
             QLineEdit, QComboBox, QSpinBox, QTreeWidget {
                 min-height: 28px;
                 border: 1px solid #d1d5db;
@@ -224,7 +204,6 @@ class BackupDialog(QDialog):
             }
             QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTreeWidget:focus {
                 border: 1px solid #0078d4;
-            }
             }
         """)
 

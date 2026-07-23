@@ -201,7 +201,7 @@ def toggle_table_search(manager):
         return
 
     search_box = tab.findChild(QLineEdit, "table_search_box")
-    search_btn = tab.findChild(QToolButton, "table_search_btn")
+    search_btn = tab.findChild(QPushButton, "table_search_btn")
 
     if search_box and search_btn:
         search_btn.hide()

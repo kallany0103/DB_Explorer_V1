@@ -11,11 +11,12 @@ import os
 # from PyQt6.QtGui import QPen, QBrush, QColor, QFont, QIcon, QPainter, QPixmap
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
-    QHeaderView, QLabel, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem,
-    QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, QToolBar, QPushButton, QFrame,
-    QStyledItemDelegate, QStyle, QStyleOptionProgressBar, QApplication
+    QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, QToolBar, QFrame,
+    QVBoxLayout, QHBoxLayout, QWidget, QLabel, QSplitter, QScrollArea, QTabWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QStyledItemDelegate, QStyle, 
+    QStyleOptionProgressBar, QApplication, QTreeWidget, QTreeWidgetItem
 )
+from ui.components import SecondaryButton
 from PySide6.QtCore import Qt, QRectF, Signal
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPixmap
 
@@ -79,7 +80,7 @@ class ExplainVisualizer(QWidget):
 
         # Main Tab Widget
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border-top: 1px solid #dee2e6; }")
+        self.tabs.setStyleSheet("")
         
         # 1. Graphical Tab
         graphics_tab = QWidget()
@@ -92,15 +93,15 @@ class ExplainVisualizer(QWidget):
         self.graph_toolbar.setMovable(False)
         self.graph_toolbar.setStyleSheet("background-color: #f8f9fa; border-bottom: 1px solid #dee2e6;")
         
-        self.btn_zoom_in = QPushButton("+")
+        self.btn_zoom_in = SecondaryButton("+")
         self.btn_zoom_in.setFixedSize(24, 24)
         self.btn_zoom_in.clicked.connect(lambda: self.graph_view.scale(1.2, 1.2))
         
-        self.btn_zoom_out = QPushButton("-")
+        self.btn_zoom_out = SecondaryButton("-")
         self.btn_zoom_out.setFixedSize(24, 24)
         self.btn_zoom_out.clicked.connect(lambda: self.graph_view.scale(0.8, 0.8))
         
-        self.btn_reset = QPushButton("Reset")
+        self.btn_reset = SecondaryButton("Reset")
         self.btn_reset.clicked.connect(lambda: self.graph_view.reset_view())
         
         self.graph_toolbar.addWidget(self.btn_zoom_in)
@@ -132,7 +133,7 @@ class ExplainVisualizer(QWidget):
         self.details_title = QLabel("Node Details")
         header_layout.addWidget(self.details_title)
         
-        btn_close = QPushButton("×")
+        btn_close = SecondaryButton("×")
         btn_close.setFlat(True)
         btn_close.setFixedSize(20, 20)
         btn_close.setStyleSheet("font-size: 16px; font-weight: bold;")

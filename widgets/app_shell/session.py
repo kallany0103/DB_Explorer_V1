@@ -19,6 +19,7 @@ def save_main_window_session(main_window, session_file):
         "window_state": main_window.saveState().toBase64().data().decode(),
         "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
+        "theme": getattr(main_window, "theme", "Grey (Default)"),
         "saved_tree_paths": getattr(main_window.connection_manager, "_saved_tree_paths", []),
         "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
         "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
@@ -79,6 +80,7 @@ def restore_main_window_session(main_window, session_file):
   
         main_window.pg_bin_path = session_data.get("pg_bin_path", "")
         main_window.use_wsl = session_data.get("use_wsl", False)
+        main_window.theme = session_data.get("theme", "Grey (Default)")
 
         main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
         main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)
@@ -154,20 +156,11 @@ def restore_main_window_session(main_window, session_file):
                 offset_val = current_tab.current_offset
                 
                 # 1. Sync Worksheet Limit Dropdown
-                rows_limit_combo = current_tab.findChild(QComboBox, "rows_limit_combo")
+                from PySide6.QtWidgets import QWidget
+                rows_limit_combo = current_tab.findChild(QWidget, "rows_limit_combo")
                 if rows_limit_combo:
                     rows_limit_combo.blockSignals(True)
                     limit_str = str(limit_val) if limit_val > 0 else "No Limit"
-                    if rows_limit_combo.findText(limit_str) == -1:
-                        insert_idx = 1
-                        for i in range(1, rows_limit_combo.count()):
-                            try:
-                                if limit_val < int(rows_limit_combo.itemText(i)):
-                                    break
-                            except ValueError:
-                                pass
-                            insert_idx += 1
-                        rows_limit_combo.insertItem(insert_idx, limit_str)
                     rows_limit_combo.setCurrentText(limit_str)
                     rows_limit_combo.blockSignals(False)
 

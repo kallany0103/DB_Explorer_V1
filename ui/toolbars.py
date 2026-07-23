@@ -5,7 +5,10 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QButtonGroup, 
     QToolButton, QComboBox, QMenu, QLabel, QListView
 )
-from ui.components import IconButton, SearchBox, ActionToolButton, DropdownToolButton
+from ui.components import (
+    IconButton, SearchBox, ActionToolButton, DropdownToolButton,
+    NavigationTabButton, ToolbarActionButton, SecondaryButton
+)
 
 class NavigationHeader(QWidget):
     """
@@ -32,7 +35,7 @@ class NavigationHeader(QWidget):
         first_btn = None
 
         for label, min_width, idx in tabs:
-            btn = QPushButton(label)
+            btn = NavigationTabButton(label)
             btn.setMinimumWidth(min_width)
             btn.setCheckable(True)
             self.button_group.addButton(btn, idx)
@@ -68,19 +71,17 @@ class WorksheetToolbar(QWidget):
         layout.setSpacing(6)
 
         # Open
-        self.open_btn = QToolButton()
+        self.open_btn = ToolbarActionButton(icon=manager.ws_open_file_action.icon())
         self.open_btn.setDefaultAction(manager.ws_open_file_action)
         self.open_btn.setIconSize(QSize(16, 16))
-        self.open_btn.setFixedHeight(30)
         self.open_btn.setMinimumWidth(26)
         self.open_btn.setToolTip("Open SQL File")
         layout.addWidget(self.open_btn)
 
         # Save
-        self.save_btn = QToolButton()
+        self.save_btn = ToolbarActionButton(icon=manager.ws_save_as_action.icon())
         self.save_btn.setDefaultAction(manager.ws_save_as_action)
         self.save_btn.setIconSize(QSize(16, 16))
-        self.save_btn.setFixedHeight(30)
         self.save_btn.setMinimumWidth(26)
         self.save_btn.setToolTip("Save SQL File")
         layout.addWidget(self.save_btn)
@@ -88,30 +89,26 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Execute
-        self.exec_btn = QToolButton()
+        self.exec_btn = ToolbarActionButton(icon=manager.ws_execute_action.icon())
         self.exec_btn.setDefaultAction(manager.ws_execute_action)
         self.exec_btn.setIconSize(QSize(16, 16))
-        self.exec_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.exec_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         exec_menu = QMenu(self.exec_btn)
         exec_menu.addAction(manager.ws_execute_new_tab_action)
         self.exec_btn.setMenu(exec_menu)
-        self.exec_btn.setFixedHeight(30)
         layout.addWidget(self.exec_btn)
 
         # Cancel
-        self.cancel_btn = QToolButton()
+        self.cancel_btn = ToolbarActionButton(icon=manager.ws_cancel_action.icon())
         self.cancel_btn.setDefaultAction(manager.ws_cancel_action)
         self.cancel_btn.setIconSize(QSize(16, 16))
-        self.cancel_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.cancel_btn.setFixedHeight(30)
         layout.addWidget(self.cancel_btn)
 
         # Explain
-        self.explain_combo = ActionToolButton("Explain Analyze", QIcon("assets/explain_icon.png"))
+        self.explain_combo = ActionToolButton("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.setFixedWidth(135)
-        self.explain_combo.addItem("Explain Analyze", QIcon("assets/explain_icon.png"))
-        self.explain_combo.addItem("Explain (Plan)", QIcon("assets/explain_icon.png"))
+        self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
         layout.addWidget(self.explain_combo)
 
@@ -133,12 +130,9 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Rows Limit
-        rows_label = QLabel("Limit:")
-        layout.addWidget(rows_label)
-
-        self.rows_limit_combo = DropdownToolButton("No Limit")
+        self.rows_limit_combo = DropdownToolButton("Limit", qta.icon("fa5s.list-ol"))
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(90)
+        self.rows_limit_combo.setFixedWidth(100)
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
         self.rows_limit_combo.itemTriggered.connect(
             lambda text: self.limit_changed.emit(text)
@@ -260,9 +254,8 @@ class ResultsInfoToolbar(QWidget):
 
         arrow_font = QFont("Segoe UI", 16, QFont.Weight.Bold)
 
-        self.prev_btn = QPushButton("◀")
-        self.prev_btn.setFixedSize(30, 28)
-        self.prev_btn.setFont(arrow_font)
+        self.prev_btn = SecondaryButton("◀")
+        self.prev_btn.setFixedWidth(30)
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prev_btn.setObjectName("prev_btn")
         self.prev_btn.clicked.connect(self._go_prev)
@@ -273,9 +266,8 @@ class ResultsInfoToolbar(QWidget):
         self.page_label.setFont(QFont("Segoe UI", 9))
         self.page_label.setObjectName("page_label")
 
-        self.next_btn = QPushButton("▶")
-        self.next_btn.setFixedSize(30, 28)
-        self.next_btn.setFont(arrow_font)
+        self.next_btn = SecondaryButton("▶")
+        self.next_btn.setFixedWidth(30)
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_btn.setObjectName("next_btn")
         self.next_btn.clicked.connect(self._go_next)
@@ -356,7 +348,7 @@ class ProcessFilterBar(QWidget):
 
         self.filter_buttons = {}
         for label, filter_id in filters:
-            btn = QPushButton(label)
+            btn = NavigationTabButton(label)
             btn.setCheckable(True)
             btn.setFixedHeight(28)
             btn.setMinimumWidth(84)
@@ -377,12 +369,12 @@ class ProcessFilterBar(QWidget):
         self.search_edit.textChanged.connect(lambda text: self.manager._filter_processes_table(self.tab_content, text))
         layout.addWidget(self.search_edit)
         
-        # View Log Button
-        self.view_log_btn = QPushButton(qta.icon("fa5s.file-alt"), "View Log")
+        # Action buttons
+        self.view_log_btn = SecondaryButton(qta.icon("fa5s.file-alt"), "View Log")
         self.view_log_btn.clicked.connect(lambda: self.manager._handle_view_log(self.tab_content))
         layout.addWidget(self.view_log_btn)
 
-        self.refresh_now_btn = QPushButton("Refresh")
+        self.refresh_now_btn = SecondaryButton("Refresh")
         self.refresh_now_btn.setObjectName("process_refresh_now_btn")
         self.refresh_now_btn.setFixedHeight(28)
         self.refresh_now_btn.setMinimumWidth(76)

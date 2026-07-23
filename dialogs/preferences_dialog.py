@@ -48,6 +48,20 @@ class PreferencesDialog(QDialog):
         wsl_help.setStyleSheet("color: gray; font-size: 8pt;")
         form_layout.addRow("", wsl_help)
         
+        # Theme Settings
+        from PySide6.QtWidgets import QComboBox
+        # Theme Selection
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Grey (Default)", "Light Blue", "Light Green"])
+        current_theme = getattr(self.main_window, "theme", "Grey (Default)")
+        
+        # fallback for old saved settings
+        if current_theme in ("Light", "Dark"):
+            current_theme = "Grey (Default)"
+            
+        self.theme_combo.setCurrentText(current_theme)
+        form_layout.addRow("Theme:", self.theme_combo)
+
         layout.addLayout(form_layout)
         layout.addStretch()
         
@@ -72,5 +86,6 @@ class PreferencesDialog(QDialog):
     def get_settings(self):
         return {
             "pg_bin_path": self.pg_bin_edit.text().strip(),
-            "use_wsl": self.use_wsl_check.isChecked()
+            "use_wsl": self.use_wsl_check.isChecked(),
+            "theme": self.theme_combo.currentText()
         }

@@ -23,7 +23,7 @@ from widgets.erd.view import ERDView
 from widgets.erd.property_panel import PropertyPanel
 from widgets.erd.palette import ERDPalette
 from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
-from ui.components import SearchBox
+from ui.components import ToolbarActionButton, SearchBox
 from widgets.erd.commands import AddTableCommand, AddConnectionCommand, AddNoteCommand
 from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
 from widgets.erd.sql_generator import SQLPreviewDialog, generate_sql_script
@@ -201,10 +201,7 @@ class ERDWidget(QWidget):
 
     def _build_toolbar_advanced_group(self) -> None:
         """Add SQL generator and search toolbar buttons plus their keyboard shortcuts."""
-        self.sql_btn = QToolButton()
-        self.sql_btn.setIcon(qta.icon('fa5s.database', color='#555555'))
-        self.sql_btn.setIconSize(QSize(16, 16))
-        self.sql_btn.setFixedHeight(30)
+        self.sql_btn = ToolbarActionButton(icon=qta.icon('fa5s.database', color='#555555'))
         self.sql_btn.setMinimumWidth(26)
         self.sql_btn.setToolTip("Generate SQL Script (Alt+Ctrl+S)")
         self.sql_btn.clicked.connect(self.generate_forward_sql)
@@ -213,10 +210,7 @@ class ERDWidget(QWidget):
         self.sql_shortcut.setShortcut("Alt+Ctrl+S")
         self.sql_shortcut.triggered.connect(self.generate_forward_sql)
         self.addAction(self.sql_shortcut)
-        self.search_btn = QToolButton()
-        self.search_btn.setIcon(qta.icon('fa5s.search', color='#555555'))
-        self.search_btn.setIconSize(QSize(16, 16))
-        self.search_btn.setFixedHeight(30)
+        self.search_btn = ToolbarActionButton(icon=qta.icon('fa5s.search', color='#555555'))
         self.search_btn.setMinimumWidth(26)
         self.search_btn.setToolTip("Search (Ctrl+F)")
         self.search_btn.clicked.connect(self.toggle_search)

@@ -3,6 +3,7 @@ from PySide6.QtGui import QIcon, QAction
 from PySide6.QtCore import Qt
 from typing import Optional
 import os
+import qtawesome as qta
 
 class SecondaryButton(QPushButton):
     """
@@ -75,6 +76,7 @@ class PrimaryButton(QPushButton):
             }
         """)
 
+
 class IconButton(SecondaryButton):
     """
     An icon-only button or a button where the icon is the primary visual element.
@@ -104,6 +106,7 @@ class IconButton(SecondaryButton):
             }
         """)
 
+
 class SearchBox(QLineEdit):
     """
     A standard search input field with a leading magnifying glass icon.
@@ -112,11 +115,24 @@ class SearchBox(QLineEdit):
         super().__init__(parent)
         self.setPlaceholderText(placeholder)
         
-        # Add search icon
-        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
-        icon_path = os.path.join(assets_dir, "search.svg")
-        if os.path.exists(icon_path):
-            self.addAction(QIcon(icon_path), QLineEdit.ActionPosition.LeadingPosition)
+        # Add search icon using qtawesome to ensure proper scaling
+        search_icon = qta.icon("fa5s.search", color="#8B929B", scale_factor=0.8)
+        self.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
+        
+        # Add padding to left so text doesn't hit icon
+        self.setStyleSheet("""
+            QLineEdit {
+                padding-left: 2px;
+                border: 1px solid #c4c9d4;
+                border-radius: 4px;
+                background-color: #ffffff;
+                color: #333333;
+                min-height: 20px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0078d4;
+            }
+        """)
             
 
 class PasswordBox(QLineEdit):
@@ -127,9 +143,8 @@ class PasswordBox(QLineEdit):
         super().__init__(parent)
         self.setEchoMode(QLineEdit.EchoMode.Password)
         
-        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
-        self._eye_icon = QIcon(os.path.join(assets_dir, "eye.svg"))
-        self._eye_off_icon = QIcon(os.path.join(assets_dir, "eye-off.svg"))
+        self._eye_icon = qta.icon("fa5s.eye", color="#8B929B", scale_factor=0.7)
+        self._eye_off_icon = qta.icon("fa5s.eye-slash", color="#8B929B", scale_factor=0.7)
         self._password_visible = False
         
         self._password_action = self.addAction(
@@ -218,15 +233,145 @@ class DropdownToolButton(ActionToolButton):
     """
     A ToolButton that acts like a QComboBox, updating its display text
     when an item is selected from its dropdown menu.
+    Supports an optional prefix that is displayed but not part of the underlying value.
     """
-    def __init__(self, default_text, icon=None, parent=None):
+    def __init__(self, default_text, icon=None, prefix="", parent=None):
         super().__init__(default_text, icon, parent)
-        self.itemTriggered.connect(self.setText)
+        self._prefix = prefix
+        self.itemTriggered.connect(self.setCurrentText)
         
     def currentText(self):
-        return self.text()
+        text = self.text()
+        if self._prefix and text.startswith(self._prefix):
+            return text[len(self._prefix):]
+        return text
         
     def setCurrentText(self, text):
-        self.setText(text)
+        if self._prefix and not text.startswith(self._prefix):
+            self.setText(f"{self._prefix}{text}")
+        else:
+            self.setText(text)
+
+
+class NavigationTabButton(QPushButton):
+    """
+    A checkable button used in navigation headers (e.g., Query, Output, Messages).
+    Typically placed inside a QButtonGroup to act like tabs.
+    """
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setCheckable(True)
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                color: #333333;
+                border: 1px solid #B8BEC6;
+                padding: 5px 15px;
+                min-width: 80px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #ECEFF3;
+            }
+            QPushButton:checked {
+                background-color: #8E959E;
+                color: #ffffff;
+                border-bottom: 1px solid #8E959E;
+                font-weight: bold;
+            }
+        """)
+
+
+class ToolbarActionButton(QToolButton):
+    """
+    A standard tool button for main toolbars (e.g., Open, Save, Execute).
+    Uses icon + text underneath or beside.
+    """
+    def __init__(self, text=None, icon=None, parent=None):
+        super().__init__(parent)
+        if text:
+            self.setText(text)
+        if icon:
+            self.setIcon(icon)
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.setFixedHeight(30)
+        self.setStyleSheet("""
+            QToolButton {
+                border: 1px solid #b9b9b9;
+                border-radius: 4px;
+                background-color: #ffffff;
+                color: #333333;
+                padding: 4px 8px;
+                font-size: 9pt;
+            }
+            QToolButton:hover {
+                background-color: #e8e8e8;
+                border-color: #9c9c9c;
+            }
+            QToolButton:pressed {
+                background-color: #dcdcdc;
+            }
+        """)
+
+
+class DangerButton(QPushButton):
+    """
+    A button for destructive actions like Delete, Drop, Remove.
+    Features a red aesthetic.
+    """
+    def __init__(self, text_or_icon, text=None, parent=None):
+        if isinstance(text_or_icon, QIcon):
+            super().__init__(text_or_icon, text if text else "", parent)
+        else:
+            super().__init__(text_or_icon, parent)
+            
+        self.setStyleSheet("""
+            QPushButton {
+                min-height: 26px;
+                padding: 4px 12px;
+                border: 1px solid #dc2626;
+                border-radius: 4px;
+                background-color: #ef4444;
+                color: #ffffff;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #dc2626;
+            }
+            QPushButton:pressed {
+                background-color: #b91c1c;
+            }
+            QPushButton:disabled {
+                background-color: #fca5a5;
+                border-color: #fca5a5;
+            }
+        """)
+
+
+class LinkButton(QPushButton):
+    """
+    A flat button that looks like a hyperlink.
+    """
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+                color: #006cbe;
+                text-align: left;
+            }
+            QPushButton:hover {
+                text-decoration: underline;
+                color: #005a9e;
+            }
+            QPushButton:pressed {
+                color: #004578;
+            }
+        """)
+
+
+
 
 

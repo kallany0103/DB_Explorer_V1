@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 import qtawesome as qta
 
-from ui.components import SecondaryButton
+from ui.components import SecondaryButton, LinkButton
 
 from widgets.test_cases.data.table import TABLE_COMMANDS
 from widgets.test_cases.data.view import VIEW_COMMANDS
@@ -133,9 +133,7 @@ class TestCasesWidget(QWidget):
                 collapsed_height = 6 * 18 + 16
                 text_edit.setFixedHeight(collapsed_height)
                 
-                show_more_btn = QPushButton("Show More")
-                show_more_btn.setStyleSheet("color: #0052cc; border: none; text-align: left; font-size: 9pt; background: transparent; margin: 0; padding: 0;")
-                show_more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                show_more_btn = LinkButton("Show More")
                 
                 def make_toggle(te=text_edit, btn=show_more_btn, f_h=full_height, c_h=collapsed_height):
                     def toggle(checked=False):
