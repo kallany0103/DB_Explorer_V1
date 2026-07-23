@@ -1,7 +1,13 @@
 import shutil
+import sys
 from pathlib import Path
 
 def _bundled_root() -> Path:
+    if getattr(sys, 'frozen', False):
+        meipass = getattr(sys, '_MEIPASS', None)
+        if meipass:
+            return Path(meipass) / "resources" / "pg_client"
+        return Path(sys.executable).parent / "resources" / "pg_client"
     return Path(__file__).parent.parent.parent / "resources" / "pg_client"
 
 def find_psql() -> str | None:

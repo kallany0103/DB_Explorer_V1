@@ -301,3 +301,73 @@ class SchemaLoader:
         except Exception as e:
             self.manager.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
 
+    def populate_oracle_schema(self, data, skip_restore=False):
+        """UI-only: render the Oracle table/view list emitted by OracleSchemaWorker."""
+        try:
+            conn_data = data.get("conn_data", {})
+            rows = data.get("rows", [])
+            self._prepare_schema_tree()
+
+            tables_group = QStandardItem("Tables")
+            tables_group.setEditable(False)
+            self.manager._set_tree_item_icon(tables_group, level="GROUP_TABLES")
+            tables_group.setData({'db_type': 'oracle', 'type': 'schema_group', 'group_name': 'Tables', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+            tables_type = QStandardItem("Group")
+            tables_type.setEditable(False)
+
+            views_group = QStandardItem("Views")
+            views_group.setEditable(False)
+            self.manager._set_tree_item_icon(views_group, level="GROUP_VIEWS")
+            views_group.setData({'db_type': 'oracle', 'type': 'schema_group', 'group_name': 'Views', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+            views_type = QStandardItem("Group")
+            views_type.setEditable(False)
+
+            mviews_group = QStandardItem("Materialized Views")
+            mviews_group.setEditable(False)
+            self.manager._set_tree_item_icon(mviews_group, level="GROUP_MATERIALIZED_VIEWS")
+            mviews_group.setData({'db_type': 'oracle', 'type': 'schema_group', 'group_name': 'Materialized Views', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
+            mviews_type = QStandardItem("Group")
+            mviews_type.setEditable(False)
+
+            for name, type_str in rows:
+                name_item = QStandardItem(name)
+                name_item.setEditable(False)
+
+                t_lower = type_str.lower()
+                if "materialized" in t_lower:
+                    self.manager._set_tree_item_icon(name_item, level="MATERIALIZED_VIEW")
+                    type_label = "Materialized View"
+                    target_group = mviews_group
+                elif t_lower == "view":
+                    self.manager._set_tree_item_icon(name_item, level="VIEW")
+                    type_label = "View"
+                    target_group = views_group
+                else:
+                    self.manager._set_tree_item_icon(name_item, level="TABLE")
+                    type_label = "Table"
+                    target_group = tables_group
+
+                item_data = {
+                    "db_type": "oracle",
+                    "conn_data": conn_data,
+                    "table_name": name,
+                    "table_type": type_label.upper(),
+                }
+                name_item.setData(item_data, Qt.ItemDataRole.UserRole)
+
+                type_item = QStandardItem(type_label)
+                type_item.setEditable(False)
+
+                name_item.appendRow(_create_loading_item(self.manager))
+                target_group.appendRow([name_item, type_item])
+
+            self.manager.schema_model.appendRow([tables_group, tables_type])
+            self.manager.schema_model.appendRow([views_group, views_type])
+            self.manager.schema_model.appendRow([mviews_group, mviews_type])
+
+            self._connect_expand_handler()
+            if not skip_restore:
+                self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
+
+        except Exception as e:
+            self.manager.status.showMessage(f"Error loading Oracle schema: {e}", 5000)

@@ -209,6 +209,8 @@ class ERDSchemaFetchWorker(QRunnable):
                     full_schema = executor.submit(
                         _subprocess_fetch_servicenow_schema, conn_info, table_name
                     ).result(timeout=300)
+            elif "ORACLE" in db_type_val:
+                full_schema = db.get_oracle_schema(conn_info)
             else:
                 try:
                     self.signals.error.emit(
@@ -334,3 +336,45 @@ class ServiceNowTableDetailsWorker(QRunnable):
                 self.signals.error.emit(str(exc))
             except RuntimeError:
                 pass
+
+class OracleSchemaWorker(QRunnable):
+    def __init__(self, conn_data):
+        super().__init__()
+        self.conn_data = conn_data
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        conn = None
+        try:
+            conn = db.create_oracle_connection_from_dict(self.conn_data)
+            if not conn:
+                try:
+                    self.signals.error.emit("Failed to establish Oracle connection.")
+                except RuntimeError:
+                    pass
+                return
+
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT object_name, object_type FROM user_objects "
+                "WHERE object_type IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW') "
+                "ORDER BY object_type, object_name"
+            )
+            # Map object_type to lower case string (e.g. 'table', 'view', 'materialized view')
+            rows = [(row[0], str(row[1]).lower()) for row in cursor.fetchall()]
+            
+            try:
+                self.signals.finished.emit({"conn_data": self.conn_data, "rows": rows})
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass

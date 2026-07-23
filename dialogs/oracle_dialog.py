@@ -54,6 +54,7 @@ class OracleConnectionDialog(BaseConnectionDialog):
     def getData(self):
         return {
             "name": self.name_input.text(),
+            "short_name": self.name_input.text(),
             "user": self.user_input.text(),
             "password": self.password_input.text(),
             "dsn": self.dsn_input.text(),

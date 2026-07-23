@@ -28,6 +28,7 @@ from widgets.connection_manager.context_menus import ContextMenuHandler
 from widgets.connection_manager.spinner import ConnectionSpinner
 from workers.connection_workers import (
     CsvSchemaWorker,
+    OracleSchemaWorker,
     PostgresSchemaWorker,
     ServiceNowSchemaWorker,
     SQLiteSchemaWorker,
@@ -563,9 +564,13 @@ class ConnectionManager(QWidget):
             worker = ServiceNowSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_servicenow_schema, skip_restore=skip_restore)
 
-        elif "oracle" in connection_type_name:
-            self.status.showMessage("Oracle connections are not currently supported.", 5000)
-            QMessageBox.information(self, "Not Supported", "Connecting to Oracle databases is not supported in this version.")
+        elif "oracle" in connection_type_name and conn_data.get("dsn"):
+            self.status.showMessage(f"Loading Oracle schema for {conn_name}...", 3000)
+            worker = OracleSchemaWorker(conn_data)
+            self._start_schema_load(
+                item, worker, self.schema_loader.populate_oracle_schema,
+                skip_restore=skip_restore
+            )
         else:
             self.status.showMessage("Unknown connection type.", 3000)
 

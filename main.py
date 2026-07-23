@@ -1,10 +1,11 @@
 # main.py
 import sys
 import os
+import pathlib
 import traceback
 import multiprocessing
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QPalette, QColor
+from PySide6.QtGui import QIcon
 from main_window import MainWindow
 from ui.theme import setup_theme
 from widgets.encryption.secure_sqlite import enable_transparent_encryption
@@ -24,6 +25,13 @@ if __name__ == "__main__":
         print(f"Database bootstrap failed: {e}", file=sys.stderr)
         
     app = QApplication(sys.argv)
+
+    # Set application icon (taskbar, title bar, Alt+Tab)
+    _icon_path = pathlib.Path(__file__).parent / "assets" / "sql_icon.ico"
+    if not _icon_path.exists():
+        _icon_path = pathlib.Path(__file__).parent / "assets" / "sql_icon.png"
+    app_icon = QIcon(str(_icon_path))
+    app.setWindowIcon(app_icon)
 
     setup_theme(app)
 

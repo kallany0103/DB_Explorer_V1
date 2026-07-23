@@ -2,7 +2,8 @@ from db.db_connections import (
     create_sqlite_connection, 
     create_postgres_connection,
     create_csv_connection,
-    create_servicenow_connection
+    create_servicenow_connection,
+    create_oracle_connection_from_dict
 )
 
 def get_sqlite_schema(db_path):
@@ -352,3 +353,98 @@ def get_postgres_available_schemas(conn_info: dict) -> list[str]:
     finally:
         if conn:
             conn.close()
+
+def get_oracle_schema(conn_data):
+    """
+    Retrieves metadata for all tables in an Oracle database for the connected user.
+    Returns a dict: { table_name: { columns: [...], foreign_keys: [...] } }
+    """
+    schema = {}
+    conn = create_oracle_connection_from_dict(conn_data)
+    if not conn:
+        return schema
+
+    try:
+        cursor = conn.cursor()
+
+        # 1. Get all tables for the current user
+        cursor.execute("SELECT table_name FROM user_tables")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        # 2. Get all columns for these tables
+        cursor.execute(
+            "SELECT table_name, column_name, data_type, nullable"
+            " FROM user_tab_columns"
+            " ORDER BY table_name, column_id"
+        )
+        all_columns = cursor.fetchall()
+
+        # Group columns by table
+        table_columns = {}
+        for t_name, c_name, d_type, nullable in all_columns:
+            if t_name not in table_columns:
+                table_columns[t_name] = []
+            table_columns[t_name].append({
+                "name": c_name,
+                "type": d_type,
+                "nullable": nullable == "Y",
+                "pk": False  # Will update below
+            })
+
+        # 3. Get Primary Keys
+        cursor.execute(
+            "SELECT cols.table_name, cols.column_name"
+            " FROM user_constraints cons"
+            " JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name"
+            " WHERE cons.constraint_type = 'P'"
+        )
+        pk_columns = cursor.fetchall()
+        pk_set = {(r[0], r[1]) for r in pk_columns}
+
+        # Update PK status in table_columns
+        for t_name, cols in table_columns.items():
+            for col in cols:
+                if (t_name, col["name"]) in pk_set:
+                    col["pk"] = True
+
+        # 4. Get Foreign Keys
+        cursor.execute(
+            "SELECT"
+            "    a.table_name AS src_table,"
+            "    a.column_name AS src_column,"
+            "    c_pk.table_name AS dest_table,"
+            "    b.column_name AS dest_column"
+            " FROM user_cons_columns a"
+            " JOIN user_constraints c ON a.constraint_name = c.constraint_name"
+            " JOIN user_constraints c_pk ON c.r_constraint_name = c_pk.constraint_name"
+            " JOIN user_cons_columns b"
+            "   ON c_pk.constraint_name = b.constraint_name AND a.position = b.position"
+            " WHERE c.constraint_type = 'R'"
+        )
+        fk_records = cursor.fetchall()
+
+        # Group FKs by table
+        table_fks = {}
+        for src_t, src_c, dst_t, dst_c in fk_records:
+            if src_t not in table_fks:
+                table_fks[src_t] = []
+            table_fks[src_t].append({
+                "from": src_c,
+                "table": dst_t,
+                "to": dst_c
+            })
+
+        # 5. Build final schema dictionary
+        for table in tables:
+            schema[table] = {
+                "table": table,
+                "columns": table_columns.get(table, []),
+                "foreign_keys": table_fks.get(table, [])
+            }
+
+    except Exception as e:
+        print(f"Error retrieving Oracle schema: {e}")
+    finally:
+        conn.close()
+
+    return schema

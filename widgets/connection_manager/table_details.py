@@ -353,6 +353,8 @@ class TableDetailsLoader:
             self.load_cdata_table_details(item, item_data)
         elif db_type == 'servicenow':
             self.load_servicenow_table_details(item, item_data)
+        elif db_type == 'oracle':
+            self.load_oracle_table_details(item, item_data)
             
         self.manager._restore_schema_tree_expansion_state()
 
@@ -399,6 +401,154 @@ class TableDetailsLoader:
         worker.signals.finished.connect(on_finished)
         worker.signals.error.connect(on_error)
         self.manager.thread_pool.start(worker)
+
+    def load_oracle_table_details(self, table_item, item_data):
+        """Fetch columns, constraints, and indexes for an Oracle table/view."""
+        if not item_data or table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
+            return
+
+        table_item.removeRows(0, table_item.rowCount())
+
+        table_name = item_data.get("table_name")
+        conn_data = item_data.get("conn_data")
+        if not table_name or not conn_data:
+            return
+
+        conn = None
+        try:
+            conn = db.create_oracle_connection_from_dict(conn_data)
+            if not conn:
+                table_item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
+                return
+
+            cursor = conn.cursor()
+
+            # --- Columns ---
+            cursor.execute(
+                "SELECT column_name, data_type, nullable, data_length, data_precision, data_scale "
+                "FROM user_tab_columns "
+                "WHERE table_name = :1 "
+                "ORDER BY column_id",
+                [table_name],
+            )
+            col_rows = cursor.fetchall()
+
+            # --- Primary key columns ---
+            cursor.execute(
+                "SELECT cols.column_name "
+                "FROM user_constraints cons "
+                "JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name "
+                "WHERE cons.constraint_type = 'P' AND cons.table_name = :1",
+                [table_name],
+            )
+            pk_set = {r[0] for r in cursor.fetchall()}
+
+            column_items = []
+            for col_name, data_type, nullable, data_length, precision, scale in col_rows:
+                if data_type in ("NUMBER",) and precision is not None:
+                    type_str = f"NUMBER({precision},{scale or 0})"
+                elif data_type in ("VARCHAR2", "CHAR", "NVARCHAR2", "NCHAR") and data_length:
+                    type_str = f"{data_type}({data_length})"
+                else:
+                    type_str = data_type
+
+                desc = f"{col_name} ({type_str})"
+                if col_name in pk_set:
+                    desc += " [PK]"
+                if nullable == "N":
+                    desc += " [NOT NULL]"
+
+                col_item = QStandardItem(desc)
+                col_item.setEditable(False)
+                self.manager._set_tree_item_icon(col_item, level="COLUMN")
+
+                col_data = item_data.copy()
+                col_data["type"] = "column"
+                col_data["column_name"] = col_name
+                col_item.setData(col_data, Qt.ItemDataRole.UserRole)
+                column_items.append(col_item)
+
+            columns_folder = QStandardItem(f"Columns ({len(column_items)})")
+            columns_folder.setEditable(False)
+            if not column_items:
+                columns_folder.appendRow(QStandardItem("No columns found"))
+            else:
+                for ci in column_items:
+                    columns_folder.appendRow(ci)
+            table_item.appendRow(columns_folder)
+
+            # --- Constraints (PK, UK, FK) ---
+            cursor.execute(
+                "SELECT cons.constraint_name, cons.constraint_type, cols.column_name "
+                "FROM user_constraints cons "
+                "JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name "
+                "WHERE cons.table_name = :1 AND cons.constraint_type IN ('P','U','R') "
+                "ORDER BY cons.constraint_type, cons.constraint_name, cols.position",
+                [table_name],
+            )
+            con_map: dict = {}
+            for con_name, con_type, col_name in cursor.fetchall():
+                if con_name not in con_map:
+                    label = {"P": "PRIMARY KEY", "U": "UNIQUE", "R": "FOREIGN KEY"}.get(con_type, con_type)
+                    con_map[con_name] = {"label": label, "cols": []}
+                con_map[con_name]["cols"].append(col_name)
+
+            constraints_folder = QStandardItem(f"Constraints ({len(con_map)})")
+            constraints_folder.setEditable(False)
+            if not con_map:
+                constraints_folder.appendRow(QStandardItem("No constraints"))
+            else:
+                for con_name, cdata in con_map.items():
+                    cols_str = ", ".join(cdata["cols"])
+                    desc = f"{con_name} [{cdata['label']}] ({cols_str})"
+                    con_item = QStandardItem(desc)
+                    con_item.setEditable(False)
+                    constraints_folder.appendRow(con_item)
+            table_item.appendRow(constraints_folder)
+
+            # --- Indexes ---
+            cursor.execute(
+                "SELECT idx.index_name, idx.uniqueness, cols.column_name "
+                "FROM user_indexes idx "
+                "JOIN user_ind_columns cols ON idx.index_name = cols.index_name "
+                "WHERE idx.table_name = :1 "
+                "ORDER BY idx.index_name, cols.column_position",
+                [table_name],
+            )
+            idx_map: dict = {}
+            for idx_name, uniqueness, col_name in cursor.fetchall():
+                if idx_name not in idx_map:
+                    idx_map[idx_name] = {"unique": uniqueness == "UNIQUE", "cols": []}
+                idx_map[idx_name]["cols"].append(col_name)
+
+            # Exclude indexes that back a PK/UK constraint (already shown above)
+            pk_uk_names = {n for n, d in con_map.items() if d["label"] in ("PRIMARY KEY", "UNIQUE")}
+            user_indexes = {n: d for n, d in idx_map.items() if n not in pk_uk_names}
+
+            indexes_folder = QStandardItem(f"Indexes ({len(user_indexes)})")
+            indexes_folder.setEditable(False)
+            if not user_indexes:
+                indexes_folder.appendRow(QStandardItem("No indexes"))
+            else:
+                for idx_name, idata in user_indexes.items():
+                    cols_str = ", ".join(idata["cols"])
+                    desc = f"{idx_name} ({cols_str})"
+                    if idata["unique"]:
+                        desc += " [UNIQUE]"
+                    idx_item = QStandardItem(desc)
+                    idx_item.setEditable(False)
+                    indexes_folder.appendRow(idx_item)
+            table_item.appendRow(indexes_folder)
+
+        except Exception as e:
+            table_item.appendRow(QStandardItem(f"Error: {e}"))
+            self.manager.status.showMessage(f"Error loading Oracle table details: {e}", 5000)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def load_sqlite_table_details(self, table_item, item_data):
         if not item_data or table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
