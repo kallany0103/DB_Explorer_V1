@@ -132,7 +132,7 @@ class WorksheetToolbar(QWidget):
         # Rows Limit
         self.rows_limit_combo = DropdownToolButton("Limit", qta.icon("fa5s.list-ol"))
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(100)
+        self.rows_limit_combo.setFixedWidth(125)
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
         self.rows_limit_combo.itemTriggered.connect(
             lambda text: self.limit_changed.emit(text)
