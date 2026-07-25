@@ -105,8 +105,8 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(self.cancel_btn)
 
         # Explain
-        self.explain_combo = ActionToolButton("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
-        self.explain_combo.setFixedWidth(135)
+        self.explain_combo = ActionToolButton("Explain", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo.setFixedWidth(112)
         self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
@@ -183,7 +183,7 @@ class ResultsInfoToolbar(QWidget):
         self.setObjectName("resultsInfoBar")
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 3, 6, 3)
+        layout.setContentsMargins(6, 2, 6, 2)
         layout.setSpacing(6)
 
         # Row Actions
@@ -212,7 +212,7 @@ class ResultsInfoToolbar(QWidget):
 
         # Table Search
         self.search_box = SearchBox()
-        self.search_box.setFixedHeight(28)
+        self.search_box.setFixedHeight(24)
         self.search_box.setFixedWidth(180)
         self.search_box.setObjectName("table_search_box")
         self.search_box.hide()
