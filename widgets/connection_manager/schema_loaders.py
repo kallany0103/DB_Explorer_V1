@@ -302,68 +302,86 @@ class SchemaLoader:
             self.manager.status.showMessage(f"Error loading ServiceNow schema: {e}", 5000)
 
     def populate_oracle_schema(self, data, skip_restore=False):
-        """UI-only: render the Oracle table/view list emitted by OracleSchemaWorker."""
+        """UI-only: render the Oracle schema list emitted by OracleSchemaWorker.
+
+        Builds a hierarchical tree::
+
+            Schemas
+              ├── SCOTT       (oracle_schema node, lazy-loaded on expand)
+              │   ├── Tables
+              │   ├── Views
+              │   ├── Materialized Views
+              │   ├── Procedures
+              │   ├── Functions
+              │   └── Sequences
+              └── HR
+                  └── ...
+        """
         try:
             conn_data = data.get("conn_data", {})
-            rows = data.get("rows", [])
+            schemas = data.get("schemas", [])
             self._prepare_schema_tree()
 
-            tables_group = QStandardItem("Tables")
-            tables_group.setEditable(False)
-            self.manager._set_tree_item_icon(tables_group, level="GROUP_TABLES")
-            tables_group.setData({'db_type': 'oracle', 'type': 'schema_group', 'group_name': 'Tables', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-            tables_type = QStandardItem("Group")
-            tables_type.setEditable(False)
+            schemas_root = QStandardItem("Schemas")
+            schemas_root.setEditable(False)
+            self.manager._set_tree_item_icon(schemas_root, level="GROUP_SCHEMAS")
+            schemas_root.setData(
+                {
+                    'db_type': 'oracle',
+                    'type': 'oracle_schemas_root',
+                    'conn_data': conn_data,
+                },
+                Qt.ItemDataRole.UserRole,
+            )
 
-            views_group = QStandardItem("Views")
-            views_group.setEditable(False)
-            self.manager._set_tree_item_icon(views_group, level="GROUP_VIEWS")
-            views_group.setData({'db_type': 'oracle', 'type': 'schema_group', 'group_name': 'Views', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-            views_type = QStandardItem("Group")
-            views_type.setEditable(False)
+            for owner in schemas:
+                schema_item = QStandardItem(owner)
+                schema_item.setEditable(False)
+                self.manager._set_tree_item_icon(schema_item, level="SCHEMA")
+                schema_item.setData(
+                    {
+                        'db_type': 'oracle',
+                        'type': 'oracle_schema',
+                        'schema_name': owner,
+                        'conn_data': conn_data,
+                    },
+                    Qt.ItemDataRole.UserRole,
+                )
+                schema_item.appendRow(_create_loading_item(self.manager))
 
-            mviews_group = QStandardItem("Materialized Views")
-            mviews_group.setEditable(False)
-            self.manager._set_tree_item_icon(mviews_group, level="GROUP_MATERIALIZED_VIEWS")
-            mviews_group.setData({'db_type': 'oracle', 'type': 'schema_group', 'group_name': 'Materialized Views', 'conn_data': conn_data}, Qt.ItemDataRole.UserRole)
-            mviews_type = QStandardItem("Group")
-            mviews_type.setEditable(False)
-
-            for name, type_str in rows:
-                name_item = QStandardItem(name)
-                name_item.setEditable(False)
-
-                t_lower = type_str.lower()
-                if "materialized" in t_lower:
-                    self.manager._set_tree_item_icon(name_item, level="MATERIALIZED_VIEW")
-                    type_label = "Materialized View"
-                    target_group = mviews_group
-                elif t_lower == "view":
-                    self.manager._set_tree_item_icon(name_item, level="VIEW")
-                    type_label = "View"
-                    target_group = views_group
-                else:
-                    self.manager._set_tree_item_icon(name_item, level="TABLE")
-                    type_label = "Table"
-                    target_group = tables_group
-
-                item_data = {
-                    "db_type": "oracle",
-                    "conn_data": conn_data,
-                    "table_name": name,
-                    "table_type": type_label.upper(),
-                }
-                name_item.setData(item_data, Qt.ItemDataRole.UserRole)
-
-                type_item = QStandardItem(type_label)
+                type_item = QStandardItem("Schema")
                 type_item.setEditable(False)
+                schemas_root.appendRow([schema_item, type_item])
 
-                name_item.appendRow(_create_loading_item(self.manager))
-                target_group.appendRow([name_item, type_item])
+            schemas_type_item = QStandardItem("Group")
+            schemas_type_item.setEditable(False)
+            self.manager.schema_model.appendRow([schemas_root, schemas_type_item])
 
-            self.manager.schema_model.appendRow([tables_group, tables_type])
-            self.manager.schema_model.appendRow([views_group, views_type])
-            self.manager.schema_model.appendRow([mviews_group, mviews_type])
+            # Public Database Links root
+            pub_dblinks_root = QStandardItem("Public Database Links")
+            pub_dblinks_root.setEditable(False)
+            self.manager._set_tree_item_icon(pub_dblinks_root, level="FDW_ROOT")
+            pub_dblinks_root.setData(
+                {'db_type': 'oracle', 'type': 'oracle_public_dblinks_root', 'conn_data': conn_data},
+                Qt.ItemDataRole.UserRole
+            )
+            pub_dblinks_root.appendRow(_create_loading_item(self.manager))
+            pub_dblinks_type = QStandardItem("Group")
+            pub_dblinks_type.setEditable(False)
+            self.manager.schema_model.appendRow([pub_dblinks_root, pub_dblinks_type])
+
+            # Public Synonyms root
+            pub_synonyms_root = QStandardItem("Public Synonyms")
+            pub_synonyms_root.setEditable(False)
+            self.manager._set_tree_item_icon(pub_synonyms_root, level="EXTENSION_ROOT")
+            pub_synonyms_root.setData(
+                {'db_type': 'oracle', 'type': 'oracle_public_synonyms_root', 'conn_data': conn_data},
+                Qt.ItemDataRole.UserRole
+            )
+            pub_synonyms_root.appendRow(_create_loading_item(self.manager))
+            pub_synonyms_type = QStandardItem("Group")
+            pub_synonyms_type.setEditable(False)
+            self.manager.schema_model.appendRow([pub_synonyms_root, pub_synonyms_type])
 
             self._connect_expand_handler()
             if not skip_restore:

@@ -26,9 +26,16 @@ class TableDetailsLoader:
         if not item_data:
             return
 
-        is_group = item_data.get('type') == 'schema_group' or item_data.get('type', '').endswith('_root')
+        _GROUP_TYPES = {
+            'schema_group', 'oracle_schema', 'oracle_schema_group', 'oracle_schemas_root',
+        }
+        is_group = (
+            item_data.get('type') in _GROUP_TYPES
+            or item_data.get('type', '').endswith('_root')
+        )
         if not force and not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
+
 
         self.manager._save_schema_tree_expansion_state()
 
@@ -354,8 +361,18 @@ class TableDetailsLoader:
         elif db_type == 'servicenow':
             self.load_servicenow_table_details(item, item_data)
         elif db_type == 'oracle':
-            self.load_oracle_table_details(item, item_data)
-            
+            node_type = item_data.get('type', '')
+            if node_type == 'oracle_schema':
+                self._expand_oracle_schema(item, item_data)
+            elif node_type == 'oracle_schema_group':
+                self._expand_oracle_schema_group(item, item_data)
+            elif node_type == 'oracle_public_dblinks_root':
+                self._expand_oracle_public_dblinks(item, item_data)
+            elif node_type == 'oracle_public_synonyms_root':
+                self._expand_oracle_public_synonyms(item, item_data)
+            else:
+                self.load_oracle_table_details(item, item_data)
+
         self.manager._restore_schema_tree_expansion_state()
 
     def load_servicenow_table_details(self, table_item, item_data):
@@ -402,14 +419,241 @@ class TableDetailsLoader:
         worker.signals.error.connect(on_error)
         self.manager.thread_pool.start(worker)
 
+    # ------------------------------------------------------------------
+    # Oracle: expand helpers
+    # ------------------------------------------------------------------
+
+    # Groups surfaced inside each Oracle schema node and their ALL_OBJECTS type
+    _ORACLE_GROUPS: tuple[tuple[str, str, str], ...] = (
+        ("Tables",            "TABLE",            "GROUP_TABLES"),
+        ("Views",             "VIEW",             "GROUP_VIEWS"),
+        ("Materialized Views","MATERIALIZED VIEW","GROUP_MATERIALIZED_VIEWS"),
+        ("Procedures",        "PROCEDURE",        "GROUP_PROCEDURES"),
+        ("Functions",         "FUNCTION",         "GROUP_FUNCTIONS"),
+        ("Sequences",         "SEQUENCE",         "GROUP_SEQUENCES"),
+        ("Packages",          "PACKAGE",          "GROUP_FUNCTIONS"),
+        ("Database Links",    "DATABASE LINK",    "FDW_ROOT"),
+        ("Synonyms",          "SYNONYM",          "EXTENSION_ROOT"),
+        ("Java",              "JAVA_GROUP",       "LANGUAGE_ROOT"),
+    )
+
+    def _expand_oracle_schema(self, item, item_data: dict) -> None:
+        """Expand an oracle_schema node into object-type group sub-nodes."""
+        item.removeRows(0, item.rowCount())
+        try:
+            for group_name, _, icon_level in self._ORACLE_GROUPS:
+                group_item = QStandardItem(group_name)
+                group_item.setEditable(False)
+                self.manager._set_tree_item_icon(group_item, level=icon_level)
+
+                group_data = item_data.copy()
+                group_data['type'] = 'oracle_schema_group'
+                group_data['group_name'] = group_name
+                group_item.setData(group_data, Qt.ItemDataRole.UserRole)
+                group_item.appendRow(_create_loading_item(self.manager))
+
+                type_item = QStandardItem("Group")
+                type_item.setEditable(False)
+                item.appendRow([group_item, type_item])
+        except Exception as e:
+            self.manager.status.showMessage(f"Error expanding Oracle schema: {e}", 5000)
+            item.appendRow(QStandardItem(f"Error: {e}"))
+
+    def _expand_oracle_schema_group(self, item, item_data: dict) -> None:
+        """Expand an oracle_schema_group node by querying ALL_OBJECTS."""
+        item.removeRows(0, item.rowCount())
+        group_name = item_data.get('group_name', '')
+        owner = item_data.get('schema_name', '')
+        conn_data = item_data.get('conn_data')
+
+        # Map UI group name → Oracle object_type string
+        oracle_type_map = {
+            group: ot
+            for group, ot, _ in self._ORACLE_GROUPS
+        }
+        oracle_type = oracle_type_map.get(group_name)
+        if not oracle_type or not owner or not conn_data:
+            item.appendRow(QStandardItem("No data"))
+            return
+
+        # Determine icon level and type label from group name
+        icon_level_map = {
+            "Tables": ("TABLE", "Table"),
+            "Views": ("VIEW", "View"),
+            "Materialized Views": ("MATERIALIZED_VIEW", "Materialized View"),
+            "Procedures": ("FUNCTION", "Procedure"),
+            "Functions": ("FUNCTION", "Function"),
+            "Sequences": ("SEQUENCE", "Sequence"),
+            "Packages": ("FUNCTION", "Package"),
+            "Database Links": ("FDW", "Database Link"),
+            "Synonyms": ("EXTENSION", "Synonym"),
+            "Java": ("LANGUAGE", "Java Object"),
+        }
+        icon_level, type_label = icon_level_map.get(group_name, ("TABLE", group_name.rstrip("s")))
+
+        conn = None
+        try:
+            conn = db.create_oracle_connection_from_dict(conn_data)
+            if not conn:
+                item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
+                return
+
+            cursor = conn.cursor()
+            
+            if oracle_type == "JAVA_GROUP":
+                cursor.execute(
+                    "SELECT object_name, object_type FROM all_objects "
+                    "WHERE owner = :owner AND object_type LIKE 'JAVA %' "
+                    "ORDER BY object_type, object_name",
+                    {"owner": owner},
+                )
+            else:
+                cursor.execute(
+                    "SELECT object_name, object_type FROM all_objects "
+                    "WHERE owner = :owner AND object_type = :obj_type "
+                    "ORDER BY object_name",
+                    {"owner": owner, "obj_type": oracle_type},
+                )
+            objects = cursor.fetchall()
+
+            if not objects:
+                item.appendRow(QStandardItem(f"No {group_name.lower()} found"))
+                return
+
+            for obj_name, obj_actual_type in objects:
+                obj_item = QStandardItem(obj_name)
+                obj_item.setEditable(False)
+                self.manager._set_tree_item_icon(obj_item, level=icon_level)
+
+                obj_data = item_data.copy()
+                obj_data['type'] = 'table'
+                obj_data['table_name'] = obj_name
+                obj_data['table_type'] = obj_actual_type
+                # Keep schema_name (owner) so load_oracle_table_details can use ALL_* views
+                obj_item.setData(obj_data, Qt.ItemDataRole.UserRole)
+
+                # Only tables/views have sub-details worth lazy-loading
+                if obj_actual_type in ('TABLE', 'VIEW', 'MATERIALIZED VIEW'):
+                    obj_item.appendRow(_create_loading_item(self.manager))
+
+                type_item = QStandardItem(type_label if oracle_type != "JAVA_GROUP" else obj_actual_type.title())
+                type_item.setEditable(False)
+                item.appendRow([obj_item, type_item])
+
+        except Exception as e:
+            item.appendRow(QStandardItem(f"Error: {e}"))
+            self.manager.status.showMessage(f"Error loading Oracle {group_name}: {e}", 5000)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def _expand_oracle_public_dblinks(self, item, item_data: dict) -> None:
+        """Expand the Public Database Links root node by querying ALL_DB_LINKS."""
+        item.removeRows(0, item.rowCount())
+        conn_data = item_data.get('conn_data')
+        
+        conn = None
+        try:
+            conn = db.create_oracle_connection_from_dict(conn_data)
+            if not conn:
+                item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
+                return
+
+            cursor = conn.cursor()
+            cursor.execute("SELECT db_link, host FROM all_db_links WHERE owner = 'PUBLIC' ORDER BY db_link")
+            links = cursor.fetchall()
+
+            if not links:
+                item.appendRow(QStandardItem("No public database links found"))
+                return
+
+            for db_link, host in links:
+                link_item = QStandardItem(db_link)
+                link_item.setEditable(False)
+                self.manager._set_tree_item_icon(link_item, level="FDW")
+                
+                link_data = item_data.copy()
+                link_data['type'] = 'oracle_dblink'
+                link_data['dblink_name'] = db_link
+                link_item.setData(link_data, Qt.ItemDataRole.UserRole)
+
+                type_item = QStandardItem(f"DB Link to {host}" if host else "DB Link")
+                type_item.setEditable(False)
+                item.appendRow([link_item, type_item])
+
+        except Exception as e:
+            item.appendRow(QStandardItem(f"Error: {e}"))
+            self.manager.status.showMessage(f"Error loading Public DB Links: {e}", 5000)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def _expand_oracle_public_synonyms(self, item, item_data: dict) -> None:
+        """Expand the Public Synonyms root node by querying ALL_SYNONYMS."""
+        item.removeRows(0, item.rowCount())
+        conn_data = item_data.get('conn_data')
+        
+        conn = None
+        try:
+            conn = db.create_oracle_connection_from_dict(conn_data)
+            if not conn:
+                item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
+                return
+
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT synonym_name, table_owner, table_name FROM all_synonyms "
+                "WHERE owner = 'PUBLIC' ORDER BY synonym_name"
+            )
+            synonyms = cursor.fetchall()
+
+            if not synonyms:
+                item.appendRow(QStandardItem("No public synonyms found"))
+                return
+
+            for syn_name, target_owner, target_name in synonyms:
+                syn_item = QStandardItem(syn_name)
+                syn_item.setEditable(False)
+                self.manager._set_tree_item_icon(syn_item, level="EXTENSION")
+                
+                syn_data = item_data.copy()
+                syn_data['type'] = 'oracle_synonym'
+                syn_data['synonym_name'] = syn_name
+                syn_item.setData(syn_data, Qt.ItemDataRole.UserRole)
+
+                type_item = QStandardItem(f"Synonym for {target_owner}.{target_name}")
+                type_item.setEditable(False)
+                item.appendRow([syn_item, type_item])
+
+        except Exception as e:
+            item.appendRow(QStandardItem(f"Error: {e}"))
+            self.manager.status.showMessage(f"Error loading Public Synonyms: {e}", 5000)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
     def load_oracle_table_details(self, table_item, item_data):
-        """Fetch columns, constraints, and indexes for an Oracle table/view."""
+        """Fetch columns, constraints, and indexes for an Oracle table/view.
+
+        Uses ``ALL_*`` data dictionary views so that tables from any accessible
+        schema (owner) are handled correctly, not just the current user's own.
+        """
         if not item_data or table_item.rowCount() == 0 or table_item.child(0).text() != "Loading...":
             return
 
         table_item.removeRows(0, table_item.rowCount())
 
         table_name = item_data.get("table_name")
+        owner = item_data.get("schema_name", "").upper() or None
         conn_data = item_data.get("conn_data")
         if not table_name or not conn_data:
             return
@@ -423,29 +667,51 @@ class TableDetailsLoader:
 
             cursor = conn.cursor()
 
-            # --- Columns ---
-            cursor.execute(
-                "SELECT column_name, data_type, nullable, data_length, data_precision, data_scale "
-                "FROM user_tab_columns "
-                "WHERE table_name = :1 "
-                "ORDER BY column_id",
-                [table_name],
-            )
+            # --- Columns (use ALL_TAB_COLUMNS; fall back to USER_TAB_COLUMNS) ---
+            if owner:
+                cursor.execute(
+                    "SELECT column_name, data_type, nullable, data_length,"
+                    " data_precision, data_scale "
+                    "FROM all_tab_columns "
+                    "WHERE owner = :owner AND table_name = :tname "
+                    "ORDER BY column_id",
+                    {"owner": owner, "tname": table_name},
+                )
+            else:
+                cursor.execute(
+                    "SELECT column_name, data_type, nullable, data_length,"
+                    " data_precision, data_scale "
+                    "FROM user_tab_columns "
+                    "WHERE table_name = :tname ORDER BY column_id",
+                    {"tname": table_name},
+                )
             col_rows = cursor.fetchall()
 
             # --- Primary key columns ---
-            cursor.execute(
-                "SELECT cols.column_name "
-                "FROM user_constraints cons "
-                "JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name "
-                "WHERE cons.constraint_type = 'P' AND cons.table_name = :1",
-                [table_name],
-            )
+            if owner:
+                cursor.execute(
+                    "SELECT cols.column_name "
+                    "FROM all_constraints cons "
+                    "JOIN all_cons_columns cols"
+                    "  ON cons.constraint_name = cols.constraint_name"
+                    " AND cons.owner = cols.owner "
+                    "WHERE cons.constraint_type = 'P'"
+                    "  AND cons.owner = :owner AND cons.table_name = :tname",
+                    {"owner": owner, "tname": table_name},
+                )
+            else:
+                cursor.execute(
+                    "SELECT cols.column_name "
+                    "FROM user_constraints cons "
+                    "JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name "
+                    "WHERE cons.constraint_type = 'P' AND cons.table_name = :tname",
+                    {"tname": table_name},
+                )
             pk_set = {r[0] for r in cursor.fetchall()}
 
             column_items = []
             for col_name, data_type, nullable, data_length, precision, scale in col_rows:
-                if data_type in ("NUMBER",) and precision is not None:
+                if data_type == "NUMBER" and precision is not None:
                     type_str = f"NUMBER({precision},{scale or 0})"
                 elif data_type in ("VARCHAR2", "CHAR", "NVARCHAR2", "NCHAR") and data_length:
                     type_str = f"{data_type}({data_length})"
@@ -478,14 +744,27 @@ class TableDetailsLoader:
             table_item.appendRow(columns_folder)
 
             # --- Constraints (PK, UK, FK) ---
-            cursor.execute(
-                "SELECT cons.constraint_name, cons.constraint_type, cols.column_name "
-                "FROM user_constraints cons "
-                "JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name "
-                "WHERE cons.table_name = :1 AND cons.constraint_type IN ('P','U','R') "
-                "ORDER BY cons.constraint_type, cons.constraint_name, cols.position",
-                [table_name],
-            )
+            if owner:
+                cursor.execute(
+                    "SELECT cons.constraint_name, cons.constraint_type, cols.column_name "
+                    "FROM all_constraints cons "
+                    "JOIN all_cons_columns cols"
+                    "  ON cons.constraint_name = cols.constraint_name"
+                    " AND cons.owner = cols.owner "
+                    "WHERE cons.owner = :owner AND cons.table_name = :tname"
+                    "  AND cons.constraint_type IN ('P','U','R') "
+                    "ORDER BY cons.constraint_type, cons.constraint_name, cols.position",
+                    {"owner": owner, "tname": table_name},
+                )
+            else:
+                cursor.execute(
+                    "SELECT cons.constraint_name, cons.constraint_type, cols.column_name "
+                    "FROM user_constraints cons "
+                    "JOIN user_cons_columns cols ON cons.constraint_name = cols.constraint_name "
+                    "WHERE cons.table_name = :tname AND cons.constraint_type IN ('P','U','R') "
+                    "ORDER BY cons.constraint_type, cons.constraint_name, cols.position",
+                    {"tname": table_name},
+                )
             con_map: dict = {}
             for con_name, con_type, col_name in cursor.fetchall():
                 if con_name not in con_map:
@@ -507,21 +786,32 @@ class TableDetailsLoader:
             table_item.appendRow(constraints_folder)
 
             # --- Indexes ---
-            cursor.execute(
-                "SELECT idx.index_name, idx.uniqueness, cols.column_name "
-                "FROM user_indexes idx "
-                "JOIN user_ind_columns cols ON idx.index_name = cols.index_name "
-                "WHERE idx.table_name = :1 "
-                "ORDER BY idx.index_name, cols.column_position",
-                [table_name],
-            )
+            if owner:
+                cursor.execute(
+                    "SELECT idx.index_name, idx.uniqueness, cols.column_name "
+                    "FROM all_indexes idx "
+                    "JOIN all_ind_columns cols ON idx.index_name = cols.index_name"
+                    " AND idx.owner = cols.index_owner "
+                    "WHERE idx.table_owner = :owner AND idx.table_name = :tname "
+                    "ORDER BY idx.index_name, cols.column_position",
+                    {"owner": owner, "tname": table_name},
+                )
+            else:
+                cursor.execute(
+                    "SELECT idx.index_name, idx.uniqueness, cols.column_name "
+                    "FROM user_indexes idx "
+                    "JOIN user_ind_columns cols ON idx.index_name = cols.index_name "
+                    "WHERE idx.table_name = :tname "
+                    "ORDER BY idx.index_name, cols.column_position",
+                    {"tname": table_name},
+                )
             idx_map: dict = {}
             for idx_name, uniqueness, col_name in cursor.fetchall():
                 if idx_name not in idx_map:
                     idx_map[idx_name] = {"unique": uniqueness == "UNIQUE", "cols": []}
                 idx_map[idx_name]["cols"].append(col_name)
 
-            # Exclude indexes that back a PK/UK constraint (already shown above)
+            # Exclude indexes backing a PK/UK constraint (already shown above)
             pk_uk_names = {n for n, d in con_map.items() if d["label"] in ("PRIMARY KEY", "UNIQUE")}
             user_indexes = {n: d for n, d in idx_map.items() if n not in pk_uk_names}
 

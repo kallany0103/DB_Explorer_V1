@@ -210,7 +210,7 @@ class ERDSchemaFetchWorker(QRunnable):
                         _subprocess_fetch_servicenow_schema, conn_info, table_name
                     ).result(timeout=300)
             elif "ORACLE" in db_type_val:
-                full_schema = db.get_oracle_schema(conn_info)
+                full_schema = db.get_oracle_schema(conn_info, schema_name=schema_name)
             else:
                 try:
                     self.signals.error.emit(
@@ -338,6 +338,28 @@ class ServiceNowTableDetailsWorker(QRunnable):
                 pass
 
 class OracleSchemaWorker(QRunnable):
+    """Fetches the list of accessible Oracle schema owners off the GUI thread.
+
+    Emits ``{"conn_data": ..., "schemas": ["OWNER1", "OWNER2", ...]}`` so the
+    UI can build a hierarchical Schemas → Owner → object-type groups tree, with
+    per-group contents loaded lazily on expand.
+    """
+
+    # Object types we want to surface in the schema tree
+    _OBJECT_TYPES = (
+        "TABLE",
+        "VIEW",
+        "MATERIALIZED VIEW",
+        "PROCEDURE",
+        "FUNCTION",
+        "SEQUENCE",
+        "PACKAGE",
+        "SYNONYM",
+        "DATABASE LINK",
+        "JAVA SOURCE",
+        "JAVA CLASS",
+    )
+
     def __init__(self, conn_data):
         super().__init__()
         self.conn_data = conn_data
@@ -355,16 +377,16 @@ class OracleSchemaWorker(QRunnable):
                 return
 
             cursor = conn.cursor()
+            placeholders = ",".join(f"'{t}'" for t in self._OBJECT_TYPES)
             cursor.execute(
-                "SELECT object_name, object_type FROM user_objects "
-                "WHERE object_type IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW') "
-                "ORDER BY object_type, object_name"
+                f"SELECT DISTINCT owner FROM all_objects "
+                f"WHERE object_type IN ({placeholders}) "
+                f"ORDER BY owner"
             )
-            # Map object_type to lower case string (e.g. 'table', 'view', 'materialized view')
-            rows = [(row[0], str(row[1]).lower()) for row in cursor.fetchall()]
-            
+            schemas = [row[0] for row in cursor.fetchall()]
+
             try:
-                self.signals.finished.emit({"conn_data": self.conn_data, "rows": rows})
+                self.signals.finished.emit({"conn_data": self.conn_data, "schemas": schemas})
             except RuntimeError:
                 pass
         except Exception as exc:
