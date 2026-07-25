@@ -18,8 +18,8 @@ class SecondaryButton(QPushButton):
             
         self.setStyleSheet("""
             QPushButton {
-                min-height: 26px;
-                padding: 4px 12px;
+                min-height: 22px;
+                padding: 2px 8px;
                 border: 1px solid #c4c9d4;
                 border-radius: 4px;
                 background-color: #ffffff;
@@ -90,9 +90,9 @@ class IconButton(SecondaryButton):
         # Override style to make it more suitable for icons
         self.setStyleSheet("""
             QPushButton {
-                min-height: 26px;
-                min-width: 26px;
-                padding: 4px;
+                min-height: 22px;
+                min-width: 22px;
+                padding: 2px;
                 border: 1px solid #e5e7eb;
                 border-radius: 4px;
                 background-color: #f9fafb;
@@ -190,7 +190,7 @@ class ActionToolButton(QToolButton):
                 border-radius: 4px;
                 background-color: #ffffff;
                 color: #333333;
-                padding: 4px 12px;
+                padding: 4px 28px 4px 12px;
                 font-size: 9pt;
             }
             QToolButton:hover {
