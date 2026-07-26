@@ -368,7 +368,7 @@ class OracleSchemaWorker(QRunnable):
     def run(self):
         conn = None
         try:
-            conn = db.create_oracle_connection_from_dict(self.conn_data)
+            conn = db.get_pooled_oracle_connection(conn_data=self.conn_data)
             if not conn:
                 try:
                     self.signals.error.emit("Failed to establish Oracle connection.")

@@ -493,7 +493,7 @@ class TableDetailsLoader:
 
         conn = None
         try:
-            conn = db.create_oracle_connection_from_dict(conn_data)
+            conn = db.get_pooled_oracle_connection(conn_data=conn_data)
             if not conn:
                 item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
                 return
@@ -557,7 +557,7 @@ class TableDetailsLoader:
         
         conn = None
         try:
-            conn = db.create_oracle_connection_from_dict(conn_data)
+            conn = db.get_pooled_oracle_connection(conn_data=conn_data)
             if not conn:
                 item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
                 return
@@ -601,7 +601,7 @@ class TableDetailsLoader:
         
         conn = None
         try:
-            conn = db.create_oracle_connection_from_dict(conn_data)
+            conn = db.get_pooled_oracle_connection(conn_data=conn_data)
             if not conn:
                 item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
                 return
@@ -660,7 +660,7 @@ class TableDetailsLoader:
 
         conn = None
         try:
-            conn = db.create_oracle_connection_from_dict(conn_data)
+            conn = db.get_pooled_oracle_connection(conn_data=conn_data)
             if not conn:
                 table_item.appendRow(QStandardItem("Error: Could not connect to Oracle"))
                 return

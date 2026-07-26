@@ -4,7 +4,7 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
-from db.connection_pool import get_or_create_pool
+from db.connection_pool import get_or_create_pool, get_or_create_oracle_pool
 # DEBUG-START
 import time
 # DEBUG-END
@@ -181,27 +181,38 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
         return None
 
 
-def create_oracle_connection(host, port, service_name, user, password):
-    """Establishes a connection to an Oracle database."""
+def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=None, password=None, conn_data=None, use_pool=True):
+    """
+    Get a pooled Oracle connection. Can accept either kwargs or a conn_data dictionary.
+    """
+    if conn_data is None:
+        conn_data = {
+            "host": host,
+            "port": port,
+            "service_name": service_name,
+            "user": user,
+            "password": password
+        }
+        
     try:
-        dsn = f"{host}:{port}/{service_name}"
-        conn = oracledb.connect(user=user, password=password, dsn=dsn)
-        return conn
+        if not use_pool:
+            # Fallback to direct connection if pooling is disabled
+            user = conn_data.get("user")
+            password = conn_data.get("password")
+            dsn = conn_data.get("dsn")
+            if not dsn:
+                host = conn_data.get("host")
+                port = conn_data.get("port") or 1521
+                service_name = conn_data.get("service_name")
+                dsn = f"{host}:{port}/{service_name}"
+            return oracledb.connect(user=user, password=password, dsn=dsn)
+            
+        pool = get_or_create_oracle_pool(conn_data)
+        return pool.acquire()
     except oracledb.DatabaseError as e:
-        print(f"Oracle connection error: {e}")
-        return None
-
-def create_oracle_connection_from_dict(conn_data):
-    """Establishes a connection to an Oracle database using a connection dictionary."""
-    try:
-        user = conn_data.get("user")
-        password = conn_data.get("password")
-        dsn = conn_data.get("dsn")
-        conn = oracledb.connect(user=user, password=password, dsn=dsn)
-        return conn
-    except oracledb.DatabaseError as e:
-        print(f"Oracle connection error: {e}")
-        return None
+        import logging
+        logging.error(f"Oracle connection error: {e}")
+        raise ConnectionError(f"Oracle connection error: {e}") from e
     
 def create_servicenow_connection(conn_data):
     try:

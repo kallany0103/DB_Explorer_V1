@@ -143,6 +143,17 @@ QTableView QTableCornerButton::section { background-color: #9FA6AF; border: 1px 
 }
 #messageView, #history_details_view, QTextEdit, QPlainTextEdit { font-family: Consolas, monospace; font-size: 10pt; background-color: white; border: 1px solid #B8BEC6; }
 #history_details_view { border-radius: 6px; padding: 8px; }
+#history_details_group {
+    border: 1px solid #b0b0b0;
+    border-radius: 4px;
+    margin-top: 8px;
+    font-weight: bold;
+}
+#history_details_group::title {
+    subcontrol-origin: margin;
+    left: 7px;
+    padding: 0 3px 0 3px;
+}
 
 #tab_status_label { padding: 3px 5px; background-color: #F7F8FA; border-top: 1px solid #B8BEC6; }
 

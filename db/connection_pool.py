@@ -16,6 +16,7 @@ import threading
 import time
 import psycopg2
 from psycopg2 import OperationalError
+import oracledb
 from typing import Dict, Optional, Tuple
 import logging
 
@@ -319,6 +320,9 @@ class PostgresConnectionPool:
 _connection_pools: Dict[Tuple, PostgresConnectionPool] = {}
 _pools_lock = threading.Lock()
 
+_oracle_connection_pools: Dict[Tuple, "oracledb.ConnectionPool"] = {}
+_oracle_pools_lock = threading.Lock()
+
 
 def get_or_create_pool(conn_params: Dict, 
                        min_connections: int = 2,
@@ -382,4 +386,46 @@ def close_all_pools():
         for pool in _connection_pools.values():
             pool.close_all()
         _connection_pools.clear()
-        logger.info("All connection pools closed")
+        
+    with _oracle_pools_lock:
+        for pool in _oracle_connection_pools.values():
+            try:
+                pool.close()
+            except Exception:
+                pass
+        _oracle_connection_pools.clear()
+        
+    logger.info("All connection pools closed")
+
+
+def get_or_create_oracle_pool(conn_params: Dict, 
+                              min_connections: int = 2,
+                              max_connections: int = 5) -> "oracledb.ConnectionPool":
+    """
+    Get or create a native connection pool for Oracle.
+    """
+    pool_key = (
+        conn_params.get('host', ''),
+        int(conn_params.get('port') or 1521),
+        conn_params.get('service_name', ''),
+        conn_params.get('user', '')
+    )
+    
+    with _oracle_pools_lock:
+        if pool_key not in _oracle_connection_pools:
+            user = conn_params.get("user")
+            password = conn_params.get("password")
+            dsn = conn_params.get("dsn")
+            
+            if not dsn:
+                host = conn_params.get("host")
+                port = conn_params.get("port") or 1521
+                service_name = conn_params.get("service_name")
+                dsn = f"{host}:{port}/{service_name}"
+                
+            pool = oracledb.create_pool(user=user, password=password, dsn=dsn,
+                                        min=min_connections, max=max_connections,
+                                        increment=1)
+            _oracle_connection_pools[pool_key] = pool
+            
+        return _oracle_connection_pools[pool_key]

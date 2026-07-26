@@ -214,12 +214,13 @@ def add_tab(manager):
     history_list_view.setIndentation(0)
 
     history_details_group = QGroupBox("Query Details")
+    history_details_group.setObjectName("history_details_group")
     history_details_layout = QVBoxLayout(history_details_group)
+    
     history_details_view = QTextEdit()
     history_details_view.setObjectName("history_details_view")
     history_details_view.setReadOnly(True)
     history_details_view.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-    history_details_view.setFont(QFont("Consolas", 10))
     history_details_view.setFont(QFont("Consolas", 10))
     history_details_layout.addWidget(history_details_view)
 

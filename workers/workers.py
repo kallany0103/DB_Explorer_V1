@@ -184,7 +184,7 @@ class RunnableExport(QRunnable):
                  conn = db.create_csv_connection(conn_data)
                  query = f'SELECT * FROM [{self.table_name}]'
             elif code in ('ORACLE', 'ORACLE_DB'):
-                 conn = db.create_oracle_connection_from_dict(conn_data)
+                 conn = db.get_pooled_oracle_connection(conn_data=conn_data)
                  query = f'SELECT * FROM {self.table_name}'
             else:
                  raise ValueError(f"Unsupported database type: {code}")
@@ -474,7 +474,7 @@ class RunnableQuery(QRunnable):
                 cursor = self._conn.cursor()
                 cursor.execute(self.query)
             elif code in ("ORACLE", "ORACLE_DB"):
-                self._conn = db.create_oracle_connection_from_dict(self.conn_data)
+                self._conn = db.get_pooled_oracle_connection(conn_data=self.conn_data)
                 if not self._conn:
                     raise ConnectionError("Failed to connect to Oracle database")
                 cursor = self._conn.cursor()
