@@ -1,8 +1,7 @@
 from db.db_connections import (
     create_sqlite_connection,
     create_postgres_connection,
-    create_oracle_connection,
-    create_oracle_connection_from_dict,
+    get_pooled_oracle_connection,
     create_servicenow_connection,
     create_csv_connection,
     get_pooled_postgres_connection,
@@ -55,14 +54,13 @@ csv_connection = create_csv_connection
 servicenow_connection = create_servicenow_connection
 postgres_connection = create_postgres_connection
 sqlite_connection = create_sqlite_connection
-oracle_connection = create_oracle_connection
+oracle_connection = get_pooled_oracle_connection
 
 
 __all__ = [
     "create_sqlite_connection",
     "create_postgres_connection",
-    "create_oracle_connection",
-    "create_oracle_connection_from_dict",
+    "get_pooled_oracle_connection",
     "create_servicenow_connection",
     "create_csv_connection",
     "get_pooled_postgres_connection",

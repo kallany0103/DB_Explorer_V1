@@ -3,7 +3,7 @@ from db.db_connections import (
     create_postgres_connection,
     create_csv_connection,
     create_servicenow_connection,
-    create_oracle_connection_from_dict
+    get_pooled_oracle_connection
 )
 
 def get_sqlite_schema(db_path):
@@ -368,7 +368,7 @@ def get_oracle_schema(conn_data, schema_name: str | None = None):
               Keys use the plain table name (not ``owner.table``).
     """
     schema: dict = {}
-    conn = create_oracle_connection_from_dict(conn_data)
+    conn = get_pooled_oracle_connection(conn_data=conn_data)
     if not conn:
         return schema
 
