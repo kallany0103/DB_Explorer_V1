@@ -345,6 +345,14 @@ class MainWindow(QMainWindow):
     def execute_query_in_new_output_tab(self):
         return self.worksheet_manager.execute_query(output_mode="new")
 
+    def commit_transaction(self):
+        return self.worksheet_manager.commit_transaction()
+
+    def rollback_transaction(self):
+        return self.worksheet_manager.rollback_transaction()
+
+    def toggle_autocommit(self, checked: bool):
+        return self.worksheet_manager.toggle_autocommit(checked)
 
     def refresh_all_comboboxes(self):
         self.worksheet_manager.refresh_all_comboboxes()

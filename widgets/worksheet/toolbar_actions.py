@@ -156,3 +156,25 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_format_sql_action.setShortcut("Ctrl+Shift+F")
     manager.ws_format_sql_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_format_sql_action.triggered.connect(main_window.format_sql_text)
+
+    manager.ws_commit_action = QAction(
+        qta.icon("mdi6.database-check", color="#28a745"), "Commit", manager
+    )
+    manager.ws_commit_action.setToolTip("Commit Transaction")
+    manager.ws_commit_action.setEnabled(False)
+    manager.ws_commit_action.triggered.connect(manager.commit_transaction)
+
+    manager.ws_rollback_action = QAction(
+        qta.icon("mdi.database-clock", color="#dc3545"), "Rollback", manager
+    )
+    manager.ws_rollback_action.setToolTip("Rollback Transaction")
+    manager.ws_rollback_action.setEnabled(False)
+    manager.ws_rollback_action.triggered.connect(manager.rollback_transaction)
+
+    manager.ws_autocommit_action = QAction(
+        qta.icon("fa5s.lock-open", color="#555555"), "Auto-Commit", manager
+    )
+    manager.ws_autocommit_action.setToolTip("Auto-Commit (Toggle)")
+    manager.ws_autocommit_action.setCheckable(True)
+    manager.ws_autocommit_action.setChecked(True)
+    manager.ws_autocommit_action.toggled.connect(manager.toggle_autocommit)

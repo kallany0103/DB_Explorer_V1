@@ -102,9 +102,34 @@ class WorksheetToolbar(QWidget):
         self.cancel_btn = ToolbarActionButton(icon=manager.ws_cancel_action.icon())
         self.cancel_btn.setDefaultAction(manager.ws_cancel_action)
         self.cancel_btn.setIconSize(QSize(16, 16))
-        layout.addWidget(self.cancel_btn)
+        layout.addWidget(manager.create_vertical_separator())
 
-        # Explain
+        # Auto-Commit
+        self.auto_commit_btn = ToolbarActionButton(icon=manager.ws_autocommit_action.icon())
+        self.auto_commit_btn.setDefaultAction(manager.ws_autocommit_action)
+        self.auto_commit_btn.setIconSize(QSize(16, 16))
+        self.auto_commit_btn.setMinimumWidth(26)
+        self.auto_commit_btn.setToolTip("Auto-Commit")
+        layout.addWidget(self.auto_commit_btn)
+
+        # Commit
+        self.commit_btn = ToolbarActionButton(icon=manager.ws_commit_action.icon())
+        self.commit_btn.setDefaultAction(manager.ws_commit_action)
+        self.commit_btn.setIconSize(QSize(16, 16))
+        self.commit_btn.setMinimumWidth(26)
+        self.commit_btn.setToolTip("Commit Transaction")
+        layout.addWidget(self.commit_btn)
+
+        # Rollback
+        self.rollback_btn = ToolbarActionButton(icon=manager.ws_rollback_action.icon())
+        self.rollback_btn.setDefaultAction(manager.ws_rollback_action)
+        self.rollback_btn.setIconSize(QSize(16, 16))
+        self.rollback_btn.setMinimumWidth(26)
+        self.rollback_btn.setToolTip("Rollback Transaction")
+        layout.addWidget(self.rollback_btn)
+
+        layout.addWidget(manager.create_vertical_separator())
+
         self.explain_combo = ActionToolButton("Explain", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.setFixedWidth(112)
         self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
