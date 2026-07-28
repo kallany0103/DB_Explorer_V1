@@ -559,3 +559,118 @@ class RunnableQuery(QRunnable):
                 self._conn = None
 
 
+# =========================================================
+# 4. RunnableTransactionQuery (Manual transaction mode)
+# =========================================================
+
+class RunnableTransactionQuery(QRunnable):
+    """
+    Executes a query on an *already-open* transaction connection.
+
+    Unlike RunnableQuery this worker:
+    - Does NOT open or close the connection.
+    - Does NOT commit.
+    - Leaves the transaction open so the user can accumulate statements
+      and commit/rollback when ready (industry-standard behaviour used
+      by DBeaver, DataGrip, pgAdmin, SQL Developer).
+
+    The connection is owned by a TransactionSession stored on the tab;
+    the WorksheetManager is responsible for calling commit/rollback.
+    """
+
+    def __init__(self, session, conn_data: dict, query: str, signals) -> None:
+        super().__init__()
+        self._session = session
+        self._conn = session.connection
+        self._conn_data = conn_data
+        self._query = query
+        self.signals = signals
+        self._is_cancelled = False
+
+    def cancel(self) -> None:
+        self._is_cancelled = True
+        try:
+            if hasattr(self._conn, "cancel"):
+                self._conn.cancel()
+            elif hasattr(self._conn, "interrupt"):
+                self._conn.interrupt()
+        except Exception:
+            pass
+
+    def run(self) -> None:
+        cursor = None
+        start_time = time.time()
+
+        try:
+            code = (self._conn_data.get("code") or "").upper()
+
+            cursor = self._conn.cursor()
+
+            if code in ("ORACLE", "ORACLE_DB"):
+                oracle_query = self._query.strip()
+                if oracle_query.endswith(";") and not oracle_query.upper().startswith(
+                    ("BEGIN", "DECLARE")
+                ):
+                    oracle_query = oracle_query[:-1]
+                cursor.execute(oracle_query)
+            else:
+                cursor.execute(self._query)
+
+            if self._is_cancelled:
+                return
+
+            results = cursor.fetchall() if cursor.description else []
+            columns: list = []
+            column_specs: list = []
+            if cursor.description:
+                columns, column_specs = resolve_column_specs(
+                    code,
+                    self._conn,
+                    self._conn_data,
+                    self._query,
+                    cursor.description,
+                )
+            row_count = (
+                len(results)
+                if cursor.description
+                else (cursor.rowcount if hasattr(cursor, "rowcount") else 0)
+            )
+            is_returning_results = bool(columns)
+            elapsed_time = time.time() - start_time
+            
+            if not is_returning_results:
+                if hasattr(self._session, "has_pending_changes"):
+                    self._session.has_pending_changes = True
+
+            emit_query_finished(
+                self.signals,
+                self._conn_data,
+                self._query,
+                results,
+                columns,
+                column_specs,
+                row_count,
+                elapsed_time,
+                is_returning_results,
+            )
+
+        except Exception as exc:
+            if hasattr(self._session, "has_pending_changes"):
+                self._session.has_pending_changes = True
+            if not self._is_cancelled:
+                elapsed_time = time.time() - start_time
+                emit_query_error(
+                    self.signals,
+                    self._conn_data,
+                    self._query,
+                    0,
+                    elapsed_time,
+                    str(exc),
+                )
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+

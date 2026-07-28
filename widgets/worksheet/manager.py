@@ -1,3 +1,5 @@
+import logging
+
 import qtawesome as qta
 
 from PySide6.QtWidgets import (
@@ -12,6 +14,7 @@ from PySide6.QtGui import (
     QIcon
 )
 
+from db.transaction_session import TransactionSession, UnsupportedTransactionError
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.editor_actions import (
     format_sql_text as format_sql_text_action,
@@ -57,6 +60,8 @@ from widgets.worksheet.utils import renumber_tabs as renumber_tabs_action, handl
 from widgets.app_shell.file_ops import open_find_dialog as open_find_dialog_action
 from widgets.worksheet.toolbar_actions import build_worksheet_toolbar_actions
 
+logger = logging.getLogger(__name__)
+
 class WorksheetManager(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -81,8 +86,17 @@ class WorksheetManager(QWidget):
         self.QUERY_TIMEOUT = 300000
         self.worksheet_icon_key = "mdi.database-edit"
         self.worksheet_icon_fallback_key = "ri.layout-6-fill"
+        # Maps tab widget → TransactionSession (only present when a transaction is open)
+        self.tab_transactions: dict[QWidget, TransactionSession] = {}
+        # Maps tab widget → bool (True = auto-commit ON, default)
+        self.tab_autocommit: dict[QWidget, bool] = {}
 
         build_worksheet_toolbar_actions(self)
+
+        # Update Commit/Rollback enabled state whenever the active tab changes
+        self.tab_widget.currentChanged.connect(
+            lambda _: self._update_transaction_button_states()
+        )
         
 
     def _get_worksheet_tab_icon(self):
@@ -189,14 +203,23 @@ class WorksheetManager(QWidget):
                     self.tab_timers[widget]["timeout_timer"].stop()
                     del self.tab_timers[widget]
 
+                # Roll back and close any pending transaction connection
+                if widget in self.tab_transactions:
+                    try:
+                        self.tab_transactions[widget].rollback()
+                    except Exception:
+                        pass
+                    del self.tab_transactions[widget]
+
                 self.results_manager.cleanup_tab_resources(widget)
                 self.tab_widget.removeTab(index)
                 widget.deleteLater()
-            
+
             if self.tab_widget.count() == 0:
                 self.add_tab()
-            
+
             self.renumber_tabs()
+            self._update_transaction_button_states()
 
 
     def add_tab(self):
@@ -221,7 +244,149 @@ class WorksheetManager(QWidget):
         explain_query_action(self)
 
     def execute_query(self, conn_data=None, query=None, output_mode="current", preserve_pagination=False):
-        execute_query_action(self, conn_data, query, output_mode, preserve_pagination)
+        """Execute a query. In auto-commit mode runs normally; otherwise uses an implicit transaction."""
+        current_tab = self.tab_widget.currentWidget()
+        if not current_tab:
+            return
+
+        is_autocommit = self.tab_autocommit.get(current_tab, True)
+        if is_autocommit:
+            execute_query_action(self, conn_data, query, output_mode, preserve_pagination)
+            return
+
+        # Manual transaction mode: start a session if one isn't already open
+        session = self.tab_transactions.get(current_tab)
+        if session is None or not session.is_open:
+            conn_data_resolved = conn_data or self._get_current_tab_conn_data(current_tab)
+            if not conn_data_resolved:
+                self.show_info("Please select a connection.")
+                return
+            try:
+                session = TransactionSession(conn_data_resolved)
+                session.open()
+                self.tab_transactions[current_tab] = session
+                self._update_transaction_button_states()
+            except Exception as exc:
+                self.show_info(f"Could not start transaction:\n{exc}")
+                return
+        self._execute_in_transaction(current_tab, conn_data, query)
+
+    # ------------------------------------------------------------------
+    # Transaction management
+    # ------------------------------------------------------------------
+
+    def _get_current_tab_conn_data(self, tab: QWidget) -> dict | None:
+        """Return the connection data dict for the combo box on *tab*."""
+        combo = tab.findChild(QComboBox, "db_combo_box") if tab else None
+        return combo.currentData() if combo else None
+
+    def _execute_in_transaction(self, tab: QWidget, conn_data=None, query=None) -> None:
+        """Run *query* inside the tab's open TransactionSession."""
+        from widgets.worksheet.query.query_preparation import (
+            extract_query_under_cursor,
+            get_query_editor,
+            get_tab_connection_data,
+        )
+        from widgets.worksheet.query.query_dispatch import dispatch_query
+        from workers import RunnableTransactionQuery, QuerySignals
+
+        resolved_conn_data = conn_data or get_tab_connection_data(tab)
+        if not resolved_conn_data:
+            self.show_info("No connection selected.")
+            return
+
+        if query is None:
+            editor = get_query_editor(tab)
+            query = extract_query_under_cursor(editor) if editor else ""
+
+        if not query or not query.strip():
+            self.show_info("Please enter a valid query.")
+            return
+
+        session = self.tab_transactions.get(tab)
+        if session is None or not session.is_open:
+            self.show_info("No open transaction found on this tab.")
+            return
+
+        signals = QuerySignals()
+        signals._target_tab = tab
+        signals._output_mode = "current"
+        signals._output_tab_index = None
+
+        runnable = RunnableTransactionQuery(
+            session, resolved_conn_data, query, signals
+        )
+        signals.finished.connect(self._on_query_finished_signal)
+        signals.error.connect(self._on_query_error_signal)
+
+        self.running_queries[tab] = runnable
+        self.thread_pool.start(runnable)
+
+    def toggle_autocommit(self, checked: bool) -> None:
+        """Switch auto-commit on or off for the current tab.
+
+        When turning auto-commit ON, any open transaction is committed first
+        (same behaviour as DBeaver and DataGrip).
+        """
+        tab = self.tab_widget.currentWidget()
+        if not tab:
+            return
+
+        self.tab_autocommit[tab] = checked
+        if checked and tab in self.tab_transactions:
+            # Auto-commit re-enabled — flush the pending transaction
+            self.commit_transaction()
+        self._update_transaction_button_states()
+
+    def commit_transaction(self) -> None:
+        """Commit the open transaction on the current tab."""
+        tab = self.tab_widget.currentWidget()
+        session = self.tab_transactions.pop(tab, None) if tab else None
+        if session is None:
+            self.show_info("No open transaction to commit.")
+            return
+        try:
+            session.commit()
+            logger.debug("WorksheetManager: transaction committed on tab %s", tab)
+        except Exception as exc:
+            self.show_info(f"Commit failed:\n{exc}")
+        finally:
+            self._update_transaction_button_states()
+
+    def rollback_transaction(self) -> None:
+        """Roll back the open transaction on the current tab."""
+        tab = self.tab_widget.currentWidget()
+        session = self.tab_transactions.pop(tab, None) if tab else None
+        if session is None:
+            self.show_info("No open transaction to roll back.")
+            return
+        try:
+            session.rollback()
+            logger.debug("WorksheetManager: transaction rolled back on tab %s", tab)
+        except Exception as exc:
+            self.show_info(f"Rollback failed:\n{exc}")
+        finally:
+            self._update_transaction_button_states()
+
+    def _update_transaction_button_states(self) -> None:
+        """Update toolbar button states to reflect the current tab's transaction state."""
+        tab = self.tab_widget.currentWidget()
+        session = self.tab_transactions.get(tab) if tab else None
+        has_open_txn = session is not None and session.is_open and getattr(session, "has_pending_changes", False)
+
+        if hasattr(self, "ws_commit_action"):
+            self.ws_commit_action.setEnabled(has_open_txn)
+        if hasattr(self, "ws_rollback_action"):
+            self.ws_rollback_action.setEnabled(has_open_txn)
+        if hasattr(self, "ws_autocommit_action"):
+            self.ws_autocommit_action.blockSignals(True)
+            is_auto = self.tab_autocommit.get(tab, True)
+            self.ws_autocommit_action.setChecked(is_auto)
+            if is_auto:
+                self.ws_autocommit_action.setIcon(qta.icon("fa5s.lock-open", color="#555555"))
+            else:
+                self.ws_autocommit_action.setIcon(qta.icon("fa5s.lock", color="#dc3545"))
+            self.ws_autocommit_action.blockSignals(False)
 
     def update_timer_label(self, label, tab):
         update_timer_label_action(self, label, tab)
@@ -235,6 +400,7 @@ class WorksheetManager(QWidget):
     def handle_query_error(self, current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message):
         handle_query_error_action(self, current_tab, output_tab_index, conn_data, query, row_count, elapsed_time, error_message)
         self._refresh_conn_status_icon(current_tab)
+        self._update_transaction_button_states()
 
 
 
@@ -300,6 +466,7 @@ class WorksheetManager(QWidget):
             self.status_message_label.setText("Error occurred")
         self._refresh_conn_status_icon(target_tab)
         self._refresh_editor_layout_for_tab(target_tab)
+        self._update_transaction_button_states()
 
     def _refresh_conn_status_icon(self, tab):
         if not tab:

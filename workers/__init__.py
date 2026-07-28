@@ -1,4 +1,4 @@
-from workers.workers import RunnableExport, RunnableExportFromModel, RunnableQuery
+from workers.workers import RunnableExport, RunnableExportFromModel, RunnableQuery, RunnableTransactionQuery
 from workers.connection_workers import (
     CsvSchemaWorker,
     OracleSchemaWorker,
@@ -13,6 +13,7 @@ __all__ = [
     "RunnableExport",
     "RunnableExportFromModel",
     "RunnableQuery",
+    "RunnableTransactionQuery",
     "CsvSchemaWorker",
     "OracleSchemaWorker",
     "PostgresSchemaWorker",
