@@ -42,14 +42,22 @@ class RestoreEngine(BackupRestoreBase):
         elif options.get("content") == "Only Schema":
             args.append("-s")
             
-        if options.get("no_owner"): args.append("--no-owner")
-        if options.get("no_privileges"): args.append("--no-privileges")
-        if options.get("no_tablespaces"): args.append("--no-tablespaces")
-        if options.get("no_comments"): args.append("--no-comments")
-        if options.get("clean"): args.append("--clean")
-        if options.get("single_transaction"): args.append("--single-transaction")
-        if options.get("exit_on_error"): args.append("--exit-on-error")
-        if options.get("verbose"): args.append("--verbose")
+        if options.get("no_owner"):
+            args.append("--no-owner")
+        if options.get("no_privileges"):
+            args.append("--no-privileges")
+        if options.get("no_tablespaces"):
+            args.append("--no-tablespaces")
+        if options.get("no_comments"):
+            args.append("--no-comments")
+        if options.get("clean"):
+            args.append("--clean")
+        if options.get("single_transaction"):
+            args.append("--single-transaction")
+        if options.get("exit_on_error"):
+            args.append("--exit-on-error")
+        if options.get("verbose"):
+            args.append("--verbose")
 
         args.append(final_input)
         

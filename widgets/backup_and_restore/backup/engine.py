@@ -2,6 +2,8 @@
 import os
 from ..core import BackupRestoreBase
 
+
+
 class BackupEngine(BackupRestoreBase):
     """Engine for generating backup commands."""
     
@@ -47,15 +49,24 @@ class BackupEngine(BackupRestoreBase):
         elif options.get("content") == "Only Schema":
             args.append("-s")
             
-        if options.get("no_owner"): args.append("--no-owner")
-        if options.get("no_privileges"): args.append("--no-privileges")
-        if options.get("no_tablespaces"): args.append("--no-tablespaces")
-        if options.get("no_comments"): args.append("--no-comments")
-        if options.get("enable_row_security"): args.append("--enable-row-security")
-        if options.get("clean"): args.append("--clean")
-        if options.get("inserts"): args.append("--inserts")
-        if options.get("column_inserts"): args.append("--column-inserts")
-        if options.get("verbose"): args.append("--verbose")
+        if options.get("no_owner"):
+            args.append("--no-owner")
+        if options.get("no_privileges"):
+            args.append("--no-privileges")
+        if options.get("no_tablespaces"):
+            args.append("--no-tablespaces")
+        if options.get("no_comments"):
+            args.append("--no-comments")
+        if options.get("enable_row_security"):
+            args.append("--enable-row-security")
+        if options.get("clean"):
+            args.append("--clean")
+        if options.get("inserts"):
+            args.append("--inserts")
+        if options.get("column_inserts"):
+            args.append("--column-inserts")
+        if options.get("verbose"):
+            args.append("--verbose")
         if options.get("compress") is not None and str(options.get("compress")) != "0":
             args.extend(["--compress", str(options["compress"])])
             

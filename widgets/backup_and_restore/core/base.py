@@ -22,8 +22,10 @@ class BackupRestoreBase:
         local_bin = os.path.join(app_root, "bin")
 
         search_paths = []
-        if settings_path: search_paths.append(settings_path)
-        if os.path.exists(local_bin): search_paths.append(local_bin)
+        if settings_path:
+            search_paths.append(settings_path)
+        if os.path.exists(local_bin):
+            search_paths.append(local_bin)
 
         for path in search_paths:
             if path and os.path.exists(path):

@@ -3,12 +3,12 @@ import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
     QLineEdit, QFileDialog, 
-    QLabel, QComboBox, QCheckBox, QTabWidget, QWidget,
-    QFrame, QGroupBox
+    QLabel, QComboBox, QCheckBox, QTabWidget, QWidget
 )
-from PySide6.QtCore import Qt, QSize
 import qtawesome as qta
 from ui.components import PrimaryButton, SecondaryButton, IconButton
+
+
 
 class RestoreDialog(QDialog):
     def __init__(self, parent=None, item_data=None):
@@ -30,7 +30,7 @@ class RestoreDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
         
-        # --- 1. General Tab ---
+        # General Tab
         general_tab = QWidget()
         self.tabs.addTab(general_tab, qta.icon("fa5s.file-alt", color="#555"), "General")
         general_layout = QFormLayout(general_tab)
@@ -73,7 +73,7 @@ class RestoreDialog(QDialog):
                 self.target_db_combo.addItem(conn.get("short_name", "Unknown"), conn)
             general_layout.addRow("Target Database:", self.target_db_combo)
 
-        # --- 2. Data Options Tab ---
+        # Data Options Tab
         data_tab = QWidget()
         self.tabs.addTab(data_tab, qta.icon("fa5s.database", color="#555"), "Data Options")
         data_layout = QFormLayout(data_tab)
@@ -93,7 +93,7 @@ class RestoreDialog(QDialog):
             data_layout.addRow("", self.no_privs_check)
             data_layout.addRow("", self.no_tablespaces_check)
 
-        # --- 3. Query Options Tab ---
+        # Query Options Tab
         query_tab = QWidget()
         self.tabs.addTab(query_tab, qta.icon("fa5s.terminal", color="#555"), "Query Options")
         query_layout = QFormLayout(query_tab)
@@ -108,7 +108,7 @@ class RestoreDialog(QDialog):
             query_layout.addRow("", self.single_transaction_check)
             query_layout.addRow("", self.exit_error_check)
 
-        # --- 4. Options Tab ---
+        #Options Tab
         misc_tab = QWidget()
         self.tabs.addTab(misc_tab, qta.icon("fa5s.sliders-h", color="#555"), "Options")
         misc_layout = QFormLayout(misc_tab)

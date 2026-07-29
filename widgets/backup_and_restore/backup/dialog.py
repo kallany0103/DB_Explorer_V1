@@ -6,11 +6,12 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QCheckBox, QTabWidget, QWidget,
     QTreeWidget, QTreeWidgetItem, QSpinBox
 )
-from PySide6.QtCore import Qt, QSize, QSettings
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QSettings
 from datetime import datetime
 import qtawesome as qta
 from ui.components import PrimaryButton, SecondaryButton, IconButton
+
+
 
 class BackupDialog(QDialog):
     def __init__(self, parent=None, item_data=None):
@@ -33,7 +34,7 @@ class BackupDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
         
-        # --- 1. General Tab ---
+        # General Tab
         general_tab = QWidget()
         self.tabs.addTab(general_tab, qta.icon("fa5s.file-alt", color="#555"), "General")
         general_layout = QFormLayout(general_tab)
@@ -92,7 +93,7 @@ class BackupDialog(QDialog):
             self.role_edit = QLineEdit()
             general_layout.addRow("Role Name:", self.role_edit)
 
-        # --- 2. Data Options Tab ---
+        #Data Options Tab
         data_tab = QWidget()
         self.tabs.addTab(data_tab, qta.icon("fa5s.database", color="#555"), "Data Options")
         data_layout = QFormLayout(data_tab)
@@ -113,7 +114,7 @@ class BackupDialog(QDialog):
             data_layout.addRow("", self.no_privs_check)
             data_layout.addRow("", self.no_tablespaces_check)
 
-        # --- 3. Query Options Tab ---
+        #Query Options Tab
         query_tab = QWidget()
         self.tabs.addTab(query_tab, qta.icon("fa5s.terminal", color="#555"), "Query Options")
         query_layout = QFormLayout(query_tab)
@@ -128,7 +129,7 @@ class BackupDialog(QDialog):
             query_layout.addRow("", self.inserts_check)
             query_layout.addRow("", self.column_inserts_check)
 
-        # --- 4. Options Tab ---
+        #Options Tab
         misc_tab = QWidget()
         self.tabs.addTab(misc_tab, qta.icon("fa5s.sliders-h", color="#555"), "Options")
         misc_layout = QFormLayout(misc_tab)
@@ -158,7 +159,7 @@ class BackupDialog(QDialog):
         elif self.db_type == "sqlite":
             misc_layout.addRow(QLabel("SQLite backups are direct file copies."))
 
-        # --- 5. Objects Tab (Postgres Only) ---
+        #Objects Tab (Postgres Only)
         if self.db_type == "postgres":
             self.objects_tab = QWidget()
             self.tabs.addTab(self.objects_tab, qta.icon("fa5s.sitemap", color="#555"), "Objects")
