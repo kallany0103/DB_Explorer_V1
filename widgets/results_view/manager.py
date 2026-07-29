@@ -7,9 +7,8 @@ from numbers import Number
 
 from PySide6.QtWidgets import (
     QWidget, QLabel, QTextEdit, QPushButton,
-    QVBoxLayout, QHBoxLayout, QSplitter,
-    QMessageBox, QDialog, QSpinBox, QFormLayout,
-    QTableView, QMenu, QComboBox, QToolButton, QStackedWidget
+    QVBoxLayout, QHBoxLayout, QMessageBox, QDialog, QSpinBox, QFormLayout,
+    QTableView, QMenu, QComboBox, QStackedWidget, QTreeView
 )
 from PySide6.QtCore import (
     Qt, QObject, QEvent
@@ -19,6 +18,7 @@ from PySide6.QtGui import (
 )
 
 from db.query_context import resolve_writable_table_context
+from widgets.results_view.notifications import add_connection_event
 import widgets.results_view.clipboard as clipboard
 import widgets.results_view.output_tabs as output_tabs
 import widgets.results_view.processes as processes
@@ -353,8 +353,6 @@ class ResultsManager(QObject):
         query_handler.handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode, output_tab_index)
 
     def add_connection_notification(self, conn_name):
-        from widgets.results_view.notifications import add_connection_event
-        from PySide6.QtWidgets import QTreeView
         target_tab = self.tab_widget.currentWidget()
         if not target_tab:
             return
@@ -465,26 +463,19 @@ class ResultsManager(QObject):
         if not options['filename']:
           QMessageBox.warning(self.main_window, "No Filename", "Export cancelled. No filename specified.")
           return
-        # 🧪 Force an invalid export option to simulate an error
-        # options["delimiter"] = None   # invalid delimiter will break df.to_csv()
-
-        # if options["delimiter"] == ',':
-        #     options["delimiter"] = None
-
-        # --- Find connection name dynamically ---
         current_tab = self.tab_widget.currentWidget()
         db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
         conn_name = "Unknown"
-        conn_id = None # --- MODIFICATION: (Previous change)
+        conn_id = None 
         
         if db_combo_box:
           index = db_combo_box.currentIndex()
           if index >= 0:
               conn_data = db_combo_box.itemData(index)
               conn_name = conn_data.get("short_name", "Unknown")
-              conn_id = conn_data.get("id") # --- MODIFICATION: (Previous change)
+              conn_id = conn_data.get("id")
 
-        # --- Create Process info ---
+        # Create Process info
         full_process_id = str(uuid.uuid4())
         short_id = full_process_id[:8]
         initial_data = {
@@ -495,10 +486,8 @@ class ResultsManager(QObject):
            "object": "Query Results",
            "time_taken": "...",
            "start_time": datetime.datetime.now().strftime("%Y-%m-%d, %I:%M:%S %p"),
-           "details": f"Exporting to {os.path.basename(options['filename'])}",
-           # --- START MODIFICATION (Previous change) ---
+           "details": f"Exporting to {os.path.basename(options['filename'])}",  
            "_conn_id": conn_id
-           # --- END MODIFICATION ---
         }
 
         signals = ProcessSignals()
@@ -531,8 +520,6 @@ class ResultsManager(QObject):
         processes.handle_process_error(self, process_id, error_message)
     
     def handle_process_output(self, process_id, text):
-        # We can stream this to the individual tab's message view or a global logger
-        # For now, let's update the "details" in the database or append to Messages
         current_tab = self.tab_widget.currentWidget()
         if current_tab:
             message_view = current_tab.findChild(QTextEdit, "message_view")

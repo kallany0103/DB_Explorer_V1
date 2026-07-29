@@ -107,8 +107,8 @@ def delete_selected_row(manager):
                     sql = f'DELETE FROM {qualified_table_name} WHERE "{pk_col}" = ?'
                     cursor.execute(sql, (pk_val,))
                 elif "SERVICENOW" in str(db_code):
-                    sql = f"DELETE FROM {qualified_table_name} WHERE {pk_col} = '{pk_val}'"
-                    cursor.execute(sql)
+                    sql = f"DELETE FROM {qualified_table_name} WHERE {pk_col} = ?"
+                    cursor.execute(sql, (pk_val,))
 
                 source_model.removeRow(row_idx)
                 deleted_count += 1

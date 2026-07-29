@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QTextEdit, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 def create_message_view(manager, tab_content):
     container = QWidget()
@@ -15,7 +16,6 @@ def create_message_view(manager, tab_content):
     message_view.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
     
     # Use professional monospaced font
-    from PySide6.QtGui import QFont
     mono_font = QFont("Consolas", 10)
     if not mono_font.exactMatch():
         mono_font = QFont("Courier New", 10)

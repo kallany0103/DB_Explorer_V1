@@ -1,18 +1,9 @@
 import json
 import os
-# from PyQt6.QtWidgets import (
-#     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
-#     QHeaderView, QLabel, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem,
-#     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem,
-#     QGraphicsTextItem, QGraphicsLineItem, QToolBar, QPushButton, QFrame,
-#     QProgressBar, QStyledItemDelegate, QStyle, QStyleOptionProgressBar, QApplication
-# )
-# from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal
-# from PyQt6.QtGui import QPen, QBrush, QColor, QFont, QIcon, QPainter, QPixmap
 
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, QToolBar, QFrame,
-    QVBoxLayout, QHBoxLayout, QWidget, QLabel, QSplitter, QScrollArea, QTabWidget,
+    QVBoxLayout, QHBoxLayout, QWidget, QLabel, QSplitter, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QStyledItemDelegate, QStyle, 
     QStyleOptionProgressBar, QApplication, QTreeWidget, QTreeWidgetItem
 )
@@ -456,8 +447,7 @@ class ExplainVisualizer(QWidget):
         if "Actual Loops" in node:
             node["loops"] = node["Actual Loops"]
         
-        # Add exact fields user requested if available or calculated
-        # (Some flags/factors are pgAdmin specific internals, we can try to approximate or just leave 0/1)
+
         node["inclusive_factor"] = 1 # Placeholder
         node["exclusive_factor"] = 1 # Placeholder
         node["inclusive_flag"] = 4 # Placeholder (pgAdmin enum?)
