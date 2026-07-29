@@ -184,7 +184,8 @@ class ExplorerMenuBuilder:
 
     def _object_menu(self, menu, item, index):
         item_data = item.data(Qt.ItemDataRole.UserRole)
-        if not item_data: return
+        if not item_data:
+            return
         
         display_name = item.text()
         table_type = item_data.get('table_type', 'TABLE').upper()

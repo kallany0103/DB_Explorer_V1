@@ -3,11 +3,9 @@
 Package-native implementation used as the primary ConnectionManager entrypoint.
 """
 
-
+import traceback
 import qtawesome as qta
-
-
-from PySide6.QtCore import Qt, QModelIndex
+from PySide6.QtCore import Qt, QModelIndex, QTimer
 from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (
     QWidget,
@@ -34,6 +32,8 @@ from workers.connection_workers import (
     SQLiteSchemaWorker,
     ERDSchemaFetchWorker
 )
+
+
 
 
 class ConnectionManager(QWidget):
@@ -261,7 +261,6 @@ class ConnectionManager(QWidget):
                 
         except Exception as e:
             self.status.showMessage(f"Error refreshing explorer: {e}", 5000)
-            import traceback
             traceback.print_exc()
     
     def _refresh_connection_subtree(self, item, conn_data, collapse=False):
@@ -276,14 +275,7 @@ class ConnectionManager(QWidget):
 
         conn_name = item.text()
 
-        # _skip_expansion_restore gates _save/_restore calls so that when
-        # collapse=True the saved state is never written and never restored,
-        # leaving the tree blank until we explicitly collapseAll() below.
         self._skip_expansion_restore = collapse
-
-        # Delegate to item_clicked, passing collapse as skip_restore.
-        # _start_schema_load will call collapseAll() in on_finished when
-        # skip_restore is True, which is AFTER the async worker completes.
         self.item_clicked(
             self.proxy_model.mapFromSource(self.model.indexFromItem(item)),
             skip_restore=collapse,
@@ -305,7 +297,6 @@ class ConnectionManager(QWidget):
             schema_item = self.schema_model.itemFromIndex(schema_index)
             if schema_item:
                 self._schema_spinner.start(schema_item)
-                from PySide6.QtWidgets import QApplication
                 QApplication.processEvents()
 
             if collapse:
@@ -324,7 +315,6 @@ class ConnectionManager(QWidget):
         self._spinner.stop()
 
         if collapse:
-            from PySide6.QtCore import QTimer
             QTimer.singleShot(500, lambda: setattr(self, '_skip_expansion_restore', False))
 
         self.status.showMessage(f"Table '{table_name}' refreshed.", 3000)
@@ -387,7 +377,6 @@ class ConnectionManager(QWidget):
         # Spinner helper (sync ops: shows one frame; better than nothing)
         def _spin_and_reload(target_index, target_item):
             self._schema_spinner.start(target_item)
-            from PySide6.QtWidgets import QApplication
             QApplication.processEvents()
             self.table_details_loader.load_tables_on_expand(target_index, force=True)
             self._schema_spinner.stop()
@@ -402,7 +391,6 @@ class ConnectionManager(QWidget):
                         self._skip_expansion_restore = collapse
                         _spin_and_reload(parent_index, parent_item)
                         if collapse:
-                            from PySide6.QtCore import QTimer
                             QTimer.singleShot(300, lambda: self.schema_tree.collapse(parent_index) if parent_index.isValid() else None)
                             QTimer.singleShot(600, lambda: setattr(self, '_skip_expansion_restore', False))
                         self.status.showMessage(f"Group '{display_name}' refreshed.", 3000)
@@ -412,7 +400,6 @@ class ConnectionManager(QWidget):
         _spin_and_reload(index, item)
 
         if collapse and node_type != 'schema_group':
-            from PySide6.QtCore import QTimer
             QTimer.singleShot(300, lambda: self.schema_tree.collapse(index) if index.isValid() else None)
             QTimer.singleShot(600, lambda: setattr(self, '_skip_expansion_restore', False))
 
@@ -591,8 +578,6 @@ class ConnectionManager(QWidget):
                 self.schema_tree.repaint()
                 try:
                     populate_fn(data, skip_restore=skip_restore)
-                    # collapse=True (Reset Tree): collapseAll AFTER populate so
-                    # restore logic inside populate_fn has no effect.
                     if skip_restore:
                         self.schema_tree.collapseAll()
                 except Exception as exc:

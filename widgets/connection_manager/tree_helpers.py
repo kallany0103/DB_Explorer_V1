@@ -1,7 +1,4 @@
-# from PyQt6.QtCore import Qt, QEvent
-# from PyQt6.QtGui import QIcon
-
-from PySide6.QtCore import Qt, QEvent, QModelIndex
+from PySide6.QtCore import Qt, QEvent, QModelIndex, QItemSelectionModel
 from PySide6.QtGui import QIcon
 import qtawesome as qta
 
@@ -293,7 +290,6 @@ class TreeHelpers:
                         break
                         
                 if final_index and final_index.isValid():
-                    from PySide6.QtCore import QItemSelectionModel
                     tree.selectionModel().select(final_index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
                     tree.setCurrentIndex(final_index)
                     

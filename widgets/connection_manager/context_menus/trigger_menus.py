@@ -2,7 +2,9 @@
 """Modular context menu builder for Triggers."""
 
 from functools import partial
-from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, stub, submenu
+from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
+
+
 
 class TriggerMenuBuilder:
     def __init__(self, manager):
