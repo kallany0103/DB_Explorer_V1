@@ -1,8 +1,8 @@
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
 import os
 import json
+
 
 def get_saved_theme():
     """Reads the saved theme from session_state.json, defaulting to Grey (Default)."""

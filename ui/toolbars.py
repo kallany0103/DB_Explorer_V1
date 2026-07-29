@@ -1,14 +1,17 @@
 import qtawesome as qta
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QIcon, QKeySequence, QAction, QFont
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QPushButton, QButtonGroup, 
-    QToolButton, QComboBox, QMenu, QLabel, QListView
+    QWidget, QHBoxLayout, QButtonGroup, 
+    QToolButton, QMenu, QLabel
 )
 from ui.components import (
     IconButton, SearchBox, ActionToolButton, DropdownToolButton,
     NavigationTabButton, ToolbarActionButton, SecondaryButton
 )
+
+
+
 
 class NavigationHeader(QWidget):
     """
@@ -277,7 +280,7 @@ class ResultsInfoToolbar(QWidget):
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(6)
 
-        arrow_font = QFont("Segoe UI", 16, QFont.Weight.Bold)
+        QFont("Segoe UI", 16, QFont.Weight.Bold)
 
         self.prev_btn = SecondaryButton("◀")
         self.prev_btn.setFixedWidth(30)

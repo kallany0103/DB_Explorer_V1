@@ -1,9 +1,9 @@
-from PySide6.QtWidgets import QPushButton, QLineEdit
+from PySide6.QtWidgets import QPushButton, QLineEdit, QToolButton, QMenu
 from PySide6.QtGui import QIcon, QAction
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from typing import Optional
-import os
 import qtawesome as qta
+
 
 class SecondaryButton(QPushButton):
     """
@@ -162,8 +162,6 @@ class PasswordBox(QLineEdit):
         )
         self._password_action.setIcon(self._eye_off_icon if self._password_visible else self._eye_icon)
 
-from PySide6.QtWidgets import QToolButton, QMenu
-from PySide6.QtCore import Signal
 
 class ActionToolButton(QToolButton):
     """
