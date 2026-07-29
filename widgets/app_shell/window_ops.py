@@ -1,8 +1,4 @@
-# from PyQt6.QtWidgets import QSplitter, QMessageBox
-# from PyQt6.QtGui import QDesktopServices
-# from PyQt6.QtCore import QUrl
-
-from PySide6.QtWidgets import QSplitter, QMessageBox, QStackedWidget, QTabWidget, QTextEdit, QWidget, QPushButton
+from PySide6.QtWidgets import QSplitter, QMessageBox
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 import qtawesome as qta
