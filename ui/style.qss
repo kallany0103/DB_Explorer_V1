@@ -546,3 +546,18 @@ QTreeView::branch {
 QTreeView::branch:selected, QTreeView::branch:selected:active, QTreeView::branch:selected:!active {
     background-color: #f0f0f0;
 }
+
+/* Splash Screen Styles */
+QLabel#splashTitle { color: white; font-size: 28px; font-weight: bold; background: transparent; }
+QLabel#splashSubtitle { color: #a0aabf; font-size: 14px; background: transparent; }
+QLabel#splashStatus { color: #d1d5db; font-size: 12px; background: transparent; }
+QLabel#splashVersion { color: #6b7280; font-size: 11px; background: transparent; }
+QProgressBar#splashProgressBar {
+    background-color: #2d3448;
+    border: none;
+    border-radius: 2px;
+}
+QProgressBar#splashProgressBar::chunk {
+    background-color: #8E959E;
+    border-radius: 2px;
+}
