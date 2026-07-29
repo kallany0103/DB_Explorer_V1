@@ -16,7 +16,6 @@ class CreateTableDialog(QDialog):
         self.resize(650, 520)
         self.db_type = db_type
         
-        from PySide6.QtCore import Qt
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 

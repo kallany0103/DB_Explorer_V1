@@ -1,5 +1,6 @@
 # widgets/backup_and_restore/backup/engine.py
 import os
+import shutil
 from ..core import BackupRestoreBase
 
 
@@ -85,7 +86,6 @@ class BackupEngine(BackupRestoreBase):
 
     def perform_sqlite_backup(self, db_path, target_path):
         """Performs a backup of a SQLite database file."""
-        import shutil
         try:
             if not os.path.exists(db_path):
                 return False, f"Source database not found: {db_path}"

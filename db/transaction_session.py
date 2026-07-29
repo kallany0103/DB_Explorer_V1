@@ -13,6 +13,7 @@ All others raise UnsupportedTransactionError.
 from __future__ import annotations
 
 import logging
+import db
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,6 @@ class TransactionSession:
 
         if self.is_open:
             return  # already open — reuse
-
-        import db  # local import to avoid circular deps at module load time
 
         if self._code == "POSTGRES":
             db_name = self._conn_data.get("database", "postgres")

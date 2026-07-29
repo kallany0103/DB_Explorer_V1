@@ -9,6 +9,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSettings
 from datetime import datetime
 import qtawesome as qta
+import db
+import traceback
+from PySide6.QtWidgets import QMessageBox
 from ui.components import PrimaryButton, SecondaryButton, IconButton
 
 
@@ -247,10 +250,6 @@ class BackupDialog(QDialog):
         if not conn_data or not (conn_data.get("host") or conn_data.get("dsn")) or self.db_type != "postgres":
             return
             
-        import db
-        from PySide6.QtWidgets import QMessageBox
-        import traceback
-        
         conn = None
         try:
             conn = db.create_postgres_connection(conn_data)

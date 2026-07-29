@@ -1,5 +1,6 @@
 import sqlite3 as sqlite
 from db.db_connections import DB_FILE, get_pooled_postgres_connection, return_pooled_postgres_connection
+from workers.signals import tracker
 
 def get_all_connections_from_db():
     """Returns a list of dicts with full hierarchical connection info from usf_connections table."""
@@ -215,7 +216,6 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
         app_name = f"Universal SQL Client - {db_name}"
         
         # Get application-tracked transactions and tuples to filter out system noise
-        from workers.signals import tracker
         app_stats = tracker.get_stats()
         
         if conn is None:
@@ -363,7 +363,6 @@ def get_sqlite_session_stats(conn_data):
             return None
         
         # Get application-tracked transactions and tuples to filter out system noise
-        from workers.signals import tracker
         app_stats = tracker.get_stats()
         
         # Use a fresh connection with a short timeout

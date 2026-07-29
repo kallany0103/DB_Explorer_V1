@@ -2,7 +2,9 @@
 """Modular context menu builder for the Object Explorer (top QTreeView)."""
 
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMenu
 from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
+from widgets.connection_manager.menu_style import apply_menu_style
 
 class ExplorerMenuBuilder:
     def __init__(self, manager):
@@ -25,8 +27,6 @@ class ExplorerMenuBuilder:
         item = self.manager.model.itemFromIndex(source_index)
         depth = self.manager.get_item_depth(item)
         
-        from PySide6.QtWidgets import QMenu
-        from widgets.connection_manager.menu_style import apply_menu_style
         menu = QMenu()
         apply_menu_style(menu)
 

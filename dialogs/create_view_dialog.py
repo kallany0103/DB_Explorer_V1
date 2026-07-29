@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont
 
+from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
 
 
@@ -16,7 +17,6 @@ class CreateViewDialog(QDialog):
         self.resize(650, 550)
         self.db_type = db_type
         
-        from PySide6.QtCore import Qt
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 

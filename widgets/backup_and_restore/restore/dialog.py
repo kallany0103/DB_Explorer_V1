@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QCheckBox, QTabWidget, QWidget
 )
 import qtawesome as qta
+from PySide6.QtWidgets import QMessageBox
 from ui.components import PrimaryButton, SecondaryButton, IconButton
 
 
@@ -164,11 +165,9 @@ class RestoreDialog(QDialog):
     def handle_accept(self):
         path = self.filename_edit.text().strip()
         if not path:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "No File", "Please select a backup file to restore.")
             return
         if not os.path.exists(path):
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "File Not Found", f"The selected file does not exist:\n{path}")
             return
         self.accept()

@@ -3,7 +3,7 @@ import os
 
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtWidgets import QComboBox, QLabel
+from PySide6.QtWidgets import QComboBox, QLabel, QWidget
 
 from widgets.worksheet.code_editor import CodeEditor
 
@@ -154,7 +154,6 @@ def restore_main_window_session(main_window, session_file):
                 offset_val = current_tab.current_offset
                 
                 # 1. Sync Worksheet Limit Dropdown
-                from PySide6.QtWidgets import QWidget
                 rows_limit_combo = current_tab.findChild(QWidget, "rows_limit_combo")
                 if rows_limit_combo:
                     rows_limit_combo.blockSignals(True)
