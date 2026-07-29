@@ -2,6 +2,8 @@ import csv as _csv_mod
 import os
 import threading
 import sqlite3 as sqlite
+import db
+from db.db_connections import create_servicenow_connection
 
 try:
     import psycopg2
@@ -76,7 +78,6 @@ def _fetch_db_words(conn_data):
         elif code == "POSTGRES":
             if psycopg2 is None:
                 return [], [], {}, {}
-            import db
             pg_conn = db.get_pooled_postgres_connection(
                 conn_data,
                 application_name="Universal SQL Client (Autocomplete)",
@@ -139,7 +140,6 @@ def _fetch_db_words(conn_data):
 
         elif code == "SERVICENOW":
             try:
-                from db.db_connections import create_servicenow_connection
                 conn = create_servicenow_connection(conn_data)
                 if not conn:
                     return [], [], {}, {}
@@ -180,7 +180,6 @@ def fetch_columns(conn_data, table_name):
         elif code == "POSTGRES":
             if psycopg2 is None:
                 return []
-            import db
             pg_conn = db.get_pooled_postgres_connection(
                 conn_data,
                 application_name="Universal SQL Client (Autocomplete)",
@@ -222,7 +221,6 @@ def fetch_columns(conn_data, table_name):
 
         elif code == "SERVICENOW":
             try:
-                from db.db_connections import create_servicenow_connection
                 conn = create_servicenow_connection(conn_data)
                 if not conn:
                     return []

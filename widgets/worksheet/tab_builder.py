@@ -3,20 +3,18 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QSplitter,
-    QMenu,
     QComboBox,
-    QToolButton,
     QStackedWidget,
     QTextEdit,
     QLabel,
     QAbstractItemView,
-    QButtonGroup,
     QTreeView,
     QGroupBox,
     QFrame,
+    QListView,
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 import qtawesome as qta
 from widgets.worksheet.connections import get_connection_icon
 from ui.toolbars import WorksheetToolbar, NavigationHeader
@@ -103,7 +101,6 @@ def add_tab(manager):
     separator.setStyleSheet("color: #D3D3D3; margin: 0px;")
     conn_selection_layout.addWidget(separator)
 
-    from PySide6.QtWidgets import QListView
     db_combo_box = QComboBox()
     db_combo_box.setObjectName("db_combo_box")
     db_combo_box.setView(QListView())

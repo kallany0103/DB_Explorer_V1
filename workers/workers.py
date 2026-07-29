@@ -4,8 +4,9 @@ import time
 import multiprocessing as mp
 import pandas as pd
 import re
+import shutil
+import sqlparse
 # import cdata.csv as mod # Removed direct import, use db.create_csv_connection instead
-#from PyQt6.QtCore import QRunnable, Qt
 from PySide6.QtCore import QRunnable, Qt
 import db
 from db.result_metadata import resolve_column_specs
@@ -150,9 +151,8 @@ def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
             except Exception:
                 pass
 
-# =========================================================
+
 # 1. RunnableExport (For Large Data / Direct Export)
-# =========================================================
 class RunnableExport(QRunnable):
     def __init__(self, process_id, item_data, table_name, export_options, signals):
         super().__init__()
@@ -170,7 +170,7 @@ class RunnableExport(QRunnable):
             # Ensure 'code' exists
             code = (conn_data.get('code') or self.item_data.get('db_type') or '').upper()
             
-            # --- Connection Logic ---
+            # Connection Logic
             if code == 'SQLITE':
                 conn = db.create_sqlite_connection(conn_data["db_path"])
                 query = f'SELECT * FROM "{self.table_name}"'
@@ -204,11 +204,11 @@ class RunnableExport(QRunnable):
             if not delimiter:
                 delimiter = ','
             
-            # --- Check Semicolon for CSV/TXT ---
+            #Check Semicolon for CSV/TXT
             # Restriction removed to allow user selected delimiter
 
 
-            # --- CHUNKING LOGIC (To Fix Memory Issues) ---
+            #CHUNKING LOGIC (To Fix Memory Issues)
             chunk_size = 10000  # Process 10k rows at a time
             row_count = 0
             is_first_chunk = True
@@ -257,9 +257,9 @@ class RunnableExport(QRunnable):
             if conn:
                 conn.close()
 
-# =========================================================
-# 2. RunnableExportFromModel (Fixed __init__)
-# =========================================================
+
+# 2. RunnableExportFromModel 
+
 class RunnableExportFromModel(QRunnable):
     # FIX: Changed arguments to accept 'model'
     def __init__(self, process_id, model, export_options, signals):
@@ -332,7 +332,6 @@ class RunnableSqliteBackup(QRunnable):
         self.signals = signals
 
     def run(self):
-        import shutil
         start_time = time.time()
         try:
             if not os.path.exists(self.db_path):
@@ -355,7 +354,6 @@ class RunnableSqliteRestore(QRunnable):
         self.signals = signals
 
     def run(self):
-        import shutil
         start_time = time.time()
         try:
             if not os.path.exists(self.backup_path):
@@ -370,9 +368,8 @@ class RunnableSqliteRestore(QRunnable):
             emit_process_error(self.signals, self.process_id, str(e))
 
 
-# =========================================================
+
 # 3. RunnableQuery (Existing Query Worker)
-# =========================================================
 class RunnableQuery(QRunnable):
     def __init__(self, conn_data, query, signals):
         super().__init__()
@@ -397,8 +394,6 @@ class RunnableQuery(QRunnable):
                     self._conn.interrupt()
                 elif hasattr(self._conn, "cancel"): # Maybe some other drivers
                     self._conn.cancel()
-                # For PostgreSQL (psycopg2), we might need the raw connection or call cancel()
-                # Actually psycopg2 connection has a cancel() method.
             except Exception:
                 pass
 
@@ -418,7 +413,7 @@ class RunnableQuery(QRunnable):
                 elif "db_path" in self.conn_data:
                     code = "SQLITE"
 
-            # --- DB Execution ---
+            # DB Execution
             if code in ("SERVICENOW", "CSV"):
                 ctx = mp.get_context("spawn")
                 result_queue = ctx.Queue(maxsize=1)
@@ -454,7 +449,6 @@ class RunnableQuery(QRunnable):
                 cursor = self._conn.cursor()
                 
                 # Use sqlparse for much more reliable query splitting
-                import sqlparse
                 statements = sqlparse.split(self.query)
                 
                 if not statements:
@@ -498,7 +492,7 @@ class RunnableQuery(QRunnable):
             if self._is_cancelled:
                 return
 
-            # --- Handle Results ---
+            # Handle Results
             if code not in ("SERVICENOW", "CSV"):
                 results = cursor.fetchall() if cursor.description else []
                 columns = []
@@ -559,9 +553,7 @@ class RunnableQuery(QRunnable):
                 self._conn = None
 
 
-# =========================================================
 # 4. RunnableTransactionQuery (Manual transaction mode)
-# =========================================================
 
 class RunnableTransactionQuery(QRunnable):
     """

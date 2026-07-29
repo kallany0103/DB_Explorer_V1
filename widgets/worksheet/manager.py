@@ -14,8 +14,14 @@ from PySide6.QtGui import (
     QIcon
 )
 
-from db.transaction_session import TransactionSession, UnsupportedTransactionError
+from db.transaction_session import TransactionSession
 from widgets.worksheet.code_editor import CodeEditor
+from widgets.worksheet.query.query_preparation import (
+    extract_query_under_cursor,
+    get_query_editor,
+    get_tab_connection_data,
+)
+from workers import RunnableTransactionQuery, QuerySignals
 from widgets.worksheet.editor_actions import (
     format_sql_text as format_sql_text_action,
     clear_query_text as clear_query_text_action,
@@ -44,6 +50,7 @@ from widgets.worksheet.query_executor import (
 from widgets.worksheet.connections import (
     refresh_all_comboboxes as refresh_all_comboboxes_action,
     load_joined_connections as load_joined_connections_action,
+    get_connection_icon,
 )
 from widgets.worksheet.tab_builder import add_tab as add_tab_action
 from widgets.worksheet.history import (
@@ -130,7 +137,7 @@ class WorksheetManager(QWidget):
             return None
         return current_tab.findChild(CodeEditor, "query_editor")
 
-# {mitayan}
+
     def _refresh_editor_layout_for_tab(self, tab):
         if not tab:
             return
@@ -143,11 +150,11 @@ class WorksheetManager(QWidget):
         editor.lineNumberArea.update()
         editor.viewport().update()
 
-# {mitayan}
+
     def _refresh_active_editor_layout(self, _index):
         self._refresh_editor_layout_for_tab(self.tab_widget.currentWidget())
 
-# {mitayan}
+
     def create_vertical_separator(self):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.VLine)
@@ -271,9 +278,7 @@ class WorksheetManager(QWidget):
                 return
         self._execute_in_transaction(current_tab, conn_data, query)
 
-    # ------------------------------------------------------------------
     # Transaction management
-    # ------------------------------------------------------------------
 
     def _get_current_tab_conn_data(self, tab: QWidget) -> dict | None:
         """Return the connection data dict for the combo box on *tab*."""
@@ -282,13 +287,6 @@ class WorksheetManager(QWidget):
 
     def _execute_in_transaction(self, tab: QWidget, conn_data=None, query=None) -> None:
         """Run *query* inside the tab's open TransactionSession."""
-        from widgets.worksheet.query.query_preparation import (
-            extract_query_under_cursor,
-            get_query_editor,
-            get_tab_connection_data,
-        )
-        from widgets.worksheet.query.query_dispatch import dispatch_query
-        from workers import RunnableTransactionQuery, QuerySignals
 
         resolved_conn_data = conn_data or get_tab_connection_data(tab)
         if not resolved_conn_data:
@@ -474,7 +472,6 @@ class WorksheetManager(QWidget):
         combo = tab.findChild(QComboBox, "db_combo_box")
         status_icon = tab.findChild(QLabel, "conn_status_icon")
         if combo and status_icon:
-            from widgets.worksheet.connections import get_connection_icon
             data = combo.currentData()
             if data:
                 db_type = data.get("type", "")

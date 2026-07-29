@@ -10,6 +10,11 @@ from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.dashboard import DashboardWidget
 from widgets.inspector.properties_view import PropertiesWorkbench
 from widgets.inspector.statistics_view import StatisticsWorkbench
+from widgets.usql_tool.terminal_widget import USQLToolWidget
+from dialogs.preferences_dialog import PreferencesDialog
+from ui.theme import setup_theme
+import db
+
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
@@ -65,21 +70,21 @@ class MainWindow(QMainWindow):
         self._create_actions()
         self._create_menu()
 
-        # 4. --- Initialize Managers ---
+        # 4 Initialize Managers
 
         self.connection_manager = ConnectionManager(self)
         self.results_manager = ResultsManager(self)
         self.worksheet_manager = WorksheetManager(self)
         self.dashboard_widget = None
 
-        # --- Compatibility Aliases ---
+        # Compatibility Aliases
         self.tree = self.connection_manager.tree
         self.model = self.connection_manager.model
         self.proxy_model = self.connection_manager.proxy_model
         self.schema_tree = self.connection_manager.schema_tree
         self.schema_model = self.connection_manager.schema_model
 
-        # --- Layout Setup ---
+        # Layout Setup
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
         self.main_splitter.setChildrenCollapsible(False)
@@ -168,9 +173,8 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
-    # =========================================================================
-    # --- CORE WORKSHEET TAB ACTIONS ---
-    # =========================================================================
+
+    # CORE WORKSHEET TAB ACTIONS
 
     def add_tab(self):
         return self.worksheet_manager.add_tab()
@@ -361,9 +365,7 @@ class MainWindow(QMainWindow):
     def load_joined_connections(self, combo_box):
         return self.worksheet_manager.load_joined_connections(combo_box)
 
-    # =========================================================================
-    # --- APP SHELL BUILDERS (ACTIONS / MENUS / FILE) ---
-    # =========================================================================
+    # APP SHELL BUILDERS (ACTIONS / MENUS / FILE)
 
     def _create_actions(self):
         build_main_window_actions(self)
@@ -381,9 +383,7 @@ class MainWindow(QMainWindow):
     def save_sql_file_as(self):
         save_sql_file_as(self)
 
-    # =========================================================================
-    # --- FIND / REPLACE MENU ACTIONS ---
-    # =========================================================================
+    #FIND / REPLACE MENU ACTIONS
 
     def open_find_dialog(self, replace=False):
         open_find_dialog(self, replace)
@@ -400,9 +400,7 @@ class MainWindow(QMainWindow):
     def _on_replace_all(self, target, replacement, case, whole):
         on_replace_all(self, target, replacement, case, whole)
 
-    # =========================================================================
-    # --- EDITOR / QUERY COMMANDS ---
-    # =========================================================================
+    # EDITOR / QUERY COMMANDS
 
     def format_sql_text(self):
         self.worksheet_manager.format_sql_text()
@@ -497,14 +495,12 @@ class MainWindow(QMainWindow):
         if widget is not None and widget is self.dashboard_widget:
             self.dashboard_widget = None
 
-        from widgets.usql_tool.terminal_widget import USQLToolWidget
         if isinstance(widget, USQLToolWidget):
             widget.close_process()
         close_tab_action(self, index)
 
-    # =========================================================================
-    # --- WINDOW / HELP / STYLE / SESSION ---
-    # =========================================================================
+
+    # WINDOW / HELP / STYLE / SESSION
 
     def reset_layout(self, *args, **kwargs):
         reset_layout_action(self)
@@ -525,9 +521,6 @@ class MainWindow(QMainWindow):
         update_thread_pool_status_action(self)
    
     def show_preferences(self):
-        from dialogs.preferences_dialog import PreferencesDialog
-        from ui.theme import setup_theme
-        
         dialog = PreferencesDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
@@ -572,7 +565,6 @@ class MainWindow(QMainWindow):
 
             # Close all PostgreSQL connection pools
             try:
-                import db
                 db.close_all_postgres_pools()
             except Exception as e:
                 print(f"Error closing connection pools: {e}")
@@ -585,9 +577,7 @@ class MainWindow(QMainWindow):
         """Restore tabs and connections from saved session."""
         restore_main_window_session(self, self.SESSION_FILE)
 
-    # =========================================================================
-    # --- SCHEMA / CONNECTION MANAGER DELEGATIONS ---
-    # =========================================================================
+    #SCHEMA / CONNECTION MANAGER DELEGATIONS
 
     def load_postgres_schema(self, conn_data):
         self.connection_manager.load_postgres_schema(conn_data)
@@ -706,9 +696,7 @@ class MainWindow(QMainWindow):
     def _open_script_in_editor(self, item_data, sql):
         self.connection_manager.script_generator.open_script_in_editor(item_data, sql)
 
-    # =========================================================================
-    # --- RESULTS MANAGER DELEGATIONS ---
-    # =========================================================================
+    # RESULTS MANAGER DELEGATIONS
 
     def handle_query_result(self, target_tab, output_mode, output_tab_index, conn_data, query, results, columns, row_count, elapsed_time, is_select_query):
         self.worksheet_manager.handle_query_result(target_tab, output_mode, output_tab_index, conn_data, query, results, columns, row_count, elapsed_time, is_select_query)
@@ -753,9 +741,7 @@ class MainWindow(QMainWindow):
     def stop_spinner(self, target_tab, success=True, target_index=0):
         self.results_manager.stop_spinner(target_tab, success=success, target_index=target_index)
 
-    # =========================================================================
-    # --- WORKSHEET MANAGER DELEGATIONS ---
-    # =========================================================================
+    # WORKSHEET MANAGER DELEGATIONS
 
     def update_timer_label(self, label, tab):
         self.worksheet_manager.update_timer_label(label, tab)

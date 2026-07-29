@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import QLabel, QTextEdit
+import datetime
 
 
 def _get_message_view(tab):
@@ -37,7 +38,6 @@ def append_error_message(tab, error_message):
     if not message_view:
         return
         
-    import datetime
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     msg = f"[{timestamp}]  ERROR:\n\n{error_message}"
