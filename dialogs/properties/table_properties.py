@@ -2,14 +2,15 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
-    QTableView, QHeaderView, QAbstractItemView, QMessageBox, QLabel,
-    QHBoxLayout, QToolButton, QStyledItemDelegate
+    QTableView, QHeaderView, QMessageBox, QStyledItemDelegate
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt
-from ui.components import PrimaryButton, SecondaryButton
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
+
+
+
 
 class DataTypeDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
@@ -35,11 +36,15 @@ class DataTypeDelegate(QStyledItemDelegate):
         value = editor.currentText()
         model.setData(index, value, Qt.ItemDataRole.EditRole)
 
+
+
 class LeftAlignedHeaderModel(QStandardItemModel):
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
             return Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         return super().headerData(section, orientation, role)
+
+
 
 class TablePropertiesDialog(BasePropertiesDialog):
     def __init__(self, item_data, table_name, parent=None):
@@ -128,8 +133,8 @@ class TablePropertiesDialog(BasePropertiesDialog):
                 res = cursor.fetchone()
                 if res:
                     owner = res[0]
-                    schema = res[1]
-                    object_type = res[2]
+                    res[1]
+                    res[2]
                     comment = res[3]
                     self.comment_edit.setPlainText(comment or "")
                     self.original_owner = owner

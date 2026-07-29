@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
-    QTableView, QHeaderView, QMessageBox, QLabel
+    QTableView, QHeaderView, QMessageBox
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt

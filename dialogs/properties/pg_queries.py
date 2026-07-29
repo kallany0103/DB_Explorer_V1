@@ -4,7 +4,7 @@
 Centralized PostgreSQL catalog queries for database object properties.
 """
 
-# --- Table Queries ---
+#Table Queries
 
 GET_TABLE_DETAILS = """
     SELECT 
@@ -76,7 +76,7 @@ GET_TABLE_PRIVILEGES = """
     GROUP BY grantee_name, grantor_name;
 """
 
-# --- Schema Queries ---
+#Schema Queries
 
 GET_SCHEMA_DETAILS = """
     SELECT 
@@ -126,13 +126,13 @@ GET_DEFAULT_PRIVILEGES = """
     WHERE n.nspname = %s;
 """
 
-# --- Role Queries ---
+#Role Queries
 
 GET_ROLES = """
     SELECT rolname FROM pg_roles WHERE rolcanlogin = true ORDER BY rolname;
 """
 
-# --- Function Queries ---
+#Function Queries
 
 GET_FUNCTION_DETAILS = """
     SELECT 
@@ -166,7 +166,7 @@ GET_FUNCTION_PRIVILEGES = """
     GROUP BY grantee_name, grantor_name;
 """
 
-# --- Sequence Queries ---
+#Sequence Queries
 
 GET_SEQUENCE_DETAILS = """
     SELECT 
@@ -202,7 +202,7 @@ GET_SEQUENCE_PRIVILEGES = """
     GROUP BY grantee_name, grantor_name;
 """
 
-# --- Extension Queries ---
+#Extension Queries
 
 GET_EXTENSION_DETAILS = """
     SELECT 
@@ -216,7 +216,7 @@ GET_EXTENSION_DETAILS = """
     WHERE e.extname = %s;
 """
 
-# --- Language Queries ---
+#Language Queries
 
 GET_LANGUAGE_DETAILS = """
     SELECT 
@@ -229,7 +229,7 @@ GET_LANGUAGE_DETAILS = """
     WHERE lanname = %s;
 """
 
-# --- Foreign Data Wrapper Queries ---
+#Foreign Data Wrapper Queries
 
 GET_FDW_DETAILS = """
     SELECT 
@@ -243,7 +243,7 @@ GET_FDW_DETAILS = """
     WHERE fdwname = %s;
 """
 
-# --- Foreign Server Queries ---
+#Foreign Server Queries
 
 GET_FOREIGN_SERVER_DETAILS = """
     SELECT 
@@ -257,7 +257,7 @@ GET_FOREIGN_SERVER_DETAILS = """
     WHERE srvname = %s;
 """
 
-# --- User Mapping Queries ---
+#User Mapping Queries
 
 GET_USER_MAPPING_DETAILS = """
     SELECT 
@@ -269,7 +269,7 @@ GET_USER_MAPPING_DETAILS = """
     WHERE umuser::regrole::text = %s AND srvname = %s;
 """
 
-# --- Statistics Queries ---
+#Statistics Queries
 
 GET_TABLE_STATS = """
     SELECT 
@@ -352,98 +352,8 @@ GET_FOREIGN_TABLES_GROUP_STATS = """
     WHERE n.nspname = %s AND c.relkind = 'f';
 """
 
-GET_TRIGGER_FUNCTIONS_GROUP_STATS = """
-    SELECT count(*) AS "Object count"
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = %s AND p.prorettype = 'trigger'::regtype;
-"""
 
-GET_ALL_SCHEMAS_STATS = """
-    SELECT 
-        n.nspname AS "Schema",
-        count(*) FILTER (WHERE c.relkind IN ('r', 'p')) AS "Tables",
-        count(*) FILTER (WHERE c.relkind = 'v') AS "Views",
-        pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid))
-            FILTER (WHERE c.relkind IN ('r', 'p', 'm')), 0)) AS "Total size"
-    FROM pg_namespace n
-    LEFT JOIN pg_class c ON c.relnamespace = n.oid
-    WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema'
-    GROUP BY n.nspname
-    ORDER BY n.nspname;
-"""
-
-GET_SCHEMA_STATS = """
-    WITH counts AS (
-        SELECT 
-            count(*) FILTER (WHERE relkind = 'r') as tbl_count,
-            count(*) FILTER (WHERE relkind = 'v') as view_count,
-            count(*) FILTER (WHERE relkind = 'm') as mv_count,
-            count(*) FILTER (WHERE relkind = 'S') as seq_count
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = %s
-    ),
-    funcs AS (
-        SELECT count(*) as func_count
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = %s
-    ),
-    stats AS (
-        SELECT 
-            COALESCE(sum(seq_scan), 0) as seq_scans, 
-            COALESCE(sum(idx_scan), 0) as idx_scans, 
-            COALESCE(sum(n_tup_ins), 0) as inserts, 
-            COALESCE(sum(n_tup_upd), 0) as updates, 
-            COALESCE(sum(n_tup_del), 0) as deletes,
-            pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid)), 0)) as total_size
-        FROM pg_namespace n
-        LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relkind IN ('r', 't', 'm')
-        LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
-        WHERE n.nspname = %s
-    )
-    SELECT 
-        tbl_count as "Tables",
-        view_count as "Views",
-        mv_count as "Mat. Views",
-        seq_count as "Sequences",
-        func_count as "Functions",
-        seq_scans as "Sequential Scans",
-        idx_scans as "Index Scans",
-        inserts as "Inserts",
-        updates as "Updates",
-        deletes as "Deletes",
-        total_size as "Total Size"
-    FROM counts, funcs, stats;
-"""
-
-GET_SEQUENCE_STATS = """
-    SELECT 
-        last_value AS "Last value",
-        is_called AS "Called"
-    FROM pg_sequences
-    WHERE schemaname = %s AND sequencename = %s;
-"""
-
-GET_DATABASE_STATS = """
-    SELECT 
-        numbackends as "Backends",
-        xact_commit as "Commits",
-        xact_rollback as "Rollbacks",
-        blks_read as "Blocks Read",
-        blks_hit as "Blocks Hit",
-        tup_returned as "Tuples Returned",
-        tup_fetched as "Tuples Fetched",
-        tup_inserted as "Tuples Inserted",
-        tup_updated as "Tuples Updated",
-        tup_deleted as "Tuples Deleted",
-        pg_size_pretty(pg_database_size(datname)) as "Database Size"
-    FROM pg_stat_database
-    WHERE datname = %s;
-"""
-
-# --- Group Listing Queries ---
+# Group Listing Queries
 
 LIST_SCHEMAS = """
     SELECT 
@@ -586,49 +496,22 @@ GET_TRIGGER_DETAILS = """
     WHERE n.nspname = %s AND t.tgname = %s;
 """
 
-GET_TRIGGER_STATS = """
-    SELECT 
-        c.relname AS "Table",
-        p.proname AS "Function",
-        CASE 
-            WHEN (t.tgtype & 2) = 2 THEN 'BEFORE'
-            WHEN (t.tgtype & 64) = 64 THEN 'INSTEAD OF'
-            ELSE 'AFTER'
-        END AS "Timing",
-        TRIM(BOTH ' ' FROM (
-            CASE WHEN (t.tgtype & 4) = 4 THEN 'INSERT ' ELSE '' END ||
-            CASE WHEN (t.tgtype & 8) = 8 THEN 'DELETE ' ELSE '' END ||
-            CASE WHEN (t.tgtype & 16) = 16 THEN 'UPDATE ' ELSE '' END ||
-            CASE WHEN (t.tgtype & 32) = 32 THEN 'TRUNCATE ' ELSE '' END
-        )) AS "Events",
-        CASE WHEN (t.tgtype & 1) = 1 THEN 'ROW' ELSE 'STATEMENT' END AS "Level",
-        CASE t.tgenabled
-            WHEN 'O' THEN 'Enabled'
-            WHEN 'D' THEN 'Disabled'
-            WHEN 'A' THEN 'Always'
-            WHEN 'R' THEN 'Replica'
-            ELSE t.tgenabled::text
-        END AS "Status"
-    FROM pg_trigger t
-    JOIN pg_class c ON t.tgrelid = c.oid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_proc p ON p.oid = t.tgfoid
-    WHERE n.nspname = %s AND t.tgname = %s;
-"""
-
-GET_TRIGGERS_GROUP_STATS = """
-    SELECT 
-        count(*) AS "Object count",
-        count(*) FILTER (WHERE t.tgenabled IN ('O', 'A', 'R')) AS "Enabled",
-        count(*) FILTER (WHERE t.tgenabled = 'D') AS "Disabled"
-    FROM pg_trigger t
-    JOIN pg_class c ON t.tgrelid = c.oid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = %s AND c.relname = %s;
-"""
-
 def check_column_dependencies(cursor, schema_name, table_name, col_name):
     """Return list of (constraint_name, referencing_table) tuples for FK deps on col_name."""
+    # Resolve the column name to its attribute number first
+    cursor.execute(
+        "SELECT a.attnum FROM pg_attribute a "
+        "JOIN pg_class c ON c.oid = a.attrelid "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = %s AND c.relname = %s AND a.attname = %s "
+        "AND a.attnum > 0 AND NOT a.attisdropped",
+        (schema_name, table_name, col_name),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return []
+    attnum = row[0]
+
     q = """
         SELECT conname, relname
         FROM pg_constraint c
@@ -640,8 +523,8 @@ def check_column_dependencies(cursor, schema_name, table_name, col_name):
         )
         AND %s = ANY(c.confkey);
     """
-    cursor.execute(q, (schema_name, table_name, col_name)) # In a real implementation this would need attribute number resolution
-    return []
+    cursor.execute(q, (schema_name, table_name, attnum))
+    return cursor.fetchall()
 
 def get_primary_key_constraint(cursor, schema_name, table_name):
     q = """
@@ -656,27 +539,20 @@ def get_primary_key_constraint(cursor, schema_name, table_name):
     return row[0] if row else None
 
 
-# --- Additional Missing Stats Queries ---
-
-GET_DATABASE_STATS = """
-    SELECT 
-        pg_size_pretty(pg_database_size(datname)) AS "Size",
-        numbackends AS "Active connections",
-        xact_commit AS "Commits",
-        xact_rollback AS "Rollbacks",
-        blks_read AS "Blocks read",
-        blks_hit AS "Blocks hit",
-        tup_returned AS "Tuples returned",
-        tup_fetched AS "Tuples fetched",
-        tup_inserted AS "Tuples inserted",
-        tup_updated AS "Tuples updated",
-        tup_deleted AS "Tuples deleted"
-    FROM pg_stat_database 
-    WHERE datname = %s;
-"""
+#Stats Query Constants (used by inspector_stats.py)
 
 GET_ALL_SCHEMAS_STATS = """
-    SELECT count(*) AS "Total schemas" FROM pg_namespace;
+    SELECT 
+        n.nspname AS "Schema",
+        count(*) FILTER (WHERE c.relkind IN ('r', 'p')) AS "Tables",
+        count(*) FILTER (WHERE c.relkind = 'v') AS "Views",
+        pg_size_pretty(COALESCE(sum(pg_total_relation_size(c.oid))
+            FILTER (WHERE c.relkind IN ('r', 'p', 'm')), 0)) AS "Total size"
+    FROM pg_namespace n
+    LEFT JOIN pg_class c ON c.relnamespace = n.oid
+    WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema'
+    GROUP BY n.nspname
+    ORDER BY n.nspname;
 """
 
 GET_SCHEMA_STATS = """
@@ -716,4 +592,21 @@ GET_TRIGGER_FUNCTIONS_GROUP_STATS = """
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = %s AND p.prorettype = 'trigger'::regtype;
+"""
+
+GET_DATABASE_STATS = """
+    SELECT 
+        pg_size_pretty(pg_database_size(datname)) AS "Size",
+        numbackends AS "Active connections",
+        xact_commit AS "Commits",
+        xact_rollback AS "Rollbacks",
+        blks_read AS "Blocks read",
+        blks_hit AS "Blocks hit",
+        tup_returned AS "Tuples returned",
+        tup_fetched AS "Tuples fetched",
+        tup_inserted AS "Tuples inserted",
+        tup_updated AS "Tuples updated",
+        tup_deleted AS "Tuples deleted"
+    FROM pg_stat_database 
+    WHERE datname = %s;
 """

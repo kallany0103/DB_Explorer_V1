@@ -9,6 +9,12 @@ from PySide6.QtCore import Qt
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
 
+
+
+
+
+
+
 class LeftAlignedHeaderModel(QStandardItemModel):
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if role == Qt.ItemDataRole.TextAlignmentRole and orientation == Qt.Orientation.Horizontal:
