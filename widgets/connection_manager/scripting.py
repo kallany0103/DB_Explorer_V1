@@ -1,6 +1,7 @@
 import sqlite3 as sqlite
 from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QMessageBox
 from widgets.worksheet.code_editor import CodeEditor
+import db
 
 
 class ScriptGenerator:
@@ -59,7 +60,6 @@ class ScriptGenerator:
         elif db_type == 'postgres':
             schema_name = item_data.get('schema_name', 'public')
             try:
-                import db
                 conn = db.get_pooled_postgres_connection(
                     conn_data,
                     application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",
@@ -184,7 +184,6 @@ class ScriptGenerator:
     def script_sequence_as_create(self, item_data, seq_name):
         conn_data = item_data.get('conn_data')
         try:
-            import db
             conn = db.get_pooled_postgres_connection(
                 conn_data,
                 application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",
@@ -208,7 +207,6 @@ class ScriptGenerator:
     def script_function_as_create(self, item_data, func_name):
         conn_data = item_data.get('conn_data')
         try:
-            import db
             conn = db.get_pooled_postgres_connection(
                 conn_data,
                 application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",

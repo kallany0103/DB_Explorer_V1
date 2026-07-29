@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QFileDialog, QLabel, QCheckBox
 )
 from ui.components import PrimaryButton, SecondaryButton
-
+from PySide6.QtWidgets import QComboBox
 
 
 
@@ -52,7 +52,6 @@ class PreferencesDialog(QDialog):
         form_layout.addRow("", wsl_help)
         
         # Theme Settings
-        from PySide6.QtWidgets import QComboBox
         # Theme Selection
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["Grey (Default)", "Light Blue", "Light Green"])

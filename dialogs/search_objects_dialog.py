@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 import qtawesome as qta
+import traceback
 from ui.components import PrimaryButton, SecondaryButton
 
 
@@ -147,7 +148,6 @@ class SearchObjectsDialog(QDialog):
                     continue
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             QMessageBox.critical(self, "Search Error", f"Failed to perform search:\n{str(e)}")
         finally:

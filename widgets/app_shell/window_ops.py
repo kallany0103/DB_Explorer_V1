@@ -77,7 +77,6 @@ def reset_layout(main_window):
         main_window.status.showMessage("Layout reset: Explorer collapsed, extra tabs closed, and sizes restored.", 4000)
     except Exception as e:
         main_window.status.showMessage(f"Error resetting layout: {e}", 5000)
-        import traceback
         traceback.print_exc()
 
 def reset_to_dashboard(main_window):

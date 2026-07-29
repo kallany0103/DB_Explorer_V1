@@ -4,10 +4,11 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
-from db.connection_pool import get_or_create_pool, get_or_create_oracle_pool
-import time
 import cdata.servicenow as sn_driver
 import cdata.csv as csv_driver
+import urllib.parse
+import logging
+from db.connection_pool import get_or_create_pool, get_or_create_oracle_pool, close_all_pools
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and PyInstaller."""
@@ -67,7 +68,6 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
                     # Convert DSN to dict, override app name, and convert back to DSN
                     try:
                         # This handles both URL and keyword-style DSNs
-                        import urllib.parse
                         if "://" in dsn:
                             # URL style: add to query params
                             u = urllib.parse.urlparse(dsn)
@@ -200,7 +200,6 @@ def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=N
         pool = get_or_create_oracle_pool(conn_data)
         return pool.acquire()
     except oracledb.DatabaseError as e:
-        import logging
         logging.error(f"Oracle connection error: {e}")
         raise ConnectionError(f"Oracle connection error: {e}") from e
     
@@ -368,5 +367,4 @@ class PooledPostgresConnection:
 
 def close_all_postgres_pools():
     """Close all PostgreSQL connection pools. Call on application shutdown."""
-    from db.connection_pool import close_all_pools
     close_all_pools()
