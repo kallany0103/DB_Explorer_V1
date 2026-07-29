@@ -1,29 +1,22 @@
 import os
-import qtawesome as qta
 
-from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QIcon, QMovie
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QPushButton,
     QStackedWidget,
     QTableView,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
-import PySide6.QtWidgets as QtWidgets
 
 from widgets.results_view.explain import create_explain_view
 from widgets.results_view.messages import create_message_view
 from widgets.results_view.notifications import create_notification_view
 from widgets.results_view.output_tabs import create_output_tabs_view
 from widgets.results_view.processes import create_processes_view
-from ui.components import IconButton, SearchBox
-from ui.toolbars import NavigationHeader
+from ui.toolbars import NavigationHeader, ResultsInfoToolbar, ProcessFilterBar
 
 
 def create_results_ui(manager, tab_content):
@@ -44,7 +37,6 @@ def create_results_ui(manager, tab_content):
     results_header = NavigationHeader("resultsHeader", results_tabs)
     results_layout.addWidget(results_header)
 
-    from ui.toolbars import ResultsInfoToolbar, ProcessFilterBar
     results_info_bar = ResultsInfoToolbar(manager, tab_content)
     results_layout.addWidget(results_info_bar)
 

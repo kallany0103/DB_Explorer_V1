@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 import threading
 import time
@@ -18,10 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QPlainTextEdit,
     QLabel,
-    QFrame,
-    QMessageBox
+    QFrame
 )
 
 # from widgets.usql_tool.constants import _BANNER
@@ -74,8 +73,7 @@ class USQLToolWidget(QWidget):
         self._current_db: str = (
             self._conn.get("database") or self._conn.get("db") or "postgres"
         )
-        # _session_history_key is fixed at session-start so \c switches never
-        # cause history entries to be saved under a different key.
+
         self._session_history_key: str = ""
         self._pending_db_switch_from: str = ""
         self._pg_bin_path = pg_bin_path
@@ -86,9 +84,6 @@ class USQLToolWidget(QWidget):
         self._reader_thread = None
         self._running = False
         self._spawn_time: float = 0.0
-        # Position in the document just after psql's connection preamble
-        # (version info, WARNING, SSL line, "Type help").  Set on first prompt;
-        # Copy Output skips everything before this so boilerplate is not included.
         self._first_prompt_pos: int = 0
         self._output_received.connect(self._on_output_received)
 
@@ -125,9 +120,7 @@ class USQLToolWidget(QWidget):
 
 
 
-    # ------------------------------------------------------------------
     # Spinner overlay
-    # ------------------------------------------------------------------
 
     _SPINNER_FRAMES: list[str] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
@@ -135,9 +128,6 @@ class USQLToolWidget(QWidget):
         """Build the connecting overlay label styled to match the app palette."""
         lbl = QLabel("⠋  Connecting…")
         lbl.setObjectName("spinner_overlay")
-        # Use palette() tokens so the pill always matches the active Qt theme.
-        # Avoid QGraphicsOpacityEffect — it composites on a black backing buffer
-        # and cannot see through to the widget behind it, causing a black box.
         lbl.setStyleSheet(
             "QLabel#spinner_overlay {"
             "  color: palette(window-text);"
@@ -325,8 +315,6 @@ class USQLToolWidget(QWidget):
                 **self._conn,
                 "database": self._current_db,
                 "code": "POSTGRES",
-                # Drop the old connection ID so the cache does not return
-                # schema data from the previous database/host.
                 "id": None,
             }
             self._completion_engine.refresh(_conn_with_db)
@@ -370,8 +358,6 @@ class USQLToolWidget(QWidget):
                 break
         self._running = False
         if exit_reason == "clean":
-            # Show the psql.exe directory as a Windows-style shell prompt,
-            # exactly as the real cmd.exe / pgAdmin console would.
             psql_dir = ""
             if getattr(self, "_psql_exe_path", ""):
                 psql_dir = str(Path(self._psql_exe_path).parent)
@@ -388,14 +374,8 @@ class USQLToolWidget(QWidget):
             return
 
         self._term.append_output(text)
-
-        # Scrollbar visibility can change mid-session as output accumulates;
-        # re-sync cols so psql's expanded=auto stays correct.
         self._resize_timer.start()
 
-        # Detect the first psql prompt — everything before it is connection
-        # preamble (version, WARNING, SSL line, "Type help") and should be
-        # excluded from Copy Output.
         if self._first_prompt_pos == 0:
             text_lower = text.lower()
             if "=#" in text or "=>" in text:
@@ -442,8 +422,6 @@ class USQLToolWidget(QWidget):
         stripped = cmd.strip()
 
         if stripped and self._first_prompt_pos > 0:
-            # Accumulate multi-line SQL into one history entry.
-            # A statement is complete when it ends with ';' or is a meta-command ('\').
             if self._pending_sql:
                 self._pending_sql = self._pending_sql + "\n" + stripped
             else:
@@ -459,9 +437,6 @@ class USQLToolWidget(QWidget):
             self._history_index = len(self._history)
 
         if not self._running or self._pty is None:
-            # After \q the user sees a shell-style prompt.
-            # Typing `psql` relaunches the session, just like the real console.
-            import shlex
             try:
                 cmd_parts = shlex.split(stripped)
             except ValueError:
@@ -514,18 +489,13 @@ class USQLToolWidget(QWidget):
                 self._term.append_output(hint)
             return
 
-        # \q — send to psql so it exits naturally; the PTY reader will then
-        # display the psql.exe directory as a Windows shell prompt.
 
-        # Replace internal \n with \r\n so winpty processes them as separate lines.
         try:
             self._pty.write(cmd.rstrip("\n").replace("\n", "\r\n") + "\r\n")
         except Exception as exc:
             self._term.append_output(f"\n[Error writing to process: {exc}]\n")
 
-        # Track \c / \connect for db-name state
-        # Use lowercased command to detect the meta-command prefix case-insensitively,
-        # but take the db name from the lowercased parts so psql receives it verbatim.
+
         lower = stripped.lower()
         if lower.startswith("\\c ") or lower.startswith("\\connect "):
             lower_parts = lower.split()
@@ -558,8 +528,6 @@ class USQLToolWidget(QWidget):
         return f"{user}@{host}:{port}/{self._current_db}"
 
     def _load_history(self) -> None:
-        # Pin the history key now so \c switches later in the session
-        # don't redirect history entries to a different key on save.
         c = self._conn
         host = c.get("host") or "localhost"
         port = c.get("port") or 5432
@@ -614,12 +582,10 @@ class USQLToolWidget(QWidget):
         if cursor.hasSelection():
             QApplication.clipboard().setText(cursor.selectedText().replace("\u2029", "\n"))
         else:
-            # Start after the psql connection preamble (banner + version + warnings).
-            # Fall back to 0 if the first prompt has not been seen yet.
             start = self._first_prompt_pos
             end = self._term._input_start
             if start >= end:
-                return  # nothing meaningful to copy yet
+                return
             doc_cursor = QTextCursor(self._term.document())
             doc_cursor.setPosition(start)
             doc_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
@@ -702,15 +668,15 @@ class USQLToolWidget(QWidget):
             pass
 
 
-    def showEvent(self, event) -> None:          # noqa: N802
+    def showEvent(self, event) -> None:   
         super().showEvent(event)
         self._resize_timer.start()
 
-    def resizeEvent(self, event) -> None:        # noqa: N802
+    def resizeEvent(self, event) -> None:    
         super().resizeEvent(event)
         self._resize_timer.start()
 
-    def closeEvent(self, event) -> None:         # noqa: N802
+    def closeEvent(self, event) -> None:   
         self._resize_timer.stop()
         self.close_process()
         super().closeEvent(event)

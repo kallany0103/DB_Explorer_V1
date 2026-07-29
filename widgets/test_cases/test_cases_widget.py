@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTabWidget, QScrollArea,
-    QGroupBox, QLabel, QTextEdit, QPushButton, QHBoxLayout,
+    QGroupBox, QLabel, QTextEdit, QHBoxLayout,
     QApplication, QSplitter, QListWidget
 )
 from PySide6.QtCore import Qt, Signal
