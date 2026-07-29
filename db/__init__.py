@@ -72,6 +72,8 @@ __all__ = [
     # "ensure_hierarchy_db",
     "get_all_connections_from_db",
     "get_hierarchy_data",
+    "get_postgres_session_stats",
+    "get_sqlite_session_stats",
     "add_connection_group",
     "add_connection",
     "update_connection",

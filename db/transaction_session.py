@@ -13,21 +13,16 @@ All others raise UnsupportedTransactionError.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
+
 # Public exception
-# ---------------------------------------------------------------------------
 
 class UnsupportedTransactionError(Exception):
     """Raised when the connected DB does not support manual transactions."""
 
-
-# ---------------------------------------------------------------------------
 # Session
-# ---------------------------------------------------------------------------
 
 class TransactionSession:
     """
@@ -57,9 +52,8 @@ class TransactionSession:
         ).upper()
         self.has_pending_changes = False
 
-    # ------------------------------------------------------------------
     # Properties
-    # ------------------------------------------------------------------
+
 
     @property
     def connection(self):
@@ -81,9 +75,8 @@ class TransactionSession:
             pass
         return True
 
-    # ------------------------------------------------------------------
     # Lifecycle
-    # ------------------------------------------------------------------
+
 
     def open(self) -> None:
         """
