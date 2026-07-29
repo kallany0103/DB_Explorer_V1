@@ -29,9 +29,7 @@ class SchemaMenuBuilder:
         self.mview_builder = MaterializedViewMenuBuilder(manager)
         self.trigger_builder = TriggerMenuBuilder(manager)
 
-    # =========================================================================
     # Entry point
-    # =========================================================================
 
     def show(self, position):
         index = self.manager.schema_tree.indexAt(position)
@@ -119,9 +117,9 @@ class SchemaMenuBuilder:
         if not menu.isEmpty():
             menu.exec(self.manager.schema_tree.viewport().mapToGlobal(position))
 
-    # =========================================================================
+
     # Shared helpers
-    # =========================================================================
+
 
     def _add_refresh_actions(self, menu, index):
         """Append a separator then Refresh / Reset Tree to *menu*."""
@@ -133,9 +131,9 @@ class SchemaMenuBuilder:
         act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, True))
         menu.addAction(act)
 
-    # =========================================================================
+
     # Table details (Columns, Constraints, Indexes)
-    # =========================================================================
+
 
     def _columns_group_menu(self, menu, item, item_data, index):
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
@@ -214,9 +212,9 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, item.text())
 
-    # =========================================================================
+
     # Table / View
-    # =========================================================================
+
 
     def _table_menu(self, menu, item, item_data, db_type, index):
         display_name = item.text()
@@ -360,9 +358,9 @@ class SchemaMenuBuilder:
 
         self._add_refresh_actions(menu, index)
 
-    # =========================================================================
+
     # Schema node  (e.g. "public")
-    # =========================================================================
+
 
     def _schema_node_menu(self, menu, item, item_data, db_type, schema_name, index):
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
@@ -457,9 +455,9 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, schema_name)
 
-    # =========================================================================
+
     # Schemas root  ("Schemas" group node)
-    # =========================================================================
+
 
     def _schemas_root_menu(self, menu, item_data, index):
         create_sub = submenu(menu, "Create", "mdi.plus-circle-outline")
@@ -506,14 +504,14 @@ class SchemaMenuBuilder:
             menu, self.manager, item_data, conn.get("database") or "Schemas"
         )
 
-    # =========================================================================
+
     # Schema group node  (Tables, Views, Functions, Sequences, etc.)
-    # =========================================================================
+
 
     def _schema_group_menu(self, menu, item, item_data, index):
         group = item_data.get("group_name", "")
 
-        # --- Type-specific Create action ---
+        #  Type-specific Create action 
         _wired = {
             "Tables": (
                 "Create Table...", "mdi.table-plus",
@@ -595,9 +593,9 @@ class SchemaMenuBuilder:
             menu, self.manager, item_data, item_data.get("group_name") or item.text()
         )
 
-    # =========================================================================
+
     # Sequence
-    # =========================================================================
+
 
     def _sequence_menu(self, menu, item, item_data, index):
         display_name = item.text()
@@ -634,9 +632,9 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
-    # =========================================================================
+
     # Function / Trigger Function
-    # =========================================================================
+
 
     def _function_menu(self, menu, item, item_data, table_type, index):
         display_name = item.text()
@@ -675,9 +673,9 @@ class SchemaMenuBuilder:
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
 
-    # =========================================================================
+
     # Language
-    # =========================================================================
+
 
     def _language_menu(self, menu, item, item_data, index):
         display_name = item.text()
@@ -714,9 +712,9 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
-    # =========================================================================
+
     # Extension (individual item)
-    # =========================================================================
+
 
     def _extension_menu(self, menu, item, item_data, index):
         display_name = item.text()
@@ -752,9 +750,9 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
-    # =========================================================================
+
     # language_root
-    # =========================================================================
+
 
     def _language_root_menu(self, menu, item_data, index):
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
@@ -768,9 +766,7 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Languages")
 
-    # =========================================================================
     # extension_root
-    # =========================================================================
 
     def _extension_root_menu(self, menu, item_data, index):
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
@@ -784,9 +780,8 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Extensions")
 
-    # =========================================================================
+
     # FDW root
-    # =========================================================================
 
     def _fdw_root_menu(self, menu, item_data, db_type, index):
 
@@ -809,9 +804,8 @@ class SchemaMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Foreign Data Wrappers")
 
-    # =========================================================================
+
     # FDW node
-    # =========================================================================
 
     def _fdw_menu(self, menu, item_data, index):
         fdw_name = item_data.get("fdw_name", "")
@@ -850,9 +844,7 @@ class SchemaMenuBuilder:
             menu, self.manager, item_data, item_data.get("fdw_name", "Foreign Data Wrapper")
         )
 
-    # =========================================================================
     # Foreign Server
-    # =========================================================================
 
     def _foreign_server_menu(self, menu, item_data, index):
 
@@ -890,9 +882,8 @@ class SchemaMenuBuilder:
             menu, self.manager, item_data, item_data.get("server_name", "Foreign Server")
         )
 
-    # =========================================================================
+
     # User Mapping
-    # =========================================================================
 
     def _user_mapping_menu(self, menu, item_data, index):
         act = action(self.manager, "Drop User Mapping", "mdi.delete-outline", shortcut="Alt+Shift+D")

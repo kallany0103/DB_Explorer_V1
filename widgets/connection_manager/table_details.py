@@ -2,8 +2,11 @@ import re
 
 import db
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QStandardItem, QIcon
+from PySide6.QtGui import QStandardItem
 from workers.connection_workers import ServiceNowTableDetailsWorker
+
+
+
 
 def _create_loading_item(manager):
     item = QStandardItem("Loading...")
@@ -215,7 +218,6 @@ class TableDetailsLoader:
                     conn_data = item_data.get('conn_data')
                     if conn_data:
                         try:
-                            import db
                             self.manager.pg_conn = db.get_pooled_postgres_connection(
                                 conn_data,
                                 application_name=f"Universal SQL Client (Table Details) - {conn_data.get('database', 'postgres')}",
@@ -419,9 +421,8 @@ class TableDetailsLoader:
         worker.signals.error.connect(on_error)
         self.manager.thread_pool.start(worker)
 
-    # ------------------------------------------------------------------
+
     # Oracle: expand helpers
-    # ------------------------------------------------------------------
 
     # Groups surfaced inside each Oracle schema node and their ALL_OBJECTS type
     _ORACLE_GROUPS: tuple[tuple[str, str, str], ...] = (
@@ -667,7 +668,7 @@ class TableDetailsLoader:
 
             cursor = conn.cursor()
 
-            # --- Columns (use ALL_TAB_COLUMNS; fall back to USER_TAB_COLUMNS) ---
+            # Columns (use ALL_TAB_COLUMNS; fall back to USER_TAB_COLUMNS)
             if owner:
                 cursor.execute(
                     "SELECT column_name, data_type, nullable, data_length,"
@@ -687,7 +688,7 @@ class TableDetailsLoader:
                 )
             col_rows = cursor.fetchall()
 
-            # --- Primary key columns ---
+            # Primary key columns
             if owner:
                 cursor.execute(
                     "SELECT cols.column_name "
@@ -743,7 +744,7 @@ class TableDetailsLoader:
                     columns_folder.appendRow(ci)
             table_item.appendRow(columns_folder)
 
-            # --- Constraints (PK, UK, FK) ---
+            # Constraints (PK, UK, FK)
             if owner:
                 cursor.execute(
                     "SELECT cons.constraint_name, cons.constraint_type, cols.column_name "
@@ -785,7 +786,7 @@ class TableDetailsLoader:
                     constraints_folder.appendRow(con_item)
             table_item.appendRow(constraints_folder)
 
-            # --- Indexes ---
+            # Indexes
             if owner:
                 cursor.execute(
                     "SELECT idx.index_name, idx.uniqueness, cols.column_name "

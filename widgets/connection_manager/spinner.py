@@ -133,9 +133,8 @@ class ConnectionSpinner(QObject):
         self._frame_idx  = 0
         self._running    = False
 
-    # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
+
 
     def start(self, item) -> None:
         """Attach the spinner to *item* and start animating."""
@@ -186,9 +185,8 @@ class ConnectionSpinner(QObject):
                 self._timer.stop()
                 self._running = False
 
-    # ------------------------------------------------------------------
+
     # Internal
-    # ------------------------------------------------------------------
 
     def _advance(self) -> None:
         if not self._running or not self._items:

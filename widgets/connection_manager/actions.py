@@ -15,11 +15,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QPlainTextEdit,
     QStackedWidget,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
+    QPushButton,
 )
 from ui.components import PrimaryButton, SecondaryButton
 
@@ -34,6 +35,8 @@ from dialogs import (
     CreateTriggerFunctionDialog,
     CreateSequenceDialog,
     CreateForeignTableDialog,
+    CreateMaterializedViewDialog,
+    CreatePolicyDialog,
 )
 from dialogs.properties import (
     TablePropertiesDialog,
@@ -60,6 +63,7 @@ from workers.workers import (
 from workers.process_worker import ProcessWorker
 from widgets.backup_and_restore.backup.engine import BackupEngine
 from widgets.backup_and_restore.restore.engine import RestoreEngine
+from widgets.usql_tool.terminal_widget import open_usql_tool
 
 
 class ConnectionActions:
@@ -90,7 +94,6 @@ class ConnectionActions:
         if db_type == 'postgres':
             schema = item_data.get("schema_name", "public")
             schema_quoted = f'"{schema}"'
-            table_type = item_data.get('table_type', '').upper()
             # Handle Materialized Views separately if needed, but COUNT(*) is the same
             query = f'SELECT COUNT(*) FROM {schema_quoted}."{table_name}";'
         elif db_type == 'csv':
@@ -235,7 +238,6 @@ class ConnectionActions:
             current_tab = self.manager.tab_widget.currentWidget()
 
         if current_tab:
-            from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QStackedWidget
             message_view = current_tab.findChild(QPlainTextEdit, "message_view")
             if not message_view:
                 message_view = current_tab.findChild(QTextEdit, "message_view")
@@ -247,10 +249,8 @@ class ConnectionActions:
                 message_view.setPlainText(msg)
 
                 # Focus the message view
-                from PySide6.QtWidgets import QWidget
                 header = current_tab.findChild(QWidget, "resultsHeader")
                 if header:
-                    from PySide6.QtWidgets import QPushButton
                     buttons = header.findChildren(QPushButton)
                     if len(buttons) >= 2:
                         buttons[0].setChecked(False)
@@ -695,7 +695,6 @@ class ConnectionActions:
             # Switch to message view and display the SQL run
             current_tab = self.manager.tab_widget.currentWidget()
             if current_tab:
-                from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QStackedWidget
                 message_view = current_tab.findChild(QPlainTextEdit, "message_view")
                 if not message_view:
                     message_view = current_tab.findChild(QTextEdit, "message_view")
@@ -883,7 +882,6 @@ class ConnectionActions:
             current_tab = self.manager.tab_widget.currentWidget()
 
         if current_tab:
-            from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QStackedWidget
             message_view = current_tab.findChild(QPlainTextEdit, "message_view")
             if not message_view:
                 message_view = current_tab.findChild(QTextEdit, "message_view")
@@ -895,10 +893,8 @@ class ConnectionActions:
                 message_view.setPlainText(msg)
 
                 # Focus the message view
-                from PySide6.QtWidgets import QWidget
                 header = current_tab.findChild(QWidget, "resultsHeader")
                 if header:
-                    from PySide6.QtWidgets import QPushButton
                     buttons = header.findChildren(QPushButton)
                     if len(buttons) >= 2:
                         buttons[0].setChecked(False)
@@ -1078,7 +1074,6 @@ class ConnectionActions:
             schemas = [row[0] for row in cursor.fetchall()]
             conn.close()
 
-            from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
             dialog = CreateMaterializedViewDialog(self.manager, schemas, db_type="postgres")
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 data = dialog.get_data()
@@ -1445,7 +1440,6 @@ SERVER "{data["server"]}"
         if not item_data:
             return
         conn_data = item_data.get("conn_data") or item_data
-        from widgets.usql_tool.terminal_widget import open_usql_tool
         open_usql_tool(conn_data, self.manager)
 
     def refresh_materialized_view(self, item_data, name, concurrently=False):
@@ -1494,10 +1488,8 @@ SERVER "{data["server"]}"
                 message_view.setPlainText(msg)
                 
                 # Switch tab buttons style (internal convenience)
-                from PySide6.QtWidgets import QWidget
                 header = current_tab.findChild(QWidget, "resultsHeader")
                 if header:
-                    from PySide6.QtWidgets import QPushButton
                     buttons = header.findChildren(QPushButton)
                     if len(buttons) >= 2:
                         buttons[0].setChecked(False)
@@ -1587,9 +1579,7 @@ SERVER "{data["server"]}"
 
         self.manager.thread_pool.start(query_runnable)
 
-    # =========================================================================
     # Create Schema (PostgreSQL)
-    # =========================================================================
 
     def open_create_schema_dialog(self, item_data):
         """Open a pgAdmin-style dialog to CREATE SCHEMA on a PostgreSQL connection."""
@@ -1607,7 +1597,7 @@ SERVER "{data["server"]}"
             )
             return
 
-        # --- Fetch existing users/roles for the Owner dropdown ---
+        # Fetch existing users/roles for the Owner dropdown
         existing_roles = []
         cur_user       = ""
         try:
@@ -1627,18 +1617,11 @@ SERVER "{data["server"]}"
         except Exception:
             pass  # Owner field will just be an empty text input or standard dropdown
 
-        # ==================================================================
         # Build dialog
-        # ==================================================================
+ 
         dialog = QDialog(self.manager)
         dialog.setWindowTitle("Create Schema")
         dialog.setFixedSize(460, 260)
-        dialog.setWindowFlags(
-            dialog.windowFlags()
-            & ~dialog.windowFlags()
-            | 0  # reset
-        )
-        from PySide6.QtCore import Qt
         dialog.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.WindowTitleHint
@@ -1648,7 +1631,7 @@ SERVER "{data["server"]}"
         dialog.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         dialog.setStyleSheet(self.manager._get_dialog_style())
 
-        # --- Widgets ---
+        # Widgets 
         title_lbl = QLabel("Create Schema")
         title_lbl.setObjectName("dialogTitle")
 
@@ -1680,7 +1663,7 @@ SERVER "{data["server"]}"
         save_btn   = PrimaryButton("Create")
         cancel_btn = SecondaryButton("Cancel")
 
-        # --- Layout ---
+        #Layout
         form = QFormLayout()
         form.setSpacing(10)
         form.addRow("Name:",  name_input)
@@ -1749,9 +1732,8 @@ SERVER "{data["server"]}"
         name_input.returnPressed.connect(_on_create)
         dialog.exec()
 
-    # =========================================================================
-    # --- SEARCH & STATISTICS ---
-    # =========================================================================
+
+    # SEARCH & STATISTICS
 
     def open_search_objects_dialog(self, item_data):
         if not item_data:
@@ -2167,7 +2149,6 @@ SERVER "{data["server"]}"
                     "_conn_id": conn_data.get("id")
                 }
                 
-                from workers.signals import ProcessSignals
                 signals = ProcessSignals()
                 signals.started.connect(self.manager.main_window.handle_process_started)
                 signals.finished.connect(self.manager.main_window.handle_process_finished)
@@ -2176,7 +2157,6 @@ SERVER "{data["server"]}"
                 worker = RunnableSqliteBackup(process_id, db_path, options["filename"], signals)
                 
                 # Fake a "started" signal for the UI
-                from workers.signals import emit_process_started
                 emit_process_started(signals, process_id, metadata)
                 
                 self.manager.main_window.thread_pool.start(worker)
@@ -2271,7 +2251,6 @@ SERVER "{data["server"]}"
                     "details": f"Restoring from {os.path.basename(options['filename'])}",
                 }
                 
-                from workers.signals import ProcessSignals
                 signals = ProcessSignals()
                 signals.started.connect(self.manager.main_window.handle_process_started)
                 signals.finished.connect(self.manager.main_window.handle_process_finished)
@@ -2280,17 +2259,18 @@ SERVER "{data["server"]}"
                 worker = RunnableSqliteRestore(process_id, options["filename"], db_path, signals)
                 
                 # Fake a "started" signal for the UI
-                from workers.signals import emit_process_started
                 emit_process_started(signals, process_id, metadata)
                 
                 self.manager.main_window.thread_pool.start(worker)
 
     def enable_rls(self, item_data, enable=True):
-        if not item_data: return
+        if not item_data:
+            return
         conn_data = item_data.get('conn_data')
         schema_name = item_data.get('schema_name')
         table_name = item_data.get('table_name')
-        if not all([conn_data, schema_name, table_name]): return
+        if not all([conn_data, schema_name, table_name]):
+            return
         
         action_sql = "ENABLE" if enable else "DISABLE"
         action_word = "enabled" if enable else "disabled"
@@ -2308,11 +2288,13 @@ SERVER "{data["server"]}"
             QMessageBox.critical(self.manager, "Error", f"Failed to {action_word[:-1]} RLS:\n{e}")
 
     def force_rls(self, item_data, force=True):
-        if not item_data: return
+        if not item_data:
+            return
         conn_data = item_data.get('conn_data')
         schema_name = item_data.get('schema_name')
         table_name = item_data.get('table_name')
-        if not all([conn_data, schema_name, table_name]): return
+        if not all([conn_data, schema_name, table_name]):
+            return
         
         action_sql = "FORCE" if force else "NO FORCE"
         action_word = "forced" if force else "unforced"
@@ -2330,11 +2312,13 @@ SERVER "{data["server"]}"
             QMessageBox.critical(self.manager, "Error", f"Failed to modify RLS force setting:\n{e}")
 
     def drop_policy(self, item_data, policy_name, cascade=False):
-        if not item_data: return
+        if not item_data:
+            return
         conn_data = item_data.get('conn_data')
         schema_name = item_data.get('schema_name')
         table_name = item_data.get('table_name')
-        if not all([conn_data, schema_name, table_name]): return
+        if not all([conn_data, schema_name, table_name]):
+            return
 
         confirm_msg = f"Are you sure you want to drop policy '{policy_name}' on table '{table_name}'?"
         reply = QMessageBox.question(
@@ -2360,11 +2344,13 @@ SERVER "{data["server"]}"
             QMessageBox.critical(self.manager, "Error", f"Failed to drop policy:\n{e}")
 
     def open_create_policy_dialog(self, item_data):
-        if not item_data: return
+        if not item_data:
+            return
         conn_data = item_data.get('conn_data')
         schema_name = item_data.get('schema_name')
         table_name = item_data.get('table_name')
-        if not all([conn_data, schema_name, table_name]): return
+        if not all([conn_data, schema_name, table_name]):
+            return
         
         roles = []
         try:
@@ -2376,7 +2362,6 @@ SERVER "{data["server"]}"
         except Exception as e:
             self.manager.status.showMessage(f"Could not fetch roles: {e}", 4000)
             
-        from dialogs.create_policy_dialog import CreatePolicyDialog
         
         dialog = CreatePolicyDialog(
             parent=self.manager, 

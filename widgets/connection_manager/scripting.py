@@ -1,7 +1,4 @@
 import sqlite3 as sqlite
-
-import psycopg2
-#from PyQt6.QtWidgets import QComboBox, QPlainTextEdit, QMessageBox
 from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QMessageBox
 from widgets.worksheet.code_editor import CodeEditor
 
