@@ -1,11 +1,4 @@
 import qtawesome as qta
-# from PyQt6.QtWidgets import (
-#     QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
-#     QFormLayout, QComboBox, QPushButton, QHBoxLayout,
-#     QGraphicsDropShadowEffect
-# )
-# from PyQt6.QtCore import Qt, QSize
-# from PyQt6.QtGui import QFont, QColor
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
@@ -84,8 +77,6 @@ class PropertyPanel(QWidget):
         header_h = self.header_label.height()
         content_h = self.content_widget.sizeHint().height()
         
-        # Pad significantly to ensure bottom items (especially combo boxes or last columns)
-        # have plenty of breathing room to be scrolled and clicked
         return QSize(self.width(), header_h + content_h + 60)
 
     def update_content(self):
@@ -94,7 +85,6 @@ class PropertyPanel(QWidget):
         try:
             selected_items = self.scene.selectedItems()
         except RuntimeError:
-            # The underlying C++ object is deleted (e.g. when scene is cleared during reload)
             return
         
         

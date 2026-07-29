@@ -5,7 +5,6 @@
 # serialisation, and Qt event lifecycle — concerns that are tightly coupled to
 # the QGraphicsPathItem subclass and cannot be cleanly separated further.
 import math
-import qtawesome as qta
 from PySide6.QtWidgets import (
     QGraphicsPathItem, QGraphicsItem, QGraphicsTextItem,
     QStyle,
@@ -34,6 +33,8 @@ from widgets.erd.items.connection_paint import (
 from widgets.erd.commands import ChangeRelationTypeCommand, DeleteItemCommand, DetachConnectionCommand
 # ERDFloatingConnectionItem is deferred below to break the mutual import cycle:
 #   connection_item → floating_connection → connection_item
+import widgets.erd.items.floating_connection
+import widgets.erd.widget
 
 
 def _get_item_display_name(item) -> str:
@@ -269,7 +270,6 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
 
             self._drag_side = None
 
-            from widgets.erd.widget import ERDWidget  # deferred: avoids circular import at module level
             widget = self.scene().parent()
             while widget and not isinstance(widget, ERDWidget):
                 widget = widget.parent()
@@ -295,9 +295,7 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
 
         super().mouseReleaseEvent(event)
 
-    # ------------------------------------------------------------------
     # Path computation & Trimming
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _path_to_points(path):
@@ -535,9 +533,7 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
 
         self.setPath(path)
 
-    # ------------------------------------------------------------------
     # Label helpers
-    # ------------------------------------------------------------------
 
     def _update_label_pos(self):
         path = self.path()
@@ -557,9 +553,8 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
             self._label.hide()
         self._update_label_pos()
 
-    # ------------------------------------------------------------------
+
     # Painting
-    # ------------------------------------------------------------------
 
     def paint(self, painter, option, widget):
         if not painter.isActive():
@@ -576,9 +571,6 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
         source_type = rel_info.get('source', 'many')
         target_type = rel_info.get('target', 'one')
         
-        # Draw the full line - symbols will overlay on top at the endpoints
-        # No trimming needed: bars are perpendicular and crow's feet diagonals
-        # don't conflict with the line direction, so they overlay correctly.
         draw_path = path
 
         pen = self._apply_line_style_to_pen(QPen(self.pen()), hovered=bool(is_hovered))
@@ -666,9 +658,8 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
     def _draw_chen_connection_ends(self, painter, raw_path, rendered_path, is_hovered, bridge_pen):
         _draw_chen_ends(painter, raw_path, rendered_path, self.RELATION_TYPES, self.relation_type, is_hovered, bridge_pen)
 
-    # ------------------------------------------------------------------
+ 
     # Relation type management
-    # ------------------------------------------------------------------
 
     def _apply_relation_type(self, type_key: str) -> None:
         self.relation_type = type_key
@@ -701,9 +692,8 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
         else:
             self._apply_relation_type(type_key)
 
-    # ------------------------------------------------------------------
+
     # Context menu
-    # ------------------------------------------------------------------
 
     def contextMenuEvent(self, event):
         menu = build_connection_context_menu(self)
@@ -724,21 +714,17 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
         self._update_label_pos()
         self._label.setFocus()
 
-    # ------------------------------------------------------------------
     # Detach
-    # ------------------------------------------------------------------
 
     def detach_relationship(self) -> None:
         if not self.scene() or not hasattr(self.scene(), 'undo_stack'):
             return
 
-        from widgets.erd.items.floating_connection import ERDFloatingConnectionItem  # deferred: circular import guard
-        from widgets.erd.widget import ERDWidget  # deferred: avoids circular import at module level
         widget = self.scene().parent()
-        while widget and not isinstance(widget, ERDWidget):
+        while widget and not isinstance(widget, widgets.erd.widget.ERDWidget):
             widget = widget.parent()
 
-        floating = ERDFloatingConnectionItem(self.relation_type)
+        floating = widgets.erd.items.floating_connection.ERDFloatingConnectionItem(self.relation_type)
         p1 = self.source_item.get_column_anchor_pos(self.source_col, self._last_source_side or "right")
         p2 = self.target_item.get_column_anchor_pos(self.target_col, self._last_target_side or "left")
         floating.set_handles(p1, p2)

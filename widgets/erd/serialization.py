@@ -5,11 +5,16 @@ from widgets.erd.items.note_item import ERDNoteItem
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from PySide6.QtGui import QPixmap, QPainter, QPdfWriter, QPageSize, QPageLayout
 from PySide6.QtCore import Qt, QRectF, QSizeF, QMarginsF, QBuffer, QIODevice
+from widgets.erd.items.entity_item import ERDEntityItem
+from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
+from widgets.erd.items.attribute_item import ERDAttributeItem
+from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
+from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
+from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
 
 
-# ---------------------------------------------------------------------------
+
 # View-state serialization helpers
-# ---------------------------------------------------------------------------
 
 def serialize_free_item(item) -> dict | None:
     """Return serialized state dict for a single free (non-table) item."""
@@ -41,12 +46,6 @@ def serialize_view_state(scene, free_item_types: tuple) -> dict:
 
 def create_free_item_from_state(data: dict, scene):
     """Instantiate and add a free item from its serialized state dict."""
-    from widgets.erd.items.note_item import ERDNoteItem
-    from widgets.erd.items.entity_item import ERDEntityItem
-    from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
-    from widgets.erd.items.attribute_item import ERDAttributeItem
-    from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
-    from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
 
     item_type = data.get("type")
     item = None
@@ -91,14 +90,10 @@ def restore_view_state(state: dict, scene, free_item_types: tuple) -> None:
         create_free_item_from_state(item_state, scene)
 
 
-# ---------------------------------------------------------------------------
 # .erd file save / load
-# ---------------------------------------------------------------------------
 
 def save_erd(widget) -> None:
     """Prompt for a file path and save the full ERD state as JSON."""
-    from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
-    from widgets.erd.items.note_item import ERDNoteItem
 
     floating = any(isinstance(i, ERDFloatingConnectionItem) for i in widget.scene.items())
     if floating:
@@ -176,9 +171,7 @@ def load_erd_file(widget, file_path: str | None = None) -> None:
         QMessageBox.critical(widget, "Error", f"Failed to load ERD: {str(e)}")
 
 
-# ---------------------------------------------------------------------------
 # Image / PDF export
-# ---------------------------------------------------------------------------
 
 def _render_to_pixmap(scene, items_rect: QRectF, scale_factor: float) -> QPixmap:
     """Render the scene area into a high-res QPixmap."""

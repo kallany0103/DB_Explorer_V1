@@ -3,8 +3,8 @@ import qtawesome as qta
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QToolBar, QFileDialog, QMessageBox, QDialog,
-    QToolButton, QLineEdit, QInputDialog,
+    QToolBar, QMessageBox, QDialog,
+    QInputDialog,
     QFrame, QLabel, QProgressBar, QStackedWidget
 )
 from PySide6.QtGui import QAction, QTransform, QColor, QUndoStack
@@ -41,14 +41,7 @@ from workers.connection_workers import AvailableSchemasWorker
 
 
 
-# NOTE: This file exceeds the 500-line soft limit because ERDWidget is the
-# central Qt widget coordinator: it owns the toolbar, scene, view, palette,
-# property panel, loading overlay, schema loading, event filtering, and all
-# the high-level action slots that tie these subsystems together.  All
-# extractable logic (SQL generation, layout, serialisation) has been moved to
-# dedicated modules.  What remains are exclusively thin Qt lifecycle methods
-# (≤ 30 lines each) that cannot be meaningfully separated without introducing
-# artificial indirection.
+
 class ERDWidget(QWidget):
     def __init__(self, schema_data, parent=None, loading=False, conn_data=None):
         super().__init__(parent)
@@ -435,9 +428,8 @@ class ERDWidget(QWidget):
     def _restore_view_state(self, state: dict) -> None:
         _restore_view_state_fn(state, self.scene, self._free_item_types())
 
-    # ------------------------------------------------------------------
+
     # Async loading overlay
-    # ------------------------------------------------------------------
 
     def _build_loading_overlay(self):
         frame = QFrame()
@@ -501,7 +493,7 @@ class ERDWidget(QWidget):
         self._load_error_label.setText(f"\u26a0\ufe0f  {message}")
         self._load_error_label.show()
 
-    # ------------------------------------------------------------------
+
 
     _GROUP_COLORS = [
         QColor("#E8F0FE"), QColor("#FCE8E6"), QColor("#E6F4EA"), QColor("#FEF7E0"),

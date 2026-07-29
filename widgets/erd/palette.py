@@ -16,9 +16,7 @@ from PySide6.QtGui import QDrag, QPixmap
 from widgets.erd.palette_icons import _make_shape_preview, _make_tile_icon, _ERD_TILE_SHAPE_TYPES
 
 
-# ---------------------------------------------------------------------------
 # Tile definition
-# ---------------------------------------------------------------------------
 
 ELEMENTS = [
     # (label,           comp_type,              icon_name,                   icon_color,  row, col)
@@ -49,9 +47,7 @@ EXPANDED_W = 288
 COLLAPSED_W = 36
 
 
-# ---------------------------------------------------------------------------
 # Draggable tile button
-# ---------------------------------------------------------------------------
 
 class ElementTile(QPushButton):
     """A small tile button that starts a drag on press-and-move."""
@@ -93,9 +89,7 @@ class ElementTile(QPushButton):
 
         layout.addWidget(icon_lbl)
 
-    # ------------------------------------------------------------------
     # Drag support
-    # ------------------------------------------------------------------
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -131,9 +125,7 @@ class ElementTile(QPushButton):
 
 
 
-# ---------------------------------------------------------------------------
 # Palette panel
-# ---------------------------------------------------------------------------
 
 class ERDPalette(QFrame):
     """
@@ -152,7 +144,7 @@ class ERDPalette(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # --- Header button ---
+        # Header button
         self.header_btn = QPushButton()
         self.header_btn.setObjectName("headerBtn")
         self.header_btn.setIcon(qta.icon("fa5s.chevron-right", color="#374151"))
@@ -162,7 +154,7 @@ class ERDPalette(QFrame):
 
         outer.addWidget(self.header_btn)
 
-        # --- Scroll area for the grid ---
+        # Scroll area for the grid
         self._grid_container = QWidget()
         self._grid_container.setStyleSheet("background: transparent;")
         grid_layout = QGridLayout(self._grid_container)
@@ -177,7 +169,6 @@ class ERDPalette(QFrame):
         outer.addWidget(self._grid_container)
         outer.addStretch()
 
-    # ------------------------------------------------------------------
 
     def toggle_collapse(self):
         if self._grid_container.isVisible():

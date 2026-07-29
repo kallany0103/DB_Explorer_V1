@@ -360,9 +360,7 @@ class ERDConnectionPathPlanner:
         return best_points, best_s_side, best_t_side
 
 
-# ---------------------------------------------------------------------------
 # Module-level helpers (extracted from long methods above)
-# ---------------------------------------------------------------------------
 
 def _dedup_points(pts: list) -> list:
     """Remove consecutive duplicate / near-duplicate points from a path."""

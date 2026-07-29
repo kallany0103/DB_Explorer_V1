@@ -64,7 +64,7 @@ def build_connection_context_menu(item) -> QMenu:
     """
     menu = _make_menu()
 
-    # ── Section: Cardinality ──────────────────────────────────────
+    # Section: Cardinality
     _add_header(menu, "Cardinality")
     for type_key, info in item.RELATION_TYPES.items():
         action = menu.addAction(qta.icon(info['icon'], color='#5F6368'), info['label'])
@@ -72,7 +72,7 @@ def build_connection_context_menu(item) -> QMenu:
         action.setChecked(type_key == item.relation_type)
         action.triggered.connect(lambda checked, k=type_key: item.set_relation_type(k))
 
-    # ── Section: Label ────────────────────────────────────────────
+    #Section: Label
     menu.addSeparator()
     _add_header(menu, "Label")
     if item._label.isVisible():
@@ -87,14 +87,14 @@ def build_connection_context_menu(item) -> QMenu:
             qta.icon('fa5s.tag', color='#374151'), "Add Label"
         ).triggered.connect(item._open_label_editor)
 
-    # ── Section: Actions ──────────────────────────────────────────
+    # Section: Actions
     menu.addSeparator()
     _add_header(menu, "Actions")
     menu.addAction(
         qta.icon('mdi.link-off', color='#374151'), "Detach Relationship"
     ).triggered.connect(item.detach_relationship)
 
-    # ── Section: Style & Animation ────────────────────────────────
+    # Section: Style & Animation 
     menu.addSeparator()
     _add_header(menu, "Style & Animation")
 
@@ -137,7 +137,7 @@ def build_connection_context_menu(item) -> QMenu:
     anim_act.setChecked(item._is_animated)
     anim_act.triggered.connect(item.set_animated)
 
-    # ── Destructive ───────────────────────────────────────────────
+    # Destructive
     menu.addSeparator()
     remove_act = menu.addAction(
         qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Relationship"

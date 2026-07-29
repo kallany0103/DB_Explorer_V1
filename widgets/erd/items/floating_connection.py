@@ -5,6 +5,10 @@ from PySide6.QtCore import Qt, QPointF
 
 from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.constants import RELATION_TYPES
+import qtawesome as qta
+from widgets.erd.items.resizable import item_visual_scene_rect
+import widgets.erd.commands
+import widgets.erd.items.connection_item
 
 
 def arm_port_drag(item, scene_pos, *, col=None, relation_type="none"):
@@ -226,7 +230,6 @@ class ERDFloatingConnectionItem(QGraphicsPathItem):
             QMenu::item { padding: 6px 16px; font-size: 9pt; }
             QMenu::item:selected { background: #e8f0fe; color: #1a73e8; border-radius: 4px; }
         """)
-        import qtawesome as qta
         menu.addAction(qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Connection").triggered.connect(self._remove_self)
         menu.exec(event.screenPos())
         event.accept()
@@ -246,9 +249,6 @@ class ERDFloatingConnectionItem(QGraphicsPathItem):
         if self.start_handle.anchored_item:
             item = self.start_handle.anchored_item
             scene_p1 = self.mapToScene(p1)
-            # Use the un-padded visible rect; sceneBoundingRect() now includes
-            # the resize-handle padding which would make edge detection wrong.
-            from widgets.erd.items.resizable import item_visual_scene_rect
             rect = item_visual_scene_rect(item)
             
             # Use small epsilon for floating point comparison
@@ -361,24 +361,22 @@ class ERDFloatingConnectionItem(QGraphicsPathItem):
             if not scene:
                 return
             
-            # --- Logic: If both are tables, we can use AddConnectionCommand ---
-            # --- Logic: If one or both are Chen shapes, we create a direct link ---
+            #Logic: If both are tables, we can use AddConnectionCommand 
+            #Logic: If one or both are Chen shapes, we create a direct link
             s_item = self.start_handle.anchored_item
             e_item = self.end_handle.anchored_item
             
             if isinstance(s_item, ERDTableItem) and isinstance(e_item, ERDTableItem):
-                from widgets.erd.commands import AddConnectionCommand
                 widget = scene.parent()
                 s_name = f"{s_item.schema_name or 'public'}.{s_item.table_name}"
                 e_name = f"{e_item.schema_name or 'public'}.{e_item.table_name}"
-                cmd = AddConnectionCommand(widget, s_name, self.start_handle.anchored_col, e_name, self.end_handle.anchored_col, self.relation_type)
+                cmd = widgets.erd.commands.AddConnectionCommand(widget, s_name, self.start_handle.anchored_col, e_name, self.end_handle.anchored_col, self.relation_type)
                 scene.removeItem(self)
                 if hasattr(scene, 'undo_stack'):
                     scene.undo_stack.push(cmd)
             else:
                 # Generic connection between non-table shapes
-                from widgets.erd.items.connection_item import ERDConnectionItem
-                new_conn = ERDConnectionItem(s_item, e_item, self.start_handle.anchored_col, self.end_handle.anchored_col)
+                new_conn = widgets.erd.items.connection_item.ERDConnectionItem(s_item, e_item, self.start_handle.anchored_col, self.end_handle.anchored_col)
                 new_conn.relation_type = self.relation_type
                 scene.addItem(new_conn)
                 scene.removeItem(self)

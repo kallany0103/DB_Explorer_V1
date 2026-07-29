@@ -5,6 +5,9 @@ from PySide6.QtCore import QPointF
 from PySide6.QtGui import QUndoCommand
 
 from widgets.erd.model import DEFAULT_SCHEMA, full_name, normalize_entity, normalize_foreign_key
+import widgets.erd.items.table_item
+import widgets.erd.items.connection_item
+import widgets.erd.items.note_item
 
 
 class MoveTableCommand(QUndoCommand):
@@ -105,11 +108,8 @@ class AddTableCommand(QUndoCommand):
         self.item = None
 
     def redo(self) -> None:
-        # Deferred import: avoids circular dependency (commands ↔ items).
-        from widgets.erd.items.table_item import ERDTableItem
-
         if not self.item:
-            self.item = ERDTableItem(self.table_name, self.columns, schema_name=self.schema_name)
+            self.item = widgets.erd.items.table_item.ERDTableItem(self.table_name, self.columns, schema_name=self.schema_name)
             self.item.setPos(self.pos)
 
         self.scene.addItem(self.item)
@@ -176,9 +176,6 @@ class AddConnectionCommand(QUndoCommand):
         self.item = None
 
     def redo(self) -> None:
-        # Deferred import: avoids circular dependency (commands ↔ items).
-        from widgets.erd.items.connection_item import ERDConnectionItem
-
         if not self.item:
             source_item = self.scene.tables.get(self.source_table_name)
             target_item = self.scene.tables.get(self.target_table_name)
@@ -186,7 +183,7 @@ class AddConnectionCommand(QUndoCommand):
             if not source_item or not target_item:
                 return
 
-            self.item = ERDConnectionItem(
+            self.item = widgets.erd.items.connection_item.ERDConnectionItem(
                 source_item, target_item,
                 self.source_col, self.target_col,
                 fk_meta=self.fk_meta
@@ -316,11 +313,8 @@ class AddNoteCommand(QUndoCommand):
         self.item = None
 
     def redo(self) -> None:
-        # Deferred import: avoids circular dependency (commands ↔ items).
-        from widgets.erd.items.note_item import ERDNoteItem
-
         if not self.item:
-            self.item = ERDNoteItem(self.note_text)
+            self.item = widgets.erd.items.note_item.ERDNoteItem(self.note_text)
             self.item.setPos(self.pos)
         self.scene.addItem(self.item)
 

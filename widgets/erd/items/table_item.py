@@ -1,10 +1,3 @@
-# NOTE: This file exceeds the 500-line soft limit because ERDTableItem combines
-# geometry computation, paint logic (header, columns, icons, highlights, resize
-# handles), and Qt event handling (hover, press, drag, resize, context menu) for
-# a single, cohesive graphics item.  The painting and geometry sections cannot be
-# meaningfully separated without introducing circular dependencies or artificial
-# indirection.  All extractable helpers (resizable mixin, constants) have already
-# been moved to dedicated modules.
 import math
 import qtawesome as qta
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect, QMenu
@@ -13,10 +6,9 @@ from PySide6.QtCore import Qt, QRectF, QPointF, QLineF, QSizeF
 
 from widgets.erd.commands import DeleteItemCommand, MoveTableCommand, ResizeItemCommand
 from widgets.erd.constants import DRAG_ENDPOINT_RADIUS
-# ERDConnectionItem and floating_connection are deferred inside methods to break cycles:
-#   table_item -> connection_item -> routing -> table_item
-#   table_item -> floating_connection -> table_item
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
+import widgets.erd.items.connection_item
+from widgets.erd.items.floating_connection import arm_port_drag, maybe_start_port_drag, cancel_port_drag
 
 GRID_SNAP: float = 20.0  # pixel grid for snap-to-grid during drag
 
@@ -132,9 +124,6 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         return self.rect().adjusted(-pad, -pad, pad, pad)
 
     def shape(self):
-        # When selected, expand the hit-test area to cover the resize handles
-        # which extend outside rect(); otherwise hover/click events near the
-        # handles never reach this item, making them hard to grab.
         if self.isSelected():
             return self.resize_shape_path()
         return super().shape()
@@ -314,9 +303,8 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             event.accept()
             return
         # Defensive: If clicking near a connection handle, let the connection catch it
-        from widgets.erd.items.connection_item import ERDConnectionItem  # deferred: circular import guard
         for item in self.scene().items(event.scenePos()):
-            if isinstance(item, ERDConnectionItem):
+            if isinstance(item, widgets.erd.items.connection_item.ERDConnectionItem):
                 path = item.path()
                 if path.elementCount() >= 2:
                     p0 = item.mapToScene(QPointF(path.elementAt(0).x, path.elementAt(0).y))
@@ -332,11 +320,6 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
                 port_rect_right = QRectF(self.width - 20, y, 20, self.row_height)
                 port_rect_left = QRectF(0, y, 20, self.row_height)
                 if port_rect_right.contains(pos) or port_rect_left.contains(pos):
-                    # Arm a pending connection drag; the floating connection is
-                    # only created in mouseMoveEvent once the cursor moves past
-                    # the platform drag threshold. A plain click no longer
-                    # spawns a dangling connection line.
-                    from widgets.erd.items.floating_connection import arm_port_drag  # deferred: circular import guard
                     arm_port_drag(
                         self,
                         event.scenePos(),
@@ -359,7 +342,6 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag  # deferred: circular import guard
             if maybe_start_port_drag(self, event.scenePos()) is not None:
                 event.accept()
                 return
@@ -378,7 +360,6 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             return
         if getattr(self, "_pending_port_drag", None) is not None:
             # Plain click on a port (no drag) - cancel and treat as selection.
-            from widgets.erd.items.floating_connection import cancel_port_drag  # deferred: circular import guard
             cancel_port_drag(self)
             event.accept()
             return

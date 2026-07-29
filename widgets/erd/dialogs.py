@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 
 from widgets.erd.model import DEFAULT_SCHEMA
 from ui.components import PrimaryButton, SecondaryButton
+from widgets.erd.items.connection_item import ERDConnectionItem
 
 
 class TableDesignerDialog(QDialog):
@@ -305,7 +306,6 @@ class RelationDesignerDialog(QDialog):
         form.addRow("Target Column:", self.target_col_combo)
 
         self.type_combo = QComboBox()
-        from widgets.erd.items.connection_item import ERDConnectionItem
         reltab = ERDConnectionItem.RELATION_TYPES
         for k, v in reltab.items():
             self.type_combo.addItem(v['label'], k)

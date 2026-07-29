@@ -7,8 +7,8 @@ from PySide6.QtCore import Qt, QRectF, QPointF, QSizeF
 
 from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.constants import PORT_HIT_RADIUS_SQ
-# floating_connection imports table_item at module level; keep deferred to avoid init-order issues
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
+from widgets.erd.items.floating_connection import arm_port_drag, maybe_start_port_drag, cancel_port_drag
 
 
 class _DiamondLabelItem(QGraphicsTextItem):
@@ -186,10 +186,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
         for px, py in ports:
             dx, dy = px - click_pos.x(), py - click_pos.y()
             if (dx*dx + dy*dy) < PORT_HIT_RADIUS_SQ:
-                # Arm pending port drag; floating connection only created
-                # once cursor moves past drag threshold.
                 scene_pos = self.mapToScene(QPointF(px, py))
-                from widgets.erd.items.floating_connection import arm_port_drag  # deferred: circular import guard
                 arm_port_drag(self, scene_pos, relation_type="none")
                 event.accept()
                 return
@@ -201,7 +198,6 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag  # deferred: circular import guard
             maybe_start_port_drag(self, event.scenePos())
             event.accept()
             return
@@ -217,7 +213,6 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import cancel_port_drag  # deferred: circular import guard
             cancel_port_drag(self)
             event.accept()
             return
