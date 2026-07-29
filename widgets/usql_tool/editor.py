@@ -115,9 +115,8 @@ class _TerminalEdit(QPlainTextEdit):
         self.cursorPositionChanged.connect(self._on_cursor_moved)
         self.updateRequest.connect(self._on_update_request)
 
-    # ------------------------------------------------------------------
     # Public helpers called by USQLToolWidget
-    # ------------------------------------------------------------------
+
 
     def append_output(self, text: str) -> None:
         """
@@ -248,9 +247,8 @@ class _TerminalEdit(QPlainTextEdit):
             self.setTextCursor(cursor)
         self.insertPlainText(clipboard_text)
 
-    # ------------------------------------------------------------------
+
     # Autocomplete — engine attachment + ghost-text helpers
-    # ------------------------------------------------------------------
 
     def set_engine(self, engine, conn_data: dict | None = None) -> None:
         """Attach a CompletionEngine for inline ghost-text autocomplete."""
@@ -355,11 +353,10 @@ class _TerminalEdit(QPlainTextEdit):
         if dy and self._ghost_text:
             self._update_ghost_label_pos()
 
-    # ------------------------------------------------------------------
-    # Key handling — the heart of the terminal feel
-    # ------------------------------------------------------------------
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+    # Key handling — the heart of the terminal feel
+
+    def keyPressEvent(self, event: QKeyEvent) -> None: 
         key = event.key()
         mods = event.modifiers()
         cursor = self.textCursor()
@@ -497,16 +494,14 @@ class _TerminalEdit(QPlainTextEdit):
             elif text or key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
                 self._compute_ghost()
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event) -> None:
         super().mouseReleaseEvent(event)
         cursor = self.textCursor()
-        # If user clicked in the protected zone without a selection, send
-        # cursor back to the input zone so they can keep typing.
         if cursor.position() < self._input_start and not cursor.hasSelection():
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self.setTextCursor(cursor)
 
-    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+    def wheelEvent(self, event: QWheelEvent) -> None: 
         """Ctrl+Scroll → adjust font size (clamped to 8–24 pt)."""
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
@@ -521,7 +516,7 @@ class _TerminalEdit(QPlainTextEdit):
         else:
             super().wheelEvent(event)
 
-    def contextMenuEvent(self, event) -> None:  # noqa: N802
+    def contextMenuEvent(self, event) -> None: 
         """Right-click context menu: Copy / Paste / Select All / Clear."""
         menu = QMenu(self)
         menu.addAction("Copy", self.copy)
@@ -534,17 +529,15 @@ class _TerminalEdit(QPlainTextEdit):
             menu.addAction("Clear", parent._clear)
         menu.exec(event.globalPos())
 
-    # ------------------------------------------------------------------
     # Drag-and-drop — schema object names from the DB explorer tree
-    # ------------------------------------------------------------------
 
-    def dragEnterEvent(self, event) -> None:  # noqa: N802
+    def dragEnterEvent(self, event) -> None:
         if event.mimeData().hasText() or event.mimeData().hasFormat(
             "application/x-db-explorer-schema-object"
         ):
             event.acceptProposedAction()
 
-    def dropEvent(self, event) -> None:  # noqa: N802
+    def dropEvent(self, event) -> None: 
         mime = event.mimeData()
         if mime.hasFormat("application/x-db-explorer-schema-object"):
             obj_name = mime.data(
