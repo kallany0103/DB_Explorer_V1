@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QPalette, QStandardItem, QStandardItemModel, Q
 from PySide6.QtWidgets import (
     QComboBox, QPushButton, QStackedWidget, QStyledItemDelegate, 
     QStyle, QStyleOptionViewItem, QTableView, QWidget, QAbstractItemView,
-    QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QLabel
+    QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox, QMessageBox
 )
 
 
@@ -387,12 +387,11 @@ def refresh_processes_view(manager):
         return
 
     db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-    selected_server = None
     if db_combo_box:
         index = db_combo_box.currentIndex()
         if index >= 0:
             data = db_combo_box.itemData(index)
-            selected_server = data.get("short_name") if data else None
+            data.get("short_name") if data else None
 
     processes_view = current_tab.findChild(QTableView, "processes_view")
     model = getattr(current_tab, "processes_model", None)
@@ -457,7 +456,6 @@ def handle_view_log(manager, tab_content):
   
     selection = processes_view.selectionModel().selectedRows()
     if not selection:
-        from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(tab_content, "Select Process", "Please select a process from the table first.")
         return
 

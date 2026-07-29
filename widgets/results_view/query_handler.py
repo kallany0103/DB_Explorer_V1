@@ -4,7 +4,7 @@ import datetime
 import sqlparse
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QTimer
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QAbstractItemView, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QToolButton, QWidget, QTabWidget, QTableView
+from PySide6.QtWidgets import QAbstractItemView, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QWidget, QTabWidget, QTableView
 
 from db.query_context import resolve_writable_table_context
 from widgets.results_view.explain import ExplainVisualizer
