@@ -27,9 +27,7 @@ def _to_pix(img: QImage) -> QPixmap:
     return QPixmap.fromImage(img)
 
 
-# ---------------------------------------------------------------------------
 # Shape preview (drag cursor / hover popup)
-# ---------------------------------------------------------------------------
 
 def _preview_table(ct: str) -> QPixmap:
     W, H, ALPHA = 120, 80, 210
@@ -237,9 +235,8 @@ def _make_shape_preview(comp_type: str) -> QPixmap:
     return _preview_fallback()
 
 
-# ---------------------------------------------------------------------------
+
 # Tile icon (small, used inside palette buttons)
-# ---------------------------------------------------------------------------
 
 def _make_tile_icon(comp_type: str, size: int = 22) -> QPixmap:
     """Return a miniature ERD symbol pixmap for the palette tile icon label."""
@@ -334,9 +331,7 @@ def _draw_tile_relationship(painter: QPainter, comp_type: str, s: int) -> None:
     _mini_marker(rx_end, -1, right_part)
 
 
-# ---------------------------------------------------------------------------
 # Crow's foot marker helper (used by both preview and tile renderers)
-# ---------------------------------------------------------------------------
 
 def _draw_cf_marker(painter: QPainter, P: QPointF, nx: float, ny: float, part: str) -> None:
     """Draw a mini crow's foot marker at point P facing direction (nx, ny)."""

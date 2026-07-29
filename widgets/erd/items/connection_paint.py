@@ -1,20 +1,17 @@
 """Crow's-foot and arrow painting helpers for ERDConnectionItem."""
 import math
 
-from PySide6.QtWidgets import QStyle
-from PySide6.QtGui import QPen, QBrush, QPainterPath, QPainterPathStroker
+from PySide6.QtGui import QPen, QBrush, QPainterPath, QColor
 from PySide6.QtCore import Qt, QPointF
 
 from widgets.erd.constants import (
     CF_BAR_NEAR, CF_BAR_FAR, CF_FOOT_TIP, CF_FOOT_SPREAD, CF_FOOT_WIDTH,
     CF_CIRCLE_ONE, CF_CIRCLE_MANY, CF_CIRCLE_RADIUS,
 )
-from widgets.erd.items.resizable import item_visual_scene_rect
 
 
-# ---------------------------------------------------------------------------
+
 # Geometry utilities
-# ---------------------------------------------------------------------------
 
 def align_marker_origin(origin: QPointF, bridge_point: QPointF) -> QPointF:
     """Snap origin to the same axis as bridge_point (Manhattan alignment)."""
@@ -41,12 +38,11 @@ def find_direction_point(path, start_idx: int, forward: bool = True) -> QPointF 
     return None
 
 
-# ---------------------------------------------------------------------------
+
 # Crow's-foot symbol painters (local-coordinate, painter already translated)
-# ---------------------------------------------------------------------------
+
 
 def _pen_for_marker(is_hovered: bool) -> QPen:
-    from PySide6.QtGui import QColor
     pen = QPen(QColor("#1A73E8") if is_hovered else QColor("#5F6368"))
     pen.setWidthF(1.7 if is_hovered else 1.3)
     pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
@@ -96,9 +92,9 @@ def draw_cf_symbol(painter, rel_part: str, is_hovered: bool) -> None:
         draw_circle(CF_CIRCLE_MANY)
 
 
-# ---------------------------------------------------------------------------
+
 # High-level drawing helpers called from ERDConnectionItem.paint()
-# ---------------------------------------------------------------------------
+
 
 def draw_crows_foot(painter, origin: QPointF, bridge_point: QPointF,
                     rel_part: str, is_hovered: bool, bridge_pen: QPen) -> None:
@@ -198,7 +194,6 @@ def draw_crows_foot_at(painter, origin: QPointF, direction_point: QPointF,
 
 def draw_arrow(painter, P: QPointF, angle: float, is_hovered: bool) -> None:
     """Draw a simple filled arrowhead at point P facing direction angle."""
-    from PySide6.QtGui import QColor
     painter.save()
     painter.translate(P)
     painter.rotate(math.degrees(angle))

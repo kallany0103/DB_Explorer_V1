@@ -1,18 +1,14 @@
 import heapq
 import math
-# from PyQt6.QtCore import QPointF, QRectF
 from PySide6.QtCore import QPointF, QRectF
-from widgets.erd.items.table_item import ERDTableItem
 from widgets.erd.items.resizable import item_visual_scene_rect
+from widgets.erd.items.attribute_item import ERDAttributeItem
+from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
 
 
 def get_chen_boundary_anchor(item, target_point):
     """Compute where a line from item's center to target_point exits the item's
     actual visual boundary (ellipse, rectangle, or diamond)."""
-    from widgets.erd.items.attribute_item import ERDAttributeItem
-    from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
-    from widgets.erd.items.resizable import item_visual_scene_rect
-
     rect = item_visual_scene_rect(item)
     cx, cy = rect.center().x(), rect.center().y()
     dx = target_point.x() - cx

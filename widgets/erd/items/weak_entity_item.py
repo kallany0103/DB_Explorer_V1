@@ -8,8 +8,8 @@ from PySide6.QtCore import Qt, QPointF, QSizeF
 
 from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.constants import PORT_HIT_RADIUS_SQ
-# floating_connection imports table_item at module level; keep deferred to avoid init-order issues
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
+from widgets.erd.items.floating_connection import arm_port_drag, maybe_start_port_drag, cancel_port_drag
 
 
 class _LabelTextItem(QGraphicsTextItem):
@@ -74,7 +74,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         shadow.setOffset(0, 3)
         self.setGraphicsEffect(shadow)
 
-        # --- Inline text label ---
+        #Inline text label
         self._text_item = _LabelTextItem(label, self)
         self._text_item.setDefaultTextColor(QColor("#1E293B"))
         self._text_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
@@ -98,9 +98,8 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         self.setRect(0, 0, width, height)
         self._center_label()
 
-    # ------------------------------------------------------------------
+
     # Geometry helpers
-    # ------------------------------------------------------------------
 
     def _center_label(self):
         r = self.rect()
@@ -149,9 +148,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
             return self.resize_shape_path()
         return super().shape()
 
-    # ------------------------------------------------------------------
     # Painting
-    # ------------------------------------------------------------------
 
     def paint(self, painter, option, widget):
         if not painter.isActive():
@@ -162,12 +159,12 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         g = self.GAP
         is_selected = (option.state & QStyle.StateFlag.State_Selected) == QStyle.StateFlag.State_Selected
 
-        # --- Fill ---
+        # Fill
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor("#EEF2FF")))
         painter.drawRoundedRect(r, self.CORNER_R, self.CORNER_R)
 
-        # --- Outer border ---
+        # Outer border
         if self.target_highlight:
             outer_color = QColor("#10B981") # Green for target
             outer_pen = QPen(outer_color, 3.0)
@@ -179,7 +176,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(r, self.CORNER_R, self.CORNER_R)
 
-        # --- Inner border (double-border hallmark of weak entities) ---
+        # Inner border (double-border hallmark of weak entities)
         inner_r = r.adjusted(g, g, -g, -g)
         inner_pen = QPen(outer_color, 1.0)
         inner_pen.setStyle(Qt.PenStyle.SolidLine)
@@ -187,7 +184,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         painter.drawRoundedRect(inner_r, max(0, self.CORNER_R - 2), max(0, self.CORNER_R - 2))
         self.draw_resize_handles(painter)
 
-        # --- Connection ports on hover ---
+        # Connection ports on hover
         if self.isUnderMouse():
             painter.setBrush(QColor("#818CF8"))
             painter.setPen(Qt.PenStyle.NoPen)
@@ -198,9 +195,8 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
             ]:
                 painter.drawEllipse(QPointF(px, py), 4, 4)
 
-    # ------------------------------------------------------------------
+
     # Interaction
-    # ------------------------------------------------------------------
 
     def mousePressEvent(self, event):
         handle = self.handle_at(event.pos())
@@ -218,10 +214,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         for px, py in ports:
             dx, dy = px - click_pos.x(), py - click_pos.y()
             if (dx*dx + dy*dy) < PORT_HIT_RADIUS_SQ:
-                # Arm pending port drag; floating connection only created
-                # once cursor moves past drag threshold.
                 scene_pos = self.mapToScene(QPointF(px, py))
-                from widgets.erd.items.floating_connection import arm_port_drag  # deferred: circular import guard
                 arm_port_drag(self, scene_pos, relation_type="none")
                 event.accept()
                 return
@@ -233,7 +226,6 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import maybe_start_port_drag  # deferred: circular import guard
             maybe_start_port_drag(self, event.scenePos())
             event.accept()
             return
@@ -249,7 +241,6 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
             event.accept()
             return
         if getattr(self, "_pending_port_drag", None) is not None:
-            from widgets.erd.items.floating_connection import cancel_port_drag  # deferred: circular import guard
             cancel_port_drag(self)
             event.accept()
             return
@@ -309,9 +300,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         self.update()
         super().hoverLeaveEvent(event)
 
-    # ------------------------------------------------------------------
     # Public API (connection_item compatibility)
-    # ------------------------------------------------------------------
 
     @property
     def table_name(self):

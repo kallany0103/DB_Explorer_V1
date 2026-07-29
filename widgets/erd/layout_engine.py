@@ -55,7 +55,7 @@ def _rank_component(comp_nodes: list, schema_data: dict) -> tuple[dict, dict, di
                 sub_total_degree[u] += 1
                 sub_total_degree[target] += 1
 
-    # --- STEP: RANKING (Sugiyama Layering) ---
+    # STEP: RANKING (Sugiyama Layering)
     ranks: dict = {n: 0 for n in comp_nodes}
     queue: deque = deque(n for n in comp_nodes if sub_in_degree[n] == 0)
     while queue:

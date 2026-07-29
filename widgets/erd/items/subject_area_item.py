@@ -103,9 +103,8 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
             return self.resize_shape_path()
         return super().shape()
 
-    # ------------------------------------------------------------------
     # Painting
-    # ------------------------------------------------------------------
+
 
     def paint(self, painter, option, widget):
         if not painter.isActive():
@@ -133,9 +132,8 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
 
         self.draw_resize_handles(painter)
 
-    # ------------------------------------------------------------------
     # Resize interaction
-    # ------------------------------------------------------------------
+
 
     def mousePressEvent(self, event):
         handle = self.handle_at(event.pos())
@@ -181,9 +179,8 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
         self._title.setFocus()
         super().mouseDoubleClickEvent(event)
 
-    # ------------------------------------------------------------------
+
     # Context menu
-    # ------------------------------------------------------------------
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu()

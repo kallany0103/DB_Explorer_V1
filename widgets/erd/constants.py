@@ -7,8 +7,6 @@ RELATION_TYPES = {
     'none': {'label': 'None', 'icon': 'mdi6.minus', 'source': 'none', 'target': 'none'},
 }
 
-# Crow's-foot notation geometry — pixel offsets used when drawing end markers.
-# "origin" is the point where the line meets the table edge.
 CF_BAR_NEAR: int = 5        # distance from origin to the near perpendicular bar
 CF_BAR_FAR: int = 13        # distance from origin to the far perpendicular bar
 CF_FOOT_TIP: int = 0        # distance from origin to the crow's-foot prong tip

@@ -4,9 +4,15 @@ from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QFrame, QToolTip, Q
 from PySide6.QtCore import Signal, Qt, QPointF, QTimeLine, QTimer
 from PySide6.QtGui import QPainter, QTransform
 from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+from widgets.erd.items.entity_item import ERDEntityItem
+from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
+from widgets.erd.items.attribute_item import ERDAttributeItem
+from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
+from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
+import widgets.erd.widget
 
 from widgets.erd.commands import MoveTableCommand, AddTableCommand, AddColumnCommand
-from widgets.erd.constants import NUDGE_STEP, DUPLICATE_OFFSET, DRAG_ENDPOINT_RADIUS
+from widgets.erd.constants import NUDGE_STEP, DUPLICATE_OFFSET
 from widgets.erd.items.table_item import ERDTableItem
 
 class ERDView(QGraphicsView):
@@ -224,19 +230,13 @@ class ERDView(QGraphicsView):
 
     def _find_erd_widget(self):
         """Walk up the parent chain and return the first ERDWidget found."""
-        from widgets.erd.widget import ERDWidget
         widget = self.parent()
-        while widget and not isinstance(widget, ERDWidget):
+        while widget and not isinstance(widget, widgets.erd.widget.ERDWidget):
             widget = widget.parent()
         return widget
 
     def _create_chen_item(self, comp_type: str, scene_pos: QPointF) -> bool:
         """Instantiate a Chen ERD item and add it to the scene. Returns True if handled."""
-        from widgets.erd.items.entity_item import ERDEntityItem
-        from widgets.erd.items.weak_entity_item import ERDWeakEntityItem
-        from widgets.erd.items.attribute_item import ERDAttributeItem
-        from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
-        from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
 
         _attr_kind_map = {
             "attribute": "normal", "attribute_key": "key",

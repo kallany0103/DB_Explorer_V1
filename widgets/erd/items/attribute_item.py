@@ -61,17 +61,17 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         self.highlighted_cols = set()
         self.target_highlight = False
 
-        # --- Flags ---
+        #Flags
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
 
-        # --- Base styling ---
+        #Base styling
         self.setPen(Qt.PenStyle.NoPen)
         self.setBrush(QBrush(QColor("#F0FDF4")))  # Very light green fill
 
-        # --- Label ---
+        #Label
         self._label = _AttrLabelItem(label, self)
         self._label.setDefaultTextColor(QColor("#166534"))
         
@@ -99,9 +99,8 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         self.setRect(0, 0, width, height)
         self._center_label()
 
-    # ------------------------------------------------------------------
+
     # Geometry
-    # ------------------------------------------------------------------
 
     def _center_label(self):
         r = self.rect()
@@ -147,10 +146,8 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
             return self.resize_shape_path()
         return super().shape()
 
-    # ------------------------------------------------------------------
-    # Painting
-    # ------------------------------------------------------------------
 
+    # Painting
     def paint(self, painter, option, widget):
         if not painter.isActive():
             return
@@ -210,9 +207,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
             ]:
                 painter.drawEllipse(QPointF(px, py), 4, 4)
 
-    # ------------------------------------------------------------------
     # Interaction
-    # ------------------------------------------------------------------
 
     def mousePressEvent(self, event):
         handle = self.handle_at(event.pos())
