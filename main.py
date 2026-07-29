@@ -10,6 +10,8 @@ from main_window import MainWindow
 from ui.theme import setup_theme
 from widgets.encryption.secure_sqlite import enable_transparent_encryption
 
+from db.db_bootstrap import ensure_hierarchy_db
+
 os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
 
 if __name__ == "__main__":
@@ -18,7 +20,6 @@ if __name__ == "__main__":
     enable_transparent_encryption("mysecretpassword")
     
     # Bootstrap the database schema/tables if they don't exist
-    from db.db_bootstrap import ensure_hierarchy_db
     try:
         ensure_hierarchy_db()
     except Exception as e:

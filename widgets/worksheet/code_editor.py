@@ -23,9 +23,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import QRect, QSize, Qt, QPoint, QEvent
 
 
-# {mitayan}
-# TODO: This is a basic SQL syntax highlighter. You might want to consider adding
-# multi-line comment/string handling if needed.
+
 class SqlHighlighter(QSyntaxHighlighter):
     def __init__(self, document):
         super().__init__(document)
@@ -120,23 +118,18 @@ class CodeEditor(QPlainTextEdit):
         self.updateLineNumberAreaWidth(0)
         self.updateFoldingMarkers()
         self.highlightCurrentLine()
-# {mitayan}
+
     def _sync_document_font_from_widget(self):
         widget_font = self.font()
         if self.document().defaultFont() != widget_font:
             self.document().setDefaultFont(widget_font)
 
-# {mitayan}
+
     def lineNumberAreaWidth(self):
         # Find how many digits the highest line number will have
         digits = max(3, len(str(max(1, self.blockCount()))))
         metrics = QFontMetrics(self.document().defaultFont())
-        # 2. Calculate the space needed:
-        # horizontalAdvance('9')` gives the pixel width of the widest digit ('9')
-        # multiply by digits to cover all digits of the largest line number
-        # add 3 pixels as padding
         space = 8 + metrics.horizontalAdvance('9') * digits + self.folding_gutter_width
-        # print(space)
         return space
 
     def updateLineNumberAreaWidth(self, _):
@@ -168,7 +161,7 @@ class CodeEditor(QPlainTextEdit):
         self.lineNumberArea.update()
         self.viewport().update()
 
-# {mitayan}
+
     def showEvent(self, event):
         super().showEvent(event)
         self._sync_document_font_from_widget()
@@ -187,7 +180,7 @@ class CodeEditor(QPlainTextEdit):
                 self.lineNumberArea.update()
             self.viewport().update()
 
-# {mitayan}
+
     def lineNumberAreaPaintEvent(self, event):
         painter = QPainter(self.lineNumberArea)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -218,7 +211,6 @@ class CodeEditor(QPlainTextEdit):
             bottom = top + int(self.blockBoundingRect(block).height())
             blockNumber += 1
 
-#{mitayan}
     def updateFoldingMarkers(self):
         new_regions = {}
         new_statement_map = {}
@@ -320,7 +312,6 @@ class CodeEditor(QPlainTextEdit):
 
         self.applyFolding()
 
-# {mitayan}
 
 
     def toggleFold(self, block_number: int) -> None:
@@ -359,7 +350,7 @@ class CodeEditor(QPlainTextEdit):
         self.viewport().update()
         if self.lineNumberArea is not None:
             self.lineNumberArea.update()
-#{mitayan}
+
     def drawChevron(self, painter, x, y, is_collapsed):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -391,11 +382,6 @@ class CodeEditor(QPlainTextEdit):
 
         painter.drawPolyline(poly)
         painter.restore()
-#{mitayan}
-
-    # def on_text_changed(self):
-    #     # A simple debounce mechanism could be added here if performance is an issue
-    #     self.updateFoldingMarkers()
 
 
     def mousePressEvent(self, event):
@@ -485,9 +471,9 @@ class CodeEditor(QPlainTextEdit):
             extraSelections.append(selection)
 
         self.setExtraSelections(extraSelections)
-# {siam}
 
-    # --- New Edit Methods ---
+
+    # New Edit Methods 
 
     def indent_selection(self):
         cursor = self.textCursor()
@@ -563,9 +549,6 @@ class CodeEditor(QPlainTextEdit):
             file_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
             text = block.text()
             if text.strip().startswith("--"):
-                # Uncomment: Find first instance of -- and remove it
-                # We need to be careful to remove the specific '-- ' or '--' we added
-                # Simple approach: remove first occurrence of '--' and optional following space
                 pos = text.find("--")
                 if pos != -1:
                     file_cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.MoveAnchor, pos)
@@ -667,9 +650,7 @@ class CodeEditor(QPlainTextEdit):
         cursor.endEditBlock()
         return count
 
-    # =========================================================================
     # --- AUTOCOMPLETE SUPPORT (ghost-text / inline suggestion) ---
-    # =========================================================================
 
     def set_engine(self, engine):
         """Attach a CompletionEngine to this editor."""
@@ -717,19 +698,13 @@ class CodeEditor(QPlainTextEdit):
             return
         self._ghost_accepting = True
 
-        # Reconstruct the full intended word from stored state so we never
-        # have to re-read from the document (which can be stale in the same
-        # event tick).  _ghost_prefix is the text the user typed; _ghost_text
-        # is the suffix we are about to insert.
+
         full_word = getattr(self, "_ghost_full_match", None) or (self._ghost_prefix + self._ghost_text)
         prefix_len = len(self._ghost_prefix)
 
         cursor = self.textCursor()
 
         if self._engine and self._engine.is_keyword(full_word):
-            # For SQL keywords: select back over the prefix the user typed,
-            # then insert the whole keyword uppercased in one atomic operation.
-            # This guarantees correct case regardless of what the user typed.
             cursor.movePosition(
                 QTextCursor.MoveOperation.Left,
                 QTextCursor.MoveMode.KeepAnchor,
@@ -737,7 +712,6 @@ class CodeEditor(QPlainTextEdit):
             )
             cursor.insertText(full_word.upper())
         else:
-            # Non-keyword (table/column/schema name): just append the suffix.
             cursor.insertText(self._ghost_text)
 
         self.setTextCursor(cursor)
@@ -810,8 +784,6 @@ class CodeEditor(QPlainTextEdit):
             return
 
         # 3. Dot — capture word BEFORE super() inserts the dot, then branch:
-        #    schema dot → suggest tables in that schema
-        #    table dot  → suggest columns in that table
         if engine and event.text() == '.':
             word = self._word_before_cursor()
             self._clear_ghost()

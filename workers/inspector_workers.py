@@ -2,6 +2,8 @@
 
 from PySide6.QtCore import QObject, Signal, QRunnable
 import db
+from dialogs.properties import pg_queries
+from workers.inspector_stats import fetch_statistics_results
 
 class InspectorSignals(QObject):
     finished = Signal(dict)
@@ -37,40 +39,51 @@ class InspectorWorker(QRunnable):
         except Exception as e:
             self.signals.error.emit(str(e))
         finally:
-            if conn: conn.close()
+            if conn:
+                conn.close()
 
     def _fetch_properties(self, cursor):
-        from dialogs.properties import pg_queries
         obj_type = self.item_data.get('type')
         group_name = self.item_data.get('group_name')
         schema_name = self.item_data.get('schema_name', 'public')
         
         # Auto-detect group from type if group_name is missing (for root nodes)
         if not group_name and obj_type and obj_type.endswith('_root'):
-            if obj_type == 'schemas_root': group_name = "Schemas"
-            elif obj_type == 'fdw_root': group_name = "Foreign Data Wrappers"
-            elif obj_type == 'extension_root': group_name = "Extensions"
-            elif obj_type == 'language_root': group_name = "Languages"
+            if obj_type == 'schemas_root':
+                group_name = "Schemas"
+            elif obj_type == 'fdw_root':
+                group_name = "Foreign Data Wrappers"
+            elif obj_type == 'extension_root':
+                group_name = "Extensions"
+            elif obj_type == 'language_root':
+                group_name = "Languages"
 
         data = {"type": "object", "details": {}, "sql": ""}
         
-        # Only treat as group if type is explicitly a group type or if obj_type is not a specific object type
-        # Prioritize explicit object types (table, view, schema, function, etc.) over group_name
         is_specific_object = obj_type in ['table', 'view', 'schema', 'function', 'sequence', 'connection', 'extension', 'language', 'fdw', 'foreign_server', 'user_mapping', 'trigger']
         
         if group_name and not is_specific_object:
             data["type"] = "group"
             data["group_name"] = group_name
             query = None
-            if group_name == "Schemas": query = pg_queries.LIST_SCHEMAS
-            elif group_name == "Tables": query = pg_queries.LIST_TABLES
-            elif group_name == "Views": query = pg_queries.LIST_VIEWS
-            elif group_name == "Functions": query = pg_queries.LIST_FUNCTIONS
-            elif group_name == "Sequences": query = pg_queries.LIST_SEQUENCES
-            elif group_name.startswith("Columns"): query = pg_queries.LIST_COLUMNS
-            elif group_name.startswith("Constraints"): query = pg_queries.LIST_CONSTRAINTS
-            elif group_name.startswith("Indexes"): query = pg_queries.LIST_INDEXES
-            elif group_name == "Triggers": query = pg_queries.LIST_TRIGGERS
+            if group_name == "Schemas":
+                query = pg_queries.LIST_SCHEMAS
+            elif group_name == "Tables":
+                query = pg_queries.LIST_TABLES
+            elif group_name == "Views":
+                query = pg_queries.LIST_VIEWS
+            elif group_name == "Functions":
+                query = pg_queries.LIST_FUNCTIONS
+            elif group_name == "Sequences":
+                query = pg_queries.LIST_SEQUENCES
+            elif group_name.startswith("Columns"):
+                query = pg_queries.LIST_COLUMNS
+            elif group_name.startswith("Constraints"):
+                query = pg_queries.LIST_CONSTRAINTS
+            elif group_name.startswith("Indexes"):
+                query = pg_queries.LIST_INDEXES
+            elif group_name == "Triggers":
+                query = pg_queries.LIST_TRIGGERS
             
             if query:
                 table_name = self.item_data.get('table_name')
@@ -210,5 +223,4 @@ class InspectorWorker(QRunnable):
         return data
 
     def _fetch_statistics(self, cursor):
-        from workers.inspector_stats import fetch_statistics_results
         return fetch_statistics_results(cursor, self.item_data, self.obj_name)

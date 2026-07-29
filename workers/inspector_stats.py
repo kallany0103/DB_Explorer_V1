@@ -41,9 +41,7 @@ def resolve_statistics_queries(item_data, obj_name):
         if db_name:
             queries.append((pg_queries.GET_DATABASE_STATS, (db_name,)))
 
-    # --- Trigger-specific: must come before generic table_type checks ---
-    # Trigger items inherit table_type from their parent table, so the
-    # generic "TABLE" in table_type check would incorrectly match them.
+    #Trigger-specific: must come before generic table_type checks 
     elif obj_type == "trigger":
         trigger_name = item_data.get("trigger_name") or obj_name
         queries.append((pg_queries.GET_TRIGGER_STATS, (schema_name, trigger_name)))
@@ -52,7 +50,7 @@ def resolve_statistics_queries(item_data, obj_name):
         table_name = item_data.get("table_name")
         queries.append((pg_queries.GET_TRIGGERS_GROUP_STATS, (schema_name, table_name)))
 
-    # --- Generic type-based checks ---
+    #Generic type-based checks
     elif obj_type == "table" or any(
         k in table_type for k in ("TABLE", "VIEW", "MATERIALIZED")
     ):

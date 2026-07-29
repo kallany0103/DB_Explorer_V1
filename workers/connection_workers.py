@@ -2,7 +2,6 @@ import os
 import sqlite3 as sqlite
 from concurrent.futures import ProcessPoolExecutor
 
-import psycopg2
 from PySide6.QtCore import QObject, QRunnable, QThread, Signal
 
 import db

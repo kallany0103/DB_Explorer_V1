@@ -1,5 +1,4 @@
 # signals.py
-#from PyQt6.QtCore import QObject, pyqtSignal
 
 from PySide6.QtCore import QObject, Signal
 
@@ -10,10 +9,8 @@ class ProcessSignals(QObject):
       
 class QuerySignals(QObject):
     finished = Signal(object, object, object, object, object, object, object, object)
-    # conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query
 
     error = Signal(object, object, object, object, object)  
-    # conn_data, query, row_count, elapsed_time, error_message
 
 
 def _as_dict(value):
