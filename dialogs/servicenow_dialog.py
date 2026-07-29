@@ -1,9 +1,11 @@
 # dialogs/servicenow_dialog.py
-import os
 from PySide6.QtWidgets import QLineEdit, QMessageBox, QApplication
 from ui.components import PasswordBox
 from dialogs.base_connection_dialog import BaseConnectionDialog
 import db
+
+
+
 
 class ServiceNowConnectionDialog(BaseConnectionDialog):
     def __init__(self, parent=None, conn_data=None, type_id=None, group_id=None):

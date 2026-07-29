@@ -6,6 +6,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
 
+
+
+
 class CreateTableDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
         super().__init__(parent)
@@ -48,7 +51,7 @@ class CreateTableDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # --- Tab 1: General (Name, Owner, Schema) ---
+        #  Tab 1: General (Name, Owner, Schema)
         self.general_tab = QWidget()
         gen_layout = QFormLayout(self.general_tab)
         gen_layout.setContentsMargins(15, 15, 15, 15)
@@ -79,7 +82,7 @@ class CreateTableDialog(QDialog):
         
         self.tabs.addTab(self.general_tab, "General")
 
-        # --- Tab 2: Columns ---
+        #  Tab 2: Columns
         self.columns_tab = QWidget()
         col_layout = QVBoxLayout(self.columns_tab)
         col_layout.setContentsMargins(15, 15, 15, 15)
@@ -109,7 +112,7 @@ class CreateTableDialog(QDialog):
         
         self.tabs.addTab(self.columns_tab, "Columns")
 
-        # --- Footer Buttons ---
+        # Footer Buttons
         footer_btn_layout = QHBoxLayout()
         self.save_btn = PrimaryButton("Create")
         self.cancel_btn = SecondaryButton("Cancel")

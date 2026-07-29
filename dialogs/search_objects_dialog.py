@@ -7,6 +7,9 @@ from PySide6.QtCore import Qt
 import qtawesome as qta
 from ui.components import PrimaryButton, SecondaryButton
 
+
+
+
 class SearchObjectsDialog(QDialog):
     """
     Dialog for global object search across all PostgreSQL schemas.

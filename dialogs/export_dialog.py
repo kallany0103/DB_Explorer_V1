@@ -133,19 +133,17 @@ class ExportDialog(QDialog):
         tab_widget.addTab(general_tab, "General")
         tab_widget.addTab(options_tab, "Options")
         
-        # --- General Tab Layout ---
+        # General Tab Layout
         general_layout = QFormLayout(general_tab)
         
         # 1. Action Label
         general_layout.addRow("Action:", QLabel("Export Data"))
         
         # 2. File Name Input (Only Name)
-        # এখানে শুধুই ফাইলের নাম থাকবে
         self.filename_edit = QLineEdit(default_filename)
         general_layout.addRow("File Name:", self.filename_edit)
 
         # 3. Location Input (Default: Desktop)
-        # ডেস্কটপ পাথ বের করা হচ্ছে
         desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
         
         self.location_edit = QLineEdit(desktop_path)
@@ -154,13 +152,13 @@ class ExportDialog(QDialog):
         browse_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
         browse_btn.setFixedSize(30, 25)
         browse_btn.setToolTip("Browse Folder")
-        browse_btn.clicked.connect(self.browse_folder) # ফোল্ডার ব্রাউজ ফাংশন
+        browse_btn.clicked.connect(self.browse_folder)
         
         location_layout = QHBoxLayout()
         location_layout.addWidget(self.location_edit)
         location_layout.addWidget(browse_btn)
         
-        # আলাদা লেবেলে লোকেশন দেখানো হচ্ছে
+
         general_layout.addRow("Location:", location_layout)
 
         # 4. Format Selection
@@ -176,7 +174,7 @@ class ExportDialog(QDialog):
         self.encoding_combo.setEditable(True)
         general_layout.addRow("Encoding:", self.encoding_combo)
         
-        # --- Options Tab Layout ---
+        #Options Tab Layout
         options_layout = QFormLayout(options_tab)
         self.options_layout = options_layout
         
@@ -196,7 +194,7 @@ class ExportDialog(QDialog):
         options_layout.addRow(self.delimiter_label, self.delimiter_combo)
         options_layout.addRow(self.quote_label, self.quote_edit)
         
-        # --- Bottom Buttons ---
+        #Bottom Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
@@ -210,11 +208,10 @@ class ExportDialog(QDialog):
         
         main_layout.addLayout(btn_layout)
         
-        # Initial State trigger
+
         self.on_format_change(self.format_combo.currentText())
 
     def on_format_change(self, format_text):
-        """ফরম্যাট বদলালে এক্সটেনশন এবং অপশন আপডেট করবে"""
         is_csv = (format_text in ['csv', 'txt'])
         
         self.encoding_combo.setEnabled(is_csv)
@@ -223,18 +220,15 @@ class ExportDialog(QDialog):
         self.quote_label.setVisible(is_csv)
         self.quote_edit.setVisible(is_csv)
         
-        # ফাইলের নামের এক্সটেনশন আপডেট করা (লোকেশন ঠিক রেখে)
         current_filename = self.filename_edit.text()
         base_name, _ = os.path.splitext(current_filename)
         
-        # ডট (.) হ্যান্ডেল করা
         if format_text.startswith("."):
              self.filename_edit.setText(f"{base_name}{format_text}")
         else:
              self.filename_edit.setText(f"{base_name}.{format_text}")
 
     def browse_folder(self):
-        """ফোল্ডার সিলেক্ট করার জন্য"""
         folder = QFileDialog.getExistingDirectory(
             self, "Select Output Folder", self.location_edit.text()
         )
@@ -242,17 +236,13 @@ class ExportDialog(QDialog):
             self.location_edit.setText(folder)
 
     def get_options(self):
-        """ফাইনাল অপশন রিটার্ন করবে"""
         delimiter = self.delimiter_combo.currentText()
         if delimiter == '\\t':
           delimiter = '\t'
-        
-        # নাম এবং পাথ জোড়া লাগানো হচ্ছে (Joining Path + Filename)
-        # যাতে main_window.py তে কোনো চেঞ্জ করতে না হয়
         full_path = os.path.join(self.location_edit.text(), self.filename_edit.text())
 
         return {
-           "filename": full_path, # এখানে ফুল পাথ যাচ্ছে
+           "filename": full_path,
            "format": self.format_combo.currentText(),
            "encoding": self.encoding_combo.currentText(),
            "header": self.header_check.isChecked(),

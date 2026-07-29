@@ -7,6 +7,9 @@ from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
 
+
+
+
 class CreatePolicyDialog(QDialog):
     def __init__(self, parent=None, schema_name="", table_name="", roles=None):
         super().__init__(parent)
@@ -104,7 +107,7 @@ class CreatePolicyDialog(QDialog):
         
         self.tabs.addTab(self.expr_tab, "Expressions")
 
-        # --- Footer Buttons ---
+        # Footer Buttons 
         footer_btn_layout = QHBoxLayout()
         self.save_btn = PrimaryButton("Create")
         self.cancel_btn = SecondaryButton("Cancel")

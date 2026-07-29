@@ -3,8 +3,11 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
     QLineEdit, QFileDialog, QLabel, QCheckBox
 )
-from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
+
+
+
+
 
 class PreferencesDialog(QDialog):
     def __init__(self, main_window):

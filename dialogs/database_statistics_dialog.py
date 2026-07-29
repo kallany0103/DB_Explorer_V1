@@ -6,6 +6,10 @@ from PySide6.QtCore import Qt
 import qtawesome as qta
 from ui.components import SecondaryButton
 
+
+
+
+
 class DatabaseStatisticsDialog(QDialog):
     """
     Dialog showing an overview of database statistics.
@@ -68,8 +72,6 @@ class DatabaseStatisticsDialog(QDialog):
         try:
             stats = self.manager.connection_actions.fetch_database_statistics(self.conn_data)
             
-            # Clear grid (if needed)
-            # Add rows
             self._add_stat_row(0, "mdi.database", "Database Size", stats.get('db_size', 'N/A'))
             
             line = QFrame()

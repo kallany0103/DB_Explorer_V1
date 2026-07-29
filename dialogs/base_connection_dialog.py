@@ -7,6 +7,9 @@ from ui.components import PrimaryButton, SecondaryButton
 import db
 from db.db_retrieval import get_groups_by_type
 
+
+
+
 class BaseConnectionDialog(QDialog):
     """
     Base class for all connection dialogs. Provides the standard window layout,
