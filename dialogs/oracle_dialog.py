@@ -1,11 +1,12 @@
 # dialogs/oracle_dialog.py
 
-import os
 import oracledb
 from PySide6.QtWidgets import QLineEdit, QMessageBox
 from ui.components import PasswordBox
 from dialogs.base_connection_dialog import BaseConnectionDialog
 import oracledb
+
+
 
 class OracleConnectionDialog(BaseConnectionDialog):
     def __init__(self, parent=None, is_editing=False, type_id=None, group_id=None):

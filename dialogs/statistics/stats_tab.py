@@ -1,9 +1,11 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHeaderView, QLabel
+    QWidget, QVBoxLayout, QHeaderView
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont
 from PySide6.QtCore import Qt
 from widgets.inspector.properties_ui import PropertyTable
+
+
 
 STATS_DESCRIPTIONS = {
     "Size": "Total disk space used by the database",

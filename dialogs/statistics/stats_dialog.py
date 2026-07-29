@@ -8,12 +8,14 @@ from .stats_tab import StatisticsTab
 from workers.inspector_stats import fetch_statistics_results
 from ui.components import SecondaryButton
 
+
+
+
 class ObjectStatisticsDialog(QDialog):
     def __init__(self, item_data, obj_name, parent=None):
         super().__init__(parent)
         self.item_data = item_data
         self.obj_name = obj_name
-        # The manager is often passed as the parent in this app
         self.manager = parent 
         self.db_type = item_data.get('db_type', 'postgres')
         self.schema_name = item_data.get('schema_name', 'public')

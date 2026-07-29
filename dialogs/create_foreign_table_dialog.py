@@ -6,9 +6,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
+
+
+
 
 class CreateForeignTableDialog(QDialog):
     def __init__(self, parent=None, schemas=None, servers=None, db_type="postgres"):
@@ -52,7 +54,7 @@ class CreateForeignTableDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # --- Tab 1: General (Name, Schema, Server) ---
+        #Tab 1: General (Name, Schema, Server)
         self.general_tab = QWidget()
         gen_layout = QFormLayout(self.general_tab)
         gen_layout.setContentsMargins(15, 15, 15, 15)
@@ -82,7 +84,7 @@ class CreateForeignTableDialog(QDialog):
         
         self.tabs.addTab(self.general_tab, "General")
 
-        # --- Tab 2: Foreign Options ---
+        # Tab 2: Foreign Options
         self.options_tab = QWidget()
         opt_layout = QFormLayout(self.options_tab)
         opt_layout.setContentsMargins(15, 15, 15, 15)
@@ -95,7 +97,7 @@ class CreateForeignTableDialog(QDialog):
         
         self.tabs.addTab(self.options_tab, "Foreign Options")
 
-        # --- Tab 3: Columns ---
+        # Tab 3: Columns
         self.columns_tab = QWidget()
         col_layout = QVBoxLayout(self.columns_tab)
         col_layout.setContentsMargins(15, 15, 15, 15)
@@ -122,7 +124,7 @@ class CreateForeignTableDialog(QDialog):
         
         self.tabs.addTab(self.columns_tab, "Columns")
 
-        # --- Tab 4: Server Options ---
+        # Tab 4: Server Options
         self.server_options_tab = QWidget()
         server_opt_layout = QVBoxLayout(self.server_options_tab)
         server_opt_layout.setContentsMargins(15, 15, 15, 15)
@@ -138,7 +140,7 @@ class CreateForeignTableDialog(QDialog):
         server_opt_layout.addWidget(self.server_options_editor)
         self.tabs.addTab(self.server_options_tab, "Server Options")
 
-        # --- Footer Buttons ---
+        # Footer Buttons
         footer_btn_layout = QHBoxLayout()
         self.save_btn = PrimaryButton("Create")
         self.cancel_btn = SecondaryButton("Cancel")

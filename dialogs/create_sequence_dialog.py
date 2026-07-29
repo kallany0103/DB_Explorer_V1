@@ -1,10 +1,12 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
     QLineEdit, QComboBox, QLabel, QMessageBox, 
-    QHBoxLayout, QCheckBox, QSpinBox
+    QHBoxLayout, QCheckBox
 )
 from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
+
+
 
 class CreateSequenceDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
@@ -45,7 +47,7 @@ class CreateSequenceDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # --- Tab 1: General (Name, Schema) ---
+        #  Tab 1: General (Name, Schema)
         self.general_tab = QWidget()
         gen_layout = QFormLayout(self.general_tab)
         gen_layout.setContentsMargins(15, 15, 15, 15)
@@ -67,7 +69,7 @@ class CreateSequenceDialog(QDialog):
         
         self.tabs.addTab(self.general_tab, "General")
 
-        # --- Tab 2: Sequence Options ---
+        #  Tab 2: Sequence Options
         self.options_tab = QWidget()
         opt_layout = QFormLayout(self.options_tab)
         opt_layout.setContentsMargins(15, 15, 15, 15)
@@ -117,7 +119,7 @@ class CreateSequenceDialog(QDialog):
         
         self.tabs.addTab(self.options_tab, "Options")
 
-        # --- Footer Buttons ---
+        # Footer Buttons 
         footer_btn_layout = QHBoxLayout()
         self.save_btn = PrimaryButton("Create")
         self.cancel_btn = SecondaryButton("Cancel")

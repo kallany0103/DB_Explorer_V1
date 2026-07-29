@@ -3,6 +3,9 @@ from ui.components import PasswordBox
 from dialogs.base_connection_dialog import BaseConnectionDialog
 import psycopg2
 
+
+
+
 class PostgresConnectionDialog(BaseConnectionDialog):
     def __init__(self, parent=None, is_editing=False, type_id=None, group_id=None):
         super().__init__(

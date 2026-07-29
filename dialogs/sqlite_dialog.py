@@ -5,6 +5,10 @@ from PySide6.QtWidgets import QLineEdit, QHBoxLayout, QFileDialog, QMessageBox
 from ui.components import SecondaryButton
 from dialogs.base_connection_dialog import BaseConnectionDialog
 
+
+
+
+
 class SQLiteConnectionDialog(BaseConnectionDialog):
     def __init__(self, parent=None, conn_data=None, type_id=None, group_id=None):
         super().__init__(

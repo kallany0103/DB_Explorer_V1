@@ -8,13 +8,15 @@ import db
 from db.db_retrieval import get_groups_by_type
 from ui.components import PrimaryButton, SecondaryButton
 
+
+
 class CSVConnectionDialog(QDialog):
     def __init__(self, parent=None, conn_data=None, type_id=None, group_id=None):
         super().__init__(parent)
         self.type_id = type_id
         self.group_id = group_id
         self.setWindowTitle("Edit CSV Connection" if conn_data else "New CSV Connection")
-        self.setFixedSize(560, 400) # Increased height
+        self.setFixedSize(560, 400) 
         self.setSizeGripEnabled(True)
 
         self._init_ui(conn_data)
@@ -106,7 +108,7 @@ class CSVConnectionDialog(QDialog):
             label = form_layout.labelForField(self.group_row_widget)
             if label:
                 label.hide()
-            self.setFixedSize(560, 340) # Compact height when group is hidden
+            self.setFixedSize(560, 340)
 
         # 1. Name Input
         self.name_input = QLineEdit()

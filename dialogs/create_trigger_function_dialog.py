@@ -7,6 +7,9 @@ from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
 from ui.components import PrimaryButton, SecondaryButton
 
+
+
+
 class CreateTriggerFunctionDialog(QDialog):
     def __init__(self, parent=None, schemas=None, current_user="postgres", db_type="postgres"):
         super().__init__(parent)
@@ -47,7 +50,7 @@ class CreateTriggerFunctionDialog(QDialog):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # --- Tab 1: General (Name, Schema, Language) ---
+        # Tab 1: General (Name, Schema, Language)
         self.general_tab = QWidget()
         gen_layout = QFormLayout(self.general_tab)
         gen_layout.setContentsMargins(15, 15, 15, 15)
@@ -76,7 +79,7 @@ class CreateTriggerFunctionDialog(QDialog):
         
         self.tabs.addTab(self.general_tab, "General")
 
-        # --- Tab 2: Definition (Function Body) ---
+        #Tab 2: Definition (Function Body)
         self.definition_tab = QWidget()
         def_layout = QVBoxLayout(self.definition_tab)
         def_layout.setContentsMargins(15, 15, 15, 15)
@@ -95,7 +98,7 @@ class CreateTriggerFunctionDialog(QDialog):
         def_layout.addWidget(self.sql_editor)
         self.tabs.addTab(self.definition_tab, "Definition")
 
-        # --- Tab 3: Options ---
+        # Tab 3: Options
         self.options_tab = QWidget()
         opt_layout = QFormLayout(self.options_tab)
         opt_layout.setContentsMargins(15, 15, 15, 15)
@@ -116,7 +119,7 @@ class CreateTriggerFunctionDialog(QDialog):
         
         self.tabs.addTab(self.options_tab, "Options")
 
-        # --- Footer Buttons ---
+        #Footer Buttons
         footer_btn_layout = QHBoxLayout()
         self.save_btn = PrimaryButton("Create")
         self.cancel_btn = SecondaryButton("Cancel")
