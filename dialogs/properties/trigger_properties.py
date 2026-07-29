@@ -1,11 +1,13 @@
 # dialogs/properties/trigger_properties.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QFormLayout, QLineEdit, QTextEdit, 
+    QWidget, QFormLayout, QLineEdit, QTextEdit, 
     QMessageBox
 )
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
+
+
 
 class TriggerPropertiesDialog(BasePropertiesDialog):
     def __init__(self, item_data, trigger_name, parent=None):

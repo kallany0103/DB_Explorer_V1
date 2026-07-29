@@ -1,7 +1,7 @@
 # dialogs/properties/language_properties.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
+    QWidget, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
     QMessageBox, QCheckBox
 )
 from .base_properties import BasePropertiesDialog

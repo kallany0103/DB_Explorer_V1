@@ -1,8 +1,8 @@
 # dialogs/properties/foreign_data_properties.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
-    QMessageBox, QLabel
+    QWidget, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
+    QMessageBox
 )
 from .base_properties import BasePropertiesDialog
 from . import pg_queries

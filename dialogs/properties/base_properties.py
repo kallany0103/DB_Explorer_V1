@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QHBoxLayout, 
-    QMessageBox, QTextEdit
+    QTextEdit
 )
 from PySide6.QtCore import Qt
 import db
