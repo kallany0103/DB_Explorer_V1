@@ -1,13 +1,14 @@
 # widgets/inspector/statistics_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QProgressBar, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 )
-from PySide6.QtCore import Qt
 from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
-import db
+from PySide6.QtGui import QMovie
+from PySide6.QtCore import QSize
+from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
     def __init__(self, main_window):
@@ -43,8 +44,6 @@ class StatisticsWorkbench(QWidget):
         header_layout.addLayout(text_layout)
         
         header_layout.addStretch()
-        from PySide6.QtGui import QMovie
-        from PySide6.QtCore import QSize
         self.progress = QLabel()
         movie = QMovie("assets/spinner.gif")
         if movie.isValid():
@@ -57,7 +56,6 @@ class StatisticsWorkbench(QWidget):
         header_layout.addWidget(self.progress)
         
         # Add refresh button to match properties_view
-        from ui.components import IconButton
         self.refresh_btn = IconButton(qta.icon('mdi.refresh', color='#6b7280'), tooltip="Refresh")
         self.refresh_btn.clicked.connect(self.refresh_statistics)
         header_layout.addWidget(self.refresh_btn)
@@ -111,8 +109,6 @@ class StatisticsWorkbench(QWidget):
 
         first = True
         for result in stats_results:
-            # We need to manually populate the stats_view since load_stats is designed for sync execution
-            # but we can simulate it or update StatisticsTab to handle raw data
             self._populate_stats_tab(result, append=not first)
             first = False
 

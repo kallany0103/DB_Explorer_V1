@@ -2,19 +2,18 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QScrollArea, 
-    QFormLayout, QFrame, QTableView, QHeaderView, QAbstractItemView,
-    QSizePolicy, QCheckBox, QPushButton, QProgressBar, QTabWidget,
-    QStyledItemDelegate, QComboBox, QMessageBox, QToolButton
+    QFrame, QTabWidget, QLineEdit
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor, QFont
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QMovie
+from PySide6.QtCore import QSize
+from .tabs.columns_tab import ColumnsTab
+from .tabs.constraints_tab import ConstraintsTab
+from .tabs.sql_tab import SqlTab
 import qtawesome as qta
-from dialogs.properties import pg_queries
 from workers.inspector_workers import InspectorWorker
-import db
-from ui.components import PrimaryButton, SecondaryButton, IconButton
+from ui.components import IconButton
 from .properties_ui import (
-    DataTypeDelegate, CollapsibleCard, PropertyTable,
+    CollapsibleCard, PropertyTable,
     HIDDEN_PROPERTY_KEYS, PROPERTY_LABELS
 )
 
@@ -54,8 +53,6 @@ class PropertiesWorkbench(QWidget):
         
         header_layout.addStretch()
         
-        from PySide6.QtGui import QMovie
-        from PySide6.QtCore import QSize
         self.progress = QLabel()
         movie = QMovie("assets/spinner.gif")
         if movie.isValid():
@@ -101,19 +98,29 @@ class PropertiesWorkbench(QWidget):
         obj_type = item_data.get('type', 'Unknown')
         group_name = item_data.get('group_name')
         if not group_name and obj_type.endswith('_root'):
-            if obj_type == 'schemas_root': group_name = "Schemas"
-            elif obj_type == 'fdw_root': group_name = "Foreign Data Wrappers"
-            elif obj_type == 'extension_root': group_name = "Extensions"
-            elif obj_type == 'language_root': group_name = "Languages"
+            if obj_type == 'schemas_root':
+                group_name = "Schemas"
+            elif obj_type == 'fdw_root':
+                group_name = "Foreign Data Wrappers"
+            elif obj_type == 'extension_root':
+                group_name = "Extensions"
+            elif obj_type == 'language_root':
+                group_name = "Languages"
 
         icon_color = '#6366f1'
         icon_name = 'mdi.cube-outline'
-        if obj_type == 'table': icon_name, icon_color = 'mdi.table', '#3b82f6'
-        elif obj_type == 'view': icon_name, icon_color = 'mdi.eye', '#10b981'
-        elif obj_type == 'schema': icon_name, icon_color = 'mdi.folder-table', '#f59e0b'
-        elif obj_type == 'connection': icon_name, icon_color = 'mdi.database', '#6366f1'
-        elif obj_type == 'function': icon_name, icon_color = 'mdi.function', '#ec4899'
-        elif obj_type == 'sequence': icon_name, icon_color = 'mdi.numeric', '#8b5cf6'
+        if obj_type == 'table':
+            icon_name, icon_color = 'mdi.table', '#3b82f6'
+        elif obj_type == 'view':
+            icon_name, icon_color = 'mdi.eye', '#10b981'
+        elif obj_type == 'schema':
+            icon_name, icon_color = 'mdi.folder-table', '#f59e0b'
+        elif obj_type == 'connection':
+            icon_name, icon_color = 'mdi.database', '#6366f1'
+        elif obj_type == 'function':
+            icon_name, icon_color = 'mdi.function', '#ec4899'
+        elif obj_type == 'sequence':
+            icon_name, icon_color = 'mdi.numeric', '#8b5cf6'
         elif obj_type == 'trigger':
             tgenabled = item_data.get('tgenabled')
             if tgenabled == 'D':
@@ -121,7 +128,8 @@ class PropertiesWorkbench(QWidget):
             else:
                 icon_name, icon_color = 'mdi.lightning-bolt', '#f59e0b'
         
-        if group_name: icon_name, icon_color = 'mdi.folder-outline', '#94a3b8'
+        if group_name:
+            icon_name, icon_color = 'mdi.folder-outline', '#94a3b8'
         self.icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(24, 24))
         self.sub_label.setText(f"{obj_type.capitalize() if not group_name else 'Collection'}")
         
@@ -134,7 +142,8 @@ class PropertiesWorkbench(QWidget):
 
         self._clear_container()
         
-        if not item_data: return
+        if not item_data:
+            return
         
         self.progress.setVisible(True)
         worker = InspectorWorker(item_data, obj_name, task_type="properties")
@@ -156,7 +165,7 @@ class PropertiesWorkbench(QWidget):
         self.container_layout.addWidget(QLabel(f"Error: {error_msg}"))
 
     def _display_group(self, data):
-        group_name = data.get("group_name", "Collection")
+        data.get("group_name", "Collection")
         # Toolbar
         coll_toolbar = QFrame()
         coll_toolbar.setStyleSheet("background-color: white; border-bottom: 1px solid #e5e7eb; padding: 2px;")
@@ -167,7 +176,6 @@ class PropertiesWorkbench(QWidget):
             btn.setFixedSize(28, 28)
             coll_layout.addWidget(btn)
         coll_layout.addStretch()
-        from PySide6.QtWidgets import QLineEdit
         search = QLineEdit(); search.setPlaceholderText("Search..."); search.setFixedWidth(200); coll_layout.addWidget(search)
         self.container_layout.addWidget(coll_toolbar)
 
@@ -179,7 +187,8 @@ class PropertiesWorkbench(QWidget):
             for val in row:
                 if isinstance(val, bool):
                     item = QStandardItem(); item.setIcon(qta.icon('mdi.check-bold' if val else 'mdi.close-thick', color='#10b981' if val else '#ef4444')); item.setText("Yes" if val else "No")
-                else: item = QStandardItem(str(val) if val is not None else "")
+                else:
+                    item = QStandardItem(str(val) if val is not None else "")
                 items.append(item)
             model.appendRow(items)
         table.setModel(model)
@@ -243,15 +252,12 @@ class PropertiesWorkbench(QWidget):
         return widget
 
     def _create_columns_tab(self, data):
-        from .tabs.columns_tab import ColumnsTab
         return ColumnsTab(data, self)
 
     def _create_constraints_tab(self, data):
-        from .tabs.constraints_tab import ConstraintsTab
         return ConstraintsTab(data)
 
     def _create_sql_tab(self, data):
-        from .tabs.sql_tab import SqlTab
         return SqlTab(data)
 
     def _display_object_with_cards(self, data):
@@ -274,4 +280,5 @@ class PropertiesWorkbench(QWidget):
     def _clear_container(self):
         while self.container_layout.count():
             item = self.container_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            if item.widget():
+                item.widget().deleteLater()

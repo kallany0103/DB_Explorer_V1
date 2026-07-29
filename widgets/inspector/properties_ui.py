@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFormLayout, 
+    QWidget, QVBoxLayout, QLabel, QFormLayout, 
     QFrame, QTableView, QHeaderView, QAbstractItemView,
     QCheckBox, QStyledItemDelegate, QComboBox
 )
