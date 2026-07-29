@@ -3,7 +3,13 @@ from PySide6.QtWidgets import QApplication, QGraphicsPathItem, QGraphicsEllipseI
 from PySide6.QtGui import QPen, QBrush, QColor, QPainterPath
 from PySide6.QtCore import Qt, QPointF
 
-from widgets.erd.items.table_item import ERDTableItem
+
+# Lazy import helper to avoid circular dependency:
+# floating_connection ← attribute_item ← routing ← path_planner ← connection_item ← table_item
+def _get_table_item_class():
+    from widgets.erd.items.table_item import ERDTableItem  # noqa: PLC0415
+    return ERDTableItem
+
 from widgets.erd.constants import RELATION_TYPES
 import qtawesome as qta
 from widgets.erd.items.resizable import item_visual_scene_rect
@@ -88,7 +94,7 @@ class ConnectionHandle(QGraphicsEllipseItem):
             if hasattr(item, "target_highlight") and item.target_highlight:
                 item.target_highlight = False
                 item.update()
-            if isinstance(item, ERDTableItem):
+            if isinstance(item, _get_table_item_class()):
                 if hasattr(item, '_drag_highlighted_col') and item._drag_highlighted_col:
                     if item._drag_highlighted_col in item.highlighted_cols:
                         item.highlighted_cols.remove(item._drag_highlighted_col)
@@ -100,7 +106,7 @@ class ConnectionHandle(QGraphicsEllipseItem):
         # Find any item with connection ports
         target_item = next((it for it in items_under if hasattr(it, "get_column_anchor_pos") and it != self.parent_conn), None)
         
-        if target_item and isinstance(target_item, ERDTableItem) and target_item.show_columns:
+        if target_item and isinstance(target_item, _get_table_item_class()) and target_item.show_columns:
             local_pos = target_item.mapFromScene(scene_pos)
             if local_pos.y() >= target_item.header_height:
                 idx = int((local_pos.y() - target_item.header_height) // target_item.row_height)
@@ -163,7 +169,7 @@ class ConnectionHandle(QGraphicsEllipseItem):
             self.anchored_item = target_item
             
             local_pos = target_item.mapFromScene(scene_pos)
-            if isinstance(target_item, ERDTableItem) and target_item.show_columns and local_pos.y() >= target_item.header_height:
+            if isinstance(target_item, _get_table_item_class()) and target_item.show_columns and local_pos.y() >= target_item.header_height:
                 idx = int((local_pos.y() - target_item.header_height) // target_item.row_height)
                 if 0 <= idx < len(target_item.columns):
                     self.anchored_col = target_item.columns[idx]['name']
@@ -185,7 +191,7 @@ class ConnectionHandle(QGraphicsEllipseItem):
             if hasattr(item, "target_highlight") and item.target_highlight:
                 item.target_highlight = False
                 item.update()
-            if isinstance(item, ERDTableItem):
+            if isinstance(item, _get_table_item_class()):
                 if hasattr(item, '_drag_highlighted_col') and item._drag_highlighted_col:
                     if item._drag_highlighted_col in item.highlighted_cols:
                         item.highlighted_cols.remove(item._drag_highlighted_col)
@@ -366,7 +372,7 @@ class ERDFloatingConnectionItem(QGraphicsPathItem):
             s_item = self.start_handle.anchored_item
             e_item = self.end_handle.anchored_item
             
-            if isinstance(s_item, ERDTableItem) and isinstance(e_item, ERDTableItem):
+            if isinstance(s_item, _get_table_item_class()) and isinstance(e_item, _get_table_item_class()):
                 widget = scene.parent()
                 s_name = f"{s_item.schema_name or 'public'}.{s_item.table_name}"
                 e_name = f"{e_item.schema_name or 'public'}.{e_item.table_name}"
