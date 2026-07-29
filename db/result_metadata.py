@@ -1,4 +1,4 @@
-from db.db_retrieval import normalize_type
+from db.type_utils import normalize_type
 from db.query_context import resolve_writable_table_context
 
 

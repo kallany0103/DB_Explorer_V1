@@ -1,5 +1,6 @@
 import sqlite3 as sqlite
 from db.db_connections import DB_FILE, get_pooled_postgres_connection, return_pooled_postgres_connection
+from db.type_utils import normalize_type  # noqa: F401 – re-exported for backward compatibility
 from workers.signals import tracker
 
 def get_all_connections_from_db():
@@ -447,36 +448,6 @@ def get_postgres_server_logs(conn_data):
                 pass
     return {"status": "error", "message": "Failed to connect"}
 
-def normalize_type(raw_type: str) -> str:
-    """Standardizes database types for human-readable display."""
-    if not raw_type:
-        return ""
-    t = raw_type.lower().strip()
-    
-    mapping = {
-        'character varying': 'VARCHAR',
-        'character': 'CHAR',
-        'integer': 'INT',
-        'bigint': 'BIGINT',
-        'smallint': 'SMALLINT',
-        'boolean': 'BOOL',
-        'double precision': 'FLOAT8',
-        'real': 'FLOAT4',
-        'timestamp without time zone': 'TIMESTAMP',
-        'timestamp with time zone': 'TIMESTAMPTZ',
-        'time without time zone': 'TIME',
-        'numeric': 'DECIMAL',
-        'jsonb': 'JSONB',
-        'json': 'JSON',
-        'uuid': 'UUID',
-        'text': 'TEXT',
-    }
-    
-    for key in sorted(mapping.keys(), key=len, reverse=True):
-        if t.startswith(key):
-            return t.replace(key, mapping[key]).upper()
-            
-    return raw_type.upper()
 
 def get_connection_types():
     """Returns all available connection types."""

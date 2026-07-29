@@ -5,9 +5,6 @@ from PySide6.QtCore import QPointF
 from PySide6.QtGui import QUndoCommand
 
 from widgets.erd.model import DEFAULT_SCHEMA, full_name, normalize_entity, normalize_foreign_key
-import widgets.erd.items.table_item
-import widgets.erd.items.connection_item
-import widgets.erd.items.note_item
 
 
 class MoveTableCommand(QUndoCommand):
@@ -108,6 +105,7 @@ class AddTableCommand(QUndoCommand):
         self.item = None
 
     def redo(self) -> None:
+        import widgets.erd.items.table_item  # local import to avoid circular dependency
         if not self.item:
             self.item = widgets.erd.items.table_item.ERDTableItem(self.table_name, self.columns, schema_name=self.schema_name)
             self.item.setPos(self.pos)
@@ -176,6 +174,7 @@ class AddConnectionCommand(QUndoCommand):
         self.item = None
 
     def redo(self) -> None:
+        import widgets.erd.items.connection_item  # local import to avoid circular dependency
         if not self.item:
             source_item = self.scene.tables.get(self.source_table_name)
             target_item = self.scene.tables.get(self.target_table_name)
@@ -313,6 +312,7 @@ class AddNoteCommand(QUndoCommand):
         self.item = None
 
     def redo(self) -> None:
+        import widgets.erd.items.note_item  # local import to avoid circular dependency
         if not self.item:
             self.item = widgets.erd.items.note_item.ERDNoteItem(self.note_text)
             self.item.setPos(self.pos)

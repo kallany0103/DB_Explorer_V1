@@ -21,6 +21,7 @@ from dialogs.create_trigger_function_dialog import CreateTriggerFunctionDialog
 from dialogs.create_sequence_dialog import CreateSequenceDialog
 from dialogs.create_foreign_table_dialog import CreateForeignTableDialog
 from dialogs.preferences_dialog import PreferencesDialog
+from dialogs.create_policy_dialog import CreatePolicyDialog
 
 __all__ = [
 	"PostgresConnectionDialog",
@@ -50,4 +51,5 @@ __all__ = [
 	"CreateSequenceDialog",
 	"CreateForeignTableDialog",
 	"PreferencesDialog",
+	"CreatePolicyDialog",
 ]

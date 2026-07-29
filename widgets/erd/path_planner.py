@@ -1,7 +1,7 @@
 """Manhattan-path planner for ERD connections: slot assignment, obstacle avoidance, orthogonalisation."""
 from PySide6.QtCore import QPointF
 
-from widgets.erd.items.table_item import ERDTableItem
+
 from widgets.erd.items.resizable import item_visual_scene_rect
 from widgets.erd.routing import get_chen_boundary_anchor, get_dynamic_anchor
 
