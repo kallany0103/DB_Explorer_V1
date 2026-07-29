@@ -1,4 +1,3 @@
-#from PyQt6.QtGui import QAction
 from PySide6.QtGui import QAction
 import qtawesome as qta
 
