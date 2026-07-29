@@ -6,9 +6,9 @@ import datetime
 import re, datetime
 from typing import List, Dict, Any
 import re
-from PySide6.QtWidgets import QComboBox, QMessageBox, QFileDialog
+from PySide6.QtWidgets import QMessageBox, QFileDialog
 import qtawesome as qta
-from PySide6.QtCore import Qt, QTimer, QSortFilterProxyModel, QThread, Signal
+from PySide6.QtCore import Qt, QSortFilterProxyModel, QThread, Signal
 from ui.components import IconButton
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel, QFont
 from PySide6.QtWidgets import (
@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QSizePolicy,
     QStackedWidget,
     QTreeView,
     QVBoxLayout,
@@ -29,9 +28,9 @@ from PySide6.QtWidgets import (
 )
 from db import get_postgres_server_logs
 
-# ---------------------------------------------------------------------------
+
 # Column definitions
-# ---------------------------------------------------------------------------
+
 _COLUMNS = ["", "Error Severity", "Log Prefix/Timestamp", "Logs"]
 _COL_EXPAND = 0
 _COL_SEV = 1
@@ -199,9 +198,8 @@ class LogsWidget(QWidget):
         self._worker = None
         self._setup_ui()
 
-    # ------------------------------------------------------------------
+
     # Public API
-    # ------------------------------------------------------------------
 
     def set_current_connection(self, conn_data: dict | None):
         """Called by DashboardWidget when the selected connection changes."""
@@ -282,16 +280,15 @@ class LogsWidget(QWidget):
         if not self._tabular_switch.isChecked():
             self._update_raw_view()
 
-    # ------------------------------------------------------------------
+
     # UI Setup
-    # ------------------------------------------------------------------
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── Toolbar ────────────────────────────────────────────────────
+        #Toolbar
         toolbar = QFrame()
         toolbar.setFixedHeight(44)
         toolbar.setStyleSheet("""
@@ -377,7 +374,7 @@ class LogsWidget(QWidget):
 
         root.addWidget(toolbar)
 
-        # ── Content (stacked: table vs raw text) ──────────────────────
+        # Content (stacked: table vs raw text)
         self._stack = QStackedWidget()
         root.addWidget(self._stack)
 
@@ -455,7 +452,7 @@ class LogsWidget(QWidget):
         # Show tabular by default (stack page 0)
         self._stack.setCurrentIndex(0)
 
-        # ── Status bar ────────────────────────────────────────────────
+        #Status bar
         status_bar = QFrame()
         status_bar.setFixedHeight(24)
         status_bar.setStyleSheet("QFrame { background: #f3f4f6; border-top: 1px solid #e5e7eb; }")
@@ -480,9 +477,8 @@ class LogsWidget(QWidget):
         hh.resizeSection(_COL_PREFIX, 280)
         hh.setSectionResizeMode(_COL_LOGS, QHeaderView.ResizeMode.Stretch)
 
-    # ------------------------------------------------------------------
+
     # Model helpers
-    # ------------------------------------------------------------------
 
     def _add_model_row(self, entry: dict, update_ui: bool = True):
         ts = entry.get("timestamp", datetime.datetime.now())
@@ -549,9 +545,7 @@ class LogsWidget(QWidget):
         for entry in self._entries:
             self._add_model_row(entry)
 
-    # ------------------------------------------------------------------
     # Slots / handlers
-    # ------------------------------------------------------------------
 
     def _on_format_changed(self, *_):
         if not self._tabular_switch.isChecked():
@@ -574,9 +568,7 @@ class LogsWidget(QWidget):
         sb = self._raw_view.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    # ------------------------------------------------------------------
     # Raw view rendering
-    # ------------------------------------------------------------------
 
     def _get_visible_entries(self) -> List[dict]:
         """Return entries matching the current filter text."""
@@ -658,9 +650,7 @@ class LogsWidget(QWidget):
             ])
         return buf.getvalue()
 
-    # ------------------------------------------------------------------
     # Download
-    # ------------------------------------------------------------------
 
     def _download(self):
         ext = "CSV Files (*.csv)"
@@ -680,9 +670,7 @@ class LogsWidget(QWidget):
          
             QMessageBox.warning(self, "Download Failed", str(exc))
 
-    # ------------------------------------------------------------------
     # Helpers
-    # ------------------------------------------------------------------
 
     def _update_count_label(self):
         visible = self._proxy_model.rowCount()

@@ -1,21 +1,30 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QFrame, QGridLayout, QGraphicsLineItem, QGraphicsEllipseItem,
-                               QTabWidget)
-from PySide6.QtCore import Qt, QTimer, QRunnable, QObject, Signal, Slot, QPointF, QThread
-from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush  # QBrush kept for marker ellipses
-from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from widgets.dashboard.state_widget import StateWidget, StateWorker
-from widgets.dashboard.logs_widget import LogsWidget
-import qtawesome as qta
-from PySide6.QtWidgets import QComboBox
-import db
-from datetime import datetime
+import os
 import time
 import datetime as _dt
-from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QComboBox
-import os
-from PySide6.QtWidgets import QApplication
+from datetime import datetime
+
+import qtawesome as qta
+from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QPointF, QThread
+from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QFrame,
+    QGraphicsEllipseItem,
+    QGraphicsLineItem,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+import db
+from widgets.dashboard.logs_widget import LogsWidget
+from widgets.dashboard.state_widget import StateWidget, StateWorker
 
 class DashboardWidget(QWidget):
     def __init__(self, parent=None):
@@ -74,8 +83,6 @@ class DashboardWidget(QWidget):
             return
         self._dying_workers.append(worker)
         worker.stop()
-        # Once the thread finishes Qt will call deleteLater; we also remove
-        # the Python reference from _dying_workers so it can be collected.
         try:
             worker.finished.disconnect()
         except Exception:
@@ -644,7 +651,7 @@ class DashboardWorker(QThread):
                     if conn:
                         try:
                             db.return_pooled_postgres_connection(self.conn_data, conn=conn)
-                        except:
+                        except Exception:
                             pass
                     conn = None
                     self._needs_reconnect = False
@@ -688,7 +695,7 @@ class DashboardWorker(QThread):
                     if conn:
                         try:
                             db.return_pooled_postgres_connection(self.conn_data, conn=conn)
-                        except:
+                        except Exception:
                             pass
                     conn = None
 
@@ -706,7 +713,8 @@ class DashboardWorker(QThread):
         if conn:
             try:
                 db.return_pooled_postgres_connection(self.conn_data, conn=conn)
-            except: pass
+            except Exception:
+                pass
 
 class LiveChartView(QChartView):
     def __init__(self, series_names, colors, parent=None):
@@ -949,8 +957,7 @@ class LiveChartWidget(QFrame):
             if not hide_legends:
                 h_layout.addWidget(item)
             else:
-                item.hide() # Keep the widget but hide it if requested
-            
+                item.hide()
 
             
         self.chart_view = LiveChartView(series_names, colors)

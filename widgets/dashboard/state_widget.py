@@ -9,9 +9,14 @@ import db
 from db.db_modifications import terminate_postgres_backend, cancel_postgres_backend
 from ui.components import SecondaryButton, IconButton
 
+
+
+
 class StateWorkerSignals(QObject):
     finished = Signal(object)
     error = Signal(object)
+
+
 
 class StateWorker(QRunnable):
     def __init__(self, conn_data, active_only=False, local_sessions=None):
@@ -285,7 +290,8 @@ class StateWidget(QWidget):
         expanded_pids_int = {int(p) for p in self.expanded_pids}
 
         for row_data in data:
-            if not row_data: continue
+            if not row_data:
+                continue
             pid = None
             if is_sessions and row_data[0] is not None:
                 try:
@@ -300,7 +306,8 @@ class StateWidget(QWidget):
                     if val is not None and search_text in str(val).lower():
                         match = True
                         break
-                if not match: continue
+                if not match:
+                    continue
 
             row_idx = table.rowCount()
             table.insertRow(row_idx)
@@ -371,13 +378,15 @@ class StateWidget(QWidget):
             self.update_state(self.last_state_data)
 
     def handle_terminate(self, pid):
-        if not self.conn_data: return
+        if not self.conn_data:
+            return
         success, msg = terminate_postgres_backend(self.conn_data, pid)
         if not success:
             QMessageBox.warning(self, "Termination Failed", f"Could not terminate backend {pid}:\n\n{msg}")
 
     def handle_cancel(self, pid):
-        if not self.conn_data: return
+        if not self.conn_data:
+            return
         success, msg = cancel_postgres_backend(self.conn_data, pid)
         if not success:
             QMessageBox.warning(self, "Cancellation Failed", f"Could not cancel query for backend {pid}:\n\n{msg}")
