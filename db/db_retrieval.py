@@ -1,5 +1,5 @@
 import sqlite3 as sqlite
-from db.db_connections import DB_FILE, create_postgres_connection, get_pooled_postgres_connection, return_pooled_postgres_connection
+from db.db_connections import DB_FILE, get_pooled_postgres_connection, return_pooled_postgres_connection
 
 def get_all_connections_from_db():
     """Returns a list of dicts with full hierarchical connection info from usf_connections table."""
@@ -154,7 +154,7 @@ def get_postgres_state_details(conn_data, active_only=False, application_name=No
             try:
                 # Return connection to pool instead of closing
                 return_pooled_postgres_connection(conn_data, conn=conn)
-            except:
+            except Exception:
                 pass
     return {"sessions": {"columns": [], "data": []}, "locks": {"columns": [], "data": []}}
 
@@ -190,7 +190,7 @@ def get_sqlite_state_details(conn_data, local_sessions=None):
                 lock_data = cur.fetchall()
                 if not lock_data:
                     lock_data = [("main", "unlocked")]
-            except:
+            except Exception:
                 # Fallback: check if we can get at least the journal mode or sync status
                 cur.execute("PRAGMA journal_mode")
                 j_mode = cur.fetchone()[0]
@@ -198,7 +198,7 @@ def get_sqlite_state_details(conn_data, local_sessions=None):
                 
         finally:
             conn.close()
-    except:
+    except Exception:
         pass
         
     return {
@@ -351,7 +351,7 @@ def get_postgres_session_stats(conn_data, current_db_only=False, conn=None):
             try:
                 # Return to pool instead of closing
                 return_pooled_postgres_connection(conn_data, conn=conn)
-            except:
+            except Exception:
                 pass
     return None
 
@@ -370,19 +370,12 @@ def get_sqlite_session_stats(conn_data):
         conn = sqlite.connect(db_path, timeout=1.0)
         try:
             cur = conn.cursor()
-            # PRAGMA data_version increments when the database is modified by any connection
-            cur.execute("PRAGMA data_version")
-            version = cur.fetchone()[0]
-            
             cur.execute("PRAGMA page_count")
             pages = cur.fetchone()[0]
             
             cur.execute("PRAGMA freelist_count")
             freelist = cur.fetchone()[0]
-            
-            cur.execute("PRAGMA schema_version")
-            schema_ver = cur.fetchone()[0]
-            
+
             # Exact row count summation for accurate "Tuples In"
             # Exclude internal application tables starting with 'usf_'
             cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'usf_%'")
@@ -392,7 +385,7 @@ def get_sqlite_session_stats(conn_data):
                 try:
                     cur.execute(f'SELECT count(*) FROM "{table_name}"')
                     total_rows += cur.fetchone()[0]
-                except:
+                except Exception:
                     continue
             
             used_pages = pages - freelist
@@ -401,7 +394,7 @@ def get_sqlite_session_stats(conn_data):
                 "sessions_total": 1, 
                 "sessions_active": 1,
                 "sessions_idle": 0,
-                "xact_commit": version + schema_ver,
+                "xact_commit": 0,  # SQLite has no server-side transaction counter
                 "xact_rollback": 0,
                 "app_commit": app_stats["commits"],
                 "app_rollback": app_stats["rollbacks"],
@@ -421,7 +414,7 @@ def get_sqlite_session_stats(conn_data):
             }
         finally:
             conn.close()
-    except Exception as e:
+    except Exception:
         return None
 
 def get_postgres_server_logs(conn_data):
@@ -451,7 +444,7 @@ def get_postgres_server_logs(conn_data):
         if conn:
             try:
                 return_pooled_postgres_connection(conn_data, conn=conn)
-            except:
+            except Exception:
                 pass
     return {"status": "error", "message": "Failed to connect"}
 

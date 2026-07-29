@@ -5,9 +5,7 @@ import oracledb
 import sys
 import os
 from db.connection_pool import get_or_create_pool, get_or_create_oracle_pool
-# DEBUG-START
 import time
-# DEBUG-END
 import cdata.servicenow as sn_driver
 import cdata.csv as csv_driver
 
@@ -27,8 +25,6 @@ FAILED_HOST_COOLDOWN = 15 # seconds
 def create_sqlite_connection(path):
     """Establishes a connection to a SQLite database."""
     try:
-        # isolation_level=None enables autocommit mode, 
-        # allowing manual BEGIN/COMMIT/ROLLBACK in SQL scripts
         conn = sqlite.connect(path, isolation_level=None)
         return conn
     except sqlite.Error as e:
@@ -58,20 +54,13 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             conn_data = host
             dsn = conn_data.get("dsn")
             
-            # Use application_name from conn_data if provided and not overridden by arg
             if not app_name:
                 app_name = conn_data.get("application_name") or conn_data.get("name")
 
             if dsn:
                 try:
-                    # Safely merge application_name into DSN using psycopg2's own parser
-                    from psycopg2.extensions import make_dsn
-                    from psycopg2 import connect as pg_connect
-                    
-                    # Ensure we have a default name
                     final_app_name = app_name or "Universal SQL Client"
                     
-                    # Detect if this is a cloud host to force SSL
                     is_cloud = any(cloud_domain in str(dsn).lower() or cloud_domain in str(host_key).lower() 
                                   for cloud_domain in ["aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com", "cloud.google.com"])
 
@@ -94,7 +83,7 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
                                 dsn += f" application_name='{final_app_name}'"
                             if is_cloud and "sslmode" not in dsn:
                                 dsn += " sslmode='require'"
-                    except:
+                    except Exception:
                         pass # Fallback to original DSN if parsing fails
                         
                     # Use underscores for better compatibility with poolers/command line
@@ -104,7 +93,8 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
                 except Exception as e:
                     err_str = str(e)
                     if "timeout expired" in err_str or "Name or service not known" in err_str:
-                        if host_key: _failed_hosts[host_key] = time.time()
+                        if host_key:
+                            _failed_hosts[host_key] = time.time()
                         return None
                     else:
                         print(f"DSN connection failed, falling back to keywords: {e}")
@@ -128,8 +118,6 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
         if not host:
             return None
 
-        # Basic connection parameters
-        # Ensure application name is safe for command line (no spaces)
         safe_app_name = (app_name or "Universal_SQL_Client").replace(" ", "_")
         
         params = {
@@ -167,10 +155,12 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
             # Print error only if it's not a common network issue or if it's a new error
             err_str = str(e).strip()
             if "timeout expired" in err_str:
-                if host_key: _failed_hosts[host_key] = time.time()
+                if host_key:
+                    _failed_hosts[host_key] = time.time()
                 # print(f"PostgreSQL connection timeout: {host}")
             elif "Name or service not known" in err_str:
-                if host_key: _failed_hosts[host_key] = time.time()
+                if host_key:
+                    _failed_hosts[host_key] = time.time()
                 # print(f"PostgreSQL host unreachable: {host}")
             else:
                 print(f"PostgreSQL connection error: {err_str}")
@@ -245,15 +235,7 @@ def create_csv_connection(conn_data):
     try:
         if not conn_data.get("db_path"):
             raise ValueError("Missing db_path in conn_data")
-            
-        # If it's a directory, CData CSV driver treats it as a database of CSV files
-        # If it's a file, it treats it as a single table
         path = conn_data['db_path']
-        
-        # Configure CData CSV driver to scan more rows and use 64-bit integers
-        # to avoid Int32 overflow errors with large values like 5600000000
-        # RowScanDepth=0 scans every row so values like 5_600_000_000
-        # are detected as Int64 instead of overflowing the default Int32.
         conn_str = f"URI={path};TypeDetectionScheme=RowScan;RowScanDepth=100;"
         conn = csv_driver.connect(conn_str)
         return conn
@@ -262,9 +244,9 @@ def create_csv_connection(conn_data):
         return None
 
 
-# =========================================================
+
 # CONNECTION POOLING FOR PostgreSQL
-# =========================================================
+
 
 def get_pooled_postgres_connection(host, port=None, database=None, user=None, password=None, application_name=None, use_pool=True):
     """
@@ -289,7 +271,7 @@ def get_pooled_postgres_connection(host, port=None, database=None, user=None, pa
     # Normalize parameters from dict if host is a connection data dict
     if isinstance(host, dict):
         conn_data = host
-        pool_key = (conn_data.get("host"), int(conn_data.get("port", 5432)), 
+        (conn_data.get("host"), int(conn_data.get("port", 5432)), 
                    conn_data.get("database"), conn_data.get("user"))
         
         if not use_pool:

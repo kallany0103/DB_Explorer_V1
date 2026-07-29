@@ -202,7 +202,7 @@ def get_csv_schema(conn_info):
 
         for table in tables:
             # Get columns
-            cursor.execute(f"SELECT ColumnName, DataTypeName FROM sys_tablecolumns WHERE TableName='{table}'")
+            cursor.execute("SELECT ColumnName, DataTypeName FROM sys_tablecolumns WHERE TableName = ?", (table,))
             columns = []
             for col_name, data_type in cursor.fetchall():
                 columns.append({
@@ -258,8 +258,9 @@ def get_servicenow_schema(conn_info, table_name=None):
             col_query_succeeded = False
             try:
                 cursor.execute(
-                    f"SELECT ColumnName, DataTypeName, IsKey, ReferencedTable "
-                    f"FROM sys_tablecolumns WHERE TableName='{table}'"
+                    "SELECT ColumnName, DataTypeName, IsKey, ReferencedTable "
+                    "FROM sys_tablecolumns WHERE TableName = ?",
+                    (table,)
                 )
                 for row in cursor.fetchall():
                     col_name, data_type, is_key = row[0], row[1], row[2]
@@ -279,8 +280,9 @@ def get_servicenow_schema(conn_info, table_name=None):
             if not col_query_succeeded:
                 try:
                     cursor.execute(
-                        f"SELECT ColumnName, DataTypeName, IsKey "
-                        f"FROM sys_tablecolumns WHERE TableName='{table}'"
+                        "SELECT ColumnName, DataTypeName, IsKey "
+                        "FROM sys_tablecolumns WHERE TableName = ?",
+                        (table,)
                     )
                     for col_name, data_type, is_key in cursor.fetchall():
                         columns.append({
@@ -295,8 +297,9 @@ def get_servicenow_schema(conn_info, table_name=None):
             if not foreign_keys:
                 try:
                     cursor.execute(
-                        f"SELECT element, reference FROM sys_dictionary "
-                        f"WHERE name='{table}' AND reference IS NOT NULL AND reference <> ''"
+                        "SELECT element, reference FROM sys_dictionary "
+                        "WHERE name = ? AND reference IS NOT NULL AND reference <> ''",
+                        (table,)
                     )
                     foreign_keys = [
                         {"from": r[0], "table": r[1], "to": "sys_id"}
@@ -310,8 +313,9 @@ def get_servicenow_schema(conn_info, table_name=None):
             if not foreign_keys:
                 try:
                     cursor.execute(
-                        f"SELECT FKCOLUMN_NAME, PKTABLE_NAME FROM sys_foreignkeys "
-                        f"WHERE FKTABLE_NAME='{table}'"
+                        "SELECT FKCOLUMN_NAME, PKTABLE_NAME FROM sys_foreignkeys "
+                        "WHERE FKTABLE_NAME = ?",
+                        (table,)
                     )
                     foreign_keys = [
                         {"from": r[0], "table": r[1], "to": "sys_id"}

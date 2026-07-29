@@ -17,7 +17,7 @@ import time
 import psycopg2
 from psycopg2 import OperationalError
 import oracledb
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -109,15 +109,8 @@ class PostgresConnectionPool:
         is checked out or returned to the pool.
         """
         try:
-            # conn.closed == 0  →  connection is open
-            # conn.status is one of the STATUS_* constants; STATUS_READY (1)
-            # and STATUS_BEGIN (2) mean the connection is usable.
             if conn.closed != 0:
                 return False
-            # STATUS_IN_TRANSACTION_INERROR means the connection needs a
-            # rollback before it can be reused – treat as unusable here;
-            # the caller's rollback() in get_connection / return_connection
-            # will handle the cleanup path.
             if conn.status not in (
                 psycopg2.extensions.STATUS_READY,
                 psycopg2.extensions.STATUS_BEGIN,
@@ -170,8 +163,6 @@ class PostgresConnectionPool:
                 while self._pool:
                     conn, created_time, conn_id = self._pool.pop(0)
                     
-                    # Remove from in-use tracking (it was put back by return_connection)
-                    # conn_id here is id(conn), consistent with return_connection
                     if self._is_connection_alive(conn):
                         # Only rollback if there is actually an open transaction.
                         try:
@@ -269,7 +260,6 @@ class PostgresConnectionPool:
         """Recycle all connections in the pool."""
         logger.debug(f"Recycling all connections (interval: {self.recycle_interval}s)")
         
-        new_pool = []
         for conn, created_time, conn_id in self._pool:
             try:
                 conn.close()
