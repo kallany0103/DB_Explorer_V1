@@ -6,7 +6,7 @@ def build_main_window_menu(main_window):
     menubar = main_window.menuBar()
     menubar.setNativeMenuBar(False)
 
-    file_menu = menubar.addMenu("&File")
+    file_menu = menubar.addMenu("File")
     file_menu.addAction(main_window.open_file_action)
     file_menu.addAction(main_window.save_action)
     file_menu.addAction(main_window.save_as_action)
@@ -18,7 +18,7 @@ def build_main_window_menu(main_window):
 
 
 
-    # object_menu = menubar.addMenu("&Object")
+    # object_menu = menubar.addMenu("Object")
     # create_menu = object_menu.addMenu("Create")
     # create_menu.addAction(main_window.create_table_action)
     # create_menu.addAction(main_window.create_view_action)
@@ -26,7 +26,7 @@ def build_main_window_menu(main_window):
     # object_menu.addAction(main_window.refresh_action)
     # object_menu.addAction(main_window.delete_object_action)
 
-    edit_menu = menubar.addMenu("&Edit")
+    edit_menu = menubar.addMenu("Edit")
     edit_menu.addAction(main_window.undo_action)
     edit_menu.addAction(main_window.redo_action)
     edit_menu.addSeparator()
@@ -49,13 +49,13 @@ def build_main_window_menu(main_window):
     edit_menu.addAction(main_window.initial_caps_action)
     edit_menu.addSeparator()
 
-    actions_menu = menubar.addMenu("&Actions")
+    actions_menu = menubar.addMenu("Actions")
     actions_menu.addAction(main_window.execute_action)
     actions_menu.addAction(main_window.execute_new_tab_action)
     actions_menu.addAction(main_window.explain_action)
     actions_menu.addAction(main_window.cancel_action)
 
-    tools_menu = menubar.addMenu("&Tools")
+    tools_menu = menubar.addMenu("Tools")
     tools_menu.addAction(main_window.query_tool_action)
     tools_menu.addAction(main_window.dashboard_action)
     tools_menu.addSeparator()
@@ -65,7 +65,7 @@ def build_main_window_menu(main_window):
     tools_menu.addAction(main_window.refresh_action)
     tools_menu.addAction(main_window.reset_layout_action)
 
-    window_menu = menubar.addMenu("&Window")
+    window_menu = menubar.addMenu("Window")
     window_menu.addAction(main_window.minimize_action)
     window_menu.addAction(main_window.maximize_action)
     window_menu.addSeparator()
@@ -74,7 +74,7 @@ def build_main_window_menu(main_window):
     close_action.triggered.connect(main_window.close)
     window_menu.addAction(close_action)
 
-    help_menu = menubar.addMenu("&Help")
+    help_menu = menubar.addMenu("Help")
     help_menu.addAction(main_window.sqlite_help_action)
     help_menu.addAction(main_window.postgres_help_action)
     help_menu.addAction(main_window.oracle_help_action)

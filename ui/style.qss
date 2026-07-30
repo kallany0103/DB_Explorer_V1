@@ -280,14 +280,23 @@ QTabBar::close-button {
     image: url(assets/close.svg);
     subcontrol-origin: padding;
     subcontrol-position: right center;
-    margin-right: 8px;
-    width: 12px;
-    height: 12px;
+    margin-right: 6px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background-color: transparent;
 }
 QTabBar::close-button:hover {
     image: url(assets/close_hover.svg);
-    background: #d0d5dd;
-    border-radius: 3px;
+    background-color: #e8e8e8;
+    border: 1px solid #9c9c9c;
+    border-radius: 4px;
+}
+QTabBar::close-button:pressed {
+    background-color: #dcdcdc;
+    border: 1px solid #707070;
+    border-radius: 4px;
 }
 /* Dialog and Input Styles */
 #objectExplorerHeader {
