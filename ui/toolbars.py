@@ -99,6 +99,8 @@ class WorksheetToolbar(QWidget):
         exec_menu = QMenu(self.exec_btn)
         exec_menu.addAction(manager.ws_execute_new_tab_action)
         self.exec_btn.setMenu(exec_menu)
+        self.exec_btn.setFixedWidth(55)
+        self.exec_btn.setStyleSheet("padding-right: 12px;")
         layout.addWidget(self.exec_btn)
 
         # Cancel
@@ -133,8 +135,10 @@ class WorksheetToolbar(QWidget):
 
         layout.addWidget(manager.create_vertical_separator())
 
-        self.explain_combo = ActionToolButton("Explain", qta.icon("fa5s.stopwatch", color="#555555"))
-        self.explain_combo.setFixedWidth(112)
+        self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explain_combo.setFixedWidth(55)
+        self.explain_combo.setToolTip("Explain Query")
         self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
@@ -142,11 +146,12 @@ class WorksheetToolbar(QWidget):
 
         # Edit Menu
         self.edit_btn = QToolButton()
-        self.edit_btn.setText("Edit")
+        # self.edit_btn.setText("Edit")
         self.edit_btn.setIcon(qta.icon("fa5s.edit"))
-        self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.edit_btn.setFixedHeight(30)
-        self.edit_btn.setFixedWidth(85)
+        self.edit_btn.setFixedWidth(55)
+        self.edit_btn.setStyleSheet("padding-right: 12px;")
         self.edit_btn.setToolTip("Edit Operations")
         self.edit_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         
@@ -158,9 +163,12 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Rows Limit
-        self.rows_limit_combo = DropdownToolButton("Limit", qta.icon("fa5s.list-ol"))
+        self.rows_limit_combo = DropdownToolButton("", qta.icon("fa5s.list-ol"))
+        self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(125)
+        self.rows_limit_combo.setFixedWidth(55)
+        self.rows_limit_combo.setStyleSheet("padding-right: 12px;")
+        self.rows_limit_combo.setToolTip("Row Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
         self.rows_limit_combo.itemTriggered.connect(
             lambda text: self.limit_changed.emit(text)

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QFrame,
     QListView,
+    QApplication,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -118,6 +119,7 @@ def add_tab(manager):
     # Add the unified frame to the main layout
     layout.addWidget(conn_selector_frame)
     manager.load_joined_connections(db_combo_box)
+    QApplication.processEvents()  # keep splash responsive during slow tab setup
 
     def update_conn_status_icon():
         
@@ -301,6 +303,7 @@ def add_tab(manager):
 
     results_container = manager.results_manager.create_results_ui(tab_content)
     main_vertical_splitter.addWidget(results_container)
+    QApplication.processEvents()  # keep splash responsive during slow results setup
 
     main_vertical_splitter.setSizes([400, 400])
     main_vertical_splitter.setStretchFactor(0, 1)

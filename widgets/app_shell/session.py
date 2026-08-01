@@ -3,7 +3,7 @@ import os
 
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtWidgets import QComboBox, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QWidget
 
 from widgets.worksheet.code_editor import CodeEditor
 
@@ -114,6 +114,7 @@ def restore_main_window_session(main_window, session_file):
             return
 
         for tab_data in tabs:
+            QApplication.processEvents()  # keep splash responsive between restored tabs
             tab_type = tab_data.get("tab_type", "worksheet")
             
             if tab_type == "properties":
