@@ -3,8 +3,8 @@ import pathlib
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QProgressBar
 )
-from PySide6.QtCore import Qt, QCoreApplication
-from PySide6.QtGui import QPixmap, QPainter, QBrush, QColor, QPainterPath
+from PySide6.QtCore import Qt, QCoreApplication, QPoint
+from PySide6.QtGui import QPixmap, QPainter, QBrush, QColor, QPainterPath, QMouseEvent
 
 class SplashScreen(QDialog):
     def __init__(self, parent=None):
@@ -17,6 +17,11 @@ class SplashScreen(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         self.setFixedSize(520, 320)
+        qss_path = pathlib.Path(__file__).parent.parent / "ui" / "style.qss"
+        if qss_path.exists():
+            with open(qss_path, "r") as f:
+                self.setStyleSheet(f.read())
+        self._drag_offset: QPoint | None = None
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 40, 30, 20)
@@ -34,7 +39,7 @@ class SplashScreen(QDialog):
             )
             
         # Title and Subtitle are drawn via paintEvent or added as labels
-        title_label = QLabel("Universal SQL Client")
+        title_label = QLabel("Universal SQL Manager")
         title_label.setObjectName("splashTitle")
         
         subtitle_label = QLabel("Advanced Multi-Database IDE")
@@ -86,12 +91,24 @@ class SplashScreen(QDialog):
         
     def set_status(self, message: str):
         self.status_label.setText(message)
-        QCoreApplication.processEvents()
         
     def set_progress(self, value: int):
         self.progress_bar.setValue(value)
-        QCoreApplication.processEvents()
         
     def advance(self, message: str, value: int):
         self.set_status(message)
         self.set_progress(value)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)

@@ -1,6 +1,6 @@
 import db
 import qtawesome as qta
-from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QComboBox, QApplication
 
 
 def refresh_all_comboboxes(manager):
@@ -33,6 +33,7 @@ def load_joined_connections(manager, combo_box):
         combo_box.clear()
         
         connections = db.get_all_connections_from_db()
+        QApplication.processEvents()  # keep splash responsive during slow DB reads
         for connection in connections:
             conn_data = {key: connection[key] for key in connection if key != "display_name"}
             

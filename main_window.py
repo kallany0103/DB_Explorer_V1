@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.SESSION_FILE = "session_state.json"
 
-        self.setWindowTitle("Universal SQL Client")
+        self.setWindowTitle("Universal SQL Manager")
         self.setWindowIcon(QIcon("assets/sql_icon.svg"))
         self.setGeometry(100, 100, 1200, 800)
 
@@ -77,6 +77,9 @@ class MainWindow(QMainWindow):
         self.worksheet_manager = WorksheetManager(self)
         self.dashboard_widget = None
 
+        # Keep the splash screen responsive while the main window is being built
+        QApplication.processEvents()
+
         # Compatibility Aliases
         self.tree = self.connection_manager.tree
         self.model = self.connection_manager.model
@@ -95,6 +98,9 @@ class MainWindow(QMainWindow):
         # The ConnectionManager IS the left panel widget
         self.main_splitter.addWidget(self.connection_manager)
         self.main_splitter.addWidget(self.tab_widget)
+
+        # Keep the splash screen responsive while the main window is being built
+        QApplication.processEvents()
 
         # 6. Additional UI for Tab Widget
         add_tab_btn = SecondaryButton("New ")
@@ -156,6 +162,9 @@ class MainWindow(QMainWindow):
 
         self.restore_session_state()
         
+        # Keep the splash screen responsive while the main window is being built
+        QApplication.processEvents()
+
         # Clamp geometry to available screen size to prevent geometry warnings
         screen = QApplication.primaryScreen().availableGeometry()
         if self.width() > screen.width() or self.height() > screen.height():

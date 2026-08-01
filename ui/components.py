@@ -291,7 +291,7 @@ class ToolbarActionButton(QToolButton):
             self.setText(text)
         if icon:
             self.setIcon(icon)
-        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.setFixedHeight(30)
         self.setStyleSheet("""
             QToolButton {
