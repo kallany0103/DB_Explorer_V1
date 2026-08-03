@@ -1,3 +1,4 @@
+# db_connections.py
 import sqlite3 as sqlite
 import psycopg2
 from psycopg2 import OperationalError

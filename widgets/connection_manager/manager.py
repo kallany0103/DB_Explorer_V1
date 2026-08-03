@@ -436,16 +436,46 @@ class ConnectionManager(QWidget):
                 connection_group_item.setData(connection_group_data["id"], Qt.ItemDataRole.UserRole + 1)
                 self._set_tree_item_icon(connection_group_item, level="GROUP")
 
+                # for connection_data in connection_group_data["usf_connections"]:
+                #     connection_item = QStandardItem(connection_data["short_name"])
+                #     connection_data["db_type"] = code.lower()
+                #     connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
+                #     self._set_tree_item_icon(connection_item, level="CONNECTION", code=code)
+                #     connection_group_item.appendRow(connection_item)
+                
                 for connection_data in connection_group_data["usf_connections"]:
                     connection_item = QStandardItem(connection_data["short_name"])
+
                     connection_data["db_type"] = code.lower()
+
+                    # Full connection object
                     connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
-                    self._set_tree_item_icon(connection_item, level="CONNECTION", code=code)
+
+                    # ✅ Connection ID (will be used as FK in usf_uds_data_sources)
+                    connection_item.setData(
+                        connection_data["id"],
+                        Qt.ItemDataRole.UserRole + 1
+                        )
+
+                    # Optional node type
+                    connection_item.setData(
+                    "CONNECTION",
+                    Qt.ItemDataRole.UserRole + 2
+                    )
+
+                    self._set_tree_item_icon(
+                        connection_item,
+                        level="CONNECTION",
+                        code=code
+                        )
+
                     connection_group_item.appendRow(connection_item)
 
                 connection_type_item.appendRow(connection_group_item)
 
             self.model.appendRow(connection_type_item)
+
+
 
     def _set_tree_item_icon(self, item, level, code=""):
         self.tree_helpers.set_tree_item_icon(item, level, code)

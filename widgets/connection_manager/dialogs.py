@@ -24,10 +24,14 @@ from dialogs import (
     PostgresConnectionDialog,
     SQLiteConnectionDialog,
     ServiceNowConnectionDialog,
+    UDSConnectionDialog,
+    PostgresDataSourceDialog,
+	SQLiteDataSourceDialog,
+	OracleDataSourceDialog,
+	CSVDataSourceDialog,
+	ServiceNowDataSourceDialog,
 )
 from db.db_retrieval import get_connection_types
-
-
 
 class ConnectionTypeSelectorDialog(QDialog):
     def __init__(self, parent=None):
@@ -217,6 +221,7 @@ class ConnectionTypeSelectorDialog(QDialog):
         self.next_btn.setEnabled(True)
 
 
+
 class ConnectionDialogs:
 
     def __init__(self, manager):
@@ -241,7 +246,93 @@ class ConnectionDialogs:
         self.manager._restore_tree_expansion_state()
         self.manager.refresh_all_comboboxes()
 
+    def add_data_source(self, parent_item=None):
+    
+        selector = ConnectionTypeSelectorDialog(self.manager)
 
+        if selector.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        type_info = selector.selected_type   # ✅ FIXED (NO get_selected)
+        if not type_info:
+            return
+
+        code = type_info["code"].upper()
+
+        # MUST come from connection node
+        if not parent_item:
+            QMessageBox.warning(
+                self.manager,
+                "Missing Context",
+                "Please select a Connection first."
+            )
+            return
+        
+        print("========== ADD DATA SOURCE ==========")
+        print("Item Text :", parent_item.text())
+        print("UserRole :", parent_item.data(Qt.ItemDataRole.UserRole))
+        print("UserRole+1 :", parent_item.data(Qt.ItemDataRole.UserRole + 1))
+        print("UserRole+2 :", parent_item.data(Qt.ItemDataRole.UserRole + 2))
+        print("=====================================")
+
+        connection_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+
+        if not connection_id:
+            QMessageBox.warning(
+                self.manager,
+                "Invalid Selection",
+                "Invalid connection node."
+            )
+            return
+
+        # open correct dialog (reuse your existing system)
+        if code == "POSTGRES":
+            dialog = PostgresDataSourceDialog(self.manager)
+
+        elif code == "SQLITE":
+            dialog = SQLiteDataSourceDialog(self.manager)
+
+        elif code == "ORACLE":
+            dialog = OracleDataSourceDialog(self.manager)
+
+        elif code == "CSV":
+            dialog = CSVDataSourceDialog(self.manager)
+
+        elif code == "SERVICENOW":
+            dialog = ServiceNowDataSourceDialog(self.manager)
+
+        else:
+            QMessageBox.warning(
+                self.manager,
+                "Unsupported Type",
+                    f"{code} not supported"
+            )
+            return
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        data = dialog.getData()
+
+        try:
+            db.add_data_source(
+                connection_id=connection_id,
+                source_type=code,
+                data=data
+            )
+
+            self.manager._save_tree_expansion_state()
+            self.manager.load_data()
+            self.manager._restore_tree_expansion_state()
+            self.manager.refresh_all_comboboxes()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self.manager,
+                "Error",
+                f"Failed to create data source:\n{e}"
+            )
+                
     def show_connection_details(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         if not conn_data:
@@ -623,6 +714,33 @@ class ConnectionDialogs:
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save Oracle connection:\n{e}")
 
+
+    def add_uds_connection(self, parent_item):
+        connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+
+        type_item = parent_item.parent()
+        type_id = type_item.data(Qt.ItemDataRole.UserRole + 1) if type_item else None
+
+        dialog = UDSConnectionDialog(
+            self.manager,
+            type_id=type_id,
+            group_id=connection_group_id
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.getData()
+
+            try:
+                db.add_connection(data, connection_group_id)
+                self._reload_and_expand_group(parent_item)
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self.manager,
+                    "Error",
+                    f"Failed to save Unified Data Source:\n{e}"
+                )
+
     def edit_connection(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         group_item = item.parent()
@@ -700,6 +818,8 @@ class ConnectionDialogs:
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update Oracle connection:\n{e}")
 
+
+
     def add_servicenow_connection(self, parent_item):
         connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
         type_item = parent_item.parent()
@@ -714,6 +834,60 @@ class ConnectionDialogs:
                 self._reload_and_expand_group(parent_item)
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save ServiceNow connection:\n{e}")
+
+   
+    def edit_uds_connection(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+
+        if not conn_data:
+            return
+
+        group_item = item.parent()
+        group_id = (
+            group_item.data(Qt.ItemDataRole.UserRole + 1)
+            if group_item else None
+        )
+
+        type_item = group_item.parent() if group_item else None
+        type_id = (
+            type_item.data(Qt.ItemDataRole.UserRole + 1)
+            if type_item else None
+        )
+
+        dialog = UDSConnectionDialog(
+            self.manager,
+            is_editing=True,
+            type_id=type_id,
+            group_id=group_id
+        )
+
+        dialog.name_input.setText(conn_data.get("name", ""))
+        dialog.short_name_input.setText(conn_data.get("short_name", ""))
+        dialog.host_input.setText(conn_data.get("host", ""))
+        dialog.port_input.setText(str(conn_data.get("port", "")))
+        dialog.db_input.setText(conn_data.get("database", ""))
+        dialog.user_input.setText(conn_data.get("user", ""))
+        dialog.password_input.setText(conn_data.get("password", ""))
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+
+            new_data = dialog.getData()
+            new_data["id"] = conn_data.get("id")
+
+            try:
+                db.update_connection(new_data)
+
+                self.manager._save_tree_expansion_state()
+                self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
+                self.manager.refresh_all_comboboxes()
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self.manager,
+                    "Error",
+                    f"Failed to update Unified Data Source:\n{e}"
+                )
 
     def edit_servicenow_connection(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -776,3 +950,8 @@ class ConnectionDialogs:
                 self.manager.refresh_all_comboboxes()
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update CSV connection:\n{e}")
+    
+    
+    
+                
+    
