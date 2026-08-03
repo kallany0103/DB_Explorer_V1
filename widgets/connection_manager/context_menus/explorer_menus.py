@@ -84,6 +84,11 @@ class ExplorerMenuBuilder:
             act = action(self.manager, "New ServiceNow Connection", "mdi.cloud-plus-outline")
             act.triggered.connect(lambda: self.manager.connection_dialogs.add_servicenow_connection(item))
             menu.addAction(act)
+            
+        elif code == 'UDS':
+            act = action(self.manager,"New Unified Data Source","mdi.database-plus")
+            act.triggered.connect(lambda:self.manager.connection_dialogs.add_uds_connection(item))
+            menu.addAction(act)
         
         menu.addSeparator()
         act = action(self.manager, "Edit Connection Group", "mdi.folder-edit-outline")
@@ -98,6 +103,87 @@ class ExplorerMenuBuilder:
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, name)
 
+    # def _connection_menu(self, menu, item, index):
+    #     conn_data = item.data(Qt.ItemDataRole.UserRole)
+        
+    #     act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+    #     act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
+    #     menu.addAction(act)
+        
+    #     parent_item = item.parent()
+    #     grandparent_item = parent_item.parent() if parent_item else None
+    #     code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        
+    #     if code == 'POSTGRES':
+    #         act = action(self.manager, "PSQL Tool", "mdi.console")
+    #         act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
+    #         menu.addAction(act)
+        
+    #     menu.addSeparator()
+        
+    #     # Search Objects Dialog
+    #     act = action(self.manager, "Search Objects...", "mdi.magnify", shortcut="Alt+Shift+F")
+    #     act.triggered.connect(lambda: self.manager.connection_actions.open_search_objects_dialog(conn_data))
+    #     menu.addAction(act)
+        
+    #     menu.addSeparator()
+        
+    #     act = action(self.manager, "ERD for Database", "fa6s.sitemap")
+    #     act.triggered.connect(lambda: self.manager.generate_erd(item))
+    #     menu.addAction(act)
+        
+    #     menu.addSeparator()
+    #     conn_inspector = dict(conn_data) if conn_data else {}
+    #     conn_inspector.setdefault("type", "connection")
+    #     conn_inspector.setdefault("name", item.text())
+    #     add_properties_statistics_actions(menu, self.manager, conn_inspector, item.text())
+
+    #     parent_item = item.parent()
+    #     grandparent_item = parent_item.parent() if parent_item else None
+    #     code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+    #     if code == 'SQLITE' and conn_data and conn_data.get("db_path"):
+    #         act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+    #         act.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection(item))
+    #         menu.addAction(act)
+    #     elif code == 'POSTGRES' and conn_data and conn_data.get("host"):
+    #         act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+    #         act.triggered.connect(lambda: self.manager.connection_dialogs.edit_pg_connection(item))
+    #         menu.addAction(act)
+    #     elif code in ['ORACLE_FA', 'ORACLE_DB']:
+    #         act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+    #         act.triggered.connect(lambda: self.manager.connection_dialogs.edit_oracle_connection(item))
+    #         menu.addAction(act)
+    #     elif code == 'CSV' and conn_data and conn_data.get("db_path"):
+    #         act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+    #         act.triggered.connect(lambda: self.manager.connection_dialogs.edit_csv_connection(item))
+    #         menu.addAction(act)
+    #     elif code == 'SERVICENOW':
+    #         act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
+    #         act.triggered.connect(lambda: self.manager.connection_dialogs.edit_servicenow_connection(item))
+    #         menu.addAction(act)
+            
+    #     elif code == 'UDS':
+    #         act = action(self.manager,"Edit Unified Data Source","mdi.pencil-outline")
+    #         act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
+    #         menu.addAction(act)
+        
+    #     menu.addSeparator()
+        
+    #     # Refresh Logic (Targeted)
+    #     act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+    #     act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=False))
+    #     menu.addAction(act)
+        
+    #     act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+    #     act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=True))
+    #     menu.addAction(act)
+        
+    #     menu.addSeparator()
+    #     act = action(self.manager, "Delete Connection", "mdi.delete-outline", shortcut="Alt+Shift+D")
+    #     act.triggered.connect(lambda: self.manager.delete_connection(item))
+    #     menu.addAction(act)
+    
+    
     def _connection_menu(self, menu, item, index):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         
@@ -105,9 +191,50 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
         
-        parent_item = item.parent()
+        # parent_item = item.parent()
+        # grandparent_item = parent_item.parent() if parent_item else None
+        # code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        
+        # if code == "UDS":
+        #     act = action(self.manager, "Add Data Source", "mdi.database-plus")
+        #     act.triggered.connect(lambda: self.manager.connection_dialogs.add_data_source(item))
+        #     menu.addAction(act)
+     
+        connection_item = item
+
+        # ensure we are at connection node (safety)
+        parent_item = connection_item.parent()
         grandparent_item = parent_item.parent() if parent_item else None
         code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        
+        if code == "UDS":
+            act = action(self.manager, "Add Data Source", "mdi.database-plus")
+            act.triggered.connect(
+                lambda _, it=connection_item: self.manager.connection_dialogs.add_data_source(it)
+            )
+            menu.addAction(act)    
+            
+            act = action(self.manager,"Edit Unified Data Source","mdi.pencil-outline")
+            act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
+            menu.addAction(act)
+
+            menu.addSeparator()
+
+            act = action(self.manager,"Refresh","mdi.refresh",shortcut="F5")
+            act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=False))
+            menu.addAction(act)
+
+            act = action(self.manager,"Reset Tree","mdi.arrow-collapse-all")
+            act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=True))
+            menu.addAction(act)
+
+            menu.addSeparator()
+
+            act = action(self.manager,"Delete Unified Data Source","mdi.delete-outline",shortcut="Alt+Shift+D")
+            act.triggered.connect(lambda: self.manager.delete_connection(item))
+            menu.addAction(act)
+
+            return
         
         if code == 'POSTGRES':
             act = action(self.manager, "USQL Tool", "mdi.console")
@@ -165,6 +292,11 @@ class ExplorerMenuBuilder:
             act = action(self.manager, "Edit Connection", "mdi.pencil-outline")
             act.triggered.connect(lambda: self.manager.connection_dialogs.edit_servicenow_connection(item))
             menu.addAction(act)
+            
+        # elif code == 'UDS':
+        #     act = action(self.manager,"Edit Unified Data Source","mdi.pencil-outline")
+        #     act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
+        #     menu.addAction(act)
         
         menu.addSeparator()
         
@@ -181,7 +313,7 @@ class ExplorerMenuBuilder:
         act = action(self.manager, "Delete Connection", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(lambda: self.manager.delete_connection(item))
         menu.addAction(act)
-
+    
     def _object_menu(self, menu, item, index):
         item_data = item.data(Qt.ItemDataRole.UserRole)
         if not item_data:

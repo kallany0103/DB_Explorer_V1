@@ -3,9 +3,15 @@ from dialogs.sqlite_dialog import SQLiteConnectionDialog
 from dialogs.oracle_dialog import OracleConnectionDialog
 from dialogs.csv_dialog import CSVConnectionDialog
 from dialogs.servicenow_dialog import ServiceNowConnectionDialog
+from dialogs.postgres_ds_dialog import PostgresDataSourceDialog
+from dialogs.sqlite_ds_dialog import SQLiteDataSourceDialog
+from dialogs.oracle_ds_dialog import OracleDataSourceDialog
+from dialogs.csv_ds_dialog import CSVDataSourceDialog
+from dialogs.servicenow_ds_dialog import ServiceNowDataSourceDialog
 from dialogs.create_table_dialog import CreateTableDialog
 from dialogs.create_view_dialog import CreateViewDialog
 from dialogs.export_dialog import ExportDialog
+from dialogs.uds_dialog import UDSConnectionDialog
 # from dialogs.table_properties import TablePropertiesDialog -- Moved to properties sub-package
 from dialogs.search_objects_dialog import SearchObjectsDialog
 from dialogs.database_statistics_dialog import DatabaseStatisticsDialog
@@ -29,9 +35,15 @@ __all__ = [
 	"OracleConnectionDialog",
 	"CSVConnectionDialog",
 	"ServiceNowConnectionDialog",
+    "PostgresDataSourceDialog",
+	"SQLiteDataSourceDialog",
+	"OracleDataSourceDialog",
+	"CSVDataSourceDialog",
+	"ServiceNowDataSourceDialog",
 	"CreateTableDialog",
 	"CreateViewDialog",
 	"ExportDialog",
+    "UDSConnectionDialog",
 	"TablePropertiesDialog",
 	"SearchObjectsDialog",
 	"DatabaseStatisticsDialog",

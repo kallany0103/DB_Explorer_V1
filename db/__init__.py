@@ -34,6 +34,7 @@ from db.schema_retrieval import (
 from db.db_modifications import (
     add_connection_group,
     add_connection,
+    add_data_source,
     update_connection,
     delete_connection,
     save_query_history,

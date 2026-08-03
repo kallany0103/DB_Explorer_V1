@@ -1,3 +1,4 @@
+#db_retrival.py
 import sqlite3 as sqlite
 from db.db_connections import DB_FILE, get_pooled_postgres_connection, return_pooled_postgres_connection
 from db.type_utils import normalize_type  # noqa: F401 – re-exported for backward compatibility
@@ -464,3 +465,18 @@ def get_groups_by_type(type_id):
         c.execute("SELECT id, name FROM usf_connection_groups WHERE connection_type_id = ? ORDER BY name", (type_id,))
         rows = c.fetchall()
         return [{"id": r[0], "name": r[1]} for r in rows]
+
+#kallany
+def get_data_sources_by_connection(connection_id):
+    with sqlite.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite.Row
+        c = conn.cursor()
+
+        c.execute("""
+            SELECT *
+            FROM usf_data_sources
+            WHERE connection_id=?
+            ORDER BY source_name
+        """, (connection_id,))
+
+        return [dict(row) for row in c.fetchall()]

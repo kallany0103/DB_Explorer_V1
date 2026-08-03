@@ -1,3 +1,4 @@
+#db_modifications.py
 import sqlite3 as sqlite
 import datetime
 from db.db_connections import DB_FILE, create_postgres_connection
@@ -257,4 +258,46 @@ def delete_connection_type(type_id):
             
         c.execute("DELETE FROM usf_connection_types WHERE id = ?", (type_id,))
         conn.commit()
+#{moitre}
 
+#kallany
+def add_data_source(connection_id, source_type, data):
+    with sqlite.connect(DB_FILE) as conn:
+        c = conn.cursor()
+
+        c.execute("""
+            INSERT INTO usf_data_sources
+            (
+                connection_id,
+                source_name,
+                display_name,
+                source_type,
+                host,
+                port,
+                database_name,
+                username,
+                password,
+                schema_name,
+                service_url,
+                file_path,
+                config_json,
+                status
+            )
+            VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            connection_id,
+            data.get("short_name"),
+            data.get("name"),
+            source_type,
+            data.get("host"),
+            data.get("port"),
+            data.get("database"),
+            data.get("user"),
+            data.get("password"),
+            data.get("schema"),
+            data.get("instance_url"),
+            data.get("db_path"),
+            data.get("config_json"),
+            "ACTIVE"
+        ))
