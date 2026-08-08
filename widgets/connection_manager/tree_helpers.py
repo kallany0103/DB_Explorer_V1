@@ -118,7 +118,7 @@ class TreeHelpers:
         icon_map = {
             "POSTGRES": "assets/postgresql.svg",
             "SQLITE": "assets/sqlite.svg",
-            "ORACLE_DB": "assets/oracle.svg",
+            "ORACLE": "assets/oracle.svg",
             "ORACLE_FA": "assets/oracle_fusion.svg",
             "SERVICENOW": "assets/servicenow.svg",
             "CSV": "assets/csv.svg"

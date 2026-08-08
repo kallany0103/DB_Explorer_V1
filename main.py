@@ -69,7 +69,7 @@ if __name__ == "__main__":
         splash.close()
         QMessageBox.critical(
             None,
-            "Universal SQL Manager — Startup Error",
+            "Universal SQL Client — Startup Error",
             f"Startup failed:\n\n{loop._startup_error}",
         )
         sys.exit(1)
@@ -90,7 +90,7 @@ if __name__ == "__main__":
             splash.close()
         QMessageBox.critical(
             None,
-            "Universal SQL Manager Error",
+            "Universal SQL Client Error",
             f"An unexpected error occurred during startup:\n\n{traceback.format_exc()}",
         )
         sys.exit(1)

@@ -3,14 +3,6 @@
 QSplitter::handle { background: #e0e0e0; border: none; }
 QMainWindow, QToolBar { background-color: #ECEFF3; color: #1f2937; }
 QStatusBar { background-color: #F2F4F7; color: #1f2937; border-top: 1px solid #D1D6DD; }
-QToolTip {
-    background-color: #333333;
-    color: #ffffff;
-    border: 1px solid #777777;
-    padding: 4px;
-    border-radius: 4px;
-    font-size: 9pt;
-}
 QTreeView { background-color: white; alternate-background-color: #F7F8FA; border: 1px solid #B8BEC6; outline: none; }
 QTreeView::item { border: none; }
 QTreeView::item:selected, QTreeView::item:selected:active, QTreeView::item:selected:!active { background-color: #f0f0f0; color: black; border: none; outline: none; }
