@@ -39,7 +39,7 @@ class SplashScreen(QDialog):
             )
             
         # Title and Subtitle are drawn via paintEvent or added as labels
-        title_label = QLabel("Universal SQL Manager")
+        title_label = QLabel("Universal SQL Client")
         title_label.setObjectName("splashTitle")
         
         subtitle_label = QLabel("Advanced Multi-Database IDE")
@@ -56,7 +56,7 @@ class SplashScreen(QDialog):
         self.progress_bar.setValue(0)
         self.progress_bar.setObjectName("splashProgressBar")
         
-        version_label = QLabel("v1.0")
+        version_label = QLabel("v1.35")
         version_label.setObjectName("splashVersion")
         version_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         

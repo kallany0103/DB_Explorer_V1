@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.SESSION_FILE = "session_state.json"
 
-        self.setWindowTitle("Universal SQL Manager")
+        self.setWindowTitle("Universal SQL Client")
         self.setWindowIcon(QIcon("assets/sql_icon.svg"))
         self.setGeometry(100, 100, 1200, 800)
 
@@ -151,7 +151,9 @@ class MainWindow(QMainWindow):
         """)
 
         def show_new_tab_menu():
-            new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(0, add_tab_btn.height() + 2)))
+            menu_width = new_tab_menu.sizeHint().width()
+            x_pos = add_tab_btn.width() - menu_width
+            new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(x_pos, add_tab_btn.height() + 2)))
 
         add_tab_btn.clicked.connect(show_new_tab_menu)
         self.tab_widget.setCornerWidget(add_tab_btn)
@@ -418,7 +420,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.0.0</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.35</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()

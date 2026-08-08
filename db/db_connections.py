@@ -10,14 +10,31 @@ import urllib.parse
 import logging
 from db.connection_pool import get_or_create_pool, get_or_create_oracle_pool, close_all_pools
 
-def resource_path(relative_path):
-    """Get absolute path to resource, works for dev and PyInstaller."""
+def resource_path(relative_path: str) -> str:
+    """Get absolute path to a bundled read-only resource (assets, ui, etc.)."""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
 
-# Database file path updated
-DB_FILE = resource_path("databases/hierarchy.db")
+
+def user_data_path(relative_path: str) -> str:
+    """Get absolute path to a user-writable data file.
+
+    When running as a PyInstaller bundle the file lives under
+    %APPDATA%\\Universal SQL Client so that it is writable even
+    when the app is installed in Program Files.
+    In development mode it falls back to the local project directory.
+    """
+    if getattr(sys, 'frozen', False):
+        base = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
+                            "Universal SQL Client")
+    else:
+        base = os.path.abspath(".")
+    return os.path.join(base, relative_path)
+
+
+# hierarchy.db is a user-writable file — must NOT live inside the install dir
+DB_FILE = user_data_path("databases/hierarchy.db")
 
 _failed_hosts = {}
 FAILED_HOST_COOLDOWN = 15 # seconds
