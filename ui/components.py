@@ -272,10 +272,10 @@ class NavigationTabButton(QPushButton):
                 background-color: #ECEFF3;
             }
             QPushButton:checked {
-                background-color: #8E959E;
-                color: #ffffff;
-                border-bottom: 1px solid #8E959E;
-                font-weight: bold;
+                background-color: #E2E8F0;
+                color: #1F2937;
+                border-bottom: 1px solid #60A5FA;
+                font-weight: 600;
             }
         """)
 

@@ -68,7 +68,7 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
 
         self._text_item = _EntityLabelItem(label, self)
         self._text_item.setDefaultTextColor(QColor("#1E3A5F"))
-        self._text_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self._text_item.setFont(QFont("Segoe UI Variable", 10, QFont.Weight.Bold))
         self._text_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
         self._text_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self._text_item.document().contentsChanged.connect(self._sync_geometry)

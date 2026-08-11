@@ -1,3 +1,5 @@
+import os
+import sys
 from PySide6.QtCore import Qt, QEvent, QModelIndex, QItemSelectionModel
 from PySide6.QtGui import QIcon
 import qtawesome as qta
@@ -119,13 +121,22 @@ class TreeHelpers:
             "POSTGRES": "assets/postgresql.svg",
             "SQLITE": "assets/sqlite.svg",
             "ORACLE": "assets/oracle.svg",
+            "ORACLE_DB": "assets/oracle.svg",
             "ORACLE_FA": "assets/oracle_fusion.svg",
             "SERVICENOW": "assets/servicenow.svg",
+            "UDS": "assets/unified_data_source.svg",
             "CSV": "assets/csv.svg"
         }
 
         icon_path = icon_map.get(code, "assets/database.svg")
-        item.setIcon(QIcon(icon_path))
+        
+        # Resolve absolute path for PyInstaller
+        if hasattr(sys, '_MEIPASS'):
+            abs_icon_path = os.path.join(sys._MEIPASS, icon_path)
+        else:
+            abs_icon_path = os.path.join(os.path.abspath("."), icon_path)
+
+        item.setIcon(QIcon(abs_icon_path))
 
 
     def save_tree_expansion_state(self):

@@ -64,7 +64,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
 
         self._label = _DiamondLabelItem(label, self)
         self._label.setDefaultTextColor(QColor("#92400E"))
-        self._label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self._label.setFont(QFont("Segoe UI Variable", 9, QFont.Weight.Bold))
         self._label.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self._label.document().contentsChanged.connect(self._sync_geometry)

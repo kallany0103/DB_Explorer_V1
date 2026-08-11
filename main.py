@@ -4,7 +4,6 @@ import os
 import pathlib
 import traceback
 import multiprocessing
-import time
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QThread, Signal, QEventLoop
 from PySide6.QtGui import QIcon
@@ -30,7 +29,6 @@ class _StartupWorker(QThread):
 
             self.progress.emit("Bootstrapping database...", 10)
             ensure_hierarchy_db()
-            time.sleep(3)  # DEBUG: Artificial delay to test splash screen dragging
 
         except Exception:
             self.failed.emit(traceback.format_exc())

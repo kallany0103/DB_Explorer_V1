@@ -5,6 +5,7 @@ from psycopg2 import OperationalError
 import oracledb
 import sys
 import os
+import time
 import cdata.servicenow as sn_driver
 import cdata.csv as csv_driver
 import urllib.parse

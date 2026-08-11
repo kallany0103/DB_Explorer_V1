@@ -543,7 +543,7 @@ class PlanNodeItem(QGraphicsItem):
         
         # Draw text
         painter.setPen(Qt.GlobalColor.black)
-        font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+        font = QFont("Segoe UI Variable", 9, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(QRectF(48, 8, self.width-56, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.node_type)
         

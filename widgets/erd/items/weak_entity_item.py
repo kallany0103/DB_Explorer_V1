@@ -77,7 +77,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         #Inline text label
         self._text_item = _LabelTextItem(label, self)
         self._text_item.setDefaultTextColor(QColor("#1E293B"))
-        self._text_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self._text_item.setFont(QFont("Segoe UI Variable", 10, QFont.Weight.Bold))
         self._text_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
         self._text_item.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextEditorInteraction

@@ -123,7 +123,7 @@ class PropertyPanel(QWidget):
     def _render_table_details(self, table_item):
         form = QFormLayout()
         name_lbl = QLabel(table_item.table_name)
-        name_lbl.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        name_lbl.setFont(QFont("Segoe UI Variable", 10, QFont.Weight.Bold))
         form.addRow("Name:", name_lbl)
         if table_item.schema_name:
             form.addRow("Schema:", QLabel(table_item.schema_name))
@@ -132,7 +132,7 @@ class PropertyPanel(QWidget):
         
         # Columns
         col_lbl = QLabel("Columns:")
-        col_lbl.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        col_lbl.setFont(QFont("Segoe UI Variable", 9, QFont.Weight.Bold))
         self.content_layout.addWidget(col_lbl)
         
         for col in table_item.columns:

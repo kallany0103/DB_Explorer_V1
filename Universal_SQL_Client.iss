@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Universal SQL Client"
-#define MyAppVersion "1.35"
+#define MyAppVersion "1.36"
 #define MyAppPublisher "Datafluent BD"
 #define MyAppURL "https://www.datafluent.team"
 #define MyAppExeName "Universal SQL Client.exe"
@@ -35,7 +35,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UsePreviousPrivileges=no
 OutputDir=dist
-OutputBaseFilename=Universal_SQL_Client_WINDOWS_1.35_setup
+OutputBaseFilename=Universal_SQL_Client_WINDOWS_1.36_setup
 SetupIconFile=assets\app_icon.ico
 SolidCompression=yes
 WizardStyle=modern

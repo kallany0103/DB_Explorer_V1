@@ -1,7 +1,6 @@
 from PySide6.QtWidgets import QSplitter, QMessageBox
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
-import qtawesome as qta
 import traceback
 
 def close_current_tab(main_window):
@@ -99,14 +98,16 @@ def reset_to_dashboard(main_window):
         traceback.print_exc()
 
 def toggle_maximize(main_window):
-    if main_window.isMaximized():
+    # On a frameless window (custom title bar) Qt enters WindowFullScreen on
+    # maximize, so isMaximized() alone can never detect the state — check both.
+    if main_window.isMaximized() or main_window.isFullScreen():
         main_window.showNormal()
         main_window.maximize_action.setText("Maximize")
-        main_window.maximize_action.setIcon(qta.icon("mdi.window-maximize", color="#555555"))
     else:
         main_window.showMaximized()
         main_window.maximize_action.setText("Restore")
-        main_window.maximize_action.setIcon(qta.icon("mdi.window-restore", color="#555555"))
+    # Icon update is handled by title_bar.update_maximize_button() using
+    # pre-cached icons — do not call qta.icon() here to avoid stutter.
 
 
 def open_help_url(main_window, url_string):
@@ -117,4 +118,6 @@ def open_help_url(main_window, url_string):
 def update_thread_pool_status(main_window):
     active = main_window.thread_pool.activeThreadCount()
     max_threads = main_window.thread_pool.maxThreadCount()
-    main_window.status.showMessage(f"ThreadPool: {active} active of {max_threads}", 3000)
+    main_window.thread_pool_status_label.setText(
+        f"ThreadPool: {active} active of {max_threads}"
+    )

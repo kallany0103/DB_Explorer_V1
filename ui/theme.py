@@ -1,4 +1,4 @@
-from PySide6.QtGui import QPalette, QColor
+from PySide6.QtGui import QPalette, QColor, QFont
 from PySide6.QtWidgets import QApplication
 import os
 import json
@@ -21,6 +21,7 @@ def setup_theme(app: QApplication, theme_name=None):
     to ensure consistent rendering across Windows 10, Windows 11, and other OSes.
     """
     app.setStyle("Fusion")
+    app.setFont(QFont("Segoe UI Variable", 9))
     
     if theme_name is None:
         theme_name = get_saved_theme()
