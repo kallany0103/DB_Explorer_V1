@@ -75,7 +75,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         self._label = _AttrLabelItem(label, self)
         self._label.setDefaultTextColor(QColor("#166534"))
         
-        font = QFont("Segoe UI", 9)
+        font = QFont("Segoe UI Variable", 9)
         if kind == "key":
             font.setUnderline(True)
         self._label.setFont(font)

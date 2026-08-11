@@ -53,7 +53,7 @@ class _ConnLabelItem(QGraphicsTextItem):
 
     def __init__(self, parent: QGraphicsItem | None = None) -> None:
         super().__init__(parent)
-        self.setFont(QFont("Segoe UI", 9, QFont.Weight.Normal))
+        self.setFont(QFont("Segoe UI Variable", 9, QFont.Weight.Normal))
         self.setDefaultTextColor(QColor("#374151"))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)

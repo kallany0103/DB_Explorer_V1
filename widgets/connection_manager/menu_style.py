@@ -8,7 +8,7 @@ QMenu {
     border-radius: 0px;
     padding: 3px 0px;
     font-size: 9pt;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
     color: #1f2937;
 }
 QMenu::item {

@@ -45,7 +45,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
 
         self.text_item = NoteTextItem(text, self)
         self.text_item.setDefaultTextColor(QColor("#4B5563"))
-        self.text_item.setFont(QFont("Segoe UI", 10))
+        self.text_item.setFont(QFont("Segoe UI Variable", 10))
         self.text_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable, True)
         self.text_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.text_item.setTextWidth(width - 20)

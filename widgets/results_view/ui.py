@@ -66,6 +66,7 @@ def create_results_ui(manager, tab_content):
 
     results_stack = QStackedWidget()
     results_stack.setObjectName("results_stacked_widget")
+    results_stack.setStyleSheet("background-color: #FFFFFF;")
 
     output_tabs = create_output_tabs_view(manager, tab_content)
     results_stack.addWidget(output_tabs)

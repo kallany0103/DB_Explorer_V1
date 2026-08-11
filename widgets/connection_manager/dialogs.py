@@ -153,6 +153,8 @@ class ConnectionTypeSelectorDialog(QDialog):
                     code = "sqlite"
                 elif 'csv' in lookup:
                     code = "csv"
+                elif 'uds' in lookup or 'unified' in lookup:
+                    code = "unified_data_source"
                 else:
                     # Generic cleanup
                     code = raw_code.replace(" ", "_") if raw_code else raw_name.replace(" ", "_")

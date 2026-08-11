@@ -73,7 +73,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
         # --- Title label ---
         self._title = _GroupTitleItem(title, self)
         self._title.setDefaultTextColor(self._stroke.darker(130))
-        self._title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self._title.setFont(QFont("Segoe UI Variable", 10, QFont.Weight.Bold))
         self._title.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable)
         self._title.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self._title.setPos(12, 8)

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
 from ui.components import SecondaryButton
+from ui.title_bar import TitleBarWidget
 from widgets.erd.widget import ERDWidget
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.dashboard import DashboardWidget
@@ -12,6 +13,7 @@ from widgets.inspector.properties_view import PropertiesWorkbench
 from widgets.inspector.statistics_view import StatisticsWorkbench
 from widgets.usql_tool.terminal_widget import USQLToolWidget
 from dialogs.preferences_dialog import PreferencesDialog
+from widgets.login_dialog import LoginDialog
 from ui.theme import setup_theme
 import db
 
@@ -46,7 +48,9 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Universal SQL Client")
         self.setWindowIcon(QIcon("assets/sql_icon.svg"))
-        self.setGeometry(100, 100, 1200, 800)
+        # VS Code standard: minimum 400×270; default first-launch 1200×800 centered.
+        self.setMinimumSize(400, 270)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
 
         self.thread_pool = QThreadPool.globalInstance()
         self._saved_tree_paths = []
@@ -57,7 +61,10 @@ class MainWindow(QMainWindow):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
         self.status_message_label = QLabel("Ready")
-        self.status.addWidget(self.status_message_label)
+        self.thread_pool_status_label = QLabel(
+            f"ThreadPool: 0 active of {self.thread_pool.maxThreadCount()}"
+        )
+        self.status.addPermanentWidget(self.thread_pool_status_label)
 
         # 2. Initialize Tab Widget (needed by managers)
         self.tab_widget = QTabWidget()
@@ -69,6 +76,11 @@ class MainWindow(QMainWindow):
         # 3. Create Actions & Menus (needed by managers)
         self._create_actions()
         self._create_menu()
+
+        # 3a. Custom title bar — embeds the menu bar (replaces OS title bar)
+        self._title_bar = TitleBarWidget(self)
+        self._title_bar.embed_menu_bar(self.menuBar())
+        self.setMenuWidget(self._title_bar)
 
         # 4 Initialize Managers
 
@@ -163,15 +175,30 @@ class MainWindow(QMainWindow):
         self.thread_monitor_timer.start(1000)
 
         self.restore_session_state()
-        
+
+        # Clamp to available screen size only if the restored geometry overflows
+        # (e.g. multi-monitor session restored on a smaller display). Also reset
+        # a near-full-screen "normal" restore (a frameless-window artifact) back
+        # to the VS Code standard default instead of opening full-screen.
+        screen = QApplication.primaryScreen().availableGeometry()
+        if not self.isMaximized() and not self.isFullScreen():
+            if self.width() >= screen.width() - 40 and self.height() >= screen.height() - 40:
+                default_w, default_h = 1200, 800
+                x = screen.x() + (screen.width() - default_w) // 2
+                y = screen.y() + (screen.height() - default_h) // 2
+                self.setGeometry(x, y, default_w, default_h)
+            elif self.width() > screen.width() or self.height() > screen.height():
+                self.resize(
+                    min(self.width(), screen.width()),
+                    min(self.height(), screen.height()),
+                )
+
+        if hasattr(self, "_title_bar"):
+            self._title_bar.update_maximize_button()
+
         # Keep the splash screen responsive while the main window is being built
         QApplication.processEvents()
 
-        # Clamp geometry to available screen size to prevent geometry warnings
-        screen = QApplication.primaryScreen().availableGeometry()
-        if self.width() > screen.width() or self.height() > screen.height():
-            self.resize(min(self.width(), screen.width()), min(self.height(), screen.height()))
-        
         self.main_splitter.setSizes([280, 920])
         
         # Connect tree selections for Inspector workbenches
@@ -420,7 +447,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.35</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.36</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()
@@ -524,6 +551,8 @@ class MainWindow(QMainWindow):
 
     def toggle_maximize(self):
         toggle_maximize_action(self)
+        if hasattr(self, "_title_bar"):
+            self._title_bar.update_maximize_button()
 
     def open_help_url(self, url_string):
         open_help_url_action(self, url_string)
@@ -545,6 +574,64 @@ class MainWindow(QMainWindow):
                 
             # Save session immediately to persist settings
             save_main_window_session(self, self.SESSION_FILE)
+
+    def show_login(self):
+        dialog = LoginDialog(self)
+        dialog.exec()
+
+    def show_login_menu(self, anchor):
+        if self.isMinimized():
+            return
+        menu = QMenu(self)
+        menu.setObjectName("accountMenu")
+        menu.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        menu.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        menu.setMinimumWidth(260)
+        header = menu.addAction("Not signed in")
+        header.setEnabled(False)
+        menu.addSeparator()
+        google_action = menu.addAction(
+            qta.icon("fa5b.google", color="#4285F4"),
+            "Sign in with Google",
+        )
+        email_action = menu.addAction(
+            qta.icon("mdi.email-outline", color="#555555"),
+            "Sign in with email",
+        )
+
+        selected = menu.exec(self._menu_position_within_window(menu, anchor))
+        if selected is email_action:
+            self.show_login()
+        elif selected is google_action:
+            self._show_authentication_notice("Google sign-in")
+
+    def _menu_position_within_window(self, menu, anchor):
+        """Place the account panel left of its anchor and inside the app window."""
+        window_rect = self.geometry()
+        menu_size = menu.sizeHint()
+        anchor_bottom_right = anchor.mapToGlobal(
+            QPoint(anchor.width(), anchor.height())
+        )
+        pos = QPoint(
+            anchor_bottom_right.x() - menu_size.width(),
+            anchor_bottom_right.y(),
+        )
+        pos.setX(
+            max(window_rect.left(), min(pos.x(), window_rect.right() - menu_size.width() + 1))
+        )
+        pos.setY(
+            max(window_rect.top(), min(pos.y(), window_rect.bottom() - menu_size.height() + 1))
+        )
+        return pos
+
+    def _show_authentication_notice(self, provider):
+        QMessageBox.information(
+            self,
+            provider,
+            f"{provider} isn't configured for this workspace yet.\n"
+            "Sign in with email, or continue without signing in.",
+        )
    
 
     def closeEvent(self, event):

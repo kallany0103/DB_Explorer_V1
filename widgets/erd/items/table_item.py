@@ -88,17 +88,17 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
 
     def compute_auto_size(self):
         # Calculate width
-        font_header = QFont("Segoe UI", 10, QFont.Weight.Bold)
+        font_header = QFont("Segoe UI Variable", 10, QFont.Weight.Bold)
         fm_header = QFontMetrics(font_header)
         max_width = fm_header.horizontalAdvance(self.table_name) + 40
         
         if self.schema_name:
-            font_schema = QFont("Segoe UI", 8, QFont.Weight.Normal)
+            font_schema = QFont("Segoe UI Variable", 8, QFont.Weight.Normal)
             fm_schema = QFontMetrics(font_schema)
             max_width = max(max_width, fm_schema.horizontalAdvance(self.schema_name) + 40)
             
         if self.show_columns:
-            font_col = QFont("Segoe UI", 9, QFont.Weight.Normal)
+            font_col = QFont("Segoe UI Variable", 9, QFont.Weight.Normal)
             fm_col = QFontMetrics(font_col)
             
             for col in self.columns:
@@ -184,7 +184,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             schema_rect = QRectF(10, 6, 12, 12)
             painter.drawPixmap(schema_rect.toRect(), self.icon_schema)
             
-            painter.setFont(QFont("Segoe UI", 8))
+            painter.setFont(QFont("Segoe UI Variable", 8))
             painter.setPen(QPen(QColor("#666666")))
             painter.drawText(header_rect.adjusted(28, 4, -10, -20), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, self.schema_name)
             
@@ -192,7 +192,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             table_icon_rect = QRectF(10, 24, 14, 12)
             painter.drawPixmap(table_icon_rect.toRect(), self.icon_table)
             
-            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            painter.setFont(QFont("Segoe UI Variable", 10, QFont.Weight.Bold))
             painter.setPen(QPen(Qt.GlobalColor.black))
             painter.drawText(header_rect.adjusted(28, 16, -10, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.table_name)
         else:
@@ -200,7 +200,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
             table_icon_rect = QRectF(10, (self.header_height-12)/2, 14, 12)
             painter.drawPixmap(table_icon_rect.toRect(), self.icon_table)
             
-            painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            painter.setFont(QFont("Segoe UI Variable", 10, QFont.Weight.Bold))
             painter.setPen(QPen(Qt.GlobalColor.black))
             painter.drawText(header_rect.adjusted(28, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, self.table_name)
         
@@ -236,7 +236,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
                 else:
                     painter.drawPixmap(icon_rect.toRect(), self.icon_col)
 
-                painter.setFont(QFont("Segoe UI", 9))
+                painter.setFont(QFont("Segoe UI Variable", 9))
                 # Only use a neutral dark grey for text
                 text_color = QColor("#D93025") if is_pk else Qt.GlobalColor.black
                 painter.setPen(QPen(text_color))

@@ -574,7 +574,7 @@ class ChartTooltip(QFrame):
             }
             QLabel {
                 color: #111827 !important;
-                font-family: 'Segoe UI', Arial, sans-serif !important;
+                 font-family: "Segoe UI Variable", "Segoe UI", sans-serif !important;
                 border: none !important;
                 background: transparent !important;
             }

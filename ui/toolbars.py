@@ -288,8 +288,6 @@ class ResultsInfoToolbar(QWidget):
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(6)
 
-        QFont("Segoe UI", 16, QFont.Weight.Bold)
-
         self.prev_btn = SecondaryButton("◀")
         self.prev_btn.setFixedWidth(30)
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -299,7 +297,7 @@ class ResultsInfoToolbar(QWidget):
         self.page_label = QLabel("Page 1")
         self.page_label.setMinimumWidth(60)
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.page_label.setFont(QFont("Segoe UI", 9))
+        self.page_label.setFont(QFont("Segoe UI Variable", 9))
         self.page_label.setObjectName("page_label")
 
         self.next_btn = SecondaryButton("▶")

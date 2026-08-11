@@ -12,9 +12,18 @@ def save_main_window_session(main_window, session_file):
     main_window.connection_manager._save_tree_expansion_state()
     main_window.connection_manager._save_schema_tree_expansion_state()
     
+    # On a frameless window (custom title bar) Qt enters WindowFullScreen on
+    # maximize, so saveGeometry() would persist a full-screen rect and restore
+    # the app full-screen on next launch. Save the normal geometry instead.
+    window_rect = None
+    if main_window.isMaximized() or main_window.isFullScreen():
+        normal = main_window.normalGeometry()
+        window_rect = [normal.x(), normal.y(), normal.width(), normal.height()]
+
     session_data = {
         "window_geometry": main_window.saveGeometry().toBase64().data().decode(),
         "window_state": main_window.saveState().toBase64().data().decode(),
+        "window_rect": window_rect,
         "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
         "theme": getattr(main_window, "theme", "Grey (Default)"),
@@ -64,6 +73,17 @@ def save_main_window_session(main_window, session_file):
 
 def restore_main_window_session(main_window, session_file):
     if not os.path.exists(session_file):
+        # First launch: no saved session — apply VS Code standard default geometry
+        # (1200×800, centered on the primary screen).
+        screen = (
+            main_window.screen().availableGeometry()
+            if main_window.screen()
+            else QApplication.primaryScreen().availableGeometry()
+        )
+        default_w, default_h = 1200, 800
+        x = screen.x() + (screen.width() - default_w) // 2
+        y = screen.y() + (screen.height() - default_h) // 2
+        main_window.setGeometry(x, y, default_w, default_h)
         main_window.add_tab()
         return
 
@@ -71,7 +91,10 @@ def restore_main_window_session(main_window, session_file):
         with open(session_file, "r") as f:
             session_data = json.load(f)
 
-        if "window_geometry" in session_data:
+        if session_data.get("window_rect"):
+            x, y, w, h = session_data["window_rect"]
+            main_window.setGeometry(x, y, w, h)
+        elif "window_geometry" in session_data:
             main_window.restoreGeometry(QByteArray.fromBase64(session_data["window_geometry"].encode()))
         if "window_state" in session_data:
             main_window.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
