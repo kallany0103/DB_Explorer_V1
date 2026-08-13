@@ -27,7 +27,7 @@ import widgets.results_view.query_handler as query_handler
 import widgets.results_view.row_crud as row_crud
 import widgets.results_view.ui as ui
 from widgets.results_view.perf_metrics import perf_snapshot
-from dialogs import ExportDialog
+from dialogs.tools import ExportDialog
 from workers import RunnableExportFromModel, ProcessSignals
 from workers.signals import emit_process_started
 

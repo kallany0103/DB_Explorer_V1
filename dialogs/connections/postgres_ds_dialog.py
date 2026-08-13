@@ -8,13 +8,16 @@ import os
 import psycopg2
 
 class PostgresDataSourceDialog(QDialog):
-    def __init__(self, parent=None, is_editing=False):
+    def __init__(self, parent=None, is_editing=False, conn_data=None):
         super().__init__(parent)
 
+        self.conn_data = conn_data or {}
+        is_editing = is_editing or bool(conn_data)
+
         self.setWindowTitle(
-            "Edit New Data Source" if is_editing else "New Data Source"
+            "Edit Data Source" if is_editing else "New Data Source"
         )
-        self.setMinimumSize(560, 520)
+        self.setMinimumSize(560, 560)
 
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -27,10 +30,10 @@ class PostgresDataSourceDialog(QDialog):
         self._apply_styles()
 
         # Header
-        header_title = QLabel("Configure Postgres database connection")
+        header_title = QLabel("Configure PostgreSQL Data Source" if not is_editing else "Edit PostgreSQL Data Source")
         header_title.setObjectName("dialogTitle")
 
-        header_subtitle = QLabel("Configure connection details and test before saving.")
+        header_subtitle = QLabel("Configure data source details and test before saving.")
         header_subtitle.setObjectName("dialogSubtitle")
 
         # Inputs
@@ -38,8 +41,11 @@ class PostgresDataSourceDialog(QDialog):
         self.short_name_input = QLineEdit()
         self.host_input = QLineEdit()
         self.port_input = QLineEdit()
+        self.port_input.setPlaceholderText("5432")
         self.db_input = QLineEdit()
         self.user_input = QLineEdit()
+        self.schema_input = QLineEdit()
+        self.schema_input.setPlaceholderText("public")
 
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
@@ -50,15 +56,27 @@ class PostgresDataSourceDialog(QDialog):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
         form.setHorizontalSpacing(18)
-        form.setVerticalSpacing(18)
+        form.setVerticalSpacing(16)
 
-        form.addRow("Connection Name:", self.name_input)
+        form.addRow("Data Source Name:", self.name_input)
         form.addRow("Short Name:", self.short_name_input)
         form.addRow("Host:", self.host_input)
         form.addRow("Port:", self.port_input)
         form.addRow("Database:", self.db_input)
+        form.addRow("Remote Schema:", self.schema_input)
         form.addRow("User:", self.user_input)
         form.addRow("Password:", self.password_input)
+
+        # Pre-fill if editing
+        if self.conn_data:
+            self.name_input.setText(self.conn_data.get("name") or self.conn_data.get("display_name", ""))
+            self.short_name_input.setText(self.conn_data.get("short_name") or self.conn_data.get("source_name", ""))
+            self.host_input.setText(str(self.conn_data.get("host", "")))
+            self.port_input.setText(str(self.conn_data.get("port", "")))
+            self.db_input.setText(self.conn_data.get("database") or self.conn_data.get("database_name", ""))
+            self.schema_input.setText(self.conn_data.get("schema") or self.conn_data.get("schema_name", "public"))
+            self.user_input.setText(self.conn_data.get("user") or self.conn_data.get("username", ""))
+            self.password_input.setText(self.conn_data.get("password", ""))
 
         # Buttons
         self.test_btn = QPushButton("Test Connection")
@@ -167,12 +185,14 @@ class PostgresDataSourceDialog(QDialog):
 
     def testConnection(self):
         try:
+            port_val = int(self.port_input.text().strip() or 5432)
             conn = psycopg2.connect(
-                host=self.host_input.text(),
-                port=int(self.port_input.text()),
-                database=self.db_input.text(),
-                user=self.user_input.text(),
+                host=self.host_input.text().strip() or "localhost",
+                port=port_val,
+                database=self.db_input.text().strip() or "postgres",
+                user=self.user_input.text().strip() or "postgres",
                 password=self.password_input.text(),
+                connect_timeout=5,
             )
             conn.close()
             QMessageBox.information(self, "Success", "Connection successful!")
@@ -182,18 +202,25 @@ class PostgresDataSourceDialog(QDialog):
 
     def saveConnection(self):
         if not self.name_input.text().strip():
-            QMessageBox.warning(self, "Missing Info", "Connection name is required.")
+            QMessageBox.warning(self, "Missing Info", "Data Source Name is required.")
             return
+
+        if not self.short_name_input.text().strip():
+            self.short_name_input.setText(self.name_input.text().strip())
 
         self.accept()
 
     def getData(self):
         return {
-            "name": self.name_input.text(),
-            "short_name": self.short_name_input.text(),
-            "host": self.host_input.text(),
-            "port": self.port_input.text(),
-            "database": self.db_input.text(),
-            "user": self.user_input.text(),
+            "name": self.name_input.text().strip(),
+            "short_name": self.short_name_input.text().strip(),
+            "host": self.host_input.text().strip() or "localhost",
+            "port": int(self.port_input.text().strip() or 5432),
+            "database": self.db_input.text().strip(),
+            "database_name": self.db_input.text().strip(),
+            "schema": self.schema_input.text().strip() or "public",
+            "schema_name": self.schema_input.text().strip() or "public",
+            "user": self.user_input.text().strip() or "postgres",
+            "username": self.user_input.text().strip() or "postgres",
             "password": self.password_input.text()
         }

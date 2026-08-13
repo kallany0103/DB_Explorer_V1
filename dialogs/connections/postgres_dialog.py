@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QLineEdit, QMessageBox
 from ui.components import PasswordBox
-from dialogs.base_connection_dialog import BaseConnectionDialog
+from .base_connection_dialog import BaseConnectionDialog
 import psycopg2
 
 

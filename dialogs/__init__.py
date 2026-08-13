@@ -1,67 +1,102 @@
-from dialogs.postgres_dialog import PostgresConnectionDialog
-from dialogs.sqlite_dialog import SQLiteConnectionDialog
-from dialogs.oracle_dialog import OracleConnectionDialog
-from dialogs.csv_dialog import CSVConnectionDialog
-from dialogs.servicenow_dialog import ServiceNowConnectionDialog
-from dialogs.postgres_ds_dialog import PostgresDataSourceDialog
-from dialogs.sqlite_ds_dialog import SQLiteDataSourceDialog
-from dialogs.oracle_ds_dialog import OracleDataSourceDialog
-from dialogs.csv_ds_dialog import CSVDataSourceDialog
-from dialogs.servicenow_ds_dialog import ServiceNowDataSourceDialog
-from dialogs.create_table_dialog import CreateTableDialog
-from dialogs.create_view_dialog import CreateViewDialog
-from dialogs.export_dialog import ExportDialog
-from dialogs.uds_dialog import UDSConnectionDialog
-# from dialogs.table_properties import TablePropertiesDialog -- Moved to properties sub-package
-from dialogs.search_objects_dialog import SearchObjectsDialog
-from dialogs.database_statistics_dialog import DatabaseStatisticsDialog
-from dialogs.properties import (
-    TablePropertiesDialog, SchemaPropertiesDialog, FunctionPropertiesDialog, 
-    SequencePropertiesDialog, ExtensionPropertiesDialog, LanguagePropertiesDialog,
-    FDWPropertiesDialog, ForeignServerPropertiesDialog, UserMappingPropertiesDialog
+# dialogs/__init__.py
+
+from dialogs.tools import (
+    ExportDialog,
+    SearchObjectsDialog,
+    PreferencesDialog,
 )
-from dialogs.create_materialized_view_dialog import CreateMaterializedViewDialog
-from dialogs.create_trigger_dialog import CreateTriggerDialog
-from dialogs.create_function_dialog import CreateFunctionDialog
-from dialogs.create_trigger_function_dialog import CreateTriggerFunctionDialog
-from dialogs.create_sequence_dialog import CreateSequenceDialog
-from dialogs.create_foreign_table_dialog import CreateForeignTableDialog
-from dialogs.preferences_dialog import PreferencesDialog
-from dialogs.create_policy_dialog import CreatePolicyDialog
+
+from dialogs.connections import (
+    BaseConnectionDialog,
+    PostgresConnectionDialog,
+    SQLiteConnectionDialog,
+    OracleConnectionDialog,
+    CSVConnectionDialog,
+    ServiceNowConnectionDialog,
+    UDSConnectionDialog,
+    PostgresDataSourceDialog,
+    SQLiteDataSourceDialog,
+    OracleDataSourceDialog,
+    CSVDataSourceDialog,
+    ServiceNowDataSourceDialog,
+)
+
+from dialogs.schema_objects import (
+    CreateTableDialog,
+    CreateViewDialog,
+    CreateMaterializedViewDialog,
+    CreateFunctionDialog,
+    CreateTriggerDialog,
+    CreateTriggerFunctionDialog,
+    CreateSequenceDialog,
+    CreateForeignTableDialog,
+    CreatePolicyDialog,
+)
+
+from dialogs.properties import (
+    TablePropertiesDialog,
+    SchemaPropertiesDialog,
+    FunctionPropertiesDialog,
+    SequencePropertiesDialog,
+    ExtensionPropertiesDialog,
+    LanguagePropertiesDialog,
+    FDWPropertiesDialog,
+    ForeignServerPropertiesDialog,
+    UserMappingPropertiesDialog,
+    TriggerPropertiesDialog,
+)
+
+from dialogs.statistics import (
+    DatabaseStatisticsDialog,
+    ObjectStatisticsDialog,
+    StatisticsTab,
+)
 
 __all__ = [
-	"PostgresConnectionDialog",
-	"SQLiteConnectionDialog",
-	"OracleConnectionDialog",
-	"CSVConnectionDialog",
-	"ServiceNowConnectionDialog",
-    "PostgresDataSourceDialog",
-	"SQLiteDataSourceDialog",
-	"OracleDataSourceDialog",
-	"CSVDataSourceDialog",
-	"ServiceNowDataSourceDialog",
-	"CreateTableDialog",
-	"CreateViewDialog",
-	"ExportDialog",
-    "UDSConnectionDialog",
-	"TablePropertiesDialog",
-	"SearchObjectsDialog",
-	"DatabaseStatisticsDialog",
-	"SchemaPropertiesDialog",
-	"FunctionPropertiesDialog",
-	"SequencePropertiesDialog",
-	"ExtensionPropertiesDialog",
-	"LanguagePropertiesDialog",
-	"FDWPropertiesDialog",
-	"ForeignServerPropertiesDialog",
-	"UserMappingPropertiesDialog",
+    # Tools
+    "ExportDialog",
+    "SearchObjectsDialog",
+    "PreferencesDialog",
 
-	"CreateMaterializedViewDialog",
-	"CreateTriggerDialog",
-	"CreateFunctionDialog",
-	"CreateTriggerFunctionDialog",
-	"CreateSequenceDialog",
-	"CreateForeignTableDialog",
-	"PreferencesDialog",
-	"CreatePolicyDialog",
+    # Connections
+    "BaseConnectionDialog",
+    "PostgresConnectionDialog",
+    "SQLiteConnectionDialog",
+    "OracleConnectionDialog",
+    "CSVConnectionDialog",
+    "ServiceNowConnectionDialog",
+    "UDSConnectionDialog",
+    "PostgresDataSourceDialog",
+    "SQLiteDataSourceDialog",
+    "OracleDataSourceDialog",
+    "CSVDataSourceDialog",
+    "ServiceNowDataSourceDialog",
+
+    # Schema Objects
+    "CreateTableDialog",
+    "CreateViewDialog",
+    "CreateMaterializedViewDialog",
+    "CreateFunctionDialog",
+    "CreateTriggerDialog",
+    "CreateTriggerFunctionDialog",
+    "CreateSequenceDialog",
+    "CreateForeignTableDialog",
+    "CreatePolicyDialog",
+
+    # Properties
+    "TablePropertiesDialog",
+    "SchemaPropertiesDialog",
+    "FunctionPropertiesDialog",
+    "SequencePropertiesDialog",
+    "ExtensionPropertiesDialog",
+    "LanguagePropertiesDialog",
+    "FDWPropertiesDialog",
+    "ForeignServerPropertiesDialog",
+    "UserMappingPropertiesDialog",
+    "TriggerPropertiesDialog",
+
+    # Statistics
+    "DatabaseStatisticsDialog",
+    "ObjectStatisticsDialog",
+    "StatisticsTab",
 ]

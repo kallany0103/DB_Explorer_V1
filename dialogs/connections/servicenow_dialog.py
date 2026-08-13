@@ -1,7 +1,7 @@
-# dialogs/servicenow_dialog.py
+# dialogs/connections/servicenow_dialog.py
 from PySide6.QtWidgets import QLineEdit, QMessageBox, QApplication
 from ui.components import PasswordBox
-from dialogs.base_connection_dialog import BaseConnectionDialog
+from .base_connection_dialog import BaseConnectionDialog
 import db
 
 

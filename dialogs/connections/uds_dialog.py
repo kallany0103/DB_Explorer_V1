@@ -1,4 +1,4 @@
-from dialogs.postgres_dialog import PostgresConnectionDialog
+from .postgres_dialog import PostgresConnectionDialog
 from PySide6.QtWidgets import QLabel
 
 class UDSConnectionDialog(PostgresConnectionDialog):

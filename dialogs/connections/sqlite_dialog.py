@@ -1,9 +1,9 @@
-# dialogs/sqlite_dialog.py
+# dialogs/connections/sqlite_dialog.py
 
 import sqlite3 as sqlite
 from PySide6.QtWidgets import QLineEdit, QHBoxLayout, QFileDialog, QMessageBox
 from ui.components import SecondaryButton
-from dialogs.base_connection_dialog import BaseConnectionDialog
+from .base_connection_dialog import BaseConnectionDialog
 
 
 

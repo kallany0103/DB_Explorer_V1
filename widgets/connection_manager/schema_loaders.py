@@ -168,6 +168,114 @@ class SchemaLoader:
         if not skip_restore:
             self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
 
+    def populate_uds_datasource_schema(self, data, skip_restore=False):
+        conn_data = data.get("conn_data", {})
+        ds_data = data.get("ds_data", {})
+        server_info = data.get("server_info", {})
+        foreign_tables = data.get("foreign_tables", [])
+
+        self._prepare_schema_tree()
+
+        if hasattr(self.manager, "pg_conn") and self.manager.pg_conn and not self.manager.pg_conn.closed:
+            try:
+                self.manager.pg_conn.close()
+            except Exception:
+                pass
+
+        self.manager.pg_conn = db.get_pooled_postgres_connection(
+            conn_data,
+            application_name=f"Universal SQL Client (UDS Schema) - {conn_data.get('database', 'postgres')}",
+            use_pool=True
+        )
+        if self.manager.pg_conn:
+            self.manager.pg_conn.autocommit = True
+
+        # 1. Foreign Server item
+        server_name = server_info.get("server_name") or ds_data.get("server_name") or ds_data.get("short_name") or "Foreign Server"
+        srv_item = QStandardItem(server_name)
+        srv_item.setEditable(False)
+        self.manager._set_tree_item_icon(srv_item, level="SERVER")
+
+        srv_data = {
+            'db_type': 'postgres',
+            'type': 'foreign_server',
+            'server_name': server_name,
+            'fdw_name': server_info.get('fdw_name', 'postgres_fdw'),
+            'conn_data': conn_data,
+            'ds_data': ds_data
+        }
+        srv_item.setData(srv_data, Qt.ItemDataRole.UserRole)
+
+        user_mappings = server_info.get("user_mappings", [])
+        if user_mappings:
+            for um_name in user_mappings:
+                um_item = QStandardItem(um_name)
+                um_item.setEditable(False)
+                self.manager._set_tree_item_icon(um_item, level="USER")
+                um_data = {
+                    'db_type': 'postgres',
+                    'type': 'user_mapping',
+                    'user_name': um_name,
+                    'server_name': server_name,
+                    'conn_data': conn_data,
+                    'ds_data': ds_data
+                }
+                um_item.setData(um_data, Qt.ItemDataRole.UserRole)
+                um_type_item = QStandardItem("User Mapping")
+                um_type_item.setEditable(False)
+                srv_item.appendRow([um_item, um_type_item])
+
+        srv_type_item = QStandardItem("Foreign Server")
+        srv_type_item.setEditable(False)
+        self.manager.schema_model.appendRow([srv_item, srv_type_item])
+
+        # 2. Foreign Tables Group
+        ft_root = QStandardItem("Foreign Tables")
+        ft_root.setEditable(False)
+        self.manager._set_tree_item_icon(ft_root, level="GROUP_FOREIGN_TABLES")
+        ft_root_data = {
+            'db_type': 'postgres',
+            'type': 'schema_group',
+            'group_name': 'Foreign Tables',
+            'schema_name': ds_data.get('schema_name') or 'public',
+            'conn_data': conn_data,
+            'ds_data': ds_data
+        }
+        ft_root.setData(ft_root_data, Qt.ItemDataRole.UserRole)
+
+        for ft in foreign_tables:
+            ft_name = ft.get("table_name")
+            ft_schema = ft.get("schema_name", "public")
+
+            table_item = QStandardItem(ft_name)
+            table_item.setEditable(False)
+            self.manager._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
+
+            table_data = {
+                'db_type': 'postgres',
+                'type': 'table',
+                'table_name': ft_name,
+                'schema_name': ft_schema,
+                'table_type': 'Foreign Tables',
+                'conn_data': conn_data,
+                'ds_data': ds_data
+            }
+            table_item.setData(table_data, Qt.ItemDataRole.UserRole)
+            table_item.appendRow(_create_loading_item(self.manager))
+
+            type_item = QStandardItem("Foreign Table")
+            type_item.setEditable(False)
+            ft_root.appendRow([table_item, type_item])
+
+        ft_type_item = QStandardItem("Group")
+        ft_type_item.setEditable(False)
+        self.manager.schema_model.appendRow([ft_root, ft_type_item])
+
+        self._connect_expand_handler()
+        if not skip_restore:
+            state_key = f"ds_{ds_data.get('id')}"
+            self.manager._restore_schema_tree_expansion_state(state_key)
+
     def load_postgres_schema(self, conn_data):
         pg_conn = None
         try:

@@ -17,7 +17,7 @@ class CreateTriggerDialog(QDialog):
         self.resize(700, 650)
         self.db_type = db_type
         self.tables = tables or []
-        
+
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 

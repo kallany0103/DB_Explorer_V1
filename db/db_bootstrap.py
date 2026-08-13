@@ -49,6 +49,28 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS usf_data_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        connection_id INTEGER NOT NULL,
+        source_name TEXT,
+        display_name TEXT,
+        source_type TEXT NOT NULL,
+        host TEXT,
+        port INTEGER,
+        database_name TEXT,
+        username TEXT,
+        password TEXT,
+        schema_name TEXT,
+        service_url TEXT,
+        file_path TEXT,
+        config_json TEXT,
+        server_name TEXT,
+        fdw_name TEXT DEFAULT 'postgres_fdw',
+        status TEXT DEFAULT 'ACTIVE',
+        FOREIGN KEY (connection_id) REFERENCES usf_connections(id) ON DELETE CASCADE
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS usf_query_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         connection_id INTEGER,
@@ -76,6 +98,7 @@ SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_usf_connection_groups_type ON usf_connection_groups(connection_type_id)",
     "CREATE INDEX IF NOT EXISTS idx_usf_connections_group ON usf_connections(connection_group_id)",
+    "CREATE INDEX IF NOT EXISTS idx_usf_data_sources_connection ON usf_data_sources(connection_id)",
     "CREATE INDEX IF NOT EXISTS idx_usf_query_history_connection ON usf_query_history(connection_id)",
     "CREATE INDEX IF NOT EXISTS idx_usf_processes_server ON usf_processes(server)",
     "CREATE INDEX IF NOT EXISTS idx_usf_processes_status ON usf_processes(status)",
@@ -112,4 +135,39 @@ def ensure_hierarchy_db():
             "INSERT OR IGNORE INTO usf_connection_types (code, name) VALUES (?, ?)",
             DEFAULT_CONNECTION_TYPES,
         )
+
+        # Ensure missing columns in usf_data_sources are added
+        try:
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(usf_data_sources)")
+            existing_cols = {row[1] for row in cur.fetchall()}
+            if "server_name" not in existing_cols:
+                conn.execute("ALTER TABLE usf_data_sources ADD COLUMN server_name TEXT")
+            if "fdw_name" not in existing_cols:
+                conn.execute("ALTER TABLE usf_data_sources ADD COLUMN fdw_name TEXT DEFAULT 'postgres_fdw'")
+        except Exception as e:
+            print(f"Migration check error: {e}")
+
+        # Ensure missing columns in usf_processes are added
+        try:
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(usf_processes)")
+            proc_cols = {row[1] for row in cur.fetchall()}
+            if "process_name" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN process_name TEXT")
+            if "server" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN server TEXT")
+            if "object" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN object TEXT")
+            if "time_taken" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN time_taken REAL")
+            if "start_time" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN start_time TEXT")
+            if "end_time" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN end_time TEXT")
+            if "details" not in proc_cols:
+                conn.execute("ALTER TABLE usf_processes ADD COLUMN details TEXT")
+        except Exception as e:
+            print(f"Migration check error for usf_processes: {e}")
+
         conn.commit()
