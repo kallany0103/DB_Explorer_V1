@@ -12,9 +12,14 @@ from db.db_connections import (
     DB_FILE,
 )
 
+from db.db_bootstrap import (
+    ensure_hierarchy_db,
+)
+
 from db.db_retrieval import (
     get_all_connections_from_db,
     get_hierarchy_data,
+    get_data_sources_by_connection,
     get_postgres_session_stats,
     get_sqlite_session_stats,
     get_postgres_state_details,
@@ -35,6 +40,10 @@ from db.db_modifications import (
     add_connection_group,
     add_connection,
     add_data_source,
+    update_data_source,
+    delete_data_source,
+    create_postgres_fdw_source,
+    drop_postgres_fdw_source,
     update_connection,
     delete_connection,
     save_query_history,
@@ -70,7 +79,7 @@ __all__ = [
     "close_all_postgres_pools",
     "resource_path",
     "DB_FILE",
-    # "ensure_hierarchy_db",
+    "ensure_hierarchy_db",
     "get_all_connections_from_db",
     "get_hierarchy_data",
     "get_postgres_session_stats",

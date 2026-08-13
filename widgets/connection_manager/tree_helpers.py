@@ -30,6 +30,10 @@ class TreeHelpers:
             self.manager.tree.collapseAll()
 
     def set_tree_item_icon(self, item, level, code=""):
+        if level == "DATA_SOURCE":
+            item.setIcon(qta.icon("mdi.server-network", color="#0078D4"))
+            return
+
         if level == "GROUP":
             item.setIcon(qta.icon("fa6s.folder", color="#C49102"))
             return
@@ -125,7 +129,7 @@ class TreeHelpers:
             "ORACLE_FA": "assets/oracle_fusion.svg",
             "SERVICENOW": "assets/servicenow.svg",
             "UDS": "assets/unified_data_source.svg",
-            "CSV": "assets/csv.svg"
+            "CSV": "assets/csv.svg",
         }
 
         icon_path = icon_map.get(code, "assets/database.svg")
@@ -148,27 +152,40 @@ class TreeHelpers:
             proxy_index = proxy.index(row, 0)
             if tree.isExpanded(proxy_index):
                 type_name = proxy_index.data(Qt.ItemDataRole.DisplayRole)
-                saved_paths.append((type_name, None))
+                saved_paths.append((type_name, None, None))
 
                 for group_row in range(proxy.rowCount(proxy_index)):
                     group_index = proxy.index(group_row, 0, proxy_index)
                     if tree.isExpanded(group_index):
                         group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
-                        saved_paths.append((type_name, group_name))
+                        saved_paths.append((type_name, group_name, None))
+
+                        for conn_row in range(proxy.rowCount(group_index)):
+                            conn_index = proxy.index(conn_row, 0, group_index)
+                            if tree.isExpanded(conn_index):
+                                conn_name = conn_index.data(Qt.ItemDataRole.DisplayRole)
+                                saved_paths.append((type_name, group_name, conn_name))
 
         self.manager._saved_tree_paths = saved_paths
 
-        # Save selected connection short_name
+        # Save selected connection or data source
         selection = tree.selectionModel().selectedIndexes()
         if selection:
             source_index = proxy.mapToSource(selection[0])
             item = self.manager.model.itemFromIndex(source_index)
-            if item and self.get_item_depth(item) == 3:
-                self.manager._saved_selection_name = item.text()
+            if item:
+                depth = self.get_item_depth(item)
+                if depth == 3:
+                    self.manager._saved_selection_info = ("CONNECTION", item.text())
+                elif depth == 4:
+                    parent_text = item.parent().text() if item.parent() else ""
+                    self.manager._saved_selection_info = ("DATA_SOURCE", parent_text, item.text())
+                else:
+                    self.manager._saved_selection_info = None
             else:
-                self.manager._saved_selection_name = None
+                self.manager._saved_selection_info = None
         else:
-            self.manager._saved_selection_name = None
+            self.manager._saved_selection_info = None
 
     def restore_tree_expansion_state(self):
         if not hasattr(self.manager, '_saved_tree_paths') or not self.manager._saved_tree_paths:
@@ -183,26 +200,57 @@ class TreeHelpers:
                 proxy_index = proxy.index(row, 0)
                 type_name = proxy_index.data(Qt.ItemDataRole.DisplayRole)
 
-                if (type_name, None) in self.manager._saved_tree_paths:
+                if (type_name, None, None) in self.manager._saved_tree_paths or (type_name, None) in self.manager._saved_tree_paths:
                     tree.expand(proxy_index)
 
                     for group_row in range(proxy.rowCount(proxy_index)):
                         group_index = proxy.index(group_row, 0, proxy_index)
                         group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
 
-                        if (type_name, group_name) in self.manager._saved_tree_paths:
+                        if (type_name, group_name, None) in self.manager._saved_tree_paths or (type_name, group_name) in self.manager._saved_tree_paths:
                             tree.expand(group_index)
-                            
-                            if hasattr(self.manager, '_saved_selection_name') and self.manager._saved_selection_name:
-                                for conn_row in range(proxy.rowCount(group_index)):
-                                    conn_index = proxy.index(conn_row, 0, group_index)
-                                    if conn_index.data(Qt.ItemDataRole.DisplayRole) == self.manager._saved_selection_name:
-                                        tree.selectionModel().select(conn_index, tree.selectionModel().SelectionFlag.ClearAndSelect)
-                                        tree.setCurrentIndex(conn_index)
-                                        break
+
+                            for conn_row in range(proxy.rowCount(group_index)):
+                                conn_index = proxy.index(conn_row, 0, group_index)
+                                conn_name = conn_index.data(Qt.ItemDataRole.DisplayRole)
+
+                                if (type_name, group_name, conn_name) in self.manager._saved_tree_paths:
+                                    tree.expand(conn_index)
+
+            # Restore selection
+            sel_info = getattr(self.manager, '_saved_selection_info', None)
+            if sel_info:
+                if sel_info[0] == "CONNECTION":
+                    target_name = sel_info[1]
+                    for r in range(proxy.rowCount()):
+                        p_idx = proxy.index(r, 0)
+                        for gr in range(proxy.rowCount(p_idx)):
+                            g_idx = proxy.index(gr, 0, p_idx)
+                            for cr in range(proxy.rowCount(g_idx)):
+                                c_idx = proxy.index(cr, 0, g_idx)
+                                if c_idx.data(Qt.ItemDataRole.DisplayRole) == target_name:
+                                    tree.selectionModel().select(c_idx, tree.selectionModel().SelectionFlag.ClearAndSelect)
+                                    tree.setCurrentIndex(c_idx)
+                                    break
+                elif sel_info[0] == "DATA_SOURCE":
+                    parent_target, ds_target = sel_info[1], sel_info[2]
+                    for r in range(proxy.rowCount()):
+                        p_idx = proxy.index(r, 0)
+                        for gr in range(proxy.rowCount(p_idx)):
+                            g_idx = proxy.index(gr, 0, p_idx)
+                            for cr in range(proxy.rowCount(g_idx)):
+                                c_idx = proxy.index(cr, 0, g_idx)
+                                if c_idx.data(Qt.ItemDataRole.DisplayRole) == parent_target:
+                                    for dr in range(proxy.rowCount(c_idx)):
+                                        d_idx = proxy.index(dr, 0, c_idx)
+                                        if d_idx.data(Qt.ItemDataRole.DisplayRole) == ds_target:
+                                            tree.selectionModel().select(d_idx, tree.selectionModel().SelectionFlag.ClearAndSelect)
+                                            tree.setCurrentIndex(d_idx)
+                                            break
         finally:
             tree.setUpdatesEnabled(True)
             self.manager._saved_tree_paths = []
+            self.manager._saved_selection_info = None
             self.manager._saved_selection_name = None
 
     def save_schema_tree_expansion_state(self, conn_id):

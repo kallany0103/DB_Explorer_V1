@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont
 from PySide6.QtCore import Qt
-from widgets.inspector.properties_ui import PropertyTable
+from ui.components import PropertyTable
 
 
 

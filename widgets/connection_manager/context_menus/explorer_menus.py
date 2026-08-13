@@ -37,7 +37,11 @@ class ExplorerMenuBuilder:
         elif depth == 3:
             self._connection_menu(menu, item, source_index)
         elif depth >= 4:
-            self._object_menu(menu, item, source_index)
+            item_data = item.data(Qt.ItemDataRole.UserRole)
+            if item.data(Qt.ItemDataRole.UserRole + 2) == "DATA_SOURCE" or (isinstance(item_data, dict) and item_data.get("type") == "data_source"):
+                self._data_source_menu(menu, item, source_index)
+            else:
+                self._object_menu(menu, item, source_index)
 
         if not menu.isEmpty():
             menu.exec(self.manager.tree.viewport().mapToGlobal(pos))
@@ -374,3 +378,32 @@ class ExplorerMenuBuilder:
         act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
         act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=True))
         menu.addAction(act)
+
+    def _data_source_menu(self, menu, item, index):
+        ds_data = item.data(Qt.ItemDataRole.UserRole) or {}
+        ds_name = item.text()
+
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool_for_table(ds_data, ds_name))
+        menu.addAction(act)
+
+        act = action(self.manager, "Edit Data Source", "mdi.pencil-outline")
+        act.triggered.connect(lambda: self.manager.connection_dialogs.edit_data_source(item))
+        menu.addAction(act)
+
+        menu.addSeparator()
+
+        act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=False))
+        menu.addAction(act)
+
+        act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        act.triggered.connect(lambda: self.manager.refresh_object_explorer(index, collapse=True))
+        menu.addAction(act)
+
+        menu.addSeparator()
+
+        act = action(self.manager, "Delete Data Source", "mdi.delete-outline", shortcut="Alt+Shift+D")
+        act.triggered.connect(lambda: self.manager.connection_dialogs.delete_data_source(item))
+        menu.addAction(act)
+

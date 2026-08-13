@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QStyledItemDelegate, QComboBox
 )
 from PySide6.QtCore import Qt
+from ui.components import PropertyTable
 
 class DataTypeDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
@@ -95,18 +96,3 @@ class CollapsibleCard(QFrame):
                 value_widget = val
             
         self.form_layout.addRow(label, value_widget)
-
-
-class PropertyTable(QTableView):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setObjectName("propertyTable")
-        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setAlternatingRowColors(True)
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.horizontalHeader().setStretchLastSection(True)
-        self.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.verticalHeader().setVisible(False)
-        self.setShowGrid(False)
-        self.verticalHeader().setDefaultSectionSize(28)

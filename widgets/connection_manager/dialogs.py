@@ -18,7 +18,7 @@ from PySide6.QtCore import QSize
 
 from ui.components import PrimaryButton, SecondaryButton
 import db
-from dialogs import (
+from dialogs.connections import (
     CSVConnectionDialog,
     OracleConnectionDialog,
     PostgresConnectionDialog,
@@ -249,19 +249,17 @@ class ConnectionDialogs:
         self.manager.refresh_all_comboboxes()
 
     def add_data_source(self, parent_item=None):
-    
         selector = ConnectionTypeSelectorDialog(self.manager)
 
         if selector.exec() != QDialog.DialogCode.Accepted:
             return
 
-        type_info = selector.selected_type   # ✅ FIXED (NO get_selected)
+        type_info = selector.selected_type
         if not type_info:
             return
 
         code = type_info["code"].upper()
 
-        # MUST come from connection node
         if not parent_item:
             QMessageBox.warning(
                 self.manager,
@@ -269,17 +267,11 @@ class ConnectionDialogs:
                 "Please select a Connection first."
             )
             return
-        
-        print("========== ADD DATA SOURCE ==========")
-        print("Item Text :", parent_item.text())
-        print("UserRole :", parent_item.data(Qt.ItemDataRole.UserRole))
-        print("UserRole+1 :", parent_item.data(Qt.ItemDataRole.UserRole + 1))
-        print("UserRole+2 :", parent_item.data(Qt.ItemDataRole.UserRole + 2))
-        print("=====================================")
 
         connection_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+        host_conn_data = parent_item.data(Qt.ItemDataRole.UserRole)
 
-        if not connection_id:
+        if not connection_id or not host_conn_data:
             QMessageBox.warning(
                 self.manager,
                 "Invalid Selection",
@@ -287,27 +279,21 @@ class ConnectionDialogs:
             )
             return
 
-        # open correct dialog (reuse your existing system)
         if code == "POSTGRES":
             dialog = PostgresDataSourceDialog(self.manager)
-
         elif code == "SQLITE":
             dialog = SQLiteDataSourceDialog(self.manager)
-
         elif code == "ORACLE":
             dialog = OracleDataSourceDialog(self.manager)
-
         elif code == "CSV":
             dialog = CSVDataSourceDialog(self.manager)
-
         elif code == "SERVICENOW":
             dialog = ServiceNowDataSourceDialog(self.manager)
-
         else:
             QMessageBox.warning(
                 self.manager,
                 "Unsupported Type",
-                    f"{code} not supported"
+                f"{code} not supported"
             )
             return
 
@@ -317,16 +303,30 @@ class ConnectionDialogs:
         data = dialog.getData()
 
         try:
+            server_name = None
+            local_schema = None
+
+            # Automatically provision Foreign Data Wrapper in the background on host PostgreSQL
+            if code == "POSTGRES" and host_conn_data:
+                server_name, local_schema = db.create_postgres_fdw_source(host_conn_data, data)
+                data["server_name"] = server_name
+                data["schema_name"] = local_schema
+                data["fdw_name"] = "postgres_fdw"
+
             db.add_data_source(
                 connection_id=connection_id,
                 source_type=code,
-                data=data
+                data=data,
+                server_name=server_name,
+                fdw_name="postgres_fdw"
             )
 
+            # Ensure parent item path is saved for auto-expansion
             self.manager._save_tree_expansion_state()
             self.manager.load_data()
             self.manager._restore_tree_expansion_state()
             self.manager.refresh_all_comboboxes()
+            self.manager.status.showMessage(f"Data Source '{data.get('name')}' created successfully.", 4000)
 
         except Exception as e:
             QMessageBox.critical(
@@ -334,6 +334,94 @@ class ConnectionDialogs:
                 "Error",
                 f"Failed to create data source:\n{e}"
             )
+
+    def edit_data_source(self, item):
+        ds_data = item.data(Qt.ItemDataRole.UserRole)
+        if not ds_data:
+            return
+
+        source_type = (ds_data.get("source_type") or "POSTGRES").upper()
+        host_conn_data = ds_data.get("conn_data")
+
+        if source_type == "POSTGRES":
+            dialog = PostgresDataSourceDialog(self.manager, is_editing=True, conn_data=ds_data)
+        elif source_type == "SQLITE":
+            dialog = SQLiteDataSourceDialog(self.manager, conn_data=ds_data)
+        elif source_type == "ORACLE":
+            dialog = OracleDataSourceDialog(self.manager, conn_data=ds_data)
+        elif source_type == "CSV":
+            dialog = CSVDataSourceDialog(self.manager, conn_data=ds_data)
+        elif source_type == "SERVICENOW":
+            dialog = ServiceNowDataSourceDialog(self.manager, conn_data=ds_data)
+        else:
+            QMessageBox.warning(self.manager, "Unsupported Type", f"{source_type} editing not supported")
+            return
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_data = dialog.getData()
+
+        try:
+            server_name = ds_data.get("server_name")
+            if source_type == "POSTGRES" and host_conn_data:
+                server_name, local_schema = db.create_postgres_fdw_source(host_conn_data, new_data)
+                new_data["server_name"] = server_name
+                new_data["schema_name"] = local_schema
+
+            db.update_data_source(ds_data.get("id"), new_data, server_name=server_name)
+
+            self.manager._save_tree_expansion_state()
+            self.manager.load_data()
+            self.manager._restore_tree_expansion_state()
+            self.manager.refresh_all_comboboxes()
+            self.manager.status.showMessage(f"Data Source '{new_data.get('name')}' updated successfully.", 4000)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to update data source:\n{e}")
+
+    def delete_data_source(self, item):
+        ds_data = item.data(Qt.ItemDataRole.UserRole)
+        if not ds_data:
+            return
+
+        ds_id = ds_data.get("id")
+        ds_name = item.text()
+
+        msg = QMessageBox(self.manager)
+        msg.setWindowTitle("Delete Data Source")
+        msg.setText(f"Are you sure you want to delete Data Source '{ds_name}'?")
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setWindowFlags(
+            Qt.WindowType.Tool |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowCloseButtonHint |
+            Qt.WindowType.CustomizeWindowHint
+        )
+        msg.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+
+        if msg.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            host_conn_data = ds_data.get("conn_data")
+            server_name = ds_data.get("server_name")
+            schema_name = ds_data.get("schema_name")
+
+            if host_conn_data and server_name:
+                db.drop_postgres_fdw_source(host_conn_data, server_name, schema_name)
+
+            db.delete_data_source(ds_id)
+
+            self.manager._save_tree_expansion_state()
+            self.manager.load_data()
+            self.manager._restore_tree_expansion_state()
+            self.manager.refresh_all_comboboxes()
+            self.manager.status.showMessage(f"Data Source '{ds_name}' deleted.", 3000)
+
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete data source:\n{e}")
                 
     def show_connection_details(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)

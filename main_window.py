@@ -12,7 +12,7 @@ from widgets.dashboard import DashboardWidget
 from widgets.inspector.properties_view import PropertiesWorkbench
 from widgets.inspector.statistics_view import StatisticsWorkbench
 from widgets.usql_tool.terminal_widget import USQLToolWidget
-from dialogs.preferences_dialog import PreferencesDialog
+from dialogs import PreferencesDialog
 from widgets.login_dialog import LoginDialog
 from ui.theme import setup_theme
 import db

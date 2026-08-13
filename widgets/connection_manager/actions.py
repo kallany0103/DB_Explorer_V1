@@ -24,12 +24,9 @@ from PySide6.QtWidgets import (
 )
 from ui.components import PrimaryButton, SecondaryButton
 
-from dialogs import (
+from dialogs.schema_objects import (
     CreateTableDialog, 
     CreateViewDialog, 
-    ExportDialog, 
-    SearchObjectsDialog,
-    DatabaseStatisticsDialog,
     CreateTriggerDialog,
     CreateFunctionDialog,
     CreateTriggerFunctionDialog,
@@ -37,6 +34,14 @@ from dialogs import (
     CreateForeignTableDialog,
     CreateMaterializedViewDialog,
     CreatePolicyDialog,
+)
+from dialogs.tools import (
+    ExportDialog, 
+    SearchObjectsDialog,
+)
+from dialogs.statistics import (
+    DatabaseStatisticsDialog,
+    ObjectStatisticsDialog,
 )
 from dialogs.properties import (
     TablePropertiesDialog,
@@ -50,7 +55,6 @@ from dialogs.properties import (
     UserMappingPropertiesDialog,
     TriggerPropertiesDialog,
 )
-from dialogs.statistics.stats_dialog import ObjectStatisticsDialog
 from widgets.backup_and_restore.backup.dialog import BackupDialog
 from widgets.backup_and_restore.restore.dialog import RestoreDialog
 from workers.signals import ProcessSignals, QuerySignals, emit_process_started

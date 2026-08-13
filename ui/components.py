@@ -1,4 +1,7 @@
-from PySide6.QtWidgets import QPushButton, QLineEdit, QToolButton, QMenu
+from PySide6.QtWidgets import (
+    QPushButton, QLineEdit, QToolButton, QMenu,
+    QTableView, QHeaderView, QAbstractItemView
+)
 from PySide6.QtGui import QIcon, QAction
 from PySide6.QtCore import Qt, Signal
 from typing import Optional
@@ -368,6 +371,25 @@ class LinkButton(QPushButton):
                 color: #004578;
             }
         """)
+
+
+class PropertyTable(QTableView):
+    """
+    A read-only table view styled for property sheets and statistics tabs.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("propertyTable")
+        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.setAlternatingRowColors(True)
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.verticalHeader().setVisible(False)
+        self.setShowGrid(False)
+        self.verticalHeader().setDefaultSectionSize(28)
+
 
 
 

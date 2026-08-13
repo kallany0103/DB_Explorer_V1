@@ -64,7 +64,46 @@ def get_hierarchy_data():
                 for connections in usf_connections:
                     connection_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url = connections
                     conn_data = {"id": connection_id, "name": name, "short_name": short_name, "host": host, "database": db,
-                                 "user": user, "password": pwd, "port": port, "dsn": dsn, "db_path": db_path, "instance_url": instance_url, "db_type": code.lower()}
+                                 "user": user, "password": pwd, "port": port, "dsn": dsn, "db_path": db_path, "instance_url": instance_url, "db_type": code.lower(), "usf_data_sources": []}
+                    
+                    # Fetch Level 4 data sources for this connection
+                    c.execute("""
+                        SELECT id, source_name, display_name, source_type, host, port,
+                               database_name, username, password, schema_name, service_url,
+                               file_path, config_json, server_name, fdw_name, status
+                        FROM usf_data_sources
+                        WHERE connection_id=?
+                        ORDER BY source_name
+                    """, (connection_id,))
+                    ds_rows = c.fetchall()
+                    for ds_row in ds_rows:
+                        ds_id, ds_src_name, ds_disp_name, ds_type, ds_host, ds_port, ds_db, ds_user, ds_pwd, ds_schema, ds_url, ds_fpath, ds_cfg, ds_srv, ds_fdw, ds_stat = ds_row
+                        conn_data["usf_data_sources"].append({
+                            "id": ds_id,
+                            "connection_id": connection_id,
+                            "source_name": ds_src_name,
+                            "short_name": ds_src_name,
+                            "name": ds_disp_name,
+                            "display_name": ds_disp_name,
+                            "source_type": ds_type,
+                            "host": ds_host,
+                            "port": ds_port,
+                            "database": ds_db,
+                            "database_name": ds_db,
+                            "user": ds_user,
+                            "username": ds_user,
+                            "password": ds_pwd,
+                            "schema": ds_schema,
+                            "schema_name": ds_schema,
+                            "service_url": ds_url,
+                            "file_path": ds_fpath,
+                            "config_json": ds_cfg,
+                            "server_name": ds_srv,
+                            "fdw_name": ds_fdw or "postgres_fdw",
+                            "status": ds_stat,
+                            "db_type": (ds_type or "postgres").lower(),
+                        })
+                    
                     connection_group_data['usf_connections'].append(conn_data)
                 connection_type_data['usf_connection_groups'].append(connection_group_data)
             data.append(connection_type_data)
@@ -466,17 +505,44 @@ def get_groups_by_type(type_id):
         rows = c.fetchall()
         return [{"id": r[0], "name": r[1]} for r in rows]
 
-#kallany
 def get_data_sources_by_connection(connection_id):
+    """Returns list of data sources for a connection as dicts."""
     with sqlite.connect(DB_FILE) as conn:
-        conn.row_factory = sqlite.Row
         c = conn.cursor()
-
         c.execute("""
-            SELECT *
+            SELECT id, connection_id, source_name, display_name, source_type,
+                   host, port, database_name, username, password, schema_name,
+                   service_url, file_path, config_json, server_name, fdw_name, status
             FROM usf_data_sources
             WHERE connection_id=?
             ORDER BY source_name
         """, (connection_id,))
-
-        return [dict(row) for row in c.fetchall()]
+        rows = c.fetchall()
+        return [
+            {
+                "id": r[0],
+                "connection_id": r[1],
+                "source_name": r[2],
+                "short_name": r[2],
+                "display_name": r[3],
+                "name": r[3],
+                "source_type": r[4],
+                "host": r[5],
+                "port": r[6],
+                "database_name": r[7],
+                "database": r[7],
+                "username": r[8],
+                "user": r[8],
+                "password": r[9],
+                "schema_name": r[10],
+                "schema": r[10],
+                "service_url": r[11],
+                "file_path": r[12],
+                "config_json": r[13],
+                "server_name": r[14],
+                "fdw_name": r[15] or "postgres_fdw",
+                "status": r[16],
+                "db_type": (r[4] or "postgres").lower(),
+            }
+            for r in rows
+        ]
