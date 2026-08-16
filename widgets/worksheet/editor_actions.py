@@ -194,8 +194,16 @@ def _is_already_formatted(sql: str) -> bool:
 
 
 def _format_sql(sql: str) -> str:
-    """Format arbitrary SQL using sqlglot AST parsing."""
-    return sqlglot.transpile(sql, pretty=True)[0]
+    """Format arbitrary SQL using sqlglot AST parsing.
+
+    sqlglot.transpile strips trailing semicolons by default, so we
+    re-append one when the original statement ended with a semicolon.
+    """
+    had_semicolon = sql.rstrip().endswith(";")
+    formatted = sqlglot.transpile(sql, pretty=True)[0]
+    if had_semicolon and not formatted.endswith(";"):
+        formatted += ";"
+    return formatted
 
 
 def format_sql_text(manager):
