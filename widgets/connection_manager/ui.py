@@ -24,7 +24,7 @@ class ConnectionUI:
         object_explorer_header.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
         object_explorer_header_layout = QHBoxLayout(object_explorer_header)
-        object_explorer_header_layout.setContentsMargins(8, 4, 8, 4)
+        object_explorer_header_layout.setContentsMargins(8, 2, 8, 6)
         object_explorer_header_layout.setSpacing(10)
 
         object_explorer_label = QLabel("Object Explorer")
@@ -39,7 +39,6 @@ class ConnectionUI:
         self.manager.explorer_search_layout.setSpacing(0)
 
         self.manager.explorer_search_box = SearchBox("Filter...")
-        self.manager.explorer_search_box.setFixedHeight(24)
         self.manager.explorer_search_box.setObjectName("explorer_search_box")
         self.manager.explorer_search_box.setMinimumWidth(120)
         self.manager.explorer_search_box.hide()

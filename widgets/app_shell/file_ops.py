@@ -48,6 +48,7 @@ def open_sql_file(main_window):
             with open(file_name, "r", encoding="utf-8") as f:
                 content = f.read()
                 editor.setPlainText(content)
+                editor.current_file_path = file_name
                 main_window.status.showMessage(f"File opened: {file_name}", 3000)
         except Exception as e:
             QMessageBox.critical(main_window, "Error", f"Could not read file:\n{e}")
@@ -75,24 +76,23 @@ def _get_default_sql_filename(main_window, content):
     return f"{default_filename}.sql"
 
 def save_sql_file(main_window):
-    """Auto-save using table name without dialog if possible."""
+    """Save to the current file path, or fallback to Save As if not set."""
     editor = main_window._get_current_editor()
     if not editor:
         return
 
     content = editor.toPlainText()
-    filename = _get_default_sql_filename(main_window, content)
-    
-    # Save to Desktop directory
-    desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
-    save_path = os.path.join(desktop_path, filename)
-    
+    save_path = getattr(editor, 'current_file_path', None)
+
+    if not save_path:
+        save_sql_file_as(main_window)
+        return
+
     try:
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(content)
-        main_window.status.showMessage(f"Auto-saved to Desktop: {filename}", 5000)
+        main_window.status.showMessage(f"File saved: {save_path}", 5000)
     except Exception:
-        # Fallback to Save As if direct save fails
         save_sql_file_as(main_window)
 
 
@@ -104,10 +104,13 @@ def save_sql_file_as(main_window):
         return
 
     content = editor.toPlainText()
-    filename = _get_default_sql_filename(main_window, content)
     
-    desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
-    default_path = os.path.join(desktop_path, filename)
+    # Check if there's an existing path to suggest
+    default_path = getattr(editor, 'current_file_path', None)
+    if not default_path:
+        filename = _get_default_sql_filename(main_window, content)
+        desktop_path = os.path.join(os.environ['USERPROFILE'], 'Desktop')
+        default_path = os.path.join(desktop_path, filename)
 
     file_name, _ = QFileDialog.getSaveFileName(
         main_window,
@@ -120,6 +123,7 @@ def save_sql_file_as(main_window):
         try:
             with open(file_name, "w", encoding="utf-8") as f:
                 f.write(content)
+            editor.current_file_path = file_name
             main_window.status.showMessage(f"File saved: {file_name}", 3000)
         except Exception as e:
             QMessageBox.critical(main_window, "Error", f"Could not save file:\n{e}")
