@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
         self.SESSION_FILE = "session_state.json"
 
         self.setWindowTitle("Universal SQL Client")
-        self.setWindowIcon(QIcon("assets/sql_icon.svg"))
+        self.setWindowIcon(QIcon("assets/sql_icon.png"))
         # VS Code standard: minimum 400×270; default first-launch 1200×800 centered.
         self.setMinimumSize(400, 270)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)

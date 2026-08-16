@@ -42,9 +42,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    _icon_path = pathlib.Path(__file__).parent / "assets" / "sql_icon.ico"
-    if not _icon_path.exists():
-        _icon_path = pathlib.Path(__file__).parent / "assets" / "sql_icon.png"
+    _icon_path = pathlib.Path(__file__).parent / "assets" / "sql_icon.png"
     app.setWindowIcon(QIcon(str(_icon_path)))
 
     splash = SplashScreen()
