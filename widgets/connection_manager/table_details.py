@@ -142,9 +142,9 @@ class TableDetailsLoader:
                 try:
                     cursor = self.manager.pg_conn.cursor()
                     cursor.execute("""
-                        SELECT umuser::regrole::text
-                        FROM pg_user_mapping
-                        WHERE umserver = (SELECT oid FROM pg_foreign_server WHERE srvname = %s)
+                        SELECT usename
+                        FROM pg_user_mappings
+                        WHERE srvname = %s
                         ORDER BY 1;
                     """, (srv_name,))
                     for (user_name,) in cursor.fetchall():

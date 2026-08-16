@@ -1,5 +1,3 @@
-# dialogs/servicenow_dialog.py
-
 import os
 from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout,
@@ -7,7 +5,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QLabel, QApplication
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from ui.components import PasswordBox
 
 
 class ServiceNowDataSourceDialog(QDialog):
@@ -59,10 +57,7 @@ class ServiceNowDataSourceDialog(QDialog):
         )
 
         self.user_input = QLineEdit()
-
-        self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self._setup_password_toggle(self.password_input)
+        self.password_input = PasswordBox()
 
         # Form rows
         form.addRow("Connection Name:", self.name_input)
@@ -146,34 +141,6 @@ class ServiceNowDataSourceDialog(QDialog):
                 font-weight: 600;
             }
         """)
-
-    # ---------------- Password toggle ----------------
-
-    def _setup_password_toggle(self, password_field):
-        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
-
-        self._eye_icon = QIcon(os.path.join(assets_dir, "eye.svg"))
-        self._eye_off_icon = QIcon(os.path.join(assets_dir, "eye-off.svg"))
-
-        self._password_visible = False
-
-        self._password_action = password_field.addAction(
-            self._eye_icon,
-            QLineEdit.ActionPosition.TrailingPosition
-        )
-
-        self._password_action.triggered.connect(self._toggle_password_visibility)
-
-    def _toggle_password_visibility(self):
-        self._password_visible = not self._password_visible
-        self.password_input.setEchoMode(
-            QLineEdit.EchoMode.Normal if self._password_visible
-            else QLineEdit.EchoMode.Password
-        )
-
-        self._password_action.setIcon(
-            self._eye_off_icon if self._password_visible else self._eye_icon
-        )
 
     # ---------------- Actions ----------------
 

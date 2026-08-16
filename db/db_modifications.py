@@ -1,3 +1,4 @@
+import json
 import re
 import sqlite3 as sqlite
 import datetime
@@ -262,6 +263,13 @@ def delete_connection_type(type_id):
 
 def add_data_source(connection_id, source_type, data, server_name=None, fdw_name="postgres_fdw"):
     """Inserts a new data source into usf_data_sources table."""
+    config_json = data.get("config_json")
+    if not config_json and data.get("selected_tables") is not None:
+        try:
+            config_json = json.dumps({"selected_tables": data.get("selected_tables")})
+        except Exception:
+            config_json = None
+
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
         c.execute("""
@@ -299,7 +307,7 @@ def add_data_source(connection_id, source_type, data, server_name=None, fdw_name
             data.get("schema") or data.get("schema_name"),
             data.get("instance_url"),
             data.get("db_path"),
-            data.get("config_json"),
+            config_json,
             server_name or data.get("server_name"),
             fdw_name or data.get("fdw_name", "postgres_fdw"),
             "ACTIVE"
@@ -310,6 +318,13 @@ def add_data_source(connection_id, source_type, data, server_name=None, fdw_name
 
 def update_data_source(data_source_id, data, server_name=None):
     """Updates an existing data source in usf_data_sources."""
+    config_json = data.get("config_json")
+    if not config_json and data.get("selected_tables") is not None:
+        try:
+            config_json = json.dumps({"selected_tables": data.get("selected_tables")})
+        except Exception:
+            config_json = None
+
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
         c.execute("""
@@ -338,7 +353,7 @@ def update_data_source(data_source_id, data, server_name=None):
             data.get("schema") or data.get("schema_name"),
             data.get("instance_url"),
             data.get("db_path"),
-            data.get("config_json"),
+            config_json,
             server_name or data.get("server_name"),
             data_source_id
         ))
@@ -414,11 +429,21 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         local_schema = f"{safe_name}_schema"
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
         try:
-            cur.execute(f"""
-                IMPORT FOREIGN SCHEMA "{remote_schema}"
-                FROM SERVER "{server_name}"
-                INTO "{local_schema}";
-            """)
+            selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+            if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
+                tables_str = ", ".join(f'"{t}"' for t in selected_tables)
+                cur.execute(f"""
+                    IMPORT FOREIGN SCHEMA "{remote_schema}"
+                    LIMIT TO ({tables_str})
+                    FROM SERVER "{server_name}"
+                    INTO "{local_schema}";
+                """)
+            else:
+                cur.execute(f"""
+                    IMPORT FOREIGN SCHEMA "{remote_schema}"
+                    FROM SERVER "{server_name}"
+                    INTO "{local_schema}";
+                """)
         except Exception as import_err:
             # Fallback: if remote schema import fails, try public or log warning
             print(f"Notice: IMPORT FOREIGN SCHEMA warning: {import_err}")

@@ -402,96 +402,122 @@ class OracleSchemaWorker(QRunnable):
                     pass
 
 
-class UDSDataSourceSchemaWorker(QRunnable):
-    """Fetches foreign server and foreign tables for a specific UDS data source off the GUI thread."""
+class UDSSchemaWorker(QRunnable):
+    """Fetches all data sources, foreign servers, and foreign tables for a UDS host connection off the GUI thread."""
 
-    def __init__(self, conn_data, ds_data):
+    def __init__(self, conn_data):
         super().__init__()
         self.conn_data = conn_data
-        self.ds_data = ds_data
         self.signals = SchemaWorkerSignals()
 
     def run(self):
         conn = None
         try:
+            conn_id = self.conn_data.get("id")
+            raw_data_sources = db.get_data_sources_by_connection(conn_id) if conn_id else []
+            if not raw_data_sources:
+                raw_data_sources = self.conn_data.get("usf_data_sources", [])
+
             app_name = f"Universal SQL Client (UDS Schema) - {self.conn_data.get('database', 'postgres')}"
-            conn = db.get_pooled_postgres_connection(self.conn_data, application_name=app_name, use_pool=True)
-            if not conn:
-                try:
-                    self.signals.error.emit("Failed to establish PostgreSQL connection for Data Source.")
-                except RuntimeError:
-                    pass
-                return
+            try:
+                conn = db.get_pooled_postgres_connection(self.conn_data, application_name=app_name, use_pool=True)
+            except Exception as conn_err:
+                print(f"Warning: could not connect to UDS host database: {conn_err}")
+                conn = None
 
-            server_name = self.ds_data.get("server_name")
-            if not server_name:
-                raw_name = self.ds_data.get("short_name") or self.ds_data.get("source_name") or self.ds_data.get("name") or "foreign_source"
-                cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', str(raw_name)).strip('_').lower()
-                server_name = f"srv_{cleaned}"
+            cursor = conn.cursor() if conn else None
+            data_sources_result = []
 
-            cursor = conn.cursor()
+            for ds in raw_data_sources:
+                server_name = ds.get("server_name")
+                if not server_name:
+                    raw_name = ds.get("short_name") or ds.get("source_name") or ds.get("name") or "foreign_source"
+                    cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', str(raw_name)).strip('_').lower()
+                    server_name = f"srv_{cleaned}"
 
-            # 1. Foreign Server details
-            cursor.execute("""
-                SELECT s.srvname, f.fdwname
-                FROM pg_foreign_server s
-                JOIN pg_foreign_data_wrapper f ON f.oid = s.srvfdw
-                WHERE s.srvname = %s;
-            """, (server_name,))
-            srv_row = cursor.fetchone()
+                server_info = {
+                    "server_name": server_name,
+                    "fdw_name": ds.get("fdw_name", "postgres_fdw"),
+                    "user_mappings": [],
+                }
+                foreign_tables = []
 
-            user_mappings = []
-            if srv_row:
-                cursor.execute("""
-                    SELECT umuser::regrole::text
-                    FROM pg_user_mapping
-                    WHERE umserver = (SELECT oid FROM pg_foreign_server WHERE srvname = %s)
-                    ORDER BY 1;
-                """, (server_name,))
-                user_mappings = [r[0] for r in cursor.fetchall()]
+                if cursor:
+                    try:
+                        # 1. Foreign Server details
+                        cursor.execute("""
+                            SELECT s.srvname, f.fdwname
+                            FROM pg_foreign_server s
+                            JOIN pg_foreign_data_wrapper f ON f.oid = s.srvfdw
+                            WHERE s.srvname = %s;
+                        """, (server_name,))
+                        srv_row = cursor.fetchone()
+                        if srv_row:
+                            server_info["fdw_name"] = srv_row[1]
 
-            server_info = {
-                "server_name": server_name,
-                "fdw_name": srv_row[1] if srv_row else "postgres_fdw",
-                "user_mappings": user_mappings,
-            }
+                        # User mappings
+                        try:
+                            cursor.execute("""
+                                SELECT usename
+                                FROM pg_user_mappings
+                                WHERE srvname = %s
+                                ORDER BY 1;
+                            """, (server_name,))
+                            server_info["user_mappings"] = [r[0] for r in cursor.fetchall() if r[0]]
+                        except Exception:
+                            try:
+                                cursor.execute("""
+                                    SELECT authorization_identifier
+                                    FROM information_schema.user_mappings
+                                    WHERE foreign_server_name = %s
+                                    ORDER BY 1;
+                                """, (server_name,))
+                                server_info["user_mappings"] = [r[0] for r in cursor.fetchall() if r[0]]
+                            except Exception:
+                                server_info["user_mappings"] = []
 
-            # 2. Foreign Tables associated with this Foreign Server
-            cursor.execute("""
-                SELECT c.relname, n.nspname
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                JOIN pg_foreign_server s ON s.oid = ft.ftserver
-                WHERE s.srvname = %s
-                ORDER BY c.relname;
-            """, (server_name,))
-            foreign_tables = [
-                {"table_name": r[0], "schema_name": r[1]}
-                for r in cursor.fetchall()
-            ]
+                        # 2. Foreign Tables associated with this Foreign Server
+                        cursor.execute("""
+                            SELECT c.relname, n.nspname
+                            FROM pg_foreign_table ft
+                            JOIN pg_class c ON c.oid = ft.ftrelid
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            JOIN pg_foreign_server s ON s.oid = ft.ftserver
+                            WHERE s.srvname = %s
+                            ORDER BY c.relname;
+                        """, (server_name,))
+                        foreign_tables = [
+                            {"table_name": r[0], "schema_name": r[1]}
+                            for r in cursor.fetchall()
+                        ]
 
-            # Fallback: check if foreign tables exist in schema matching server name or ds schema
-            if not foreign_tables:
-                schema_name = self.ds_data.get("schema_name") or self.ds_data.get("schema") or f"{server_name.replace('srv_', '')}_schema"
-                cursor.execute("""
-                    SELECT c.relname, n.nspname
-                    FROM pg_class c
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = %s AND c.relkind = 'f'
-                    ORDER BY c.relname;
-                """, (schema_name,))
-                foreign_tables = [
-                    {"table_name": r[0], "schema_name": r[1]}
-                    for r in cursor.fetchall()
-                ]
+                        # Fallback: check if foreign tables exist in schema matching server name or ds schema
+                        if not foreign_tables:
+                            schema_name = ds.get("schema_name") or ds.get("schema") or f"{server_name.replace('srv_', '')}_schema"
+                            cursor.execute("""
+                                SELECT c.relname, n.nspname
+                                FROM pg_class c
+                                JOIN pg_namespace n ON n.oid = c.relnamespace
+                                WHERE n.nspname = %s AND c.relkind = 'f'
+                                ORDER BY c.relname;
+                            """, (schema_name,))
+                            foreign_tables = [
+                                {"table_name": r[0], "schema_name": r[1]}
+                                for r in cursor.fetchall()
+                            ]
+                    except Exception as ds_err:
+                        print(f"Notice: error reading foreign objects for data source {server_name}: {ds_err}")
+
+                data_sources_result.append({
+                    "ds_data": ds,
+                    "server_info": server_info,
+                    "foreign_tables": foreign_tables,
+                })
 
             try:
                 self.signals.finished.emit({
                     "conn_data": self.conn_data,
-                    "ds_data": self.ds_data,
-                    "server_info": server_info,
-                    "foreign_tables": foreign_tables,
+                    "data_sources": data_sources_result,
                 })
             except RuntimeError:
                 pass
@@ -506,4 +532,9 @@ class UDSDataSourceSchemaWorker(QRunnable):
                     db.return_pooled_postgres_connection(self.conn_data, conn=conn)
                 except Exception:
                     pass
+
+
+# Backward compatibility alias
+UDSDataSourceSchemaWorker = UDSSchemaWorker
+
 

@@ -60,7 +60,9 @@ class SchemaMenuBuilder:
         is_language         = table_type == "LANGUAGE"
         is_extension        = table_type == "EXTENSION"
 
-        if node_type == "schema_group":
+        if node_type == "data_source":
+            self._data_source_menu(menu, item, item_data, index)
+        elif node_type == "schema_group":
             self._schema_group_menu(menu, item, item_data, index)
         elif is_triggers_group:
             self.trigger_builder.build_group_menu(menu, item, item_data, index)
@@ -918,3 +920,35 @@ class SchemaMenuBuilder:
         add_properties_statistics_actions(
             menu, self.manager, item_data, item_data.get("user_name", "User Mapping")
         )
+
+    # Data Source (UDS)
+
+    def _data_source_menu(self, menu, item, item_data, index):
+        ds_name = item.text()
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, ds_name)
+        )
+        menu.addAction(act)
+
+        menu.addSeparator()
+        act = action(self.manager, "Add Data Source", "mdi.plus-box-outline")
+        act.triggered.connect(
+            lambda: self.manager.connection_dialogs.add_data_source(item)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Edit Data Source", "mdi.square-edit-outline")
+        act.triggered.connect(
+            lambda: self.manager.connection_dialogs.edit_data_source(item)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Delete Data Source", "mdi.delete-outline")
+        act.triggered.connect(
+            lambda: self.manager.connection_dialogs.delete_data_source(item)
+        )
+        menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
+
