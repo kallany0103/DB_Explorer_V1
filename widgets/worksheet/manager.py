@@ -197,6 +197,18 @@ class WorksheetManager(QWidget):
         if index < 0:
             index = self.tab_widget.currentIndex()
         if index >= 0 and self.tab_widget.count() > 0:
+            # Prevent closing the last remaining worksheet tab.
+            tab_text = self.tab_widget.tabText(index)
+            is_worksheet = tab_text.startswith("Worksheet ") or tab_text == "New Tab"
+            if is_worksheet:
+                worksheet_count = sum(
+                    1 for i in range(self.tab_widget.count())
+                    if self.tab_widget.tabText(i).startswith("Worksheet ")
+                    or self.tab_widget.tabText(i) == "New Tab"
+                )
+                if worksheet_count <= 1:
+                    return
+
             widget = self.tab_widget.widget(index)
             if widget:
                 if widget in self.running_queries:
