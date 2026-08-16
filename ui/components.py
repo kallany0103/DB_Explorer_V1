@@ -191,7 +191,7 @@ class ActionToolButton(QToolButton):
                 border-radius: 4px;
                 background-color: #ffffff;
                 color: #333333;
-                padding: 4px 28px 4px 12px;
+                padding: 4px 8px;
                 font-size: 9pt;
             }
             QToolButton:hover {
@@ -202,9 +202,8 @@ class ActionToolButton(QToolButton):
                 background-color: #dcdcdc;
             }
             QToolButton::menu-indicator {
-                subcontrol-position: right center;
-                subcontrol-origin: padding;
-                left: -4px;
+                image: none;
+                width: 0;
             }
         """)
         

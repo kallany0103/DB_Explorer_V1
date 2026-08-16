@@ -137,7 +137,7 @@ class WorksheetToolbar(QWidget):
 
         self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.explain_combo.setFixedWidth(55)
+        self.explain_combo.setFixedWidth(34)
         self.explain_combo.setToolTip("Explain Query")
         self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
@@ -150,8 +150,8 @@ class WorksheetToolbar(QWidget):
         self.edit_btn.setIcon(qta.icon("fa5s.edit"))
         self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.edit_btn.setFixedHeight(30)
-        self.edit_btn.setFixedWidth(55)
-        self.edit_btn.setStyleSheet("padding-right: 12px;")
+        self.edit_btn.setFixedWidth(34)
+        self.edit_btn.setStyleSheet("QToolButton::menu-indicator { image: none; width: 0; }")
         self.edit_btn.setToolTip("Edit Operations")
         self.edit_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         
@@ -166,8 +166,8 @@ class WorksheetToolbar(QWidget):
         self.rows_limit_combo = DropdownToolButton("", qta.icon("fa5s.list-ol"))
         self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(55)
-        self.rows_limit_combo.setStyleSheet("padding-right: 12px;")
+        self.rows_limit_combo.setFixedWidth(34)
+        self.rows_limit_combo.setStyleSheet("QToolButton::menu-indicator { image: none; width: 0; }")
         self.rows_limit_combo.setToolTip("Row Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
         self.rows_limit_combo.itemTriggered.connect(
