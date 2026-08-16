@@ -1,3 +1,5 @@
+import re
+
 import sqlparse
 
 from PySide6.QtWidgets import (
@@ -153,6 +155,61 @@ class FindReplaceDialog(QDialog):
         self.find_input.setFocus()
 
 
+_CLAUSE_START = re.compile(
+    r"^(select|from|where|insert|into|values|update|set|delete|order|group|having|"
+    r"limit|offset|join|left|right|inner|outer|cross|full|on|and|or|union|create|"
+    r"alter|drop|table|view|index|primary|foreign|not|null|add|column|begin|commit|"
+    r"rollback|grant|revoke|with|as|case|when|then|else|end|declare|return|if|"
+    r"elsif|loop|while|for|execute|using)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_comments(sql: str) -> bool:
+    """Return True when the SQL contains line or block comments."""
+    return bool(re.search(r"--[^\n]*|/\*.*?\*/", sql, re.DOTALL))
+
+
+def _is_already_formatted(sql: str) -> bool:
+    """Return True when the SQL already has a deliberate multi-line layout."""
+    lines = [ln for ln in sql.splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return False
+    if not any(ln[0].isspace() for ln in lines):
+        return False
+    significant = 0
+    clause_starts = 0
+    for ln in lines:
+        stripped = ln.strip()
+        if stripped.startswith("--") or stripped.startswith("/*"):
+            continue
+        significant += 1
+        if _CLAUSE_START.match(stripped) or stripped.startswith((")", ",", "(")):
+            clause_starts += 1
+    return significant > 0 and clause_starts / significant >= 0.5
+
+
+def _format_sql(sql: str) -> str:
+    """Format arbitrary SQL without breaking comments or placeholders."""
+    if _has_comments(sql):
+        # sqlparse reindenting can misplace comments, so preserve the layout.
+        return sqlparse.format(sql, reindent=False, keyword_case="upper", strip_comments=False)
+
+    formatted = sqlparse.format(
+        sql,
+        reindent=True,
+        keyword_case="upper",
+        identifier_case=None,
+        strip_comments=False,
+        indent_width=1,
+        comma_first=False,
+    )
+    formatted = formatted.replace("SELECT\n  *", "SELECT  *")
+    formatted = formatted.replace("FROM\n  ", "FROM ")
+    formatted = formatted.replace(";", "\n;")
+    return formatted
+
+
 def format_sql_text(manager):
     editor = manager._get_current_editor()
     if not editor:
@@ -173,19 +230,11 @@ def format_sql_text(manager):
         return
 
     try:
-        formatted_sql = sqlparse.format(
-            raw_sql,
-            reindent=True,
-            keyword_case="upper",
-            identifier_case=None,
-            strip_comments=False,
-            indent_width=1,
-            comma_first=False,
-        )
+        if _is_already_formatted(raw_sql):
+            manager.status.showMessage("SQL is already formatted.", 3000)
+            return
 
-        formatted_sql = formatted_sql.replace("SELECT\n  *", "SELECT  *")
-        formatted_sql = formatted_sql.replace("FROM\n  ", "FROM ")
-        formatted_sql = formatted_sql.replace(";", "\n;")
+        formatted_sql = _format_sql(raw_sql)
 
         if mode == "selection":
             cursor.beginEditBlock()
