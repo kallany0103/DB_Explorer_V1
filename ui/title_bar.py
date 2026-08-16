@@ -147,8 +147,8 @@ class TitleBarWidget(QWidget):
 
     def mouseMoveEvent(self, event) -> None:
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            if self._window.isMaximized() or self._window.isFullScreen():
-                self._window.showNormal()
+            if getattr(self._window, "_is_maximized", False):
+                self._window.toggle_maximize()
                 self.update_maximize_button()
                 # Recalculate offset after restore to avoid sudden jump
                 self._drag_pos = QPoint(self._window.width() // 2, self._TITLE_BAR_HEIGHT // 2)
@@ -167,9 +167,9 @@ class TitleBarWidget(QWidget):
 
     def update_maximize_button(self) -> None:
         """Sync maximize button icon and menu action icon with window state."""
-        # Frameless windows (custom title bar) enter WindowFullScreen on
-        # maximize, so check both states to keep the icon in sync.
-        is_maximized = self._window.isMaximized() or self._window.isFullScreen()
+        # Use _is_maximized flag as the source of truth; the window is frameless
+        # so Qt's isMaximized() / isFullScreen() are not reliable here.
+        is_maximized = getattr(self._window, "_is_maximized", False)
         if is_maximized:
             self._btn_max.setIcon(self._icon_restore)
             self._btn_max.setToolTip("Restore")
@@ -184,6 +184,20 @@ class TitleBarWidget(QWidget):
     def _toggle_maximize(self) -> None:
         """Toggle between maximized and normal state via main_window logic."""
         self._window.toggle_maximize()
+
+    def set_user_state(self, auth_session) -> None:
+        """Reflect the signed-in state on the user control (initials + tooltip)."""
+        if auth_session.is_signed_in:
+            name = auth_session.display_name or "User"
+            words = [w for w in name.replace("@", " ").split() if w]
+            initials = ("".join(w[0] for w in words[:2])).upper() or "?"
+            self._btn_user.setText(initials)
+            self._btn_user.setIcon(QIcon())
+            self._btn_user.setToolTip(f"Signed in as {name}")
+        else:
+            self._btn_user.setText("")
+            self._btn_user.setIcon(qta.icon("mdi.account-circle-outline", color="#555555"))
+            self._btn_user.setToolTip("Sign in")
 
     def _show_account_menu(self) -> None:
         """Open account sign-in choices from the user control."""

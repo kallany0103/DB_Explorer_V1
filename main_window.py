@@ -1,11 +1,12 @@
 # main_window.py
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QMessageBox, QLabel, QMenu
-from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint
+from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint, QEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction
 import qtawesome as qta
 from ui.components import SecondaryButton
 from ui.title_bar import TitleBarWidget
+from ui.resize_filter import ResizeFilter
 from widgets.erd.widget import ERDWidget
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
 from widgets.dashboard import DashboardWidget
@@ -195,6 +196,12 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "_title_bar"):
             self._title_bar.update_maximize_button()
+        self._is_maximized: bool = False
+
+        # Install the application-level resize filter so the frameless window
+        # can be resized by dragging any edge or corner below the title bar.
+        self._resize_filter = ResizeFilter(self)
+        QApplication.instance().installEventFilter(self._resize_filter)
 
         # Keep the splash screen responsive while the main window is being built
         QApplication.processEvents()
@@ -553,6 +560,14 @@ class MainWindow(QMainWindow):
         toggle_maximize_action(self)
         if hasattr(self, "_title_bar"):
             self._title_bar.update_maximize_button()
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Keep the maximize button in sync when the OS changes window state."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            if hasattr(self, "_title_bar"):
+                self._title_bar.update_maximize_button()
+
 
     def open_help_url(self, url_string):
         open_help_url_action(self, url_string)
