@@ -191,7 +191,7 @@ class ActionToolButton(QToolButton):
                 border-radius: 4px;
                 background-color: #ffffff;
                 color: #333333;
-                padding: 4px 8px;
+                padding: 4px 28px 4px 12px;
                 font-size: 9pt;
             }
             QToolButton:hover {
@@ -202,8 +202,9 @@ class ActionToolButton(QToolButton):
                 background-color: #dcdcdc;
             }
             QToolButton::menu-indicator {
-                image: none;
-                width: 0;
+                subcontrol-position: right center;
+                subcontrol-origin: padding;
+                left: -4px;
             }
         """)
         
@@ -311,14 +312,6 @@ class ToolbarActionButton(QToolButton):
             }
             QToolButton:pressed {
                 background-color: #dcdcdc;
-            }
-            QToolButton::menu-button {
-                border: none;
-                width: 12px;
-            }
-            QToolButton::menu-arrow {
-                width: 8px;
-                height: 8px;
             }
         """)
 
