@@ -1,6 +1,7 @@
 import re
 
-import sqlparse
+import sqlglot
+from sqlglot.errors import ParseError
 
 from PySide6.QtWidgets import (
     QMessageBox,
@@ -165,11 +166,6 @@ _CLAUSE_START = re.compile(
 )
 
 
-def _has_comments(sql: str) -> bool:
-    """Return True when the SQL contains line or block comments."""
-    return bool(re.search(r"--[^\n]*|/\*.*?\*/", sql, re.DOTALL))
-
-
 def _is_already_formatted(sql: str) -> bool:
     """Return True when the SQL already has a deliberate multi-line layout."""
     lines = [ln for ln in sql.splitlines() if ln.strip()]
@@ -190,24 +186,8 @@ def _is_already_formatted(sql: str) -> bool:
 
 
 def _format_sql(sql: str) -> str:
-    """Format arbitrary SQL without breaking comments or placeholders."""
-    if _has_comments(sql):
-        # sqlparse reindenting can misplace comments, so preserve the layout.
-        return sqlparse.format(sql, reindent=False, keyword_case="upper", strip_comments=False)
-
-    formatted = sqlparse.format(
-        sql,
-        reindent=True,
-        keyword_case="upper",
-        identifier_case=None,
-        strip_comments=False,
-        indent_width=1,
-        comma_first=False,
-    )
-    formatted = formatted.replace("SELECT\n  *", "SELECT  *")
-    formatted = formatted.replace("FROM\n  ", "FROM ")
-    formatted = formatted.replace(";", "\n;")
-    return formatted
+    """Format arbitrary SQL using sqlglot AST parsing."""
+    return sqlglot.transpile(sql, pretty=True)[0]
 
 
 def format_sql_text(manager):
@@ -235,7 +215,6 @@ def format_sql_text(manager):
             return
 
         formatted_sql = _format_sql(raw_sql)
-
         if mode == "selection":
             cursor.beginEditBlock()
             cursor.insertText(formatted_sql)
@@ -249,7 +228,9 @@ def format_sql_text(manager):
         manager.status.showMessage("SQL formatted successfully.", 3000)
 
     except ImportError:
-        QMessageBox.critical(manager, "Error", "Library 'sqlparse' is missing.\\nPlease run: pip install sqlparse")
+        QMessageBox.critical(manager, "Error", "Library 'sqlglot' is missing.\\nPlease run: pip install sqlglot")
+    except ParseError as error:
+        QMessageBox.warning(manager, "Formatting Error", f"SQL Syntax Error: {error}")
     except Exception as error:
         QMessageBox.warning(manager, "Formatting Error", f"Error: {error}")
 
