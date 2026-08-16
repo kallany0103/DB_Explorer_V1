@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QSplitter, QMessageBox
+from PySide6.QtWidgets import QSplitter, QMessageBox, QApplication
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 import traceback
@@ -43,15 +43,15 @@ def close_tab(main_window, index):
 def reset_layout(main_window):
     try:
         # Always maximize the window on layout restore
-        main_window.showMaximized()
-        
+        main_window.toggle_maximize() if not getattr(main_window, "_is_maximized", False) else None
+
         # 1. Reset Splitter Sizes
         main_window.main_splitter.setSizes([280, 920])
         if hasattr(main_window, 'connection_manager'):
             cm = main_window.connection_manager
             if hasattr(cm, 'vertical_splitter'):
                 cm.vertical_splitter.setSizes([240, 360])
-            
+
             # 2. Collapse DB Explorer Trees
             if hasattr(cm, 'tree'):
                 cm.tree.collapseAll()
@@ -72,39 +72,67 @@ def reset_layout(main_window):
             tab_splitter = current_tab.findChild(QSplitter, "tab_vertical_splitter")
             if tab_splitter:
                 tab_splitter.setSizes([300, 300])
-                
+
         main_window.status.showMessage("Layout reset: Explorer collapsed, extra tabs closed, and sizes restored.", 4000)
     except Exception as e:
         main_window.status.showMessage(f"Error resetting layout: {e}", 5000)
         traceback.print_exc()
 
+
 def reset_to_dashboard(main_window):
     try:
-        main_window.showMaximized()
+        if not getattr(main_window, "_is_maximized", False):
+            main_window.toggle_maximize()
         main_window.main_splitter.setSizes([280, 920])
         if hasattr(main_window, 'connection_manager'):
             cm = main_window.connection_manager
             if hasattr(cm, 'vertical_splitter'):
                 cm.vertical_splitter.setSizes([240, 360])
 
-
         # Add dashboard tab first
         main_window.add_dashboard_tab()
-        
+
         main_window.status.showMessage("Layout reset to Dashboard.", 4000)
     except Exception as e:
         main_window.status.showMessage(f"Error resetting layout: {e}", 5000)
-       
         traceback.print_exc()
 
+
 def toggle_maximize(main_window):
-    # On a frameless window (custom title bar) Qt enters WindowFullScreen on
-    # maximize, so isMaximized() alone can never detect the state — check both.
-    if main_window.isMaximized() or main_window.isFullScreen():
-        main_window.showNormal()
+    """Toggle between maximized and normal state for a frameless window.
+
+    ``showMaximized()`` on a frameless window expands to the full monitor
+    rectangle (covering the taskbar).  Instead we manually move/resize the
+    window to ``QScreen.availableGeometry()``, which excludes the taskbar,
+    and track the state ourselves via ``_is_maximized``.
+    """
+    if getattr(main_window, "_is_maximized", False):
+        # Restore to the geometry saved before maximizing
+        pre = getattr(main_window, "_pre_max_geometry", None)
+        if pre is not None:
+            main_window.setGeometry(pre)
+        else:
+            main_window.showNormal()
+        main_window._is_maximized = False
         main_window.maximize_action.setText("Maximize")
     else:
-        main_window.showMaximized()
+        # Save current normal geometry before expanding
+        main_window._pre_max_geometry = main_window.geometry()
+        screen = (
+            QApplication.screenAt(main_window.geometry().center())
+            or QApplication.primaryScreen()
+        )
+        avail = screen.availableGeometry()
+        
+        # If the taskbar is auto-hidden, availableGeometry equals the full screen.
+        # A frameless window sized exactly to the screen enters 'exclusive fullscreen'
+        # mode on Windows, which blocks the auto-hidden taskbar from popping up.
+        # We subtract 1 pixel to prevent exclusive mode.
+        if avail == screen.geometry():
+            avail.setHeight(avail.height() - 1)
+            
+        main_window.setGeometry(avail)
+        main_window._is_maximized = True
         main_window.maximize_action.setText("Restore")
     # Icon update is handled by title_bar.update_maximize_button() using
     # pre-cached icons — do not call qta.icon() here to avoid stutter.

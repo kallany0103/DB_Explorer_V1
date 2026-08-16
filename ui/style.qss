@@ -118,7 +118,33 @@ QMenu#accountMenu {
 }
 
 QMenu#accountMenu::item {
-    padding: 8px 16px;
+    padding: 8px 32px 8px 34px;
+}
+
+QMenu#accountMenu::icon {
+    padding-left: 12px;
+    width: 16px;
+    height: 16px;
+}
+
+QWidget#accountMenuHeader {
+    background: #FFFFFF;
+}
+
+QLabel#accountMenuAvatar {
+    background: #F1F3F4;
+    border-radius: 12px;
+}
+
+QLabel#accountMenuTitle {
+    color: #202124;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#accountMenuSubtitle {
+    color: #5F6368;
+    font-size: 11px;
 }
 
 QMenu::item {
@@ -495,7 +521,6 @@ QToolTip {
     background-color: #FFFFFF; 
     color: #1F2937; 
     border: 1px solid #CBD5E1;
-    border-radius: 4px; 
     padding: 4px 8px; 
     font-size: 11px; 
 }

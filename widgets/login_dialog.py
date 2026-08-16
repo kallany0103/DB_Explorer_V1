@@ -41,27 +41,7 @@ class LoginDialog(QDialog):
         root.setContentsMargins(40, 36, 40, 30)
         root.setSpacing(0)
 
-        # ── App identity ─────────────────────────────────────────────────────
-        identity_layout = QHBoxLayout()
-        identity_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_lbl = QLabel()
-        icon_lbl.setObjectName("loginAppIcon")
-        icon_pix_path = pathlib.Path(__file__).parent.parent / "assets" / "sql_icon.png"
-        if icon_pix_path.exists():
-            icon_lbl.setPixmap(
-                QPixmap(str(icon_pix_path)).scaled(
-                    28, 28,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-            )
-        app_name = QLabel("Universal SQL Client")
-        app_name.setObjectName("loginAppName")
-        identity_layout.addWidget(icon_lbl)
-        identity_layout.addSpacing(8)
-        identity_layout.addWidget(app_name)
-        root.addLayout(identity_layout)
-        root.addSpacing(28)
+
 
         # ── Heading ──────────────────────────────────────────────────────────
         heading = QLabel("Sign in")
@@ -85,23 +65,18 @@ class LoginDialog(QDialog):
         root.addSpacing(14)
 
         # ── Password field ───────────────────────────────────────────────────
-        pwd_row = QHBoxLayout()
-        pwd_row.setSpacing(0)
         self.pwd_input = QLineEdit()
         self.pwd_input.setObjectName("loginInput")
         self.pwd_input.setPlaceholderText("Password")
         self.pwd_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.pwd_input.setMinimumHeight(44)
-        self._toggle_eye = QToolButton()
-        self._toggle_eye.setObjectName("loginEyeBtn")
-        self._toggle_eye.setIcon(qta.icon("fa5s.eye", color="#9AA0A6"))
-        self._toggle_eye.setIconSize(QSize(16, 16))
-        self._toggle_eye.setFixedSize(40, 44)
-        self._toggle_eye.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._toggle_eye.clicked.connect(self._toggle_password_visibility)
-        pwd_row.addWidget(self.pwd_input)
-        pwd_row.addWidget(self._toggle_eye)
-        root.addLayout(pwd_row)
+        
+        self.toggle_action = self.pwd_input.addAction(
+            qta.icon("fa5s.eye", color="#9AA0A6"), 
+            QLineEdit.ActionPosition.TrailingPosition
+        )
+        self.toggle_action.triggered.connect(self._toggle_password_visibility)
+        root.addWidget(self.pwd_input)
         root.addSpacing(22)
 
         # ── Sign In button ───────────────────────────────────────────────────
@@ -127,10 +102,10 @@ class LoginDialog(QDialog):
     def _toggle_password_visibility(self) -> None:
         if self.pwd_input.echoMode() == QLineEdit.EchoMode.Password:
             self.pwd_input.setEchoMode(QLineEdit.EchoMode.Normal)
-            self._toggle_eye.setIcon(qta.icon("fa5s.eye-slash", color="#9AA0A6"))
+            self.toggle_action.setIcon(qta.icon("fa5s.eye-slash", color="#9AA0A6"))
         else:
             self.pwd_input.setEchoMode(QLineEdit.EchoMode.Password)
-            self._toggle_eye.setIcon(qta.icon("fa5s.eye", color="#9AA0A6"))
+            self.toggle_action.setIcon(qta.icon("fa5s.eye", color="#9AA0A6"))
 
     def _on_signin(self) -> None:
         QMessageBox.information(

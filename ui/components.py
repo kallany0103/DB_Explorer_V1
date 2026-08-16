@@ -296,6 +296,7 @@ class ToolbarActionButton(QToolButton):
             self.setIcon(icon)
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.setFixedHeight(30)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setStyleSheet("""
             QToolButton {
                 border: 1px solid #b9b9b9;
@@ -305,7 +306,7 @@ class ToolbarActionButton(QToolButton):
                 padding: 4px 8px;
                 font-size: 9pt;
             }
-            QToolButton:hover {
+            QToolButton:hover, QToolButton[hovered="true"] {
                 background-color: #e8e8e8;
                 border-color: #9c9c9c;
             }
@@ -313,6 +314,18 @@ class ToolbarActionButton(QToolButton):
                 background-color: #dcdcdc;
             }
         """)
+
+    def enterEvent(self, event):
+        self.setProperty("hovered", True)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.setProperty("hovered", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        super().leaveEvent(event)
 
 
 class DangerButton(QPushButton):
