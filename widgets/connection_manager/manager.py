@@ -31,6 +31,7 @@ from workers.connection_workers import (
     ServiceNowSchemaWorker,
     SQLiteSchemaWorker,
     ERDSchemaFetchWorker,
+    UDSSchemaWorker,
     UDSDataSourceSchemaWorker,
 )
 
@@ -476,28 +477,6 @@ class ConnectionManager(QWidget):
                         code="POSTGRES" if (code == "UDS" or connection_data.get("db_type") == "uds") else code
                     )
 
-                    # If UDS (Unified Data Source), populate Level 4 Data Sources
-                    if code == "UDS" or connection_data.get("db_type") == "uds":
-                        data_sources = connection_data.get("usf_data_sources", [])
-                        for ds in data_sources:
-                            ds_name = ds.get("short_name") or ds.get("source_name") or ds.get("display_name")
-                            ds_item = QStandardItem(ds_name)
-                            ds_item_data = dict(ds)
-                            ds_item_data["type"] = "data_source"
-                            ds_item_data["conn_data"] = connection_data
-                            ds_item_data["parent_conn_id"] = connection_data["id"]
-
-                            ds_item.setData(ds_item_data, Qt.ItemDataRole.UserRole)
-                            ds_item.setData(ds["id"], Qt.ItemDataRole.UserRole + 1)
-                            ds_item.setData("DATA_SOURCE", Qt.ItemDataRole.UserRole + 2)
-
-                            self._set_tree_item_icon(
-                                ds_item,
-                                level="DATA_SOURCE",
-                                code=ds.get("source_type", "POSTGRES")
-                            )
-                            connection_item.appendRow(ds_item)
-
                     connection_group_item.appendRow(connection_item)
 
                 connection_type_item.appendRow(connection_group_item)
@@ -562,32 +541,6 @@ class ConnectionManager(QWidget):
         
         self.schema_model.clear()
         self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-        if depth == 4:
-            item_data = item.data(Qt.ItemDataRole.UserRole)
-            if item_data and (item_data.get("type") == "data_source" or item.data(Qt.ItemDataRole.UserRole + 2) == "DATA_SOURCE"):
-                conn_data = item_data.get("conn_data")
-                if conn_data:
-                    self.active_postgres_conn = conn_data
-                    ds_id = f"ds_{item_data.get('id')}"
-                    
-                    if hasattr(self, '_schema_states') and ds_id in self._schema_states:
-                        self._schema_states[ds_id]['selection'] = None
-                        
-                    self._current_conn_id = ds_id
-                    ds_name = item.text()
-                    if hasattr(self.main_window, "results_manager"):
-                        self.main_window.results_manager.add_connection_notification(ds_name)
-
-                    self.status.showMessage(f"Loading Data Source '{ds_name}'...", 3000)
-                    worker = UDSDataSourceSchemaWorker(conn_data, item_data)
-                    self._start_schema_load(
-                        item, worker, self.schema_loader.populate_uds_datasource_schema,
-                        skip_restore=skip_restore
-                    )
-                    return
-            self._current_conn_id = None
-            return
-
         if depth != 3:
             self._current_conn_id = None
             return
@@ -620,13 +573,9 @@ class ConnectionManager(QWidget):
 
         if "unified" in connection_type_name or "uds" in connection_type_name:
             self.active_postgres_conn = conn_data
-            self.status.showMessage(f"Connected to Unified Data Source host '{conn_name}'. Select a Data Source to view foreign tables.", 4000)
-            placeholder_item = QStandardItem(f"Host: {conn_name}")
-            placeholder_item.setEditable(False)
-            self._set_tree_item_icon(placeholder_item, level="SERVER")
-            placeholder_type = QStandardItem("PostgreSQL Hub")
-            placeholder_type.setEditable(False)
-            self.schema_model.appendRow([placeholder_item, placeholder_type])
+            self.status.showMessage(f"Loading Unified Data Sources for {conn_name}...", 3000)
+            worker = UDSSchemaWorker(conn_data)
+            self._start_schema_load(item, worker, self.schema_loader.populate_uds_schema, skip_restore=skip_restore)
         elif "postgres" in connection_type_name and (conn_data.get("host") or conn_data.get("dsn")):
             self.active_postgres_conn = conn_data
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)

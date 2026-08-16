@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QThread, Signal, QEventLoop
 from PySide6.QtGui import QIcon
 from widgets.splash_screen import SplashScreen
-from widgets.encryption.secure_sqlite import enable_transparent_encryption
+# from widgets.encryption.secure_sqlite import enable_transparent_encryption
 from db.db_bootstrap import ensure_hierarchy_db
 from ui.theme import setup_theme
 from main_window import MainWindow
@@ -25,7 +25,7 @@ class _StartupWorker(QThread):
 
     def run(self) -> None:
         try:
-            enable_transparent_encryption("mysecretpassword")
+            # enable_transparent_encryption("mysecretpassword")
 
             self.progress.emit("Bootstrapping database...", 10)
             ensure_hierarchy_db()

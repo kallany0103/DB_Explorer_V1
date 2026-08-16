@@ -261,15 +261,25 @@ class ConnectionDialogs:
         code = type_info["code"].upper()
 
         if not parent_item:
-            QMessageBox.warning(
-                self.manager,
-                "Missing Context",
-                "Please select a Connection first."
-            )
-            return
-
-        connection_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
-        host_conn_data = parent_item.data(Qt.ItemDataRole.UserRole)
+            # Fallback to active UDS connection if available
+            if hasattr(self.manager, "active_postgres_conn") and self.manager.active_postgres_conn:
+                host_conn_data = self.manager.active_postgres_conn
+                connection_id = host_conn_data.get("id")
+            else:
+                QMessageBox.warning(
+                    self.manager,
+                    "Missing Context",
+                    "Please select a Connection first."
+                )
+                return
+        else:
+            item_data = parent_item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(item_data, dict) and item_data.get("conn_data"):
+                host_conn_data = item_data.get("conn_data")
+                connection_id = host_conn_data.get("id") or item_data.get("connection_id")
+            else:
+                connection_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
+                host_conn_data = item_data if isinstance(item_data, dict) else self.manager.active_postgres_conn
 
         if not connection_id or not host_conn_data:
             QMessageBox.warning(
@@ -326,6 +336,12 @@ class ConnectionDialogs:
             self.manager.load_data()
             self.manager._restore_tree_expansion_state()
             self.manager.refresh_all_comboboxes()
+
+            # Refresh Schema Tree for the current UDS connection
+            current_index = self.manager.tree.currentIndex()
+            if current_index.isValid():
+                self.manager.item_clicked(current_index, skip_restore=False)
+
             self.manager.status.showMessage(f"Data Source '{data.get('name')}' created successfully.", 4000)
 
         except Exception as e:
@@ -341,7 +357,7 @@ class ConnectionDialogs:
             return
 
         source_type = (ds_data.get("source_type") or "POSTGRES").upper()
-        host_conn_data = ds_data.get("conn_data")
+        host_conn_data = ds_data.get("conn_data") or getattr(self.manager, "active_postgres_conn", None)
 
         if source_type == "POSTGRES":
             dialog = PostgresDataSourceDialog(self.manager, is_editing=True, conn_data=ds_data)
@@ -375,6 +391,12 @@ class ConnectionDialogs:
             self.manager.load_data()
             self.manager._restore_tree_expansion_state()
             self.manager.refresh_all_comboboxes()
+
+            # Refresh Schema Tree for current connection
+            current_index = self.manager.tree.currentIndex()
+            if current_index.isValid():
+                self.manager.item_clicked(current_index, skip_restore=False)
+
             self.manager.status.showMessage(f"Data Source '{new_data.get('name')}' updated successfully.", 4000)
 
         except Exception as e:
@@ -405,7 +427,7 @@ class ConnectionDialogs:
             return
 
         try:
-            host_conn_data = ds_data.get("conn_data")
+            host_conn_data = ds_data.get("conn_data") or getattr(self.manager, "active_postgres_conn", None)
             server_name = ds_data.get("server_name")
             schema_name = ds_data.get("schema_name")
 
@@ -418,6 +440,12 @@ class ConnectionDialogs:
             self.manager.load_data()
             self.manager._restore_tree_expansion_state()
             self.manager.refresh_all_comboboxes()
+
+            # Refresh Schema Tree for current connection
+            current_index = self.manager.tree.currentIndex()
+            if current_index.isValid():
+                self.manager.item_clicked(current_index, skip_restore=False)
+
             self.manager.status.showMessage(f"Data Source '{ds_name}' deleted.", 3000)
 
         except Exception as e:

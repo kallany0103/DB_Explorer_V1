@@ -261,12 +261,11 @@ GET_FOREIGN_SERVER_DETAILS = """
 
 GET_USER_MAPPING_DETAILS = """
     SELECT 
-        umuser::regrole::text as user_name,
+        usename as user_name,
         srvname as server_name,
         array_to_string(umoptions, ', ') as options
-    FROM pg_user_mapping um
-    JOIN pg_foreign_server s ON s.oid = um.umserver
-    WHERE umuser::regrole::text = %s AND srvname = %s;
+    FROM pg_user_mappings
+    WHERE usename = %s AND srvname = %s;
 """
 
 #Statistics Queries

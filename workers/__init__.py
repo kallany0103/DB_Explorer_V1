@@ -6,6 +6,8 @@ from workers.connection_workers import (
     ServiceNowSchemaWorker,
     ServiceNowTableDetailsWorker,
     SQLiteSchemaWorker,
+    UDSSchemaWorker,
+    UDSDataSourceSchemaWorker,
 )
 from workers.signals import ProcessSignals, QuerySignals
 
@@ -20,6 +22,8 @@ __all__ = [
     "ServiceNowSchemaWorker",
     "ServiceNowTableDetailsWorker",
     "SQLiteSchemaWorker",
+    "UDSSchemaWorker",
+    "UDSDataSourceSchemaWorker",
     "ProcessSignals",
     "QuerySignals",
 ]
