@@ -40,6 +40,7 @@ from widgets.app_shell import (
     save_main_window_session,
     reset_to_dashboard as reset_to_dashboard_action,
 )
+from ui.account_menu import AccountMenu
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -597,29 +598,19 @@ class MainWindow(QMainWindow):
     def show_login_menu(self, anchor):
         if self.isMinimized():
             return
-        menu = QMenu(self)
-        menu.setObjectName("accountMenu")
+        menu = AccountMenu(
+            parent=self,
+            signed_in=False,
+            display_name="",
+            email="",
+            on_google=lambda: self._show_authentication_notice("Google sign-in"),
+            on_email=self.show_login,
+            on_sign_out=lambda: None,
+        )
         menu.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         menu.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
         menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        menu.setMinimumWidth(260)
-        header = menu.addAction("Not signed in")
-        header.setEnabled(False)
-        menu.addSeparator()
-        google_action = menu.addAction(
-            qta.icon("fa5b.google", color="#4285F4"),
-            "Sign in with Google",
-        )
-        email_action = menu.addAction(
-            qta.icon("mdi.email-outline", color="#555555"),
-            "Sign in with email",
-        )
-
-        selected = menu.exec(self._menu_position_within_window(menu, anchor))
-        if selected is email_action:
-            self.show_login()
-        elif selected is google_action:
-            self._show_authentication_notice("Google sign-in")
+        menu.exec(self._menu_position_within_window(menu, anchor))
 
     def _menu_position_within_window(self, menu, anchor):
         """Place the account panel left of its anchor and inside the app window."""
