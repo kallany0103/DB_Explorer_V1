@@ -13,7 +13,7 @@ hiddenimports = [
     'oracledb',
     'pandas',
     'openpyxl',
-    'sqlparse',
+    'sqlglot',
     'keyring.backends.Windows',
 ]
 tmp_ret = collect_all('PySide6')

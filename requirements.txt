@@ -1,6 +1,6 @@
 #python.exe -m pip install --upgrade pip
 psycopg2-binary
-sqlparse
+sqlglot>=20.0.0
 oracledb
 pandas
 Pyside6
