@@ -313,6 +313,14 @@ class ToolbarActionButton(QToolButton):
             QToolButton:pressed {
                 background-color: #dcdcdc;
             }
+            QToolButton::menu-button {
+                border: none;
+                width: 12px;
+            }
+            QToolButton::menu-arrow {
+                width: 8px;
+                height: 8px;
+            }
         """)
 
     def enterEvent(self, event):
