@@ -3,16 +3,28 @@ from PySide6.QtWidgets import (
     QToolButton,
 )
 from PySide6.QtCore import QEvent
+from PySide6.QtWidgets import QTabBar
 
 
 def renumber_tabs(manager):
     worksheet_number = 1
+    worksheet_indices = []
     for i in range(manager.tab_widget.count()):
         current_text = manager.tab_widget.tabText(i)
         if current_text.startswith("Worksheet ") or current_text == "New Tab":
             manager.tab_widget.setTabText(i, f"Worksheet {worksheet_number}")
             manager.tab_widget.setTabIcon(i, manager._get_worksheet_tab_icon())
             worksheet_number += 1
+            worksheet_indices.append(i)
+
+    # Hide the close button when only one worksheet remains so users
+    # get a clear visual signal that the last tab cannot be closed.
+    tab_bar = manager.tab_widget.tabBar()
+    only_one = len(worksheet_indices) == 1
+    for i in worksheet_indices:
+        btn = tab_bar.tabButton(i, QTabBar.ButtonPosition.RightSide)
+        if btn:
+            btn.setVisible(not only_one)
 
 
 def handle_event_filter(obj, event):

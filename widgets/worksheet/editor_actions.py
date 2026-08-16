@@ -4,6 +4,7 @@ import sqlglot
 from sqlglot.errors import ParseError
 
 from PySide6.QtWidgets import (
+    QApplication,
     QMessageBox,
     QInputDialog,
     QDialog,
@@ -17,6 +18,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt, Signal
 from ui.components import PrimaryButton, SecondaryButton
+
+
+def _make_msg_box(parent, icon_type: QMessageBox.Icon, title: str, text: str) -> QMessageBox:
+    """Create a QMessageBox that always carries the application window icon."""
+    box = QMessageBox(icon_type, title, text, QMessageBox.StandardButton.Ok, parent)
+    box.setWindowIcon(QApplication.instance().windowIcon())
+    return box
 
 class FindReplaceDialog(QDialog):
     find_next = Signal(str, bool, bool)
@@ -228,24 +236,26 @@ def format_sql_text(manager):
         manager.status.showMessage("SQL formatted successfully.", 3000)
 
     except ImportError:
-        QMessageBox.critical(manager, "Error", "Library 'sqlglot' is missing.\\nPlease run: pip install sqlglot")
+        _make_msg_box(manager, QMessageBox.Icon.Critical, "Error", "Library 'sqlglot' is missing.\nPlease run: pip install sqlglot").exec()
     except ParseError as error:
-        QMessageBox.warning(manager, "Formatting Error", f"SQL Syntax Error: {error}")
+        _make_msg_box(manager, QMessageBox.Icon.Warning, "Formatting Error", f"SQL Syntax Error: {error}").exec()
     except Exception as error:
-        QMessageBox.warning(manager, "Formatting Error", f"Error: {error}")
+        _make_msg_box(manager, QMessageBox.Icon.Warning, "Formatting Error", f"Error: {error}").exec()
 
 
 def clear_query_text(manager):
     editor = manager._get_current_editor()
     if editor:
         if editor.toPlainText().strip():
-            reply = QMessageBox.question(
-                manager,
+            box = QMessageBox(
+                QMessageBox.Icon.Question,
                 "Clear Query",
                 "Are you sure you want to clear the editor?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                manager,
             )
-            if reply == QMessageBox.StandardButton.No:
+            box.setWindowIcon(QApplication.instance().windowIcon())
+            if box.exec() == QMessageBox.StandardButton.No:
                 return
 
         editor.clear()
