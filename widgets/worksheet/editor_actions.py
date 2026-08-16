@@ -1,7 +1,11 @@
 import re
 
-import sqlglot
-from sqlglot.errors import ParseError
+try:
+    import sqlglot
+    from sqlglot.errors import ParseError
+except ImportError:
+    sqlglot = None
+    ParseError = Exception
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -199,6 +203,8 @@ def _format_sql(sql: str) -> str:
     sqlglot.transpile strips trailing semicolons by default, so we
     re-append one when the original statement ended with a semicolon.
     """
+    if sqlglot is None:
+        raise ImportError("sqlglot is not installed")
     had_semicolon = sql.rstrip().endswith(";")
     formatted = sqlglot.transpile(sql, pretty=True)[0]
     if had_semicolon and not formatted.endswith(";"):
