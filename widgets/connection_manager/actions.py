@@ -95,7 +95,7 @@ class ConnectionActions:
         db_type = item_data.get('db_type')
         conn_data['code'] = (conn_data.get('code') or db_type or '').upper()
 
-        if db_type == 'postgres':
+        if db_type in ('postgres', 'uds') or conn_data.get('code') in ('POSTGRES', 'UDS'):
             schema = item_data.get("schema_name", "public")
             schema_quoted = f'"{schema}"'
             # Handle Materialized Views separately if needed, but COUNT(*) is the same
@@ -145,29 +145,39 @@ class ConnectionActions:
                 db_combo_box.setCurrentIndex(i)
                 break
 
-        query_editor.clear()
-        query_editor.setFocus()
+        query_editor.setPlainText("")
         self.manager.tab_widget.setCurrentWidget(new_tab)
 
     def open_query_tool_for_table(self, item_data, table_name):
         if not item_data:
             return
 
-        conn_data = item_data.get("conn_data", item_data)
         new_tab = self.manager.add_tab()
+        new_tab.table_name = table_name
 
         query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
         db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
 
+        conn_data = item_data.get('conn_data', {})
         for i in range(db_combo_box.count()):
             data = db_combo_box.itemData(i)
             if data and data.get('id') == conn_data.get('id'):
                 db_combo_box.setCurrentIndex(i)
                 break
 
-        query_editor.clear()
-        query_editor.setFocus()
+        schema = item_data.get("schema_name", "public")
+        schema_quoted = f'"{schema}"'
+        new_tab.table_name = f'{schema_quoted}.{table_name}'
+        query = f'SELECT * FROM {schema_quoted}."{table_name}";'
+        query_editor.setPlainText(query)
+
         self.manager.tab_widget.setCurrentWidget(new_tab)
+
+    def open_cross_source_query_dialog(self, item_data, table_name=None):
+        """Opens the Cross-Source Query Helper dialog for multi-database JOINs."""
+        from dialogs.cross_source_query_dialog import CrossSourceQueryDialog
+        dialog = CrossSourceQueryDialog(self.manager, initial_item_data=item_data, initial_table_name=table_name)
+        dialog.exec()
 
     def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
         if not item_data:
@@ -193,11 +203,11 @@ class ConnectionActions:
         conn_data['code'] = (conn_data.get('code') or item_data.get('db_type') or '').upper()
 
         code = conn_data.get('code')
-        if code == 'POSTGRES':
+        if code in ('POSTGRES', 'UDS'):
             schema = item_data.get("schema_name", "public")
             schema_quoted = f'"{schema}"'
             new_tab.table_name = f'{schema_quoted}.{table_name}'
-            query = f'SELECT * FROM {schema_quoted}.{table_name}'
+            query = f'SELECT * FROM {schema_quoted}."{table_name}"'
         elif code == 'SQLITE':
             new_tab.table_name = f'{table_name}'
             query = f'SELECT * FROM {table_name}'

@@ -1,3 +1,4 @@
+import os
 import json
 import re
 import sqlite3 as sqlite
@@ -450,6 +451,333 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
 
         cur.close()
         return server_name, local_schema
+    finally:
+        conn.close()
+
+
+def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
+    """
+    Re-synchronizes foreign schema from remote data source into host PostgreSQL database.
+    Drops existing foreign tables in the data source schema and re-executes IMPORT FOREIGN SCHEMA.
+    """
+    conn = create_postgres_connection(
+        pg_conn_data,
+        application_name="Universal SQL Client (FDW Sync)",
+        bypass_cooldown=True
+    )
+    if not conn:
+        raise Exception("Could not connect to host PostgreSQL database.")
+
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "foreign_source"
+        safe_name = _sanitize_identifier(raw_name)
+        server_name = ds_data.get("server_name") or f"srv_{safe_name}"
+        local_schema = ds_data.get("schema_name") or f"{safe_name}_schema"
+        remote_schema = ds_data.get("schema") or "public"
+
+        # Verify server exists
+        cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            s_name, l_schema = create_postgres_fdw_source(pg_conn_data, ds_data)
+            return s_name, l_schema, 0
+
+        # Drop existing foreign tables in local_schema for this server
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
+        cur.execute(f"""
+            DO $$
+            DECLARE
+                r RECORD;
+            BEGIN
+                FOR r IN (
+                    SELECT c.relname
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_foreign_table ft ON ft.ftrelid = c.oid
+                    JOIN pg_foreign_server s ON s.oid = ft.ftserver
+                    WHERE n.nspname = '{local_schema}' AND s.srvname = '{server_name}'
+                )
+                LOOP
+                    EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                END LOOP;
+            END $$;
+        """)
+
+        # Parse selected_tables if any
+        selected_tables = ds_data.get("selected_tables")
+        if not selected_tables and ds_data.get("config_json"):
+            try:
+                cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
+                selected_tables = cfg.get("selected_tables")
+            except Exception:
+                pass
+
+        # Re-import foreign schema
+        if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
+            tables_str = ", ".join(f'"{t}"' for t in selected_tables)
+            cur.execute(f"""
+                IMPORT FOREIGN SCHEMA "{remote_schema}"
+                LIMIT TO ({tables_str})
+                FROM SERVER "{server_name}"
+                INTO "{local_schema}";
+            """)
+        else:
+            cur.execute(f"""
+                IMPORT FOREIGN SCHEMA "{remote_schema}"
+                FROM SERVER "{server_name}"
+                INTO "{local_schema}";
+            """)
+
+        # Query count of imported foreign tables
+        cur.execute("""
+            SELECT count(*)
+            FROM pg_foreign_table ft
+            JOIN pg_foreign_server s ON s.oid = ft.ftserver
+            WHERE s.srvname = %s;
+        """, (server_name,))
+        count = cur.fetchone()[0]
+
+        cur.close()
+        return server_name, local_schema, count
+    finally:
+        conn.close()
+
+
+def ensure_host_fdw_extensions(pg_conn_data: dict) -> dict:
+    """
+    Automatically installs/enables necessary FDW extensions on a host PostgreSQL database:
+    - postgres_fdw
+    - sqlite_fdw
+    - oracle_fdw
+    - file_fdw
+    Returns a dict mapping extension name to boolean success.
+    """
+    if not pg_conn_data or not (pg_conn_data.get("host") or pg_conn_data.get("dsn")):
+        return {}
+
+    conn = None
+    results = {}
+    try:
+        conn = create_postgres_connection(
+            pg_conn_data,
+            application_name="Universal SQL Client (FDW Extensions Auto-Installer)",
+            bypass_cooldown=True
+        )
+        if not conn:
+            return results
+
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        extensions = [
+            ("postgres_fdw", "PostgreSQL Foreign Data Wrapper"),
+            ("sqlite_fdw", "SQLite Foreign Data Wrapper"),
+            ("oracle_fdw", "Oracle Foreign Data Wrapper"),
+            ("file_fdw", "File/CSV Foreign Data Wrapper"),
+        ]
+
+        for ext_name, desc in extensions:
+            try:
+                cur.execute(f'CREATE EXTENSION IF NOT EXISTS "{ext_name}";')
+                results[ext_name] = True
+                print(f"[FDW Auto-Installer] Extension '{ext_name}' ({desc}) enabled successfully.")
+            except Exception as ext_err:
+                results[ext_name] = False
+                print(f"[FDW Auto-Installer] Extension '{ext_name}' ({desc}) notice: {ext_err}")
+
+        cur.close()
+    except Exception as e:
+        print(f"[FDW Auto-Installer] Could not auto-install extensions on host: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return results
+
+
+def create_sqlite_fdw_source(pg_conn_data: dict, ds_data: dict):
+    """
+    Provisions Foreign Data Wrapper (sqlite_fdw) if available on PostgreSQL host,
+    or registers SQLite Data Source with client-side introspection.
+    """
+    conn = create_postgres_connection(
+        pg_conn_data,
+        application_name="Universal SQL Client (SQLite FDW Provisioner)",
+        bypass_cooldown=True
+    )
+    if not conn:
+        raise Exception("Could not connect to host PostgreSQL database.")
+
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        # 1. Try to ensure sqlite_fdw extension exists
+        has_sqlite_fdw = False
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS sqlite_fdw;")
+            has_sqlite_fdw = True
+        except Exception as ext_err:
+            print(f"Notice: sqlite_fdw extension not available on PostgreSQL host: {ext_err}")
+
+        # 2. Determine safe server name
+        raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "sqlite_source"
+        safe_name = _sanitize_identifier(raw_name)
+        server_name = f"srv_{safe_name}"
+        db_path = ds_data.get("db_path") or ds_data.get("file_path") or ""
+
+        if not db_path:
+            raise Exception("SQLite database file path is required.")
+
+        local_schema = f"{safe_name}_schema"
+
+        if has_sqlite_fdw:
+            # 3. Clean up existing server if present
+            cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
+            if cur.fetchone():
+                cur.execute(f'DROP SERVER "{server_name}" CASCADE;')
+
+            # 4. Create foreign server
+            cur.execute(f"""
+                CREATE SERVER "{server_name}"
+                FOREIGN DATA WRAPPER sqlite_fdw
+                OPTIONS (database %s);
+            """, (db_path,))
+
+            # 5. User mapping (optional in sqlite_fdw)
+            try:
+                cur.execute(f'CREATE USER MAPPING FOR CURRENT_USER SERVER "{server_name}";')
+            except Exception:
+                pass
+
+            # 6. Import foreign schema into a dedicated schema
+            cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
+            try:
+                selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+                if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
+                    tables_str = ", ".join(f'"{t}"' for t in selected_tables)
+                    cur.execute(f"""
+                        IMPORT FOREIGN SCHEMA public
+                        LIMIT TO ({tables_str})
+                        FROM SERVER "{server_name}"
+                        INTO "{local_schema}";
+                    """)
+                else:
+                    cur.execute(f"""
+                        IMPORT FOREIGN SCHEMA public
+                        FROM SERVER "{server_name}"
+                        INTO "{local_schema}";
+                    """)
+            except Exception as import_err:
+                print(f"Notice: sqlite_fdw IMPORT FOREIGN SCHEMA warning: {import_err}")
+
+        cur.close()
+        return server_name, local_schema
+    finally:
+        conn.close()
+
+
+def sync_sqlite_fdw_schema(pg_conn_data: dict, ds_data: dict):
+    """
+    Re-synchronizes SQLite foreign schema into host PostgreSQL database or local metadata.
+    """
+    conn = create_postgres_connection(
+        pg_conn_data,
+        application_name="Universal SQL Client (SQLite FDW Sync)",
+        bypass_cooldown=True
+    )
+    if not conn:
+        raise Exception("Could not connect to host PostgreSQL database.")
+
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "sqlite_source"
+        safe_name = _sanitize_identifier(raw_name)
+        server_name = ds_data.get("server_name") or f"srv_{safe_name}"
+        local_schema = ds_data.get("schema_name") or f"{safe_name}_schema"
+
+        # Check if server exists on host
+        cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
+        if cur.fetchone():
+            # Drop existing foreign tables in local_schema for this server
+            cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
+            cur.execute(f"""
+                DO $$
+                DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (
+                        SELECT c.relname
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        JOIN pg_foreign_table ft ON ft.ftrelid = c.oid
+                        JOIN pg_foreign_server s ON s.oid = ft.ftserver
+                        WHERE n.nspname = '{local_schema}' AND s.srvname = '{server_name}'
+                    )
+                    LOOP
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                    END LOOP;
+                END $$;
+            """)
+
+            # Parse selected_tables if any
+            selected_tables = ds_data.get("selected_tables")
+            if not selected_tables and ds_data.get("config_json"):
+                try:
+                    cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
+                    selected_tables = cfg.get("selected_tables")
+                except Exception:
+                    pass
+
+            # Re-import foreign schema
+            if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
+                tables_str = ", ".join(f'"{t}"' for t in selected_tables)
+                cur.execute(f"""
+                    IMPORT FOREIGN SCHEMA public
+                    LIMIT TO ({tables_str})
+                    FROM SERVER "{server_name}"
+                    INTO "{local_schema}";
+                """)
+            else:
+                cur.execute(f"""
+                    IMPORT FOREIGN SCHEMA public
+                    FROM SERVER "{server_name}"
+                    INTO "{local_schema}";
+                """)
+
+            # Query count of imported foreign tables
+            cur.execute("""
+                SELECT count(*)
+                FROM pg_foreign_table ft
+                JOIN pg_foreign_server s ON s.oid = ft.ftserver
+                WHERE s.srvname = %s;
+            """, (server_name,))
+            count = cur.fetchone()[0]
+        else:
+            # Direct SQLite count
+            count = 0
+            db_path = ds_data.get("db_path") or ds_data.get("file_path")
+            if db_path and os.path.exists(db_path):
+                try:
+                    import sqlite3 as s_reader
+                    with s_reader.connect(db_path) as sc:
+                        cc = sc.cursor()
+                        cc.execute("SELECT count(*) FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%';")
+                        count = cc.fetchone()[0]
+                except Exception:
+                    pass
+
+        cur.close()
+        return server_name, local_schema, count
     finally:
         conn.close()
 

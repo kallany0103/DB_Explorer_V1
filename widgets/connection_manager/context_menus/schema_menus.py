@@ -91,7 +91,7 @@ class SchemaMenuBuilder:
         elif node_type == "fdw":
             self._fdw_menu(menu, item_data, index)
         elif node_type == "foreign_server":
-            self._foreign_server_menu(menu, item_data, index)
+            self._foreign_server_menu(menu, item, item_data, index)
         elif node_type == "user_mapping":
             self._user_mapping_menu(menu, item_data, index)
         elif node_type == "indexes_group":
@@ -261,6 +261,12 @@ class SchemaMenuBuilder:
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Cross-Source Join Helper...", "mdi.transit-connection-variant")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data, display_name)
         )
         menu.addAction(act)
 
@@ -566,6 +572,13 @@ class SchemaMenuBuilder:
             act.triggered.connect(stub(f"create_{group.lower()}"))
             menu.addAction(act)
 
+        if group == "Foreign Tables" and item_data.get("ds_data"):
+            act = action(self.manager, "Sync Foreign Schema", "mdi.sync")
+            act.triggered.connect(
+                lambda: self.manager.connection_dialogs.sync_foreign_schema(item)
+            )
+            menu.addAction(act)
+
         menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
@@ -848,9 +861,15 @@ class SchemaMenuBuilder:
 
     # Foreign Server
 
-    def _foreign_server_menu(self, menu, item_data, index):
+    def _foreign_server_menu(self, menu, item, item_data, index):
+        if item_data.get("ds_data"):
+            act = action(self.manager, "Sync Foreign Schema", "mdi.sync")
+            act.triggered.connect(
+                lambda: self.manager.connection_dialogs.sync_foreign_schema(item)
+            )
+            menu.addAction(act)
+            menu.addSeparator()
 
-        menu.addSeparator()
         act = action(self.manager, "Drop Foreign Server", "mdi.delete-outline", shortcut="Alt+Shift+D")
         act.triggered.connect(
             lambda: self.manager.connection_actions.drop_foreign_server(item_data)
@@ -928,6 +947,18 @@ class SchemaMenuBuilder:
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, ds_name)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Cross-Source Query Helper...", "mdi.transit-connection-variant")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Sync Foreign Schema", "mdi.sync")
+        act.triggered.connect(
+            lambda: self.manager.connection_dialogs.sync_foreign_schema(item)
         )
         menu.addAction(act)
 

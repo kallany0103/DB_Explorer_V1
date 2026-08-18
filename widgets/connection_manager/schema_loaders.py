@@ -273,11 +273,13 @@ class SchemaLoader:
                 table_item.setEditable(False)
                 self.manager._set_tree_item_icon(table_item, level="FOREIGN_TABLE")
 
+                is_sqlite = (ds_data.get('source_type') or '').upper() == 'SQLITE'
                 table_data = {
-                    'db_type': 'postgres',
+                    'db_type': 'sqlite' if is_sqlite else 'postgres',
                     'type': 'table',
                     'table_name': ft_name,
                     'schema_name': ft_schema,
+                    'db_path': ds_data.get('db_path') or ds_data.get('file_path'),
                     'table_type': 'Foreign Tables',
                     'conn_data': conn_data,
                     'ds_data': ds_data

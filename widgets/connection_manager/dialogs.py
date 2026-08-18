@@ -317,18 +317,26 @@ class ConnectionDialogs:
             local_schema = None
 
             # Automatically provision Foreign Data Wrapper in the background on host PostgreSQL
+            fdw_name = "postgres_fdw"
             if code == "POSTGRES" and host_conn_data:
                 server_name, local_schema = db.create_postgres_fdw_source(host_conn_data, data)
                 data["server_name"] = server_name
                 data["schema_name"] = local_schema
                 data["fdw_name"] = "postgres_fdw"
+                fdw_name = "postgres_fdw"
+            elif code == "SQLITE" and host_conn_data:
+                server_name, local_schema = db.create_sqlite_fdw_source(host_conn_data, data)
+                data["server_name"] = server_name
+                data["schema_name"] = local_schema
+                data["fdw_name"] = "sqlite_fdw"
+                fdw_name = "sqlite_fdw"
 
             db.add_data_source(
                 connection_id=connection_id,
                 source_type=code,
                 data=data,
                 server_name=server_name,
-                fdw_name="postgres_fdw"
+                fdw_name=fdw_name
             )
 
             # Ensure parent item path is saved for auto-expansion
@@ -362,7 +370,7 @@ class ConnectionDialogs:
         if source_type == "POSTGRES":
             dialog = PostgresDataSourceDialog(self.manager, is_editing=True, conn_data=ds_data)
         elif source_type == "SQLITE":
-            dialog = SQLiteDataSourceDialog(self.manager, conn_data=ds_data)
+            dialog = SQLiteDataSourceDialog(self.manager, is_editing=True, conn_data=ds_data)
         elif source_type == "ORACLE":
             dialog = OracleDataSourceDialog(self.manager, conn_data=ds_data)
         elif source_type == "CSV":
@@ -382,6 +390,10 @@ class ConnectionDialogs:
             server_name = ds_data.get("server_name")
             if source_type == "POSTGRES" and host_conn_data:
                 server_name, local_schema = db.create_postgres_fdw_source(host_conn_data, new_data)
+                new_data["server_name"] = server_name
+                new_data["schema_name"] = local_schema
+            elif source_type == "SQLITE" and host_conn_data:
+                server_name, local_schema = db.create_sqlite_fdw_source(host_conn_data, new_data)
                 new_data["server_name"] = server_name
                 new_data["schema_name"] = local_schema
 
@@ -450,6 +462,49 @@ class ConnectionDialogs:
 
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete data source:\n{e}")
+
+    def sync_foreign_schema(self, item):
+        """Re-runs IMPORT FOREIGN SCHEMA to sync remote tables for the selected data source/foreign server."""
+        if not item:
+            return
+        item_data = item.data(Qt.ItemDataRole.UserRole)
+        if not item_data or not isinstance(item_data, dict):
+            return
+
+        ds_data = item_data.get("ds_data") or item_data
+        host_conn_data = item_data.get("conn_data") or ds_data.get("conn_data") or getattr(self.manager, "active_postgres_conn", None)
+
+        if not host_conn_data:
+            QMessageBox.warning(self.manager, "Sync Schema", "Could not identify host database connection.")
+            return
+
+        ds_name = ds_data.get("name") or ds_data.get("display_name") or ds_data.get("short_name") or item.text()
+        source_type = (ds_data.get("source_type") or "POSTGRES").upper()
+
+        self.manager.status.showMessage(f"Syncing foreign schema for '{ds_name}'...", 4000)
+        try:
+            if source_type == "SQLITE":
+                server_name, local_schema, count = db.sync_sqlite_fdw_schema(host_conn_data, ds_data)
+            else:
+                server_name, local_schema, count = db.sync_postgres_fdw_schema(host_conn_data, ds_data)
+
+            # Refresh Schema Tree for current connection
+            current_index = self.manager.tree.currentIndex()
+            if current_index.isValid():
+                self.manager.item_clicked(current_index, skip_restore=False)
+
+            self.manager.status.showMessage(f"Foreign schema for '{ds_name}' synced successfully ({count} foreign tables).", 5000)
+            QMessageBox.information(
+                self.manager,
+                "Sync Complete",
+                f"Foreign schema synchronization completed for '{ds_name}'.\n\n"
+                f"• Server: {server_name}\n"
+                f"• Schema: {local_schema}\n"
+                f"• Imported Foreign Tables: {count}"
+            )
+        except Exception as e:
+            self.manager.status.showMessage(f"Failed to sync foreign schema: {e}", 5000)
+            QMessageBox.critical(self.manager, "Sync Failed", f"Failed to sync foreign schema for '{ds_name}':\n{e}")
                 
     def show_connection_details(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
@@ -851,6 +906,12 @@ class ConnectionDialogs:
             try:
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
+
+                # Automatically enable essential FDW extensions (postgres_fdw, sqlite_fdw, oracle_fdw, file_fdw)
+                try:
+                    db.ensure_host_fdw_extensions(data)
+                except Exception as ext_err:
+                    print(f"Notice: Background FDW extension initialization notice: {ext_err}")
 
             except Exception as e:
                 QMessageBox.critical(

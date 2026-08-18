@@ -421,6 +421,12 @@ class UDSSchemaWorker(QRunnable):
             app_name = f"Universal SQL Client (UDS Schema) - {self.conn_data.get('database', 'postgres')}"
             try:
                 conn = db.get_pooled_postgres_connection(self.conn_data, application_name=app_name, use_pool=True)
+                if conn:
+                    try:
+                        # Automatically ensure necessary FDW extensions on host database
+                        db.ensure_host_fdw_extensions(self.conn_data)
+                    except Exception as ext_init_err:
+                        print(f"Notice: FDW auto-initialization notice: {ext_init_err}")
             except Exception as conn_err:
                 print(f"Warning: could not connect to UDS host database: {conn_err}")
                 conn = None
@@ -490,23 +496,23 @@ class UDSSchemaWorker(QRunnable):
                             {"table_name": r[0], "schema_name": r[1]}
                             for r in cursor.fetchall()
                         ]
-
-                        # Fallback: check if foreign tables exist in schema matching server name or ds schema
-                        if not foreign_tables:
-                            schema_name = ds.get("schema_name") or ds.get("schema") or f"{server_name.replace('srv_', '')}_schema"
-                            cursor.execute("""
-                                SELECT c.relname, n.nspname
-                                FROM pg_class c
-                                JOIN pg_namespace n ON n.oid = c.relnamespace
-                                WHERE n.nspname = %s AND c.relkind = 'f'
-                                ORDER BY c.relname;
-                            """, (schema_name,))
-                            foreign_tables = [
-                                {"table_name": r[0], "schema_name": r[1]}
-                                for r in cursor.fetchall()
-                            ]
                     except Exception as ds_err:
                         print(f"Notice: error reading foreign objects for data source {server_name}: {ds_err}")
+
+                # If SQLite data source and foreign_tables is empty (e.g. cloud host without sqlite_fdw extension),
+                # introspect the local SQLite database file directly so all tables and columns appear seamlessly
+                source_type = (ds.get("source_type") or "").upper()
+                if source_type == "SQLITE" and not foreign_tables:
+                    db_path = ds.get("db_path") or ds.get("file_path")
+                    if db_path and os.path.exists(db_path):
+                        try:
+                            import sqlite3 as sqlite_reader
+                            with sqlite_reader.connect(db_path) as s_conn:
+                                s_cur = s_conn.cursor()
+                                s_cur.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;")
+                                foreign_tables = [{"table_name": r[0], "schema_name": "main"} for r in s_cur.fetchall()]
+                        except Exception as s_err:
+                            print(f"Notice: error reading SQLite tables for {db_path}: {s_err}")
 
                 data_sources_result.append({
                     "ds_data": ds,
