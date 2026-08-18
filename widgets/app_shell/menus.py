@@ -11,7 +11,6 @@ def build_main_window_menu(main_window):
     file_menu.addAction(main_window.save_as_action)
     file_menu.addSeparator()
     file_menu.addAction(main_window.preferences_action)
-    file_menu.addSeparator()
     file_menu.addAction(main_window.close_tab_action)
     file_menu.addAction(main_window.close_all_tabs_action)
 
