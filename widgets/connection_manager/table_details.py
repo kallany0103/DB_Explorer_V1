@@ -54,7 +54,7 @@ class TableDetailsLoader:
 
             if table_name and schema_name:
                 self.load_postgres_table_details(item, item_data)
-            elif schema_name and item_data.get('type') != 'schema_group':
+            elif schema_name and item_data.get('type') == 'schema':
                 item.removeRows(0, item.rowCount())
                 try:
                     groups = [
