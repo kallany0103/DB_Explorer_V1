@@ -77,6 +77,7 @@ def get_hierarchy_data():
                     """, (connection_id,))
                     ds_rows = c.fetchall()
                     for ds_row in ds_rows:
+                        ds_id, ds_src_name, ds_disp_name, ds_type, ds_host, ds_port, ds_db, ds_user, ds_pwd, ds_schema, ds_url, ds_fpath, ds_cfg, ds_srv, ds_fdw, ds_stat = ds_row
                         sel_tables = None
                         if ds_cfg:
                             try:
