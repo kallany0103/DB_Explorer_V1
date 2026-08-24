@@ -6,6 +6,10 @@ import qtawesome as qta
 
 
 class TreeHelpers:
+    # Class-level icon cache — shared across all instances so qta.icon() is
+    # called once per unique key for the lifetime of the process.
+    _icon_cache: dict = {}
+
     def __init__(self, manager):
         self.manager = manager
 
@@ -30,121 +34,103 @@ class TreeHelpers:
             self.manager.tree.collapseAll()
 
     def set_tree_item_icon(self, item, level, code=""):
+        cache_key = (level, code)
+        cached = TreeHelpers._icon_cache.get(cache_key)
+        if cached is not None:
+            item.setIcon(cached)
+            return
+
+        icon = self._build_icon(level, code)
+        TreeHelpers._icon_cache[cache_key] = icon
+        item.setIcon(icon)
+
+    def _build_icon(self, level, code=""):
+        """Create the QIcon for the given level/code. Called once per unique key."""
         if level == "DATA_SOURCE":
-            item.setIcon(qta.icon("mdi.server-network", color="#0078D4"))
-            return
-
+            return qta.icon("mdi.server-network", color="#0078D4")
         if level == "GROUP":
-            item.setIcon(qta.icon("fa6s.folder", color="#C49102"))
-            return
+            return qta.icon("fa6s.folder", color="#C49102")
         if level == "GROUP_SCHEMAS":
-            item.setIcon(qta.icon("fa6s.layer-group", color="#C49102"))
-            return
+            return qta.icon("fa6s.layer-group", color="#C49102")
         if level == "GROUP_TABLES":
-            item.setIcon(qta.icon("mdi.table-multiple", color="#C49102"))
-            return
+            return qta.icon("mdi.table-multiple", color="#C49102")
         if level == "GROUP_VIEWS":
-            item.setIcon(qta.icon("mdi6.folder-eye", color="#C49102"))
-            return
+            return qta.icon("mdi6.folder-eye", color="#C49102")
         if level == "GROUP_FOREIGN_TABLES":
-            item.setIcon(qta.icon("mdi.folder-network", color="#C49102"))
-            return
+            return qta.icon("mdi.folder-network", color="#C49102")
         if level == "GROUP_MATERIALIZED_VIEWS":
-            item.setIcon(qta.icon("mdi.folder-table", color="#C49102"))
-            return
+            return qta.icon("mdi.folder-table", color="#C49102")
         if level == "GROUP_FUNCTIONS":
-            item.setIcon(qta.icon("mdi.code-braces", color="#E91E63"))
-            return
+            return qta.icon("mdi.code-braces", color="#E91E63")
         if level == "GROUP_TRIGGER_FUNCTIONS":
-            item.setIcon(qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#C49102'}, {'color': '#C49102', 'scale_factor': 0.5}]))
-            return
+            return qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#C49102'}, {'color': '#C49102', 'scale_factor': 0.5}])
         if level == "GROUP_SEQUENCES":
-            item.setIcon(qta.icon("mdi.numeric", color="#BF7200"))
-            return
+            return qta.icon("mdi.numeric", color="#BF7200")
         if level == "POLICIES_GROUP":
-            item.setIcon(qta.icon("mdi.folder-lock-outline", color="#9E9E9E"))
-            return
-
+            return qta.icon("mdi.folder-lock-outline", color="#9E9E9E")
         if level == "SCHEMA":
-            item.setIcon(qta.icon("mdi.cube-outline", color="#C49102"))
-            return
-
+            return qta.icon("mdi.cube-outline", color="#C49102")
         if level == "TABLE":
-            item.setIcon(qta.icon("mdi.table", color="#4CAF50"))
-            return
+            return qta.icon("mdi.table", color="#4CAF50")
         if level == "VIEW":
-            item.setIcon(qta.icon("mdi.table-eye", color="#2196F3"))
-            return
+            return qta.icon("mdi.table-eye", color="#2196F3")
         if level == "MATERIALIZED_VIEW":
-            item.setIcon(qta.icon("mdi.table-eye", color="#00BCD4"))
-            return
-
+            return qta.icon("mdi.table-eye", color="#00BCD4")
         if level == "COLUMN":
-            item.setIcon(qta.icon("mdi.table-column", color="#607D8B"))
-            return
-
+            return qta.icon("mdi.table-column", color="#607D8B")
         if level == "TRIGGER":
             if code == "D":
-                item.setIcon(qta.icon("mdi.lightning-bolt-outline", color="#9E9E9E"))
-            else:
-                item.setIcon(qta.icon("mdi.lightning-bolt", color="#FF9800"))
-            return
-
+                return qta.icon("mdi.lightning-bolt-outline", color="#9E9E9E")
+            return qta.icon("mdi.lightning-bolt", color="#FF9800")
         if level == "POLICY":
-            item.setIcon(qta.icon("mdi.shield-lock-outline", color="#FF5722"))
-            return
+            return qta.icon("mdi.shield-lock-outline", color="#FF5722")
+        if level == "FDW_ROOT":
+            return qta.icon("mdi.server-network", color="#9E9E9E")
+        if level == "FDW":
+            return qta.icon("mdi.server-network", color="#9E9E9E")
+        if level == "SERVER":
+            return qta.icon("fa5s.database", color="#9E9E9E")
+        if level == "FOREIGN_TABLE":
+            return qta.icon("mdi.table-network", color="#4CAF50")
+        if level == "EXTENSION_ROOT":
+            return qta.icon("mdi.puzzle", color="#8340A1")
+        if level == "EXTENSION":
+            return qta.icon("mdi.puzzle", color="#8340A1")
+        if level == "LANGUAGE_ROOT":
+            return qta.icon("fa5s.code", color="#795548")
+        if level == "LANGUAGE":
+            return qta.icon("fa5s.code", color="#795548")
+        if level == "SEQUENCE":
+            return qta.icon("mdi.numeric", color="#BF7200")
+        if level == "FUNCTION":
+            return qta.icon("mdi.code-braces", color="#E91E63")
+        if level == "TRIGGER_FUNCTION":
+            return qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#C49102'}, {'color': '#C49102', 'scale_factor': 0.5}])
+        if level == "USER":
+            return qta.icon("fa5s.user", color="#607D8B")
 
-        if level in ["FDW_ROOT", "FDW", "SERVER", "FOREIGN_TABLE", "EXTENSION_ROOT", "EXTENSION", "LANGUAGE_ROOT", "LANGUAGE", "SEQUENCE", "FUNCTION", "TRIGGER_FUNCTION"]:
-            if level == "FDW_ROOT":
-                item.setIcon(qta.icon("mdi.server-network", color="#9E9E9E"))
-            elif level == "FDW":
-                item.setIcon(qta.icon("mdi.server-network", color="#9E9E9E"))
-            elif level == "SERVER":
-                item.setIcon(qta.icon("fa5s.database", color="#9E9E9E"))
-            elif level == "FOREIGN_TABLE":
-                item.setIcon(qta.icon("mdi.table-network", color="#4CAF50"))
-            elif level == "EXTENSION_ROOT":
-                item.setIcon(qta.icon("mdi.puzzle", color="#8340A1"))
-            elif level == "EXTENSION":
-                item.setIcon(qta.icon("mdi.puzzle", color="#8340A1"))
-            elif level == "LANGUAGE_ROOT":
-                item.setIcon(qta.icon("fa5s.code", color="#795548"))
-            elif level == "LANGUAGE":
-                item.setIcon(qta.icon("fa5s.code", color="#795548"))
-            elif level == "SEQUENCE":
-                item.setIcon(qta.icon("mdi.numeric", color="#BF7200"))
-            elif level == "FUNCTION":
-                item.setIcon(qta.icon("mdi.code-braces", color="#E91E63"))
-            elif level == "TRIGGER_FUNCTION":
-                item.setIcon(qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#C49102'}, {'color': '#C49102', 'scale_factor': 0.5}]))
-            elif level == "USER":
-                item.setIcon(qta.icon("fa5s.user", color="#607D8B"))
-            return
-
+        # TYPE-level — SVG file icon
         icon_map = {
-            "POSTGRES": "assets/postgresql.svg",
-            "SQLITE": "assets/sqlite.svg",
-            "ORACLE": "assets/oracle.svg",
-            "ORACLE_DB": "assets/oracle.svg",
-            "ORACLE_FA": "assets/oracle_fusion.svg",
-            "SERVICENOW": "assets/servicenow.svg",
-            "UDS": "assets/unified_data_source.svg",
-            "CSV": "assets/csv.svg",
+            "POSTGRES":    "assets/postgresql.svg",
+            "SQLITE":      "assets/sqlite.svg",
+            "ORACLE":      "assets/oracle.svg",
+            "ORACLE_DB":   "assets/oracle.svg",
+            "ORACLE_FA":   "assets/oracle_fusion.svg",
+            "SERVICENOW":  "assets/servicenow.svg",
+            "UDS":         "assets/unified_data_source.svg",
+            "CSV":         "assets/csv.svg",
         }
-
         icon_path = icon_map.get(code, "assets/database.svg")
-        
-        # Resolve absolute path for PyInstaller
         if hasattr(sys, '_MEIPASS'):
             abs_icon_path = os.path.join(sys._MEIPASS, icon_path)
         else:
             abs_icon_path = os.path.join(os.path.abspath("."), icon_path)
+        return QIcon(abs_icon_path)
 
-        item.setIcon(QIcon(abs_icon_path))
 
 
     def save_tree_expansion_state(self):
-        saved_paths = []
+        saved_paths = set()          # set → O(1) membership checks in restore
         proxy = self.manager.proxy_model
         tree = self.manager.tree
 
@@ -152,19 +138,19 @@ class TreeHelpers:
             proxy_index = proxy.index(row, 0)
             if tree.isExpanded(proxy_index):
                 type_name = proxy_index.data(Qt.ItemDataRole.DisplayRole)
-                saved_paths.append((type_name, None, None))
+                saved_paths.add((type_name, None, None))
 
                 for group_row in range(proxy.rowCount(proxy_index)):
                     group_index = proxy.index(group_row, 0, proxy_index)
                     if tree.isExpanded(group_index):
                         group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
-                        saved_paths.append((type_name, group_name, None))
+                        saved_paths.add((type_name, group_name, None))
 
                         for conn_row in range(proxy.rowCount(group_index)):
                             conn_index = proxy.index(conn_row, 0, group_index)
                             if tree.isExpanded(conn_index):
                                 conn_name = conn_index.data(Qt.ItemDataRole.DisplayRole)
-                                saved_paths.append((type_name, group_name, conn_name))
+                                saved_paths.add((type_name, group_name, conn_name))
 
         self.manager._saved_tree_paths = saved_paths
 
@@ -188,38 +174,46 @@ class TreeHelpers:
             self.manager._saved_selection_info = None
 
     def restore_tree_expansion_state(self):
-        if not hasattr(self.manager, '_saved_tree_paths') or not self.manager._saved_tree_paths:
+        saved = getattr(self.manager, '_saved_tree_paths', None)
+        if not saved:
             return
 
         proxy = self.manager.proxy_model
         tree = self.manager.tree
+        sel_info = getattr(self.manager, '_saved_selection_info', None)
 
+        # Keep updates disabled for the entire operation — expansion + selection
+        # — so Qt only repaints once at the very end.
         tree.setUpdatesEnabled(False)
         try:
             for row in range(proxy.rowCount()):
                 proxy_index = proxy.index(row, 0)
                 type_name = proxy_index.data(Qt.ItemDataRole.DisplayRole)
 
-                if (type_name, None, None) in self.manager._saved_tree_paths or (type_name, None) in self.manager._saved_tree_paths:
-                    tree.expand(proxy_index)
+                # O(1) set lookup instead of O(n) list scan
+                if (type_name, None, None) not in saved:
+                    continue
+                tree.expand(proxy_index)
 
-                    for group_row in range(proxy.rowCount(proxy_index)):
-                        group_index = proxy.index(group_row, 0, proxy_index)
-                        group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
+                for group_row in range(proxy.rowCount(proxy_index)):
+                    group_index = proxy.index(group_row, 0, proxy_index)
+                    group_name = group_index.data(Qt.ItemDataRole.DisplayRole)
 
-                        if (type_name, group_name, None) in self.manager._saved_tree_paths or (type_name, group_name) in self.manager._saved_tree_paths:
-                            tree.expand(group_index)
+                    if (type_name, group_name, None) not in saved:
+                        continue
+                    tree.expand(group_index)
 
-                            for conn_row in range(proxy.rowCount(group_index)):
-                                conn_index = proxy.index(conn_row, 0, group_index)
-                                conn_name = conn_index.data(Qt.ItemDataRole.DisplayRole)
+                    for conn_row in range(proxy.rowCount(group_index)):
+                        conn_index = proxy.index(conn_row, 0, group_index)
+                        conn_name = conn_index.data(Qt.ItemDataRole.DisplayRole)
 
-                                if (type_name, group_name, conn_name) in self.manager._saved_tree_paths:
-                                    tree.expand(conn_index)
+                        if (type_name, group_name, conn_name) in saved:
+                            tree.expand(conn_index)
 
-            # Restore selection
-            sel_info = getattr(self.manager, '_saved_selection_info', None)
+            # Restore selection — still inside setUpdatesEnabled(False)
             if sel_info:
+                sm = tree.selectionModel()
+                select_flag = sm.SelectionFlag.ClearAndSelect
                 if sel_info[0] == "CONNECTION":
                     target_name = sel_info[1]
                     for r in range(proxy.rowCount()):
@@ -229,7 +223,7 @@ class TreeHelpers:
                             for cr in range(proxy.rowCount(g_idx)):
                                 c_idx = proxy.index(cr, 0, g_idx)
                                 if c_idx.data(Qt.ItemDataRole.DisplayRole) == target_name:
-                                    tree.selectionModel().select(c_idx, tree.selectionModel().SelectionFlag.ClearAndSelect)
+                                    sm.select(c_idx, select_flag)
                                     tree.setCurrentIndex(c_idx)
                                     break
                 elif sel_info[0] == "DATA_SOURCE":
@@ -244,12 +238,12 @@ class TreeHelpers:
                                     for dr in range(proxy.rowCount(c_idx)):
                                         d_idx = proxy.index(dr, 0, c_idx)
                                         if d_idx.data(Qt.ItemDataRole.DisplayRole) == ds_target:
-                                            tree.selectionModel().select(d_idx, tree.selectionModel().SelectionFlag.ClearAndSelect)
+                                            sm.select(d_idx, select_flag)
                                             tree.setCurrentIndex(d_idx)
                                             break
         finally:
             tree.setUpdatesEnabled(True)
-            self.manager._saved_tree_paths = []
+            self.manager._saved_tree_paths = set()   # clear to empty set
             self.manager._saved_selection_info = None
             self.manager._saved_selection_name = None
 

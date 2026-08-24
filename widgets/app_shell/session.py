@@ -27,7 +27,7 @@ def save_main_window_session(main_window, session_file):
         "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
         "theme": getattr(main_window, "theme", "Grey (Default)"),
-        "saved_tree_paths": getattr(main_window.connection_manager, "_saved_tree_paths", []),
+        "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])),
         "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
         "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
         "tabs": [],

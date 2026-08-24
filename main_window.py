@@ -21,14 +21,16 @@ import db
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
+    save_main_window_session,
+    restore_main_window_session,
+    open_sql_file,
+    save_sql_file,
+    save_sql_file_as,
     open_find_dialog,
     on_find_next,
     on_find_prev,
     on_replace,
     on_replace_all,
-    open_sql_file,
-    save_sql_file,
-    save_sql_file_as,
     close_current_tab as close_current_tab_action,
     close_all_tabs as close_all_tabs_action,
     close_tab as close_tab_action,
@@ -36,9 +38,9 @@ from widgets.app_shell import (
     toggle_maximize as toggle_maximize_action,
     open_help_url as open_help_url_action,
     update_thread_pool_status as update_thread_pool_status_action,
-    restore_main_window_session,
-    save_main_window_session,
     reset_to_dashboard as reset_to_dashboard_action,
+    export_connections,
+    import_connections,
 )
 from ui.account_menu import AccountMenu
 
@@ -227,8 +229,7 @@ class MainWindow(QMainWindow):
 
     def add_erd_tab(self):
         erd_widget = ERDWidget({})
-        tab_title = f"ERD Tab {self.tab_widget.count() + 1}"
-        index = self.tab_widget.addTab(erd_widget, tab_title)
+        index = self.tab_widget.addTab(erd_widget, "ERD")
         self.tab_widget.setTabIcon(index, qta.icon('fa6s.sitemap'))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
@@ -428,6 +429,12 @@ class MainWindow(QMainWindow):
 
     def save_sql_file_as(self):
         save_sql_file_as(self)
+        
+    def export_connections(self):
+        export_connections(self)
+        
+    def import_connections(self):
+        import_connections(self)
 
     #FIND / REPLACE MENU ACTIONS
 

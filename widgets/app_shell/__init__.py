@@ -10,6 +10,8 @@ from widgets.app_shell.file_ops import (
 	on_find_prev,
 	on_replace,
 	on_replace_all,
+    export_connections,
+    import_connections,
 )
 from widgets.app_shell.window_ops import (
 	close_current_tab,
@@ -35,6 +37,8 @@ __all__ = [
 	"on_find_prev",
 	"on_replace",
 	"on_replace_all",
+    "export_connections",
+    "import_connections",
 	"close_current_tab",
 	"close_all_tabs",
 	"close_tab",

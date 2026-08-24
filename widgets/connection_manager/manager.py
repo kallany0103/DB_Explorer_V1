@@ -428,62 +428,98 @@ class ConnectionManager(QWidget):
     def filter_object_explorer(self, text):
         self.tree_helpers.filter_object_explorer(text)
 
-    def load_data(self):
-        self.model.clear()
-        self.model.setHorizontalHeaderLabels(["Object Explorer"])
+    def load_data(self, hierarchical_data=None):
+        # Detach the proxy model for the entire build so zero proxy events fire
+        # during construction. Reattaching at the end does a single O(n) scan of
+        # the completed model — far cheaper than blockSignals + invalidate() which
+        # still walks every node with recursive filtering enabled.
+        self.proxy_model.setSourceModel(None)
+        try:
+            self.model.clear()
+            self.model.setHorizontalHeaderLabels(["Object Explorer"])
 
-        hierarchical_data = db.get_hierarchy_data()
-        for connection_type_data in hierarchical_data:
-            code = connection_type_data["code"]
-            connection_type_item = QStandardItem(connection_type_data["name"])
-            connection_type_item.setData(code, Qt.ItemDataRole.UserRole)
-            connection_type_item.setData(connection_type_data["id"], Qt.ItemDataRole.UserRole + 1)
-            self._set_tree_item_icon(connection_type_item, level="TYPE", code=code)
+            if hierarchical_data is None:
+                hierarchical_data = db.get_hierarchy_data()
 
-            for connection_group_data in connection_type_data["usf_connection_groups"]:
-                connection_group_item = QStandardItem(connection_group_data["name"])
-                connection_group_item.setData(connection_group_data["id"], Qt.ItemDataRole.UserRole + 1)
-                self._set_tree_item_icon(connection_group_item, level="GROUP")
+            root_items = []
+            for connection_type_data in hierarchical_data:
+                code = connection_type_data["code"]
+                connection_type_item = QStandardItem(connection_type_data["name"])
+                connection_type_item.setData(code, Qt.ItemDataRole.UserRole)
+                connection_type_item.setData(connection_type_data["id"], Qt.ItemDataRole.UserRole + 1)
+                self._set_tree_item_icon(connection_type_item, level="TYPE", code=code)
 
-                # for connection_data in connection_group_data["usf_connections"]:
-                #     connection_item = QStandardItem(connection_data["short_name"])
-                #     connection_data["db_type"] = code.lower()
-                #     connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
-                #     self._set_tree_item_icon(connection_item, level="CONNECTION", code=code)
-                #     connection_group_item.appendRow(connection_item)
-                
-                for connection_data in connection_group_data["usf_connections"]:
-                    connection_item = QStandardItem(connection_data["short_name"])
-                    connection_data["db_type"] = code.lower()
+                for connection_group_data in connection_type_data["usf_connection_groups"]:
+                    connection_group_item = QStandardItem(connection_group_data["name"])
+                    connection_group_item.setData(connection_group_data["id"], Qt.ItemDataRole.UserRole + 1)
+                    self._set_tree_item_icon(connection_group_item, level="GROUP")
 
-                    # Full connection object
-                    connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
+                    conn_items = []
+                    for connection_data in connection_group_data["usf_connections"]:
+                        connection_item = QStandardItem(connection_data["short_name"])
+                        connection_data["db_type"] = code.lower()
 
-                    # Connection ID (FK for data sources)
-                    connection_item.setData(
-                        connection_data["id"],
-                        Qt.ItemDataRole.UserRole + 1
-                    )
+                        # Full connection object
+                        connection_item.setData(connection_data, Qt.ItemDataRole.UserRole)
 
-                    # Node type
-                    connection_item.setData(
-                        "CONNECTION",
-                        Qt.ItemDataRole.UserRole + 2
-                    )
+                        # Connection ID (FK for data sources)
+                        connection_item.setData(
+                            connection_data["id"],
+                            Qt.ItemDataRole.UserRole + 1
+                        )
 
-                    self._set_tree_item_icon(
-                        connection_item,
-                        level="CONNECTION",
-                        code="POSTGRES" if (code == "UDS" or connection_data.get("db_type") == "uds") else code
-                    )
+                        # Node type
+                        connection_item.setData(
+                            "CONNECTION",
+                            Qt.ItemDataRole.UserRole + 2
+                        )
 
-                    connection_group_item.appendRow(connection_item)
+                        self._set_tree_item_icon(
+                            connection_item,
+                            level="CONNECTION",
+                            code="POSTGRES" if (code == "UDS" or connection_data.get("db_type") == "uds") else code
+                        )
 
-                connection_type_item.appendRow(connection_group_item)
+                        # If UDS (Unified Data Source), populate Level 4 Data Sources
+                        if code == "UDS" or connection_data.get("db_type") == "uds":
+                            data_sources = connection_data.get("usf_data_sources", [])
+                            ds_items = []
+                            for ds in data_sources:
+                                ds_name = ds.get("short_name") or ds.get("source_name") or ds.get("display_name")
+                                ds_item = QStandardItem(ds_name)
+                                ds_item_data = dict(ds)
+                                ds_item_data["type"] = "data_source"
+                                ds_item_data["conn_data"] = connection_data
+                                ds_item_data["parent_conn_id"] = connection_data["id"]
 
-            self.model.appendRow(connection_type_item)
+                                ds_item.setData(ds_item_data, Qt.ItemDataRole.UserRole)
+                                ds_item.setData(ds["id"], Qt.ItemDataRole.UserRole + 1)
+                                ds_item.setData("DATA_SOURCE", Qt.ItemDataRole.UserRole + 2)
 
+                                self._set_tree_item_icon(
+                                    ds_item,
+                                    level="DATA_SOURCE",
+                                    code=ds.get("source_type", "POSTGRES")
+                                )
+                                ds_items.append(ds_item)
+                            if ds_items:
+                                connection_item.appendRows(ds_items)
 
+                        conn_items.append(connection_item)
+
+                    if conn_items:
+                        connection_group_item.appendRows(conn_items)
+                    connection_type_item.appendRow(connection_group_item)
+
+                root_items.append(connection_type_item)
+
+            # Batch-append all root items in one call, then reconnect proxy
+            if root_items:
+                self.model.invisibleRootItem().appendRows(root_items)
+
+        finally:
+            # Reconnect proxy — single clean scan of the completed model
+            self.proxy_model.setSourceModel(self.model)
 
     def _set_tree_item_icon(self, item, level, code=""):
         self.tree_helpers.set_tree_item_icon(item, level, code)
