@@ -249,6 +249,10 @@ class CrossSourceQueryDialog(QDialog):
         self.copy_btn.clicked.connect(self._copy_sql)
         btn_layout.addWidget(self.copy_btn)
 
+        self.save_view_btn = SecondaryButton("Save as View...", qta.icon("mdi.content-save-outline", color="#374151"))
+        self.save_view_btn.clicked.connect(self._save_as_unified_view)
+        btn_layout.addWidget(self.save_view_btn)
+
         btn_layout.addStretch()
 
         self.close_btn = SecondaryButton("Cancel")
@@ -457,17 +461,27 @@ class CrossSourceQueryDialog(QDialog):
                     self.col_combo_b.setCurrentIndex(i)
                     break
 
-    def _generate_sql(self):
+    def _generate_sql(self, include_limit=True, include_semicolon=True, include_header=True):
         """Builds the complete cross-source SQL query."""
+        import re
         ds_a = self.ds_combo_a.currentData() or {}
         t_data_a = self.table_combo_a.currentData() or {}
         tbl_a = self.table_combo_a.currentText()
-        schema_a = t_data_a.get("schema_name") or ds_a.get("schema_name") or "public"
 
         ds_b = self.ds_combo_b.currentData() or {}
         t_data_b = self.table_combo_b.currentData() or {}
         tbl_b = self.table_combo_b.currentText()
-        schema_b = t_data_b.get("schema_name") or ds_b.get("schema_name") or "public"
+
+        def _resolve_schema(ds, t_data):
+            schema = ds.get("schema_name")
+            if not schema or schema == "main":
+                name = ds.get("short_name") or ds.get("source_name") or ds.get("display_name") or ds.get("name") or "sqlite"
+                clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', str(name)).strip('_').lower()
+                schema = f"{clean_name}_schema"
+            return schema
+
+        schema_a = _resolve_schema(ds_a, t_data_a)
+        schema_b = _resolve_schema(ds_b, t_data_b)
 
         if not tbl_a or not tbl_b:
             return "-- Please select tables for both Source A and Source B."
@@ -476,15 +490,20 @@ class CrossSourceQueryDialog(QDialog):
         col_a_text = self.col_combo_a.currentText().strip() or "a.id"
         col_b_text = self.col_combo_b.currentText().strip() or "b.id"
 
-        sql_lines = [
-            f"-- ==========================================================",
-            f"-- Cross-Source Query: [{self.ds_combo_a.currentText()}] x [{self.ds_combo_b.currentText()}]",
-            f"-- ==========================================================",
+        sql_lines = []
+        if include_header:
+            sql_lines.extend([
+                f"-- ==========================================================",
+                f"-- Cross-Source Query: [{self.ds_combo_a.currentText()}] x [{self.ds_combo_b.currentText()}]",
+                f"-- ==========================================================",
+            ])
+
+        sql_lines.extend([
             f"SELECT",
             f"    a.*,",
             f"    b.*",
             f'FROM "{schema_a}"."{tbl_a}" AS a',
-        ]
+        ])
 
         if join_type == "CROSS JOIN":
             sql_lines.append(f'CROSS JOIN "{schema_b}"."{tbl_b}" AS b')
@@ -500,11 +519,14 @@ class CrossSourceQueryDialog(QDialog):
         if order_clause:
             sql_lines.append(f"ORDER BY {order_clause}")
 
-        limit_val = self.limit_input.text().strip()
-        if limit_val and limit_val.isdigit():
-            sql_lines.append(f"LIMIT {limit_val}")
+        if include_limit:
+            limit_val = self.limit_input.text().strip()
+            if limit_val and limit_val.isdigit():
+                sql_lines.append(f"LIMIT {limit_val}")
 
-        sql_lines.append(";")
+        if include_semicolon:
+            sql_lines.append(";")
+
         return "\n".join(sql_lines)
 
     def _update_sql_preview(self):
@@ -522,6 +544,76 @@ class CrossSourceQueryDialog(QDialog):
             self.copy_btn.setText("Copy SQL"),
             self.copy_btn.setIcon(qta.icon("mdi.content-copy", color="#374151"))
         ))
+
+    def _save_as_unified_view(self):
+        """Saves the current cross-source JOIN query as a View on the UDS host database."""
+        from PySide6.QtWidgets import QInputDialog
+        tbl_a = self.table_combo_a.currentText().strip()
+        tbl_b = self.table_combo_b.currentText().strip()
+        default_name = f"v_{tbl_a}_{tbl_b}".lower() if tbl_a and tbl_b else "v_unified_join"
+
+        view_name, ok = QInputDialog.getText(
+            self,
+            "Save JOIN as Unified View",
+            "Enter View Name:",
+            QLineEdit.EchoMode.Normal,
+            default_name
+        )
+        if not ok or not view_name.strip():
+            return
+
+        view_name = view_name.strip()
+        if view_name.startswith("v_"):
+            view_name = view_name[2:]
+
+        sql_body = self._generate_sql(include_limit=False, include_semicolon=False, include_header=False)
+
+        try:
+            conn = db.create_postgres_connection(
+                self.host_conn_data,
+                application_name="Universal SQL Client (Create Unified View)",
+                bypass_cooldown=True
+            )
+            if not conn:
+                QMessageBox.critical(self, "Connection Error", "Could not connect to UDS host database.")
+                return
+
+            cur = conn.cursor()
+            cur.execute('CREATE SCHEMA IF NOT EXISTS "uds_views";')
+            cur.execute(f'CREATE OR REPLACE VIEW "uds_views"."{view_name}" AS\n{sql_body};')
+            cur.execute(f'CREATE OR REPLACE VIEW "public"."v_{view_name}" AS\n{sql_body};')
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            QMessageBox.information(
+                self,
+                "View Created",
+                f"Unified View '{view_name}' saved successfully in host database!"
+            )
+            self.accept()
+
+            # Refresh UDS Schema Tree
+            if hasattr(self.manager, "refresh_uds_schema"):
+                self.manager.refresh_uds_schema()
+            elif hasattr(self.manager, "load_uds_schema"):
+                self.manager.load_uds_schema(self.host_conn_data)
+
+        except Exception as e:
+            ds_a = self.ds_combo_a.currentData() or {}
+            ds_b = self.ds_combo_b.currentData() or {}
+            st_a = str(ds_a.get("source_type") or "").lower()
+            st_b = str(ds_b.get("source_type") or "").lower()
+            if "sqlite" in st_a or "sqlite" in st_b:
+                QMessageBox.warning(
+                    self,
+                    "Remote View Notice",
+                    f"Could not save server-side view '{view_name}':\n{e}\n\n"
+                    "Note: Cloud PostgreSQL servers (like Aiven) without 'sqlite_fdw' installed cannot build server-side views referencing local SQLite files. "
+                    "You can still click 'Execute in Worksheet' to query this JOIN instantly!"
+                )
+            else:
+                QMessageBox.critical(self, "Error Creating View", f"Failed to save view '{view_name}':\n{e}")
 
     def _execute_in_worksheet(self):
         """Creates a new worksheet tab with the query and executes it against the host connection."""

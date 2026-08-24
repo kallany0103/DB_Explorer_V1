@@ -5,8 +5,8 @@ import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout,
-    QMessageBox, QLabel, QTabWidget, QWidget, QListWidget, QListWidgetItem,
-    QAbstractItemView
+    QMessageBox, QLabel, QTabWidget, QWidget, QTreeWidget, QTreeWidgetItem,
+    QHeaderView, QAbstractItemView
 )
 from ui.components import PasswordBox, SearchBox, SecondaryButton, PrimaryButton
 
@@ -33,10 +33,8 @@ class PostgresDataSourceDialog(QDialog):
             elif self.conn_data.get("selected_tables"):
                 self._preselected_tables = self.conn_data.get("selected_tables")
 
-        self.setWindowTitle(
-            "Edit Data Source" if is_editing else "New Data Source"
-        )
-        self.setMinimumSize(600, 600)
+        self.setWindowTitle("Edit Data Source" if is_editing else "New Data Source")
+        self.setMinimumSize(640, 620)
 
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -52,7 +50,7 @@ class PostgresDataSourceDialog(QDialog):
         header_title = QLabel("Configure PostgreSQL Data Source" if not is_editing else "Edit PostgreSQL Data Source")
         header_title.setObjectName("dialogTitle")
 
-        header_subtitle = QLabel("Configure connection details and selectively choose tables to import.")
+        header_subtitle = QLabel("Configure connection details and selectively choose schemas/tables to import.")
         header_subtitle.setObjectName("dialogSubtitle")
 
         # Tabs
@@ -79,57 +77,58 @@ class PostgresDataSourceDialog(QDialog):
 
         self.password_input = PasswordBox()
 
-        form.addRow("Data Source Name:", self.name_input)
-        form.addRow("Short Name:", self.short_name_input)
-        form.addRow("Host:", self.host_input)
+        form.addRow("Connection Name:", self.name_input)
+        form.addRow("Short Name / Schema:", self.short_name_input)
+        form.addRow("Host / IP Address:", self.host_input)
         form.addRow("Port:", self.port_input)
-        form.addRow("Database:", self.db_input)
-        form.addRow("Remote Schema:", self.schema_input)
-        form.addRow("User:", self.user_input)
+        form.addRow("Database Name:", self.db_input)
+        form.addRow("Default Remote Schema:", self.schema_input)
+        form.addRow("Username:", self.user_input)
         form.addRow("Password:", self.password_input)
 
         self.tabs.addTab(self.tab_general, "General")
 
-        # ---------------- Tab 2: Selective Table Import ----------------
+        # ---------------- Tab 2: Selective Table Import Tree ----------------
         self.tab_tables = QWidget()
         tables_layout = QVBoxLayout(self.tab_tables)
         tables_layout.setContentsMargins(16, 16, 16, 16)
         tables_layout.setSpacing(10)
 
-        tables_info = QLabel("Choose remote tables to import as foreign tables. (Leave all checked to import all tables)")
-        tables_info.setObjectName("tabInfoLabel")
-        tables_layout.addWidget(tables_info)
+        info_label = QLabel("Choose remote schemas and tables to import as foreign tables.")
+        info_label.setObjectName("tabInfoLabel")
+        tables_layout.addWidget(info_label)
 
-        # Toolbar
+        # Toolbar: Filter search box + Selection buttons + Fetch
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setSpacing(8)
 
-        self.search_input = SearchBox(placeholder="Filter tables...")
-        self.search_input.textChanged.connect(self._filter_tables)
-        toolbar_layout.addWidget(self.search_input, stretch=1)
+        self.search_box = SearchBox(placeholder="Filter schemas & tables...")
+        self.search_box.textChanged.connect(self._filter_tables)
+        toolbar_layout.addWidget(self.search_box, stretch=1)
 
-        self.select_all_btn = SecondaryButton("Select All")
-        self.select_all_btn.clicked.connect(self._select_all_tables)
-        toolbar_layout.addWidget(self.select_all_btn)
+        self.btn_select_all = SecondaryButton("Select All")
+        self.btn_select_all.clicked.connect(self._select_all_tables)
+        toolbar_layout.addWidget(self.btn_select_all)
 
-        self.deselect_all_btn = SecondaryButton("Deselect All")
-        self.deselect_all_btn.clicked.connect(self._deselect_all_tables)
-        toolbar_layout.addWidget(self.deselect_all_btn)
+        self.btn_deselect_all = SecondaryButton("Deselect All")
+        self.btn_deselect_all.clicked.connect(self._deselect_all_tables)
+        toolbar_layout.addWidget(self.btn_deselect_all)
 
-        self.fetch_btn = SecondaryButton("Fetch Tables", qta.icon("fa5s.sync-alt", color="#374151"))
+        self.fetch_btn = SecondaryButton("Fetch Schemas && Tables")
         self.fetch_btn.clicked.connect(lambda: self._fetch_remote_tables(show_popup=True))
         toolbar_layout.addWidget(self.fetch_btn)
 
         tables_layout.addLayout(toolbar_layout)
 
-        # List Widget
-        self.table_list = QListWidget()
-        self.table_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.table_list.itemChanged.connect(self._update_count_label)
-        tables_layout.addWidget(self.table_list, stretch=1)
+        # Tree Widget for Schema -> Tables
+        self.table_tree = QTreeWidget()
+        self.table_tree.setHeaderHidden(True)
+        self.table_tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table_tree.itemChanged.connect(self._on_tree_item_changed)
+        tables_layout.addWidget(self.table_tree, stretch=1)
 
         # Count summary footer
-        self.table_count_label = QLabel("Switch to this tab or click 'Fetch Tables' to view and select remote tables.")
+        self.table_count_label = QLabel("Switch to this tab or click 'Fetch Schemas & Tables' to view and select tables.")
         self.table_count_label.setObjectName("tabSummaryLabel")
         tables_layout.addWidget(self.table_count_label)
 
@@ -175,88 +174,23 @@ class PostgresDataSourceDialog(QDialog):
     def _apply_styles(self):
         self.setStyleSheet("""
             QDialog { background-color: #f6f8fb; }
-
-            QLabel#dialogTitle {
-                font-size: 16px;
-                font-weight: 600;
-                color: #1f2937;
-            }
-
-            QLabel#dialogSubtitle {
-                color: #6b7280;
-                margin-bottom: 2px;
-            }
-
-            QLabel#tabInfoLabel {
-                color: #4b5563;
-                font-size: 9pt;
-            }
-
-            QLabel#tabSummaryLabel {
-                color: #6b7280;
-                font-size: 8.5pt;
-                padding-top: 4px;
-            }
-
-            QTabWidget::pane {
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                background-color: #ffffff;
-                top: -1px;
-            }
-
+            QLabel#dialogTitle { font-size: 16px; font-weight: 600; color: #1f2937; }
+            QLabel#dialogSubtitle { color: #6b7280; margin-bottom: 2px; }
+            QLabel#tabInfoLabel { color: #4b5563; font-size: 9pt; }
+            QLabel#tabSummaryLabel { color: #6b7280; font-size: 8.5pt; font-weight: 500; }
+            QTabWidget::pane { border: 1px solid #d1d5db; border-radius: 6px; background-color: #ffffff; top: -1px; }
             QTabBar::tab {
-                background: #f3f4f6;
-                border: 1px solid #d1d5db;
-                border-bottom: none;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
-                padding: 6px 16px;
-                margin-right: 2px;
-                font-size: 9pt;
-                color: #4b5563;
+                background: #f3f4f6; border: 1px solid #d1d5db; border-bottom: none;
+                border-top-left-radius: 6px; border-top-right-radius: 6px;
+                padding: 6px 16px; margin-right: 2px; font-size: 9pt; color: #4b5563;
             }
-
-            QTabBar::tab:selected {
-                background: #ffffff;
-                font-weight: 600;
-                color: #0078d4;
-                border-bottom: 1px solid #ffffff;
-            }
-
-            QTabBar::tab:hover:!selected {
-                background: #e5e7eb;
-            }
-
-            QLineEdit {
-                min-height: 28px;
-                border: 1px solid #d1d5db;
-                border-radius: 5px;
-                background: white;
-                padding: 2px 8px;
-                color: #1f2937;
-            }
-
-            QLineEdit:focus {
-                border: 1px solid #0078d4;
-            }
-
-            QListWidget {
-                border: 1px solid #d1d5db;
-                border-radius: 5px;
-                background-color: #ffffff;
-                padding: 4px;
-            }
-
-            QListWidget::item {
-                padding: 4px 6px;
-                border-radius: 4px;
-                color: #1f2937;
-            }
-
-            QListWidget::item:hover {
-                background-color: #f0f7ff;
-            }
+            QTabBar::tab:selected { background: #ffffff; font-weight: 600; color: #0078d4; border-bottom: 1px solid #ffffff; }
+            QTabBar::tab:hover:!selected { background: #e5e7eb; }
+            QLineEdit { min-height: 28px; border: 1px solid #d1d5db; border-radius: 5px; background: white; padding: 2px 8px; color: #1f2937; }
+            QLineEdit:focus { border: 1px solid #0078d4; }
+            QTreeWidget { border: 1px solid #d1d5db; border-radius: 5px; background-color: #ffffff; padding: 4px; }
+            QTreeWidget::item { padding: 4px 6px; border-radius: 4px; color: #1f2937; }
+            QTreeWidget::item:hover { background-color: #f0f7ff; }
         """)
 
     def _on_tab_changed(self, index):
@@ -282,13 +216,7 @@ class PostgresDataSourceDialog(QDialog):
         try:
             host, port, database, user, password, schema, extra = self._get_connection_params()
             conn = psycopg2.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-                connect_timeout=5,
-                **extra
+                host=host, port=port, database=database, user=user, password=password, connect_timeout=5, **extra
             )
             conn.close()
             QMessageBox.information(self, "Success", "Connection successful!")
@@ -297,55 +225,84 @@ class PostgresDataSourceDialog(QDialog):
 
     def _fetch_remote_tables(self, show_popup=True):
         try:
-            host, port, database, user, password, schema, extra = self._get_connection_params()
-            self.table_count_label.setText("Connecting and fetching remote tables...")
+            host, port, database, user, password, default_schema, extra = self._get_connection_params()
+            self.table_count_label.setText("Connecting and fetching remote schemas & tables...")
             self.table_count_label.repaint()
 
             conn = psycopg2.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-                connect_timeout=5,
-                **extra
+                host=host, port=port, database=database, user=user, password=password, connect_timeout=5, **extra
             )
             cur = conn.cursor()
-            cur.execute("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = %s
-                  AND table_type IN ('BASE TABLE', 'VIEW', 'FOREIGN')
-                ORDER BY table_name;
-            """, (schema,))
 
-            rows = cur.fetchall()
+            # Query non-system schemas
+            cur.execute("""
+                SELECT nspname FROM pg_namespace
+                WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'
+                ORDER BY nspname;
+            """)
+            schemas = [row[0] for row in cur.fetchall()]
+
+            self.table_tree.blockSignals(True)
+            self.table_tree.clear()
+
+            schema_icon = qta.icon("fa5s.database", color="#0078d4")
+            table_icon = qta.icon("fa5s.table", color="#10b981")
+
+            # Match preselected items
+            preselected_objs = self._preselected_tables or []
+            preselected_set = set()
+            for item in preselected_objs:
+                if isinstance(item, dict):
+                    preselected_set.add(f"{item.get('schema')}.{item.get('name')}")
+                    preselected_set.add(item.get('name'))
+                elif isinstance(item, str):
+                    preselected_set.add(item)
+
+            has_preselection = self._preselected_tables is not None
+
+            for schema in schemas:
+                schema_item = QTreeWidgetItem(self.table_tree)
+                schema_item.setText(0, schema)
+                schema_item.setIcon(0, schema_icon)
+                schema_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "schema", "name": schema})
+                schema_item.setFlags(schema_item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsAutoTristate)
+                schema_item.setCheckState(0, Qt.CheckState.Unchecked)
+
+                cur.execute("""
+                    SELECT tablename FROM pg_tables WHERE schemaname = %s
+                    UNION
+                    SELECT viewname FROM pg_views WHERE schemaname = %s
+                    ORDER BY 1;
+                """, (schema, schema))
+                tables = [row[0] for row in cur.fetchall()]
+
+                for table in tables:
+                    table_item = QTreeWidgetItem(schema_item)
+                    table_item.setText(0, table)
+                    table_item.setIcon(0, table_icon)
+                    table_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "table", "schema": schema, "name": table})
+                    table_item.setFlags(table_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+
+                    # Determine check state
+                    full_key = f"{schema}.{table}"
+                    if has_preselection:
+                        is_checked = (full_key in preselected_set) or (table in preselected_set)
+                    else:
+                        is_checked = (schema == default_schema or default_schema == "public")
+
+                    table_item.setCheckState(0, Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
+
+                schema_item.setExpanded(True)
+
             cur.close()
             conn.close()
 
-            self.table_list.clear()
-            table_icon = qta.icon("fa5s.table", color="#0078d4")
-
-            preselected_set = set(self._preselected_tables) if self._preselected_tables is not None else None
-
-            for (tbl_name,) in rows:
-                item = QListWidgetItem(tbl_name)
-                item.setIcon(table_icon)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-
-                # If preselected list exists, match against it. Otherwise check all.
-                if preselected_set is not None:
-                    is_checked = tbl_name in preselected_set
-                else:
-                    is_checked = True
-
-                item.setCheckState(Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
-                self.table_list.addItem(item)
-
+            self.table_tree.blockSignals(False)
             self._tables_fetched = True
             self._update_count_label()
 
         except Exception as e:
+            self.table_tree.blockSignals(False)
             err_msg = str(e)
             if "Connection refused" in err_msg:
                 self.table_count_label.setText(f"Connection refused on {host}:{port}. Verify connection settings.")
@@ -353,40 +310,71 @@ class PostgresDataSourceDialog(QDialog):
                 self.table_count_label.setText(f"Could not fetch tables: {err_msg[:80]}...")
 
             if show_popup:
-                QMessageBox.warning(self, "Fetch Error", f"Could not fetch tables from remote database:\n{e}")
+                QMessageBox.warning(self, "Fetch Error", f"Could not fetch schemas & tables from remote database:\n{e}")
+
+    def _on_tree_item_changed(self, item, column):
+        self._update_count_label()
 
     def _filter_tables(self, text):
         query = text.strip().lower()
-        for i in range(self.table_list.count()):
-            item = self.table_list.item(i)
-            item.setHidden(query not in item.text().lower())
+        root = self.table_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            schema_match = query in schema_item.text(0).lower()
+            child_match = False
+            for j in range(schema_item.childCount()):
+                child = schema_item.child(j)
+                matches = query in child.text(0).lower() or schema_match
+                child.setHidden(not matches)
+                if matches:
+                    child_match = True
+            schema_item.setHidden(not (schema_match or child_match))
 
     def _select_all_tables(self):
-        for i in range(self.table_list.count()):
-            item = self.table_list.item(i)
-            if not item.isHidden():
-                item.setCheckState(Qt.CheckState.Checked)
+        self.table_tree.blockSignals(True)
+        root = self.table_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            if not schema_item.isHidden():
+                schema_item.setCheckState(0, Qt.CheckState.Checked)
+                for j in range(schema_item.childCount()):
+                    schema_item.child(j).setCheckState(0, Qt.CheckState.Checked)
+        self.table_tree.blockSignals(False)
         self._update_count_label()
 
     def _deselect_all_tables(self):
-        for i in range(self.table_list.count()):
-            item = self.table_list.item(i)
-            if not item.isHidden():
-                item.setCheckState(Qt.CheckState.Unchecked)
+        self.table_tree.blockSignals(True)
+        root = self.table_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            if not schema_item.isHidden():
+                schema_item.setCheckState(0, Qt.CheckState.Unchecked)
+                for j in range(schema_item.childCount()):
+                    schema_item.child(j).setCheckState(0, Qt.CheckState.Unchecked)
+        self.table_tree.blockSignals(False)
         self._update_count_label()
 
     def _update_count_label(self):
-        total = self.table_list.count()
-        if total == 0:
+        root = self.table_tree.invisibleRootItem()
+        total_tables = 0
+        checked_tables = 0
+
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            for j in range(schema_item.childCount()):
+                total_tables += 1
+                if schema_item.child(j).checkState(0) == Qt.CheckState.Checked:
+                    checked_tables += 1
+
+        if total_tables == 0:
             if self._tables_fetched:
-                self.table_count_label.setText("No tables found in remote schema.")
+                self.table_count_label.setText("No tables found in remote database.")
             return
 
-        checked = sum(1 for i in range(total) if self.table_list.item(i).checkState() == Qt.CheckState.Checked)
-        if checked == total:
-            self.table_count_label.setText(f"{total} tables available | All {total} selected (Full schema will be imported)")
+        if checked_tables == total_tables:
+            self.table_count_label.setText(f"{total_tables} tables available across schemas | All {total_tables} selected for import")
         else:
-            self.table_count_label.setText(f"{checked} of {total} tables selected for import")
+            self.table_count_label.setText(f"{checked_tables} of {total_tables} tables selected for import")
 
     def saveConnection(self):
         if not self.name_input.text().strip():
@@ -399,18 +387,20 @@ class PostgresDataSourceDialog(QDialog):
         self.accept()
 
     def getData(self):
-        total = self.table_list.count()
-        selected_tables = None
-
-        if self._tables_fetched and total > 0:
-            checked_tables = [
-                self.table_list.item(i).text()
-                for i in range(total)
-                if self.table_list.item(i).checkState() == Qt.CheckState.Checked
-            ]
-            # If all tables are checked, selected_tables remains None (import full schema)
-            if len(checked_tables) < total:
-                selected_tables = checked_tables
+        selected_tables = []
+        if self._tables_fetched:
+            root = self.table_tree.invisibleRootItem()
+            for i in range(root.childCount()):
+                schema_item = root.child(i)
+                for j in range(schema_item.childCount()):
+                    table_item = schema_item.child(j)
+                    if table_item.checkState(0) == Qt.CheckState.Checked:
+                        data = table_item.data(0, Qt.ItemDataRole.UserRole)
+                        if data and isinstance(data, dict):
+                            selected_tables.append({
+                                "schema": data.get("schema"),
+                                "name": data.get("name")
+                            })
         elif self._preselected_tables is not None:
             selected_tables = self._preselected_tables
 

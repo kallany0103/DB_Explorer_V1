@@ -62,6 +62,8 @@ class SchemaMenuBuilder:
 
         if node_type == "data_source":
             self._data_source_menu(menu, item, item_data, index)
+        elif node_type == "unified_views_root":
+            self._unified_views_root_menu(menu, item, item_data, index)
         elif node_type == "schema_group":
             self._schema_group_menu(menu, item, item_data, index)
         elif is_triggers_group:
@@ -956,6 +958,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
+        act = action(self.manager, "Test Connection", "mdi.connection")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.test_data_source_connection(item_data, item)
+        )
+        menu.addAction(act)
+
         act = action(self.manager, "Sync Foreign Schema", "mdi.sync")
         act.triggered.connect(
             lambda: self.manager.connection_dialogs.sync_foreign_schema(item)
@@ -978,6 +986,17 @@ class SchemaMenuBuilder:
         act = action(self.manager, "Delete Data Source", "mdi.delete-outline")
         act.triggered.connect(
             lambda: self.manager.connection_dialogs.delete_data_source(item)
+        )
+        menu.addAction(act)
+
+        self._add_refresh_actions(menu, index)
+
+    # Unified Views Root (UDS)
+
+    def _unified_views_root_menu(self, menu, item, item_data, index):
+        act = action(self.manager, "Create Unified View...", "mdi.plus-circle-outline")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data)
         )
         menu.addAction(act)
 

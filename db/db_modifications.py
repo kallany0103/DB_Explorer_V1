@@ -375,10 +375,57 @@ def _sanitize_identifier(name: str) -> str:
     return cleaned.lower() or "data_source"
 
 
+def _execute_import_foreign_schema(cur, server_name: str, local_schema: str, default_remote_schema: str, selected_tables):
+    """
+    Executes IMPORT FOREIGN SCHEMA on host database, handling single/multi-schema object dicts
+    or string lists.
+    """
+    if selected_tables is not None:
+        if isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
+            schema_groups = {}
+            for item in selected_tables:
+                if isinstance(item, dict):
+                    rem_s = item.get("schema") or default_remote_schema or "public"
+                    tbl_n = item.get("name")
+                elif isinstance(item, str):
+                    if "." in item:
+                        rem_s, tbl_n = item.split(".", 1)
+                    else:
+                        rem_s = default_remote_schema or "public"
+                        tbl_n = item
+                else:
+                    continue
+
+                if tbl_n:
+                    schema_groups.setdefault(rem_s, []).append(tbl_n)
+
+            for rem_schema, tbl_list in schema_groups.items():
+                if tbl_list:
+                    tables_str = ", ".join(f'"{t}"' for t in tbl_list)
+                    try:
+                        cur.execute(f"""
+                            IMPORT FOREIGN SCHEMA "{rem_schema}"
+                            LIMIT TO ({tables_str})
+                            FROM SERVER "{server_name}"
+                            INTO "{local_schema}";
+                        """)
+                    except Exception as schema_err:
+                        print(f"Notice: IMPORT FOREIGN SCHEMA warning for '{rem_schema}': {schema_err}")
+        else:
+            # Empty list [] -> user explicitly unchecked all tables -> skip import
+            pass
+    else:
+        # Full schema import
+        cur.execute(f"""
+            IMPORT FOREIGN SCHEMA "{default_remote_schema}"
+            FROM SERVER "{server_name}"
+            INTO "{local_schema}";
+        """)
+
+
 def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
     """
-    Provisions Foreign Data Wrapper (postgres_fdw), Foreign Server, User Mapping,
-    and imports foreign schema/tables into the host PostgreSQL database.
+    Provisions Foreign Data Wrapper (postgres_fdw) on host PostgreSQL database.
     """
     conn = create_postgres_connection(
         pg_conn_data,
@@ -393,9 +440,12 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         cur = conn.cursor()
 
         # 1. Ensure postgres_fdw extension exists
-        cur.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw;")
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw;")
+        except Exception as ext_err:
+            print(f"Notice: postgres_fdw extension error on host: {ext_err}")
 
-        # 2. Determine safe server name
+        # 2. Determine safe server & local schema names
         raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "foreign_source"
         safe_name = _sanitize_identifier(raw_name)
         server_name = f"srv_{safe_name}"
@@ -405,7 +455,13 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         remote_db = ds_data.get("database") or ds_data.get("database_name") or "postgres"
         remote_user = ds_data.get("user") or ds_data.get("username") or "postgres"
         remote_password = ds_data.get("password") or ""
-        remote_schema = ds_data.get("schema") or ds_data.get("schema_name") or "public"
+        local_schema = ds_data.get("schema_name")
+        if not local_schema or local_schema.lower() in ("public", "siam", "suprava", "test", "test2", "test5", "pg_catalog", "information_schema"):
+            local_schema = f"{safe_name}_schema"
+
+        remote_schema = ds_data.get("remote_schema") or ds_data.get("schema") or "public"
+        if remote_schema == local_schema or "schema" in remote_schema:
+            remote_schema = "public"
 
         # 3. Clean up existing server if present
         cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
@@ -427,27 +483,42 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         """, (remote_user, remote_password))
 
         # 6. Import foreign schema into a dedicated schema
-        local_schema = f"{safe_name}_schema"
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
-        try:
-            selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
-            if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-                tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA "{remote_schema}"
-                    LIMIT TO ({tables_str})
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
-            else:
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA "{remote_schema}"
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
-        except Exception as import_err:
-            # Fallback: if remote schema import fails, try public or log warning
-            print(f"Notice: IMPORT FOREIGN SCHEMA warning: {import_err}")
+        cur.execute(f"""
+            DO $$
+            DECLARE
+                r RECORD;
+            BEGIN
+                FOR r IN (
+                    SELECT c.relname, c.relkind
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = '{local_schema}'
+                )
+                LOOP
+                    IF r.relkind = 'f' THEN
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    ELSIF r.relkind = 'v' THEN
+                        EXECUTE format('DROP VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    ELSIF r.relkind = 'm' THEN
+                        EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    ELSIF r.relkind = 'r' THEN
+                        EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    END IF;
+                END LOOP;
+            END $$;
+        """)
+
+        selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+        if selected_tables is None and ds_data.get("config_json"):
+            try:
+                cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
+                if isinstance(cfg, dict):
+                    selected_tables = cfg.get("selected_tables")
+            except Exception:
+                pass
+
+        _execute_import_foreign_schema(cur, server_name, local_schema, remote_schema, selected_tables)
 
         cur.close()
         return server_name, local_schema
@@ -475,8 +546,15 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
         raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "foreign_source"
         safe_name = _sanitize_identifier(raw_name)
         server_name = ds_data.get("server_name") or f"srv_{safe_name}"
-        local_schema = ds_data.get("schema_name") or f"{safe_name}_schema"
-        remote_schema = ds_data.get("schema") or "public"
+
+        # Protect against collisions with native schemas or public
+        local_schema = ds_data.get("schema_name")
+        if not local_schema or local_schema.lower() in ("public", "siam", "suprava", "test", "test2", "test5", "pg_catalog", "information_schema"):
+            local_schema = f"{safe_name}_schema"
+
+        remote_schema = ds_data.get("remote_schema") or ds_data.get("schema") or "public"
+        if remote_schema == local_schema or "schema" in remote_schema:
+            remote_schema = "public"
 
         # Verify server exists
         cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
@@ -486,7 +564,7 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
             s_name, l_schema = create_postgres_fdw_source(pg_conn_data, ds_data)
             return s_name, l_schema, 0
 
-        # Drop existing foreign tables in local_schema for this server
+        # Drop existing relations in local_schema for this data source
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
         cur.execute(f"""
             DO $$
@@ -494,15 +572,21 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
                 r RECORD;
             BEGIN
                 FOR r IN (
-                    SELECT c.relname
+                    SELECT c.relname, c.relkind
                     FROM pg_class c
                     JOIN pg_namespace n ON n.oid = c.relnamespace
-                    JOIN pg_foreign_table ft ON ft.ftrelid = c.oid
-                    JOIN pg_foreign_server s ON s.oid = ft.ftserver
-                    WHERE n.nspname = '{local_schema}' AND s.srvname = '{server_name}'
+                    WHERE n.nspname = '{local_schema}'
                 )
                 LOOP
-                    EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                    IF r.relkind = 'f' THEN
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    ELSIF r.relkind = 'v' THEN
+                        EXECUTE format('DROP VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    ELSIF r.relkind = 'm' THEN
+                        EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    ELSIF r.relkind = 'r' THEN
+                        EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
+                    END IF;
                 END LOOP;
             END $$;
         """)
@@ -512,25 +596,12 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
         if not selected_tables and ds_data.get("config_json"):
             try:
                 cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
-                selected_tables = cfg.get("selected_tables")
+                if isinstance(cfg, dict):
+                    selected_tables = cfg.get("selected_tables")
             except Exception:
                 pass
 
-        # Re-import foreign schema
-        if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-            tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-            cur.execute(f"""
-                IMPORT FOREIGN SCHEMA "{remote_schema}"
-                LIMIT TO ({tables_str})
-                FROM SERVER "{server_name}"
-                INTO "{local_schema}";
-            """)
-        else:
-            cur.execute(f"""
-                IMPORT FOREIGN SCHEMA "{remote_schema}"
-                FROM SERVER "{server_name}"
-                INTO "{local_schema}";
-            """)
+        _execute_import_foreign_schema(cur, server_name, local_schema, remote_schema, selected_tables)
 
         # Query count of imported foreign tables
         cur.execute("""
@@ -599,7 +670,86 @@ def ensure_host_fdw_extensions(pg_conn_data: dict) -> dict:
             except Exception:
                 pass
 
-    return results
+def test_data_source_connection(ds_data: dict, host_conn_data: dict = None) -> tuple:
+    """
+    Tests connection to a data source (PostgreSQL, SQLite, Oracle, etc.).
+    Returns (is_connected: bool, message: str, latency_ms: float).
+    """
+    import time
+    import sqlite3
+    source_type = (ds_data.get("source_type") or ds_data.get("db_type") or "POSTGRES").upper()
+    start_time = time.time()
+
+    if source_type == "SQLITE":
+        db_path = ds_data.get("db_path") or ds_data.get("file_path")
+        if not db_path or not os.path.exists(db_path):
+            return False, f"Database file not found: '{db_path}'", 0.0
+        try:
+            with sqlite3.connect(db_path, timeout=3.0) as s_conn:
+                s_cur = s_conn.cursor()
+                s_cur.execute("SELECT 1;")
+                s_cur.fetchone()
+            elapsed_ms = round((time.time() - start_time) * 1000, 1)
+            return True, "SQLite database file accessible and healthy.", elapsed_ms
+        except Exception as e:
+            return False, f"SQLite connection failed: {e}", 0.0
+
+    elif source_type in ("CSV", "FILE", "FLAT_FILE"):
+        file_path = ds_data.get("file_path") or ds_data.get("db_path")
+        if not file_path or not os.path.exists(file_path):
+            return False, f"CSV file or directory not found: '{file_path}'", 0.0
+        elapsed_ms = round((time.time() - start_time) * 1000, 1)
+        return True, "CSV file/directory accessible and healthy.", elapsed_ms
+
+    elif source_type in ("POSTGRES", "POSTGRESQL"):
+        target_conn = {
+            'host': ds_data.get("host"),
+            'port': ds_data.get("port") or 5432,
+            'database': ds_data.get("database") or "postgres",
+            'user': ds_data.get("user") or ds_data.get("username"),
+            'password': ds_data.get("password"),
+            'connect_timeout': 4
+        }
+        if not target_conn['host'] and host_conn_data:
+            target_conn = host_conn_data
+
+        try:
+            conn = create_postgres_connection(
+                target_conn,
+                application_name="Universal SQL Client (DS Ping)",
+                bypass_cooldown=True
+            )
+            if conn:
+                cur = conn.cursor()
+                cur.execute("SELECT 1;")
+                cur.fetchone()
+                cur.close()
+                conn.close()
+                elapsed_ms = round((time.time() - start_time) * 1000, 1)
+                return True, "PostgreSQL connection succeeded.", elapsed_ms
+            return False, "Could not establish connection to PostgreSQL server.", 0.0
+        except Exception as e:
+            return False, f"PostgreSQL ping error: {e}", 0.0
+
+    elif source_type in ("ORACLE", "ORACLE_DB"):
+        try:
+            import cx_Oracle
+            dsn = ds_data.get("dsn") or ds_data.get("host")
+            user = ds_data.get("user") or ds_data.get("username")
+            pwd = ds_data.get("password")
+            o_conn = cx_Oracle.connect(user, pwd, dsn)
+            o_cur = o_conn.cursor()
+            o_cur.execute("SELECT 1 FROM DUAL")
+            o_cur.fetchone()
+            o_cur.close()
+            o_conn.close()
+            elapsed_ms = round((time.time() - start_time) * 1000, 1)
+            return True, "Oracle connection succeeded.", elapsed_ms
+        except Exception as e:
+            return False, f"Oracle ping error: {e}", 0.0
+
+    elapsed_ms = round((time.time() - start_time) * 1000, 1)
+    return True, "Data Source registered.", elapsed_ms
 
 
 def create_sqlite_fdw_source(pg_conn_data: dict, ds_data: dict):
@@ -659,24 +809,16 @@ def create_sqlite_fdw_source(pg_conn_data: dict, ds_data: dict):
 
             # 6. Import foreign schema into a dedicated schema
             cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
-            try:
-                selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
-                if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-                    tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-                    cur.execute(f"""
-                        IMPORT FOREIGN SCHEMA public
-                        LIMIT TO ({tables_str})
-                        FROM SERVER "{server_name}"
-                        INTO "{local_schema}";
-                    """)
-                else:
-                    cur.execute(f"""
-                        IMPORT FOREIGN SCHEMA public
-                        FROM SERVER "{server_name}"
-                        INTO "{local_schema}";
-                    """)
-            except Exception as import_err:
-                print(f"Notice: sqlite_fdw IMPORT FOREIGN SCHEMA warning: {import_err}")
+            selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+            if selected_tables is None and ds_data.get("config_json"):
+                try:
+                    cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
+                    if isinstance(cfg, dict):
+                        selected_tables = cfg.get("selected_tables")
+                except Exception:
+                    pass
+
+            _execute_import_foreign_schema(cur, server_name, local_schema, "public", selected_tables)
 
         cur.close()
         return server_name, local_schema
@@ -724,7 +866,7 @@ def sync_sqlite_fdw_schema(pg_conn_data: dict, ds_data: dict):
                         WHERE n.nspname = '{local_schema}' AND s.srvname = '{server_name}'
                     )
                     LOOP
-                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     END LOOP;
                 END $$;
             """)
@@ -734,25 +876,12 @@ def sync_sqlite_fdw_schema(pg_conn_data: dict, ds_data: dict):
             if not selected_tables and ds_data.get("config_json"):
                 try:
                     cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
-                    selected_tables = cfg.get("selected_tables")
+                    if isinstance(cfg, dict):
+                        selected_tables = cfg.get("selected_tables")
                 except Exception:
                     pass
 
-            # Re-import foreign schema
-            if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-                tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA public
-                    LIMIT TO ({tables_str})
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
-            else:
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA public
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
+            _execute_import_foreign_schema(cur, server_name, local_schema, "public", selected_tables)
 
             # Query count of imported foreign tables
             cur.execute("""
@@ -804,5 +933,185 @@ def drop_postgres_fdw_source(pg_conn_data: dict, server_name: str, schema_name: 
         cur.close()
     except Exception as e:
         print(f"Error dropping FDW objects: {e}")
+    finally:
+        conn.close()
+
+
+def inspect_csv_schema(file_path: str, delimiter: str = None, has_header: bool = True, sample_lines: int = 100) -> dict:
+    """
+    Inspects a CSV file to auto-detect delimiter, column names, data types, and sample data.
+    Returns dict with keys: 'delimiter', 'has_header', 'columns', 'sample_rows'.
+    """
+    import csv
+    if not file_path or not os.path.exists(file_path):
+        return {"delimiter": ",", "has_header": True, "columns": [], "sample_rows": []}
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            sample_data = f.read(4096)
+            f.seek(0)
+
+            if not delimiter or delimiter == "AUTO":
+                try:
+                    sniffer = csv.Sniffer()
+                    dialect = sniffer.sniff(sample_data, delimiters=",;\t|")
+                    delimiter = dialect.delimiter
+                except Exception:
+                    delimiter = ","
+
+            reader = csv.reader(f, delimiter=delimiter)
+            rows = []
+            for i, row in enumerate(reader):
+                if i >= sample_lines:
+                    break
+                if row:
+                    rows.append(row)
+
+            if not rows:
+                return {"delimiter": delimiter, "has_header": has_header, "columns": [], "sample_rows": []}
+
+            if has_header:
+                header = [str(c).strip() for c in rows[0]]
+                data_rows = rows[1:]
+            else:
+                header = [f"col_{j+1}" for j in range(len(rows[0]))]
+                data_rows = rows
+
+            columns = []
+            num_cols = len(header)
+
+            for col_idx in range(num_cols):
+                col_name = header[col_idx] if header[col_idx] else f"column_{col_idx+1}"
+                col_name = _sanitize_identifier(col_name)
+
+                is_int = True
+                is_numeric = True
+                is_bool = True
+                has_values = False
+
+                for r in data_rows:
+                    if col_idx < len(r):
+                        val = r[col_idx].strip()
+                        if val == "":
+                            continue
+                        has_values = True
+                        if is_int:
+                            try:
+                                int(val)
+                            except ValueError:
+                                is_int = False
+                        if is_numeric:
+                            try:
+                                float(val)
+                            except ValueError:
+                                is_numeric = False
+                        if is_bool:
+                            if val.lower() not in ("true", "false", "t", "f", "1", "0", "yes", "no"):
+                                is_bool = False
+
+                if has_values and is_int:
+                    inferred_type = "INTEGER"
+                elif has_values and is_numeric:
+                    inferred_type = "NUMERIC"
+                elif has_values and is_bool:
+                    inferred_type = "BOOLEAN"
+                else:
+                    inferred_type = "TEXT"
+
+                columns.append({
+                    "name": col_name,
+                    "type": inferred_type,
+                    "original_name": header[col_idx]
+                })
+
+            return {
+                "delimiter": delimiter,
+                "has_header": has_header,
+                "columns": columns,
+                "sample_rows": data_rows[:10]
+            }
+    except Exception as e:
+        print(f"Error inspecting CSV file {file_path}: {e}")
+        return {"delimiter": delimiter or ",", "has_header": has_header, "columns": [], "sample_rows": []}
+
+
+def create_file_fdw_source(pg_conn_data: dict, ds_data: dict):
+    """
+    Provisions Foreign Data Wrapper (file_fdw) on host PostgreSQL database
+    or registers CSV Data Source for client-side virtual table queries.
+    """
+    raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "csv_source"
+    safe_name = _sanitize_identifier(raw_name)
+    server_name = f"srv_{safe_name}"
+    local_schema = f"{safe_name}_schema"
+
+    csv_files = ds_data.get("csv_files") or []
+    file_path = ds_data.get("file_path") or ds_data.get("db_path")
+    if not csv_files and file_path:
+        csv_files = [{
+            "file_path": file_path,
+            "table_name": _sanitize_identifier(os.path.splitext(os.path.basename(file_path))[0]),
+            "delimiter": ds_data.get("delimiter", ","),
+            "has_header": ds_data.get("has_header", True),
+            "columns": ds_data.get("columns", [])
+        }]
+
+    conn = create_postgres_connection(
+        pg_conn_data,
+        application_name="Universal SQL Client (file_fdw Provisioner)",
+        bypass_cooldown=True
+    )
+    if not conn:
+        raise Exception("Could not connect to host PostgreSQL database.")
+
+    count = 0
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        try:
+            cur.execute('CREATE EXTENSION IF NOT EXISTS "file_fdw";')
+        except Exception as ext_err:
+            print(f"Notice: file_fdw extension notice on host: {ext_err}")
+
+        cur.execute(f'DROP SERVER IF EXISTS "{server_name}" CASCADE;')
+        cur.execute(f'DROP SCHEMA IF EXISTS "{local_schema}" CASCADE;')
+
+        cur.execute(f'CREATE SERVER "{server_name}" FOREIGN DATA WRAPPER "file_fdw";')
+        cur.execute(f'CREATE SCHEMA "{local_schema}";')
+
+        for item in csv_files:
+            c_path = item.get("file_path")
+            if not c_path:
+                continue
+            tbl_name = _sanitize_identifier(item.get("table_name") or os.path.splitext(os.path.basename(c_path))[0])
+            delim = item.get("delimiter") or ds_data.get("delimiter") or ","
+            header = "true" if item.get("has_header", True) else "false"
+
+            cols = item.get("columns")
+            if not cols:
+                inspected = inspect_csv_schema(c_path, delimiter=delim, has_header=(header == "true"))
+                cols = inspected.get("columns", [])
+
+            if not cols:
+                cols = [{"name": "data", "type": "TEXT"}]
+
+            col_defs = ", ".join(f'"{c["name"]}" {c["type"]}' for c in cols)
+            escaped_path = c_path.replace("'", "''")
+            escaped_delim = delim.replace("'", "''")
+
+            try:
+                cur.execute(f"""
+                    CREATE FOREIGN TABLE "{local_schema}"."{tbl_name}" (
+                        {col_defs}
+                    ) SERVER "{server_name}"
+                    OPTIONS (filename '{escaped_path}', format 'csv', header '{header}', delimiter '{escaped_delim}');
+                """)
+                count += 1
+            except Exception as tbl_err:
+                print(f"Notice: Could not create foreign table for {tbl_name}: {tbl_err}")
+
+        cur.close()
+        return server_name, local_schema, count
     finally:
         conn.close()

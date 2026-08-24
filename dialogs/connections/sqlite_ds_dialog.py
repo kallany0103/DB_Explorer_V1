@@ -1,5 +1,3 @@
-# dialogs/connections/sqlite_ds_dialog.py
-
 import json
 import os
 import sqlite3 as sqlite
@@ -7,8 +5,8 @@ import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout,
-    QFileDialog, QMessageBox, QLabel, QWidget, QTabWidget, QListWidget,
-    QListWidgetItem, QAbstractItemView
+    QFileDialog, QMessageBox, QLabel, QWidget, QTabWidget, QTreeWidget,
+    QTreeWidgetItem, QAbstractItemView
 )
 from ui.components import SearchBox, SecondaryButton, PrimaryButton
 
@@ -35,10 +33,8 @@ class SQLiteDataSourceDialog(QDialog):
             elif self.conn_data.get("selected_tables"):
                 self._preselected_tables = self.conn_data.get("selected_tables")
 
-        self.setWindowTitle(
-            "Edit SQLite Data Source" if is_editing else "New SQLite Data Source"
-        )
-        self.setMinimumSize(600, 560)
+        self.setWindowTitle("Edit SQLite Data Source" if is_editing else "New SQLite Data Source")
+        self.setMinimumSize(600, 580)
 
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -88,13 +84,13 @@ class SQLiteDataSourceDialog(QDialog):
 
         self.tabs.addTab(self.tab_general, "General")
 
-        # ---------------- Tab 2: Selective Table Import ----------------
+        # ---------------- Tab 2: Selective Table Import Tree ----------------
         self.tab_tables = QWidget()
         tables_layout = QVBoxLayout(self.tab_tables)
         tables_layout.setContentsMargins(16, 16, 16, 16)
         tables_layout.setSpacing(10)
 
-        tables_info = QLabel("Choose SQLite tables to import as foreign tables. (Leave all checked to import all tables)")
+        tables_info = QLabel("Choose SQLite tables to import as foreign tables.")
         tables_info.setObjectName("tabInfoLabel")
         tables_layout.addWidget(tables_info)
 
@@ -102,32 +98,33 @@ class SQLiteDataSourceDialog(QDialog):
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setSpacing(8)
 
-        self.search_input = SearchBox(placeholder="Filter tables...")
-        self.search_input.textChanged.connect(self._filter_tables)
-        toolbar_layout.addWidget(self.search_input, stretch=1)
+        self.search_box = SearchBox(placeholder="Filter tables...")
+        self.search_box.textChanged.connect(self._filter_tables)
+        toolbar_layout.addWidget(self.search_box, stretch=1)
 
-        self.select_all_btn = SecondaryButton("Select All")
-        self.select_all_btn.clicked.connect(self._select_all_tables)
-        toolbar_layout.addWidget(self.select_all_btn)
+        self.btn_select_all = SecondaryButton("Select All")
+        self.btn_select_all.clicked.connect(self._select_all_tables)
+        toolbar_layout.addWidget(self.btn_select_all)
 
-        self.deselect_all_btn = SecondaryButton("Deselect All")
-        self.deselect_all_btn.clicked.connect(self._deselect_all_tables)
-        toolbar_layout.addWidget(self.deselect_all_btn)
+        self.btn_deselect_all = SecondaryButton("Deselect All")
+        self.btn_deselect_all.clicked.connect(self._deselect_all_tables)
+        toolbar_layout.addWidget(self.btn_deselect_all)
 
-        self.fetch_btn = SecondaryButton("Fetch Tables", qta.icon("fa5s.sync-alt", color="#374151"))
+        self.fetch_btn = SecondaryButton("Fetch Tables")
         self.fetch_btn.clicked.connect(lambda: self._fetch_tables(show_popup=True))
         toolbar_layout.addWidget(self.fetch_btn)
 
         tables_layout.addLayout(toolbar_layout)
 
-        # List Widget
-        self.table_list = QListWidget()
-        self.table_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.table_list.itemChanged.connect(self._update_count_label)
-        tables_layout.addWidget(self.table_list, stretch=1)
+        # Tree Widget for SQLite main schema -> tables
+        self.table_tree = QTreeWidget()
+        self.table_tree.setHeaderHidden(True)
+        self.table_tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table_tree.itemChanged.connect(self._on_tree_item_changed)
+        tables_layout.addWidget(self.table_tree, stretch=1)
 
-        # Count summary footer
-        self.table_count_label = QLabel("Switch to this tab or click 'Fetch Tables' to view and select SQLite tables.")
+        # Footer Label
+        self.table_count_label = QLabel("Switch to this tab or click 'Fetch Tables' to view and select tables.")
         self.table_count_label.setObjectName("tabSummaryLabel")
         tables_layout.addWidget(self.table_count_label)
 
@@ -138,7 +135,7 @@ class SQLiteDataSourceDialog(QDialog):
         if self.conn_data:
             self.name_input.setText(self.conn_data.get("name") or self.conn_data.get("display_name", ""))
             self.short_name_input.setText(self.conn_data.get("short_name") or self.conn_data.get("source_name", ""))
-            self.path_input.setText(self.conn_data.get("db_path") or self.conn_data.get("file_path", ""))
+            self.path_input.setText(self.conn_data.get("file_path") or self.conn_data.get("db_path", ""))
 
         # Bottom Buttons
         self.test_btn = SecondaryButton("Test Connection")
@@ -168,218 +165,190 @@ class SQLiteDataSourceDialog(QDialog):
     def _apply_styles(self):
         self.setStyleSheet("""
             QDialog { background-color: #f6f8fb; }
-
-            QLabel#dialogTitle {
-                font-size: 16px;
-                font-weight: 600;
-                color: #1f2937;
-            }
-
-            QLabel#dialogSubtitle {
-                color: #6b7280;
-                margin-bottom: 2px;
-            }
-
-            QLabel#tabInfoLabel {
-                color: #4b5563;
-                font-size: 9pt;
-            }
-
-            QLabel#tabSummaryLabel {
-                color: #6b7280;
-                font-size: 8.5pt;
-                padding-top: 4px;
-            }
-
-            QTabWidget::pane {
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                background-color: #ffffff;
-                top: -1px;
-            }
-
+            QLabel#dialogTitle { font-size: 16px; font-weight: 600; color: #1f2937; }
+            QLabel#dialogSubtitle { color: #6b7280; margin-bottom: 2px; }
+            QLabel#tabInfoLabel { color: #4b5563; font-size: 9pt; }
+            QLabel#tabSummaryLabel { color: #6b7280; font-size: 8.5pt; font-weight: 500; }
+            QTabWidget::pane { border: 1px solid #d1d5db; border-radius: 6px; background-color: #ffffff; top: -1px; }
             QTabBar::tab {
-                background: #f3f4f6;
-                border: 1px solid #d1d5db;
-                border-bottom: none;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
-                padding: 6px 16px;
-                margin-right: 2px;
-                font-size: 9pt;
-                color: #4b5563;
+                background: #f3f4f6; border: 1px solid #d1d5db; border-bottom: none;
+                border-top-left-radius: 6px; border-top-right-radius: 6px;
+                padding: 6px 16px; margin-right: 2px; font-size: 9pt; color: #4b5563;
             }
-
-            QTabBar::tab:selected {
-                background: #ffffff;
-                font-weight: 600;
-                color: #0078d4;
-                border-bottom: 1px solid #ffffff;
-            }
-
-            QTabBar::tab:hover:!selected {
-                background: #e5e7eb;
-            }
-
-            QLineEdit {
-                min-height: 28px;
-                border: 1px solid #d1d5db;
-                border-radius: 5px;
-                background: white;
-                padding: 2px 8px;
-                color: #1f2937;
-            }
-
-            QLineEdit:focus {
-                border: 1px solid #0078d4;
-            }
-
-            QListWidget {
-                border: 1px solid #d1d5db;
-                border-radius: 5px;
-                background-color: #ffffff;
-                padding: 4px;
-            }
-
-            QListWidget::item {
-                padding: 4px 6px;
-                border-radius: 4px;
-                color: #1f2937;
-            }
-
-            QListWidget::item:hover {
-                background-color: #f0f7ff;
-            }
+            QTabBar::tab:selected { background: #ffffff; font-weight: 600; color: #0078d4; border-bottom: 1px solid #ffffff; }
+            QTabBar::tab:hover:!selected { background: #e5e7eb; }
+            QLineEdit { min-height: 28px; border: 1px solid #d1d5db; border-radius: 5px; background: white; padding: 2px 8px; color: #1f2937; }
+            QLineEdit:focus { border: 1px solid #0078d4; }
+            QTreeWidget { border: 1px solid #d1d5db; border-radius: 5px; background-color: #ffffff; padding: 4px; }
+            QTreeWidget::item { padding: 4px 6px; border-radius: 4px; color: #1f2937; }
+            QTreeWidget::item:hover { background-color: #f0f7ff; }
         """)
-
-    def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select SQLite Database",
-            "",
-            "SQLite Files (*.db *.sqlite *.sqlite3);;All Files (*)"
-        )
-        if file_path:
-            self.path_input.setText(file_path)
-            self._tables_fetched = False
-            # Automatically set name if empty
-            if not self.name_input.text().strip():
-                base_name = os.path.splitext(os.path.basename(file_path))[0]
-                self.name_input.setText(base_name.title())
-                self.short_name_input.setText(base_name.lower())
 
     def _on_tab_changed(self, index):
         if index == 1 and not self._tables_fetched:
             if self.path_input.text().strip():
                 self._fetch_tables(show_popup=False)
 
+    def browse_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select SQLite Database File",
+            "",
+            "SQLite Databases (*.db *.sqlite *.sqlite3 *.db3);;All Files (*)"
+        )
+        if path:
+            self.path_input.setText(path)
+            if not self.name_input.text().strip():
+                base_name = os.path.splitext(os.path.basename(path))[0]
+                self.name_input.setText(base_name.replace("_", " ").title())
+                clean_short = "".join(c if c.isalnum() or c == '_' else '_' for c in base_name).strip('_').lower()
+                self.short_name_input.setText(clean_short)
+
     def testConnection(self):
         path = self.path_input.text().strip()
         if not path:
-            QMessageBox.warning(self, "Test Connection", "Please provide a database path.")
+            QMessageBox.warning(self, "Missing Info", "Please select a database file.")
             return
 
         if not os.path.exists(path):
-            QMessageBox.critical(self, "Error", f"SQLite database file not found at:\n{path}")
+            QMessageBox.critical(self, "Error", f"File not found:\n{path}")
             return
 
         try:
-            conn = sqlite.connect(path)
+            conn = sqlite.connect(path, timeout=3.0)
             cur = conn.cursor()
-            cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table';")
-            count = cur.fetchone()[0]
+            cur.execute("SELECT 1;")
+            cur.fetchone()
             conn.close()
-            QMessageBox.information(self, "Success", f"Connection successful!\nFound {count} table(s) in SQLite database.")
+            QMessageBox.information(self, "Success", "SQLite database file accessible!")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
+            QMessageBox.critical(self, "Error", f"Could not open SQLite database:\n{e}")
 
     def _fetch_tables(self, show_popup=True):
         path = self.path_input.text().strip()
-        if not path:
-            self.table_count_label.setText("Please specify a database path in the General tab first.")
+        if not path or not os.path.exists(path):
             if show_popup:
-                QMessageBox.warning(self, "Fetch Tables", "Please enter a database path first.")
-            return
-
-        if not os.path.exists(path):
-            self.table_count_label.setText(f"File not found: {path}")
-            if show_popup:
-                QMessageBox.critical(self, "File Not Found", f"Database file does not exist:\n{path}")
+                QMessageBox.warning(self, "Fetch Error", "Please provide a valid SQLite database path.")
             return
 
         try:
-            self.table_count_label.setText("Reading tables from SQLite database...")
+            self.table_count_label.setText("Reading SQLite database tables...")
             self.table_count_label.repaint()
 
-            conn = sqlite.connect(path)
+            conn = sqlite.connect(path, timeout=3.0)
             cur = conn.cursor()
-            cur.execute("""
-                SELECT name
-                FROM sqlite_master
-                WHERE type IN ('table', 'view')
-                  AND name NOT LIKE 'sqlite_%'
-                ORDER BY name;
-            """)
-            rows = cur.fetchall()
+            cur.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;")
+            tables = [r[0] for r in cur.fetchall()]
             conn.close()
 
-            self.table_list.clear()
-            table_icon = qta.icon("fa5s.table", color="#0078d4")
-            preselected_set = set(self._preselected_tables) if self._preselected_tables is not None else None
+            self.table_tree.blockSignals(True)
+            self.table_tree.clear()
 
-            for (tbl_name,) in rows:
-                item = QListWidgetItem(tbl_name)
-                item.setIcon(table_icon)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            schema_icon = qta.icon("fa5s.database", color="#0078d4")
+            table_icon = qta.icon("fa5s.table", color="#10b981")
 
-                if preselected_set is not None:
-                    is_checked = tbl_name in preselected_set
-                else:
-                    is_checked = True
+            # Create main schema node
+            main_item = QTreeWidgetItem(self.table_tree)
+            main_item.setText(0, "main")
+            main_item.setIcon(0, schema_icon)
+            main_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "schema", "name": "main"})
+            main_item.setFlags(main_item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsAutoTristate)
+            main_item.setCheckState(0, Qt.CheckState.Unchecked)
 
-                item.setCheckState(Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
-                self.table_list.addItem(item)
+            preselected_objs = self._preselected_tables or []
+            preselected_set = set()
+            for item in preselected_objs:
+                if isinstance(item, dict):
+                    preselected_set.add(item.get('name'))
+                elif isinstance(item, str):
+                    preselected_set.add(item)
 
+            has_preselection = self._preselected_tables is not None
+
+            for table in tables:
+                table_item = QTreeWidgetItem(main_item)
+                table_item.setText(0, table)
+                table_item.setIcon(0, table_icon)
+                table_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "table", "schema": "main", "name": table})
+                table_item.setFlags(table_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+
+                is_checked = (table in preselected_set) if has_preselection else True
+                table_item.setCheckState(0, Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
+
+            main_item.setExpanded(True)
+            self.table_tree.blockSignals(False)
             self._tables_fetched = True
             self._update_count_label()
 
         except Exception as e:
-            self.table_count_label.setText(f"Could not read tables: {e}")
+            self.table_tree.blockSignals(False)
+            self.table_count_label.setText(f"Could not fetch tables: {str(e)[:80]}...")
             if show_popup:
-                QMessageBox.warning(self, "Error", f"Failed to read SQLite tables:\n{e}")
+                QMessageBox.warning(self, "Fetch Error", f"Could not fetch SQLite tables:\n{e}")
+
+    def _on_tree_item_changed(self, item, column):
+        self._update_count_label()
 
     def _filter_tables(self, text):
         query = text.strip().lower()
-        for i in range(self.table_list.count()):
-            item = self.table_list.item(i)
-            item.setHidden(query not in item.text().lower())
+        root = self.table_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            schema_match = query in schema_item.text(0).lower()
+            child_match = False
+            for j in range(schema_item.childCount()):
+                child = schema_item.child(j)
+                matches = query in child.text(0).lower() or schema_match
+                child.setHidden(not matches)
+                if matches:
+                    child_match = True
+            schema_item.setHidden(not (schema_match or child_match))
 
     def _select_all_tables(self):
-        for i in range(self.table_list.count()):
-            item = self.table_list.item(i)
-            if not item.isHidden():
-                item.setCheckState(Qt.CheckState.Checked)
+        self.table_tree.blockSignals(True)
+        root = self.table_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            if not schema_item.isHidden():
+                schema_item.setCheckState(0, Qt.CheckState.Checked)
+                for j in range(schema_item.childCount()):
+                    schema_item.child(j).setCheckState(0, Qt.CheckState.Checked)
+        self.table_tree.blockSignals(False)
         self._update_count_label()
 
     def _deselect_all_tables(self):
-        for i in range(self.table_list.count()):
-            item = self.table_list.item(i)
-            if not item.isHidden():
-                item.setCheckState(Qt.CheckState.Unchecked)
+        self.table_tree.blockSignals(True)
+        root = self.table_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            if not schema_item.isHidden():
+                schema_item.setCheckState(0, Qt.CheckState.Unchecked)
+                for j in range(schema_item.childCount()):
+                    schema_item.child(j).setCheckState(0, Qt.CheckState.Unchecked)
+        self.table_tree.blockSignals(False)
         self._update_count_label()
 
     def _update_count_label(self):
-        total = self.table_list.count()
-        if total == 0:
+        root = self.table_tree.invisibleRootItem()
+        total_tables = 0
+        checked_tables = 0
+
+        for i in range(root.childCount()):
+            schema_item = root.child(i)
+            for j in range(schema_item.childCount()):
+                total_tables += 1
+                if schema_item.child(j).checkState(0) == Qt.CheckState.Checked:
+                    checked_tables += 1
+
+        if total_tables == 0:
             if self._tables_fetched:
-                self.table_count_label.setText("No user tables found in SQLite database.")
+                self.table_count_label.setText("No tables found in SQLite database.")
             return
 
-        checked = sum(1 for i in range(total) if self.table_list.item(i).checkState() == Qt.CheckState.Checked)
-        if checked == total:
-            self.table_count_label.setText(f"{total} tables available | All {total} selected (Full schema will be imported)")
+        if checked_tables == total_tables:
+            self.table_count_label.setText(f"{total_tables} tables available | All {total_tables} selected for import")
         else:
-            self.table_count_label.setText(f"{checked} of {total} tables selected for import")
+            self.table_count_label.setText(f"{checked_tables} of {total_tables} tables selected for import")
 
     def saveConnection(self):
         if not self.name_input.text().strip():
@@ -396,17 +365,20 @@ class SQLiteDataSourceDialog(QDialog):
         self.accept()
 
     def getData(self):
-        total = self.table_list.count()
-        selected_tables = None
-
-        if self._tables_fetched and total > 0:
-            checked_tables = [
-                self.table_list.item(i).text()
-                for i in range(total)
-                if self.table_list.item(i).checkState() == Qt.CheckState.Checked
-            ]
-            if len(checked_tables) < total:
-                selected_tables = checked_tables
+        selected_tables = []
+        if self._tables_fetched:
+            root = self.table_tree.invisibleRootItem()
+            for i in range(root.childCount()):
+                schema_item = root.child(i)
+                for j in range(schema_item.childCount()):
+                    table_item = schema_item.child(j)
+                    if table_item.checkState(0) == Qt.CheckState.Checked:
+                        data = table_item.data(0, Qt.ItemDataRole.UserRole)
+                        if data and isinstance(data, dict):
+                            selected_tables.append({
+                                "schema": data.get("schema", "main"),
+                                "name": data.get("name")
+                            })
         elif self._preselected_tables is not None:
             selected_tables = self._preselected_tables
 
@@ -421,8 +393,6 @@ class SQLiteDataSourceDialog(QDialog):
             "short_name": self.short_name_input.text().strip(),
             "db_path": path,
             "file_path": path,
-            "source_type": "SQLITE",
             "selected_tables": selected_tables,
-            "config_json": json.dumps(config_data) if config_data else None,
-            "id": self.conn_data.get("id") if self.conn_data else None
-        }
+            "config_json": json.dumps(config_data) if config_data else None
+        }
