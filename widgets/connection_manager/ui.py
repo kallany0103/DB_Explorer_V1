@@ -87,6 +87,7 @@ class ConnectionUI:
         self.manager.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.manager.tree.setHeaderHidden(True)
         self.manager.tree.setIndentation(15)
+        self.manager.tree.setUniformRowHeights(True)
 
         self.manager.model = QStandardItemModel()
         self.manager.model.setHorizontalHeaderLabels(['Object Explorer'])

@@ -15,6 +15,12 @@ def build_main_window_actions(main_window):
     main_window.save_as_action.setShortcut("Ctrl+Shift+S")
     main_window.save_as_action.triggered.connect(main_window.save_sql_file_as)
 
+    main_window.export_connections_action = QAction(qta.icon("fa5s.file-export", color="#555555"), "Export Connections", main_window)
+    main_window.export_connections_action.triggered.connect(main_window.export_connections)
+
+    main_window.import_connections_action = QAction(qta.icon("fa5s.file-import", color="#555555"), "Import Connections", main_window)
+    main_window.import_connections_action.triggered.connect(main_window.import_connections)
+
     main_window.exit_action = QAction(QIcon("assets/exit.svg"), "Exit", main_window)
     main_window.exit_action.setShortcut("Ctrl+Q")
     main_window.exit_action.triggered.connect(main_window.close)

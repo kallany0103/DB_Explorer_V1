@@ -238,11 +238,11 @@ class ConnectionDialogs:
         
         if type_name and group_name:
             if not hasattr(self.manager, '_saved_tree_paths'):
-                self.manager._saved_tree_paths = []
-            if (type_name, None) not in self.manager._saved_tree_paths:
-                self.manager._saved_tree_paths.append((type_name, None))
-            if (type_name, group_name) not in self.manager._saved_tree_paths:
-                self.manager._saved_tree_paths.append((type_name, group_name))
+                self.manager._saved_tree_paths = set()
+            if isinstance(self.manager._saved_tree_paths, list):
+                self.manager._saved_tree_paths = set(self.manager._saved_tree_paths)
+            self.manager._saved_tree_paths.add((type_name, None, None))
+            self.manager._saved_tree_paths.add((type_name, group_name, None))
 
         self.manager.load_data()
         self.manager._restore_tree_expansion_state()
@@ -396,6 +396,7 @@ class ConnectionDialogs:
         else:
             QMessageBox.warning(self.manager, "Unsupported Type", f"{source_type} editing not supported")
             return
+
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return

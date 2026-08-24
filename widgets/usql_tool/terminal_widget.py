@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QFrame
+    QFrame,QApplication
 )
 
 # from widgets.usql_tool.constants import _BANNER

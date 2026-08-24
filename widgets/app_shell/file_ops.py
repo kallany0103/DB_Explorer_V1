@@ -1,9 +1,15 @@
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget
-
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QPushButton, QStackedWidget, QProgressDialog
+from PySide6.QtCore import QObject, QRunnable, Signal, Qt, QTimer
+from workers.connection_workers import ImportConnectionsWorker
 from widgets.worksheet.editor_actions import FindReplaceDialog
 import re
 import os
-
+import json
+from db.db_retrieval import get_hierarchy_data
+from db.db_modifications import add_connection
+from db.db_connections import DB_FILE
+import sqlite3
+    
 
 def open_sql_file(main_window):
     file_name, _ = QFileDialog.getOpenFileName(
@@ -182,3 +188,86 @@ def on_replace_all(main_window, target, replacement, case, whole):
     if editor:
         count = editor.replace_all(target, replacement, case, whole)
         main_window.status.showMessage(f"Replaced {count} occurrences.", 3000)
+
+
+def export_connections(main_window):
+    
+    file_name, _ = QFileDialog.getSaveFileName(
+        main_window,
+        "Export Connections",
+        "",
+        "JSON Files (*.json);;All Files (*)",
+    )
+    if not file_name:
+        return
+
+    try:
+        data = get_hierarchy_data()
+        with open(file_name, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+        main_window.status.showMessage(f"Connections exported to: {file_name}", 5000)
+        QMessageBox.information(main_window, "Success", f"Connections successfully exported to:\n{file_name}")
+    except Exception as e:
+        QMessageBox.critical(main_window, "Error", f"Failed to export connections:\n{e}")
+
+def import_connections(main_window):
+    file_name, _ = QFileDialog.getOpenFileName(
+        main_window,
+        "Import Connections",
+        "",
+        "JSON Files (*.json);;All Files (*)",
+    )
+    if not file_name:
+        return
+
+    try:
+        with open(file_name, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        progress = QProgressDialog("Importing connections...", "Cancel", 0, 0, main_window)
+        progress.setWindowTitle("Importing")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+        progress.show()
+
+        worker = ImportConnectionsWorker(data)
+        main_window._active_import_worker = worker # Prevent GC crash
+
+        def on_finished(hierarchy_data):
+            progress.accept()
+            main_window._active_import_worker = None
+
+            def _step1_rebuild():
+                cm = getattr(main_window, 'connection_manager', None)
+                if not cm:
+                    main_window.status.showMessage("Connections imported successfully.", 5000)
+                    QMessageBox.information(main_window, "Success", "Connections imported successfully.")
+                    return
+            
+                cm._save_tree_expansion_state()
+                tree = cm.tree
+                tree.setUpdatesEnabled(False)
+                try:
+                    cm.load_data(hierarchical_data=hierarchy_data)
+                    cm._restore_tree_expansion_state()
+                finally:
+                    tree.setUpdatesEnabled(True)
+                main_window.status.showMessage("Connections imported successfully.", 5000)
+                QMessageBox.information(main_window, "Success", "Connections imported successfully.")
+                
+                QTimer.singleShot(0, cm.refresh_all_comboboxes)
+
+            QTimer.singleShot(0, _step1_rebuild)
+
+        def on_error(err_msg):
+            progress.accept()
+            QMessageBox.critical(main_window, "Error", f"Failed to import connections:\n{err_msg}")
+            main_window._active_import_worker = None
+
+        worker.signals.finished.connect(on_finished)
+        worker.signals.error.connect(on_error)
+        
+        main_window.thread_pool.start(worker)
+
+    except Exception as e:
+        QMessageBox.critical(main_window, "Error", f"Failed to read file:\n{e}")

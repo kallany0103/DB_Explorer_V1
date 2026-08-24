@@ -4,7 +4,7 @@ import sqlite3 as sqlite
 from concurrent.futures import ProcessPoolExecutor
 
 from PySide6.QtCore import QObject, QRunnable, QThread, Signal
-
+from db.db_connections import DB_FILE
 import db
 from db.schema_retrieval import _subprocess_fetch_servicenow_schema
 
@@ -584,6 +584,7 @@ class UDSSchemaWorker(QRunnable):
                     pass
 
 
+
 # Backward compatibility alias
 UDSDataSourceSchemaWorker = UDSSchemaWorker
 
@@ -616,4 +617,189 @@ class DataSourcePingWorker(QRunnable):
         except Exception as exc:
             self.signals.error.emit(str(exc))
 
+class ImportWorkerSignals(QObject):
+    finished = Signal(list)   # emits hierarchy_data fetched on background thread
+    error = Signal(str)
 
+class ImportConnectionsWorker(QRunnable):
+    def __init__(self, data):
+        super().__init__()
+        self.data = data
+        self.signals = ImportWorkerSignals()
+
+    def _insert_connection(self, c, conn_data, group_id):
+        if conn_data.get("db_path"):
+            c.execute(
+                "INSERT INTO usf_connections (name, short_name, connection_group_id, db_path) VALUES (?, ?, ?, ?)",
+                (conn_data.get("name"), conn_data.get("short_name"), group_id, conn_data.get("db_path")),
+            )
+        elif conn_data.get("instance_url"):
+            c.execute(
+                'INSERT INTO usf_connections (name, short_name, connection_group_id, instance_url, "user", password) VALUES (?, ?, ?, ?, ?, ?)',
+                (conn_data.get("name"), conn_data.get("short_name"), group_id,
+                 conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password")),
+            )
+        else:
+            c.execute(
+                'INSERT INTO usf_connections (name, short_name, connection_group_id, host, "database", "user", password, port, dsn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (conn_data.get("name"), conn_data.get("short_name"), group_id,
+                 conn_data.get("host"), conn_data.get("database"), conn_data.get("user"),
+                 conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn")),
+            )
+
+    def _update_connection(self, c, conn_id, conn_data):
+        if conn_data.get("db_path"):
+            c.execute("UPDATE usf_connections SET short_name=?, db_path=? WHERE id=?",
+                      (conn_data.get("short_name"), conn_data.get("db_path"), conn_id))
+        elif conn_data.get("instance_url"):
+            c.execute('UPDATE usf_connections SET short_name=?, instance_url=?, "user"=?, password=? WHERE id=?',
+                      (conn_data.get("short_name"), conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password"), conn_id))
+        else:
+            c.execute('UPDATE usf_connections SET short_name=?, host=?, "database"=?, "user"=?, password=?, port=?, dsn=? WHERE id=?',
+                      (conn_data.get("short_name"), conn_data.get("host"), conn_data.get("database"), conn_data.get("user"),
+                       conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn"), conn_id))
+
+    def run(self):
+       
+        try:
+            with sqlite.connect(DB_FILE) as conn:
+                conn.isolation_level = "DEFERRED"  
+                c = conn.cursor()
+                c.execute("BEGIN")
+
+                for type_data in self.data:
+                    type_code = type_data.get('code')
+                    c.execute("SELECT id FROM usf_connection_types WHERE code = ?", (type_code,))
+                    type_row = c.fetchone()
+                    if not type_row:
+                        continue
+                    type_id = type_row[0]
+
+                    for group_data in type_data.get('usf_connection_groups', []):
+                        group_name = group_data.get('name')
+                        c.execute(
+                            "SELECT id FROM usf_connection_groups WHERE name = ? AND connection_type_id = ?",
+                            (group_name, type_id),
+                        )
+                        group_row = c.fetchone()
+                        if group_row:
+                            group_id = group_row[0]
+                        else:
+                            c.execute(
+                                "INSERT INTO usf_connection_groups (name, connection_type_id) VALUES (?, ?)",
+                                (group_name, type_id),
+                            )
+                            group_id = c.lastrowid
+
+                        for conn_data in group_data.get('usf_connections', []):
+                            if conn_data.get("db_path"):
+                                c.execute(
+                                    "SELECT id FROM usf_connections WHERE connection_group_id = ? AND name = ? AND short_name = ? AND db_path IS ?",
+                                    (group_id, conn_data.get('name'), conn_data.get('short_name'), conn_data.get('db_path'))
+                                )
+                            elif conn_data.get("instance_url"):
+                                c.execute(
+                                    'SELECT id FROM usf_connections WHERE connection_group_id = ? AND name = ? AND short_name = ? AND instance_url IS ? AND "user" IS ?',
+                                    (group_id, conn_data.get('name'), conn_data.get('short_name'), conn_data.get('instance_url'), conn_data.get('user'))
+                                )
+                            else:
+                                c.execute(
+                                    'SELECT id FROM usf_connections WHERE connection_group_id = ? AND name = ? AND short_name = ? AND host IS ? AND "database" IS ? AND "user" IS ? AND port IS ?',
+                                    (group_id, conn_data.get('name'), conn_data.get('short_name'), conn_data.get('host'), conn_data.get('database'), conn_data.get('user'), conn_data.get('port'))
+                                )
+                                
+                            row = c.fetchone()
+                            if row:
+                                self._update_connection(c, row[0], conn_data)
+                            else:
+                                self._insert_connection(c, conn_data, group_id)
+
+                conn.commit()
+
+                hierarchy_data = self._fetch_hierarchy(c)
+
+            self.signals.finished.emit(hierarchy_data)
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
+    @staticmethod
+    def _fetch_hierarchy(c):
+        """Fetch full hierarchy using 3 flat queries instead of N+1 nested loops."""
+
+        c.execute("SELECT id, code, name FROM usf_connection_types")
+        type_rows = c.fetchall()
+
+        types_by_id   = {r[0]: {'id': r[0], 'code': r[1], 'name': r[2], 'usf_connection_groups': {}} for r in type_rows}
+        type_code_by_group_id = {}  
+
+        c.execute("SELECT id, name, connection_type_id FROM usf_connection_groups")
+        group_rows = c.fetchall()
+        groups_by_id = {}
+        for g_id, g_name, t_id in group_rows:
+            t_code = types_by_id[t_id]['code'] if t_id in types_by_id else ''
+            group_entry = {'id': g_id, 'name': g_name, 'usf_connections': {}}
+            groups_by_id[g_id] = group_entry
+            type_code_by_group_id[g_id] = t_code
+            if t_id in types_by_id:
+                types_by_id[t_id]['usf_connection_groups'][g_id] = group_entry
+
+        c.execute(
+            'SELECT id, name, short_name, host, "database", "user", password, port, dsn, '
+            '       db_path, instance_url, connection_group_id '
+            'FROM usf_connections'
+        )
+        conn_rows = c.fetchall()
+        conns_by_id = {}
+        for row in conn_rows:
+            conn_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url, g_id = row
+            code = type_code_by_group_id.get(g_id, '')
+            conn_entry = {
+                "id": conn_id, "name": name, "short_name": short_name,
+                "host": host, "database": db, "user": user, "password": pwd,
+                "port": port, "dsn": dsn, "db_path": db_path,
+                "instance_url": instance_url, "db_type": code.lower(),
+                "usf_data_sources": [],
+            }
+            conns_by_id[conn_id] = conn_entry
+            if g_id in groups_by_id:
+                groups_by_id[g_id]['usf_connections'][conn_id] = conn_entry
+
+        c.execute(
+            """SELECT id, source_name, display_name, source_type, host, port,
+                      database_name, username, password, schema_name, service_url,
+                      file_path, config_json, server_name, fdw_name, status, connection_id
+               FROM usf_data_sources
+               ORDER BY connection_id, source_name"""
+        )
+        for ds in c.fetchall():
+            (ds_id, ds_src, ds_disp, ds_type, ds_host, ds_port, ds_db,
+             ds_user, ds_pwd, ds_schema, ds_url, ds_fpath, ds_cfg,
+             ds_srv, ds_fdw, ds_stat, conn_id) = ds
+            if conn_id in conns_by_id:
+                conns_by_id[conn_id]["usf_data_sources"].append({
+                    "id": ds_id, "connection_id": conn_id,
+                    "source_name": ds_src, "short_name": ds_src,
+                    "name": ds_disp, "display_name": ds_disp,
+                    "source_type": ds_type, "host": ds_host, "port": ds_port,
+                    "database": ds_db, "database_name": ds_db,
+                    "user": ds_user, "username": ds_user, "password": ds_pwd,
+                    "schema": ds_schema, "schema_name": ds_schema,
+                    "service_url": ds_url, "file_path": ds_fpath,
+                    "config_json": ds_cfg, "server_name": ds_srv,
+                    "fdw_name": ds_fdw or "postgres_fdw", "status": ds_stat,
+                    "db_type": (ds_type or "postgres").lower(),
+                })
+
+        result = []
+        for t_id, t_code, t_name in type_rows:
+            type_out = {'id': t_id, 'code': t_code, 'name': t_name, 'usf_connection_groups': []}
+            for g_id, g_name, g_type_id in group_rows:
+                if g_type_id != t_id:
+                    continue
+                g_node = groups_by_id[g_id]
+                type_out['usf_connection_groups'].append({
+                    'id': g_id, 'name': g_name,
+                    'usf_connections': list(g_node['usf_connections'].values()),
+                })
+            result.append(type_out)
+        return result

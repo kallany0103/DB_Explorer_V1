@@ -9,7 +9,7 @@ from ui.components import PasswordBox
 
 
 class OracleDataSourceDialog(QDialog):
-    def __init__(self, parent=None, is_editing=False):
+    def __init__(self, parent=None, is_editing=False, conn_data=None):
         super().__init__(parent)
 
         self.setWindowTitle(
@@ -88,6 +88,12 @@ class OracleDataSourceDialog(QDialog):
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
+
+        if conn_data:
+            self.name_input.setText(conn_data.get("name", ""))
+            self.user_input.setText(conn_data.get("user", ""))
+            self.password_input.setText(conn_data.get("password", ""))
+            self.dsn_input.setText(conn_data.get("dsn", ""))
 
     def _apply_styles(self):
         self.setStyleSheet("""
