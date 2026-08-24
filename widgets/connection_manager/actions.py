@@ -179,6 +179,53 @@ class ConnectionActions:
         dialog = CrossSourceQueryDialog(self.manager, initial_item_data=item_data, initial_table_name=table_name)
         dialog.exec()
 
+    def test_data_source_connection(self, item_data, item=None):
+        """Runs a background ping test for a data source and displays a status popup."""
+        if not item_data:
+            return
+
+        from workers.connection_workers import DataSourcePingWorker
+        ds_name = item_data.get("short_name") or item_data.get("source_name") or item_data.get("display_name") or item_data.get("name") or "Data Source"
+        self.manager.status_message_label.setText(f"Testing connection to '{ds_name}'...")
+
+        host_conn_data = item_data.get("conn_data")
+        worker = DataSourcePingWorker(item_data, host_conn_data)
+
+        def _on_ping_finished(res):
+            is_connected = res.get("is_connected")
+            msg = res.get("message", "")
+            latency = res.get("latency_ms", 0.0)
+
+            if item and item.model():
+                model = item.model()
+                type_index = item.index().siblingAtColumn(1)
+                if type_index.isValid():
+                    type_item = model.itemFromIndex(type_index)
+                    if type_item:
+                        type_item.setText("Data Source")
+                        type_item.setData(is_connected, Qt.ItemDataRole.UserRole + 3)
+                        model.dataChanged.emit(type_index, type_index)
+
+            if is_connected:
+                self.manager.status.showMessage(f"Connection to '{ds_name}' succeeded ({latency} ms)", 5000)
+                self.manager.status_message_label.setText(f"Connected to '{ds_name}' ({latency} ms)")
+                QMessageBox.information(
+                    self.manager,
+                    "Connection Test Succeeded",
+                    f"🟢 Connection to Data Source '{ds_name}' succeeded!\n\nDetails: {msg}\nLatency: {latency} ms"
+                )
+            else:
+                self.manager.status.showMessage(f"Connection to '{ds_name}' failed", 5000)
+                self.manager.status_message_label.setText(f"Failed to connect to '{ds_name}'")
+                QMessageBox.critical(
+                    self.manager,
+                    "Connection Test Failed",
+                    f"🔴 Connection to Data Source '{ds_name}' failed!\n\nDetails: {msg}"
+                )
+
+        worker.signals.finished.connect(_on_ping_finished)
+        self.manager.thread_pool.start(worker)
+
     def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
         if not item_data:
             return

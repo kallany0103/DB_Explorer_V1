@@ -402,15 +402,12 @@ class PostgresDataSourceDialog(QDialog):
         total = self.table_list.count()
         selected_tables = None
 
-        if self._tables_fetched and total > 0:
-            checked_tables = [
+        if self._tables_fetched:
+            selected_tables = [
                 self.table_list.item(i).text()
                 for i in range(total)
                 if self.table_list.item(i).checkState() == Qt.CheckState.Checked
             ]
-            # If all tables are checked, selected_tables remains None (import full schema)
-            if len(checked_tables) < total:
-                selected_tables = checked_tables
         elif self._preselected_tables is not None:
             selected_tables = self._preselected_tables
 

@@ -1,11 +1,40 @@
 import os
 import sqlite3 as sqlite
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QStandardItem
-from PySide6.QtWidgets import QHeaderView
+from PySide6.QtGui import QStandardItem, QColor, QFontMetrics
+from PySide6.QtWidgets import QHeaderView, QStyledItemDelegate, QStyle, QApplication
 import qtawesome as qta
 
 import db
+
+
+class TypeColumnDelegate(QStyledItemDelegate):
+    """Custom delegate for Column 1 of schema tree to render default text color with a right-aligned status dot light."""
+
+    def paint(self, painter, option, index):
+        item_text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        if item_text == "Data Source":
+            self.initStyleOption(option, index)
+            style = option.widget.style() if option.widget else QApplication.style()
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, option, painter, option.widget)
+
+            is_healthy = index.data(Qt.ItemDataRole.UserRole + 3)
+            if is_healthy is None:
+                is_healthy = True
+            dot_color = QColor("#10b981") if is_healthy else QColor("#ef4444")
+
+            painter.save()
+            painter.setFont(option.font)
+            fm = QFontMetrics(option.font)
+            text_width = fm.horizontalAdvance("Data Source")
+
+            painter.setPen(dot_color)
+            dot_x = option.rect.left() + text_width + 10
+            dot_y = option.rect.top() + (option.rect.height() // 2) + (fm.ascent() // 2) - 1
+            painter.drawText(dot_x, dot_y, "●")
+            painter.restore()
+        else:
+            super().paint(painter, option, index)
 
 
 def _create_loading_item(manager):
@@ -24,6 +53,7 @@ class SchemaLoader:
         self.manager.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
         self.manager.schema_tree.setColumnWidth(0, 200)
         self.manager.schema_tree.setColumnWidth(1, 100)
+        self.manager.schema_tree.setItemDelegateForColumn(1, TypeColumnDelegate(self.manager.schema_tree))
 
         header = self.manager.schema_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
@@ -196,6 +226,15 @@ class SchemaLoader:
             server_info = entry.get("server_info", {})
             foreign_tables = entry.get("foreign_tables", [])
 
+            is_healthy = ds_data.get("is_healthy")
+            if is_healthy is None:
+                source_type = (ds_data.get("source_type") or "POSTGRES").upper()
+                if source_type == "SQLITE":
+                    db_path = ds_data.get("db_path") or ds_data.get("file_path")
+                    is_healthy = bool(db_path and os.path.exists(db_path))
+                else:
+                    is_healthy = True
+
             ds_name = ds_data.get("name") or ds_data.get("display_name") or ds_data.get("short_name") or ds_data.get("source_name") or "Data Source"
             ds_item = QStandardItem(ds_name)
             ds_item.setEditable(False)
@@ -207,6 +246,7 @@ class SchemaLoader:
             ds_item_data = dict(ds_data)
             ds_item_data["type"] = "data_source"
             ds_item_data["conn_data"] = conn_data
+            ds_item_data["is_healthy"] = is_healthy
             ds_item.setData(ds_item_data, Qt.ItemDataRole.UserRole)
             ds_item.setData(ds_data.get("id"), Qt.ItemDataRole.UserRole + 1)
             ds_item.setData("DATA_SOURCE", Qt.ItemDataRole.UserRole + 2)
@@ -297,7 +337,49 @@ class SchemaLoader:
 
             ds_type_item = QStandardItem("Data Source")
             ds_type_item.setEditable(False)
+            ds_type_item.setData(is_healthy, Qt.ItemDataRole.UserRole + 3)
             self.manager.schema_model.appendRow([ds_item, ds_type_item])
+
+        # 3. Add Unified Views root node
+        unified_views = data.get("unified_views", [])
+        uv_label = f"Unified Views ({len(unified_views)})" if unified_views else "Unified Views"
+        uv_root = QStandardItem(uv_label)
+        uv_root.setEditable(False)
+        self.manager._set_tree_item_icon(uv_root, level="GROUP_VIEWS")
+        uv_root_data = {
+            'db_type': 'postgres',
+            'type': 'unified_views_root',
+            'group_name': 'Unified Views',
+            'conn_data': conn_data
+        }
+        uv_root.setData(uv_root_data, Qt.ItemDataRole.UserRole)
+
+        for uv in unified_views:
+            v_name = uv.get("view_name")
+            v_schema = uv.get("schema_name", "public")
+
+            view_item = QStandardItem(v_name)
+            view_item.setEditable(False)
+            self.manager._set_tree_item_icon(view_item, level="VIEW")
+
+            view_data = {
+                'db_type': 'postgres',
+                'type': 'table',
+                'table_name': v_name,
+                'schema_name': v_schema,
+                'table_type': 'VIEW',
+                'conn_data': conn_data
+            }
+            view_item.setData(view_data, Qt.ItemDataRole.UserRole)
+            view_item.appendRow(_create_loading_item(self.manager))
+
+            v_type_item = QStandardItem("Unified View")
+            v_type_item.setEditable(False)
+            uv_root.appendRow([view_item, v_type_item])
+
+        uv_type_item = QStandardItem("Views Group")
+        uv_type_item.setEditable(False)
+        self.manager.schema_model.appendRow([uv_root, uv_type_item])
 
         self._connect_expand_handler()
         if not skip_restore:

@@ -299,6 +299,9 @@ class ConnectionDialogs:
             dialog = CSVDataSourceDialog(self.manager)
         elif code == "SERVICENOW":
             dialog = ServiceNowDataSourceDialog(self.manager)
+        elif code in ("CSV", "FILE"):
+            from dialogs.connections.csv_ds_dialog import CSVDataSourceDialog
+            dialog = CSVDataSourceDialog(self.manager)
         else:
             QMessageBox.warning(
                 self.manager,
@@ -316,6 +319,13 @@ class ConnectionDialogs:
             server_name = None
             local_schema = None
 
+            # Automatically ensure necessary FDW extensions exist on host database
+            if host_conn_data:
+                try:
+                    db.ensure_host_fdw_extensions(host_conn_data)
+                except Exception as ext_err:
+                    print(f"Notice: Background FDW extension initialization notice: {ext_err}")
+
             # Automatically provision Foreign Data Wrapper in the background on host PostgreSQL
             fdw_name = "postgres_fdw"
             if code == "POSTGRES" and host_conn_data:
@@ -330,6 +340,12 @@ class ConnectionDialogs:
                 data["schema_name"] = local_schema
                 data["fdw_name"] = "sqlite_fdw"
                 fdw_name = "sqlite_fdw"
+            elif code in ("CSV", "FILE") and host_conn_data:
+                server_name, local_schema, table_count = db.create_file_fdw_source(host_conn_data, data)
+                data["server_name"] = server_name
+                data["schema_name"] = local_schema
+                data["fdw_name"] = "file_fdw"
+                fdw_name = "file_fdw"
 
             db.add_data_source(
                 connection_id=connection_id,

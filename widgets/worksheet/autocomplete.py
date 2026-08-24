@@ -75,7 +75,7 @@ def _fetch_db_words(conn_data):
             conn.close()
             return [], tables, {}, table_columns
 
-        elif code == "POSTGRES":
+        elif code in ("POSTGRES", "POSTGRESQL", "UDS"):
             if psycopg2 is None:
                 return [], [], {}, {}
             pg_conn = db.get_pooled_postgres_connection(
@@ -88,31 +88,90 @@ def _fetch_db_words(conn_data):
             cur = pg_conn.cursor()
             cur.execute(
                 "SELECT nspname FROM pg_namespace "
-                "WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' "
+                "WHERE nspname NOT LIKE 'pg_%' AND nspname NOT IN ('information_schema', 'pg_toast') "
                 "ORDER BY nspname"
             )
             schemas = [r[0] for r in cur.fetchall()]
             cur.execute(
                 "SELECT table_schema, table_name FROM information_schema.tables "
-                "WHERE table_schema NOT IN ('pg_catalog','information_schema') "
+                "WHERE table_schema NOT IN ('pg_catalog','information_schema', 'pg_toast') "
                 "ORDER BY table_schema, table_name"
             )
             tbl_rows = cur.fetchall()
             cur.execute(
-                "SELECT table_name, column_name "
+                "SELECT table_schema, table_name, column_name "
                 "FROM information_schema.columns "
-                "WHERE table_schema NOT IN ('pg_catalog','information_schema') "
-                "ORDER BY table_name, ordinal_position"
+                "WHERE table_schema NOT IN ('pg_catalog','information_schema', 'pg_toast') "
+                "ORDER BY table_schema, table_name, ordinal_position"
             )
             col_rows = cur.fetchall()
             db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
-            tables = [r[1] for r in tbl_rows]
+
+            tables = list(set(r[1] for r in tbl_rows))
             schema_tables = {}
             for schema, tbl in tbl_rows:
                 schema_tables.setdefault(schema.lower(), []).append(tbl)
+
             table_columns = {}
-            for tbl, col in col_rows:
+            for schema, tbl, col in col_rows:
                 table_columns.setdefault(tbl.lower(), []).append(col)
+                table_columns.setdefault(f"{schema.lower()}.{tbl.lower()}", []).append(col)
+
+            # Enrich with client-side fallback tables for UDS data sources if present
+            if code == "UDS" and conn_data.get("id"):
+                try:
+                    data_sources = db.get_data_sources_by_connection(conn_data.get("id"))
+                    for ds in data_sources:
+                        ds_type = (ds.get("source_type") or "").upper()
+                        s_name = (ds.get("schema_name") or f"{ds.get('short_name')}_schema").lower()
+                        if s_name not in [s.lower() for s in schemas]:
+                            schemas.append(s_name)
+
+                        if ds_type == "SQLITE":
+                            db_p = ds.get("db_path") or ds.get("file_path")
+                            if db_p and os.path.exists(db_p):
+                                with sqlite.connect(db_p) as sc:
+                                    sc_cur = sc.cursor()
+                                    sc_cur.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%';")
+                                    sq_tbls = [r[0] for r in sc_cur.fetchall()]
+                                    for st in sq_tbls:
+                                        if st not in tables:
+                                            tables.append(st)
+                                        schema_tables.setdefault(s_name, []).append(st)
+                                        try:
+                                            sc_cur.execute(f'PRAGMA table_info("{st}")')
+                                            sc_cols = [r[1] for r in sc_cur.fetchall()]
+                                            if sc_cols:
+                                                table_columns[st.lower()] = sc_cols
+                                                table_columns[f"{s_name}.{st.lower()}"] = sc_cols
+                                        except Exception:
+                                            pass
+                        elif ds_type == "CSV":
+                            csv_files = ds.get("csv_files") or []
+                            c_path = ds.get("file_path") or ds.get("db_path")
+                            if not csv_files and c_path and os.path.exists(c_path):
+                                if os.path.isfile(c_path):
+                                    csv_files = [{"file_path": c_path, "table_name": os.path.splitext(os.path.basename(c_path))[0]}]
+                                elif os.path.isdir(c_path):
+                                    for r_root, _, r_files in os.walk(c_path):
+                                        for rf in r_files:
+                                            if rf.lower().endswith(".csv"):
+                                                csv_files.append({"file_path": os.path.join(r_root, rf), "table_name": os.path.splitext(rf)[0]})
+
+                            for cf in csv_files:
+                                ct_name = cf.get("table_name")
+                                if ct_name:
+                                    if ct_name not in tables:
+                                        tables.append(ct_name)
+                                    schema_tables.setdefault(s_name, []).append(ct_name)
+                                    inspected = db.inspect_csv_schema(cf.get("file_path"))
+                                    c_cols = [c["name"] for c in inspected.get("columns", [])]
+                                    if c_cols:
+                                        table_columns[ct_name.lower()] = c_cols
+                                        table_columns[f"{s_name}.{ct_name.lower()}"] = c_cols
+                except Exception as uds_err:
+                    print(f"Notice: UDS autocomplete enrichment notice: {uds_err}")
+
             return schemas, tables, schema_tables, table_columns
 
         elif code == "CSV":
@@ -177,7 +236,7 @@ def fetch_columns(conn_data, table_name):
             conn.close()
             return [r[1] for r in rows]
 
-        elif code == "POSTGRES":
+        elif code in ("POSTGRES", "POSTGRESQL", "UDS"):
             if psycopg2 is None:
                 return []
             pg_conn = db.get_pooled_postgres_connection(
@@ -188,11 +247,20 @@ def fetch_columns(conn_data, table_name):
             if not pg_conn:
                 return []
             cur = pg_conn.cursor()
-            cur.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = %s ORDER BY ordinal_position",
-                (table_name,),
-            )
+            clean_tbl = table_name.split(".")[-1]
+            if "." in table_name:
+                schema_part = table_name.split(".")[0]
+                cur.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = %s AND table_name = %s ORDER BY ordinal_position",
+                    (schema_part, clean_tbl),
+                )
+            else:
+                cur.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = %s ORDER BY ordinal_position",
+                    (clean_tbl,),
+                )
             rows = cur.fetchall()
             db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
             return [r[0] for r in rows]

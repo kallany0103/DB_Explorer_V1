@@ -77,7 +77,15 @@ def get_hierarchy_data():
                     """, (connection_id,))
                     ds_rows = c.fetchall()
                     for ds_row in ds_rows:
-                        ds_id, ds_src_name, ds_disp_name, ds_type, ds_host, ds_port, ds_db, ds_user, ds_pwd, ds_schema, ds_url, ds_fpath, ds_cfg, ds_srv, ds_fdw, ds_stat = ds_row
+                        sel_tables = None
+                        if ds_cfg:
+                            try:
+                                cfg = json.loads(ds_cfg) if isinstance(ds_cfg, str) else ds_cfg
+                                if isinstance(cfg, dict):
+                                    sel_tables = cfg.get("selected_tables")
+                            except Exception:
+                                pass
+
                         conn_data["usf_data_sources"].append({
                             "id": ds_id,
                             "connection_id": connection_id,
@@ -98,6 +106,7 @@ def get_hierarchy_data():
                             "service_url": ds_url,
                             "file_path": ds_fpath,
                             "config_json": ds_cfg,
+                            "selected_tables": sel_tables,
                             "server_name": ds_srv,
                             "fdw_name": ds_fdw or "postgres_fdw",
                             "status": ds_stat,
@@ -518,8 +527,18 @@ def get_data_sources_by_connection(connection_id):
             ORDER BY source_name
         """, (connection_id,))
         rows = c.fetchall()
-        return [
-            {
+        result = []
+        for r in rows:
+            sel_tables = None
+            if r[13]: # config_json
+                try:
+                    cfg = json.loads(r[13]) if isinstance(r[13], str) else r[13]
+                    if isinstance(cfg, dict):
+                        sel_tables = cfg.get("selected_tables")
+                except Exception:
+                    pass
+
+            result.append({
                 "id": r[0],
                 "connection_id": r[1],
                 "source_name": r[2],
@@ -539,10 +558,10 @@ def get_data_sources_by_connection(connection_id):
                 "service_url": r[11],
                 "file_path": r[12],
                 "config_json": r[13],
+                "selected_tables": sel_tables,
                 "server_name": r[14],
                 "fdw_name": r[15] or "postgres_fdw",
                 "status": r[16],
                 "db_type": (r[4] or "postgres").lower(),
-            }
-            for r in rows
-        ]
+            })
+        return result

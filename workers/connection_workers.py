@@ -513,6 +513,31 @@ class UDSSchemaWorker(QRunnable):
                                 foreign_tables = [{"table_name": r[0], "schema_name": "main"} for r in s_cur.fetchall()]
                         except Exception as s_err:
                             print(f"Notice: error reading SQLite tables for {db_path}: {s_err}")
+                elif source_type in ("CSV", "FILE", "FLAT_FILE") and not foreign_tables:
+                    f_path = ds.get("file_path") or ds.get("db_path")
+                    csv_files = ds.get("csv_files") or []
+                    if csv_files:
+                        for cf in csv_files:
+                            tbl_name = cf.get("table_name") or os.path.splitext(os.path.basename(cf.get("file_path", "")))[0]
+                            if tbl_name:
+                                foreign_tables.append({"table_name": tbl_name, "schema_name": "csv_main"})
+                    elif f_path and os.path.exists(f_path):
+                        if os.path.isfile(f_path):
+                            tbl_name = os.path.splitext(os.path.basename(f_path))[0]
+                            foreign_tables = [{"table_name": tbl_name, "schema_name": "csv_main"}]
+                        elif os.path.isdir(f_path):
+                            for root, _, files in os.walk(f_path):
+                                for f in files:
+                                    if f.lower().endswith(".csv"):
+                                        tbl_name = os.path.splitext(f)[0]
+                                        foreign_tables.append({"table_name": tbl_name, "schema_name": "csv_main"})
+
+                try:
+                    is_healthy, ping_msg, latency_ms = db.test_data_source_connection(ds, self.conn_data)
+                    ds["is_healthy"] = is_healthy
+                except Exception as ping_err:
+                    print(f"Notice: ping error for data source {ds.get('short_name')}: {ping_err}")
+                    ds["is_healthy"] = False
 
                 data_sources_result.append({
                     "ds_data": ds,
@@ -520,10 +545,29 @@ class UDSSchemaWorker(QRunnable):
                     "foreign_tables": foreign_tables,
                 })
 
+            unified_views = []
+            if cursor:
+                try:
+                    cursor.execute("""
+                        SELECT c.relname, n.nspname
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind IN ('v', 'm')
+                          AND (n.nspname = 'uds_views' OR (n.nspname = 'public' AND (c.relname LIKE 'v\_%' ESCAPE '\' OR c.relname LIKE 'uds\_%' ESCAPE '\')))
+                        ORDER BY c.relname;
+                    """)
+                    unified_views = [
+                        {"view_name": r[0], "schema_name": r[1]}
+                        for r in cursor.fetchall()
+                    ]
+                except Exception as v_err:
+                    print(f"Notice: error reading unified views on UDS host: {v_err}")
+
             try:
                 self.signals.finished.emit({
                     "conn_data": self.conn_data,
                     "data_sources": data_sources_result,
+                    "unified_views": unified_views,
                 })
             except RuntimeError:
                 pass
@@ -542,5 +586,34 @@ class UDSSchemaWorker(QRunnable):
 
 # Backward compatibility alias
 UDSDataSourceSchemaWorker = UDSSchemaWorker
+
+
+class DataSourcePingSignals(QObject):
+    finished = Signal(dict)
+    error = Signal(str)
+
+
+class DataSourcePingWorker(QRunnable):
+    """Asynchronous background worker to test data source connection health."""
+
+    def __init__(self, ds_data: dict, host_conn_data: dict = None):
+        super().__init__()
+        self.ds_data = ds_data
+        self.host_conn_data = host_conn_data
+        self.signals = DataSourcePingSignals()
+
+    def run(self):
+        try:
+            is_connected, message, latency_ms = db.test_data_source_connection(
+                self.ds_data, self.host_conn_data
+            )
+            self.signals.finished.emit({
+                "ds_data": self.ds_data,
+                "is_connected": is_connected,
+                "message": message,
+                "latency_ms": latency_ms
+            })
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
 
 
