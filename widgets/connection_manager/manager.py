@@ -480,31 +480,6 @@ class ConnectionManager(QWidget):
                             code="POSTGRES" if (code == "UDS" or connection_data.get("db_type") == "uds") else code
                         )
 
-                        # If UDS (Unified Data Source), populate Level 4 Data Sources
-                        if code == "UDS" or connection_data.get("db_type") == "uds":
-                            data_sources = connection_data.get("usf_data_sources", [])
-                            ds_items = []
-                            for ds in data_sources:
-                                ds_name = ds.get("short_name") or ds.get("source_name") or ds.get("display_name")
-                                ds_item = QStandardItem(ds_name)
-                                ds_item_data = dict(ds)
-                                ds_item_data["type"] = "data_source"
-                                ds_item_data["conn_data"] = connection_data
-                                ds_item_data["parent_conn_id"] = connection_data["id"]
-
-                                ds_item.setData(ds_item_data, Qt.ItemDataRole.UserRole)
-                                ds_item.setData(ds["id"], Qt.ItemDataRole.UserRole + 1)
-                                ds_item.setData("DATA_SOURCE", Qt.ItemDataRole.UserRole + 2)
-
-                                self._set_tree_item_icon(
-                                    ds_item,
-                                    level="DATA_SOURCE",
-                                    code=ds.get("source_type", "POSTGRES")
-                                )
-                                ds_items.append(ds_item)
-                            if ds_items:
-                                connection_item.appendRows(ds_items)
-
                         conn_items.append(connection_item)
 
                     if conn_items:

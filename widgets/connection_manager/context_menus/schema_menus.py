@@ -970,13 +970,6 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "Add Data Source", "mdi.plus-box-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_dialogs.add_data_source(item)
-        )
-        menu.addAction(act)
-
         act = action(self.manager, "Edit Data Source", "mdi.square-edit-outline")
         act.triggered.connect(
             lambda: self.manager.connection_dialogs.edit_data_source(item)
