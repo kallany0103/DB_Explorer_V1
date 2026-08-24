@@ -375,10 +375,57 @@ def _sanitize_identifier(name: str) -> str:
     return cleaned.lower() or "data_source"
 
 
+def _execute_import_foreign_schema(cur, server_name: str, local_schema: str, default_remote_schema: str, selected_tables):
+    """
+    Executes IMPORT FOREIGN SCHEMA on host database, handling single/multi-schema object dicts
+    or string lists.
+    """
+    if selected_tables is not None:
+        if isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
+            schema_groups = {}
+            for item in selected_tables:
+                if isinstance(item, dict):
+                    rem_s = item.get("schema") or default_remote_schema or "public"
+                    tbl_n = item.get("name")
+                elif isinstance(item, str):
+                    if "." in item:
+                        rem_s, tbl_n = item.split(".", 1)
+                    else:
+                        rem_s = default_remote_schema or "public"
+                        tbl_n = item
+                else:
+                    continue
+
+                if tbl_n:
+                    schema_groups.setdefault(rem_s, []).append(tbl_n)
+
+            for rem_schema, tbl_list in schema_groups.items():
+                if tbl_list:
+                    tables_str = ", ".join(f'"{t}"' for t in tbl_list)
+                    try:
+                        cur.execute(f"""
+                            IMPORT FOREIGN SCHEMA "{rem_schema}"
+                            LIMIT TO ({tables_str})
+                            FROM SERVER "{server_name}"
+                            INTO "{local_schema}";
+                        """)
+                    except Exception as schema_err:
+                        print(f"Notice: IMPORT FOREIGN SCHEMA warning for '{rem_schema}': {schema_err}")
+        else:
+            # Empty list [] -> user explicitly unchecked all tables -> skip import
+            pass
+    else:
+        # Full schema import
+        cur.execute(f"""
+            IMPORT FOREIGN SCHEMA "{default_remote_schema}"
+            FROM SERVER "{server_name}"
+            INTO "{local_schema}";
+        """)
+
+
 def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
     """
-    Provisions Foreign Data Wrapper (postgres_fdw), Foreign Server, User Mapping,
-    and imports foreign schema/tables into the host PostgreSQL database.
+    Provisions Foreign Data Wrapper (postgres_fdw) on host PostgreSQL database.
     """
     conn = create_postgres_connection(
         pg_conn_data,
@@ -393,9 +440,12 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         cur = conn.cursor()
 
         # 1. Ensure postgres_fdw extension exists
-        cur.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw;")
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw;")
+        except Exception as ext_err:
+            print(f"Notice: postgres_fdw extension error on host: {ext_err}")
 
-        # 2. Determine safe server name
+        # 2. Determine safe server & local schema names
         raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "foreign_source"
         safe_name = _sanitize_identifier(raw_name)
         server_name = f"srv_{safe_name}"
@@ -405,7 +455,13 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         remote_db = ds_data.get("database") or ds_data.get("database_name") or "postgres"
         remote_user = ds_data.get("user") or ds_data.get("username") or "postgres"
         remote_password = ds_data.get("password") or ""
-        remote_schema = ds_data.get("schema") or ds_data.get("schema_name") or "public"
+        local_schema = ds_data.get("schema_name")
+        if not local_schema or local_schema.lower() in ("public", "siam", "suprava", "test", "test2", "test5", "pg_catalog", "information_schema"):
+            local_schema = f"{safe_name}_schema"
+
+        remote_schema = ds_data.get("remote_schema") or ds_data.get("schema") or "public"
+        if remote_schema == local_schema or "schema" in remote_schema:
+            remote_schema = "public"
 
         # 3. Clean up existing server if present
         cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
@@ -427,10 +483,6 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
         """, (remote_user, remote_password))
 
         # 6. Import foreign schema into a dedicated schema
-        local_schema = ds_data.get("schema_name")
-        if not local_schema or local_schema.lower() in ("public", "siam", "suprava", "test", "test2", "test5", "pg_catalog", "information_schema"):
-            local_schema = f"{safe_name}_schema"
-
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
         cur.execute(f"""
             DO $$
@@ -445,37 +497,28 @@ def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
                 )
                 LOOP
                     IF r.relkind = 'f' THEN
-                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     ELSIF r.relkind = 'v' THEN
-                        EXECUTE format('DROP VIEW IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     ELSIF r.relkind = 'm' THEN
-                        EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     ELSIF r.relkind = 'r' THEN
-                        EXECUTE format('DROP TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     END IF;
                 END LOOP;
             END $$;
         """)
 
-        try:
-            selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
-            if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-                tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA "{remote_schema}"
-                    LIMIT TO ({tables_str})
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
-            else:
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA "{remote_schema}"
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
-        except Exception as import_err:
-            # Fallback: if remote schema import fails, try public or log warning
-            print(f"Notice: IMPORT FOREIGN SCHEMA warning: {import_err}")
+        selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+        if selected_tables is None and ds_data.get("config_json"):
+            try:
+                cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
+                if isinstance(cfg, dict):
+                    selected_tables = cfg.get("selected_tables")
+            except Exception:
+                pass
+
+        _execute_import_foreign_schema(cur, server_name, local_schema, remote_schema, selected_tables)
 
         cur.close()
         return server_name, local_schema
@@ -509,7 +552,9 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
         if not local_schema or local_schema.lower() in ("public", "siam", "suprava", "test", "test2", "test5", "pg_catalog", "information_schema"):
             local_schema = f"{safe_name}_schema"
 
-        remote_schema = ds_data.get("schema") or "public"
+        remote_schema = ds_data.get("remote_schema") or ds_data.get("schema") or "public"
+        if remote_schema == local_schema or "schema" in remote_schema:
+            remote_schema = "public"
 
         # Verify server exists
         cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
@@ -534,13 +579,13 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
                 )
                 LOOP
                     IF r.relkind = 'f' THEN
-                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     ELSIF r.relkind = 'v' THEN
-                        EXECUTE format('DROP VIEW IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     ELSIF r.relkind = 'm' THEN
-                        EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     ELSIF r.relkind = 'r' THEN
-                        EXECUTE format('DROP TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     END IF;
                 END LOOP;
             END $$;
@@ -551,25 +596,12 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
         if not selected_tables and ds_data.get("config_json"):
             try:
                 cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
-                selected_tables = cfg.get("selected_tables")
+                if isinstance(cfg, dict):
+                    selected_tables = cfg.get("selected_tables")
             except Exception:
                 pass
 
-        # Re-import foreign schema
-        if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-            tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-            cur.execute(f"""
-                IMPORT FOREIGN SCHEMA "{remote_schema}"
-                LIMIT TO ({tables_str})
-                FROM SERVER "{server_name}"
-                INTO "{local_schema}";
-            """)
-        else:
-            cur.execute(f"""
-                IMPORT FOREIGN SCHEMA "{remote_schema}"
-                FROM SERVER "{server_name}"
-                INTO "{local_schema}";
-            """)
+        _execute_import_foreign_schema(cur, server_name, local_schema, remote_schema, selected_tables)
 
         # Query count of imported foreign tables
         cur.execute("""
@@ -777,24 +809,16 @@ def create_sqlite_fdw_source(pg_conn_data: dict, ds_data: dict):
 
             # 6. Import foreign schema into a dedicated schema
             cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
-            try:
-                selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
-                if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-                    tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-                    cur.execute(f"""
-                        IMPORT FOREIGN SCHEMA public
-                        LIMIT TO ({tables_str})
-                        FROM SERVER "{server_name}"
-                        INTO "{local_schema}";
-                    """)
-                else:
-                    cur.execute(f"""
-                        IMPORT FOREIGN SCHEMA public
-                        FROM SERVER "{server_name}"
-                        INTO "{local_schema}";
-                    """)
-            except Exception as import_err:
-                print(f"Notice: sqlite_fdw IMPORT FOREIGN SCHEMA warning: {import_err}")
+            selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+            if selected_tables is None and ds_data.get("config_json"):
+                try:
+                    cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
+                    if isinstance(cfg, dict):
+                        selected_tables = cfg.get("selected_tables")
+                except Exception:
+                    pass
+
+            _execute_import_foreign_schema(cur, server_name, local_schema, "public", selected_tables)
 
         cur.close()
         return server_name, local_schema
@@ -842,7 +866,7 @@ def sync_sqlite_fdw_schema(pg_conn_data: dict, ds_data: dict):
                         WHERE n.nspname = '{local_schema}' AND s.srvname = '{server_name}'
                     )
                     LOOP
-                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS "%I"."%I" CASCADE;', '{local_schema}', r.relname);
+                        EXECUTE format('DROP FOREIGN TABLE IF EXISTS %I.%I CASCADE;', '{local_schema}', r.relname);
                     END LOOP;
                 END $$;
             """)
@@ -852,25 +876,12 @@ def sync_sqlite_fdw_schema(pg_conn_data: dict, ds_data: dict):
             if not selected_tables and ds_data.get("config_json"):
                 try:
                     cfg = json.loads(ds_data["config_json"]) if isinstance(ds_data["config_json"], str) else ds_data["config_json"]
-                    selected_tables = cfg.get("selected_tables")
+                    if isinstance(cfg, dict):
+                        selected_tables = cfg.get("selected_tables")
                 except Exception:
                     pass
 
-            # Re-import foreign schema
-            if selected_tables and isinstance(selected_tables, (list, tuple)) and len(selected_tables) > 0:
-                tables_str = ", ".join(f'"{t}"' for t in selected_tables)
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA public
-                    LIMIT TO ({tables_str})
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
-            else:
-                cur.execute(f"""
-                    IMPORT FOREIGN SCHEMA public
-                    FROM SERVER "{server_name}"
-                    INTO "{local_schema}";
-                """)
+            _execute_import_foreign_schema(cur, server_name, local_schema, "public", selected_tables)
 
             # Query count of imported foreign tables
             cur.execute("""
