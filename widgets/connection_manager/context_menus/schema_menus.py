@@ -952,9 +952,9 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Cross-Source Query Helper...", "mdi.transit-connection-variant")
+        act = action(self.manager, "Cross-Source View && Data Masking Creator...", "mdi.shield-plus")
         act.triggered.connect(
-            lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data)
+            lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
         )
         menu.addAction(act)
 
@@ -987,9 +987,9 @@ class SchemaMenuBuilder:
     # Unified Views Root (UDS)
 
     def _unified_views_root_menu(self, menu, item, item_data, index):
-        act = action(self.manager, "Create Unified View...", "mdi.plus-circle-outline")
+        act = action(self.manager, "Create Virtual View && Data Masking...", "mdi.shield-plus")
         act.triggered.connect(
-            lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data)
+            lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
         )
         menu.addAction(act)
 

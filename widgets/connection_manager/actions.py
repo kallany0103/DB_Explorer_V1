@@ -174,10 +174,8 @@ class ConnectionActions:
         self.manager.tab_widget.setCurrentWidget(new_tab)
 
     def open_cross_source_query_dialog(self, item_data, table_name=None):
-        """Opens the Cross-Source Query Helper dialog for multi-database JOINs."""
-        from dialogs.cross_source_query_dialog import CrossSourceQueryDialog
-        dialog = CrossSourceQueryDialog(self.manager, initial_item_data=item_data, initial_table_name=table_name)
-        dialog.exec()
+        """Opens the combined Cross-Source View & Data Masking Creator dialog."""
+        return self.open_uds_virtual_view_dialog(item_data)
 
     def test_data_source_connection(self, item_data, item=None):
         """Runs a background ping test for a data source and displays a status popup."""
@@ -2467,3 +2465,27 @@ SERVER "{data["server"]}"
             self._notify_creation_success(name, "Policy", sql, conn_data)
         except Exception as e:
             QMessageBox.critical(self.manager, "Error", f"Failed to create policy:\n{e}")
+
+    def open_uds_virtual_view_dialog(self, item_data=None):
+        """Opens the UDS Virtual View & Data Masking Creator dialog."""
+        from dialogs.uds_virtual_view_dialog import UDSVirtualViewMaskingDialog
+
+        host_conn_data = self.manager.active_postgres_conn or {}
+        if not host_conn_data and item_data:
+            host_conn_data = item_data.get('conn_data') or item_data
+
+        initial_table = None
+        if item_data:
+            initial_table = item_data.get('table_name') or item_data.get('name') or item_data.get('source_name')
+
+        dlg = UDSVirtualViewMaskingDialog(
+            parent=self.manager.main_window,
+            host_conn_data=host_conn_data,
+            initial_table=initial_table
+        )
+        if dlg.exec():
+            if hasattr(self.manager, "refresh_object_explorer"):
+                if self.manager.proxy_model and self.manager.tree:
+                    curr_idx = self.manager.tree.currentIndex()
+                    if curr_idx and curr_idx.isValid():
+                        self.manager.refresh_object_explorer(curr_idx, collapse=False)
