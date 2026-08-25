@@ -137,13 +137,12 @@ class ConnectionSpinner(QObject):
 
 
     def start(self, item) -> None:
-        """Attach the spinner to *item* and start animating."""
+        """Attach the spinner to *item* and start animating, stopping any previously loading items."""
         if item is None:
             return
             
-        for entry in self._items:
-            if entry['item'] is item:
-                return
+        # Stop and restore any previously loading items so only the last selected item is loading
+        self.stop()
                 
         try:
             saved_icon = item.icon()
