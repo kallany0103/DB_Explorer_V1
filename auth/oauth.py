@@ -13,7 +13,7 @@ def start_google_login(cancel_event=None) -> dict | None:
     device_id = str(uuid.uuid4())
     server = loopback.LoopbackServer()
     url = (
-        f"{config.API_BASE_URL}/api/v1/auth/google"
+        f"{config.API_BASE_URL}/auth/google"
         f"?device_id={device_id}&callback={quote(server.callback_url, safe='')}"
     )
     webbrowser.open(url)

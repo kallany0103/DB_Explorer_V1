@@ -168,6 +168,7 @@ class ERDConnectionPathPlanner:
         return False
 
     def _path_hits_obstacles(self, points: list) -> bool:
+        from widgets.erd.items.table_item import ERDTableItem
         scene = self.connection_item.scene()
         if not scene:
             return False
