@@ -15,14 +15,14 @@ class ApiClient:
 
     def get_me(self, access_token: str) -> dict:
         resp = self._client.get(
-            "/api/v1/auth/me", headers={"Authorization": f"Bearer {access_token}"}
+            "/auth/me", headers={"Authorization": f"Bearer {access_token}"}
         )
         resp.raise_for_status()
         return resp.json()
 
     def refresh(self, refresh_token: str) -> dict:
         resp = self._client.post(
-            "/api/v1/auth/refresh", data={"refresh_token": refresh_token}
+            "/auth/refresh", params={"refresh_token": refresh_token}
         )
         resp.raise_for_status()
         return resp.json()
@@ -30,7 +30,7 @@ class ApiClient:
     def logout(self, refresh_token: str) -> None:
         try:
             self._client.post(
-                "/api/v1/auth/logout", data={"refresh_token": refresh_token}
+                "/auth/logout", params={"refresh_token": refresh_token}
             )
         except httpx.HTTPError:
             pass
