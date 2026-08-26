@@ -67,7 +67,7 @@ class SplashScreen(QDialog):
         copyright_label.setObjectName("splashCopyright")
         copyright_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        version_label = QLabel("v1.36")
+        version_label = QLabel("v1.37")
         version_label.setObjectName("splashVersion")
         version_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 

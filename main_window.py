@@ -462,7 +462,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.36</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.37</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()

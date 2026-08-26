@@ -64,7 +64,7 @@ color 0A
 echo.
 echo ==========================================================
 echo [SUCCESS] Build pipeline completed successfully!
-echo New installer: dist\Universal_SQL_Client_WINDOWS_1.36_setup.exe
+echo New installer: dist\Universal_SQL_Client_WINDOWS_1.37_setup.exe
 echo ==========================================================
 echo.
 pause
