@@ -67,22 +67,20 @@ class PostgresDataSourceDialog(QDialog):
 
         self.name_input = QLineEdit()
         self.short_name_input = QLineEdit()
+        self.short_name_input.setPlaceholderText("e.g. commerce, hr, sales")
         self.host_input = QLineEdit()
         self.port_input = QLineEdit()
         self.port_input.setPlaceholderText("5432")
         self.db_input = QLineEdit()
         self.user_input = QLineEdit()
-        self.schema_input = QLineEdit()
-        self.schema_input.setPlaceholderText("public")
 
         self.password_input = PasswordBox()
 
         form.addRow("Connection Name:", self.name_input)
-        form.addRow("Short Name / Schema:", self.short_name_input)
+        form.addRow("Data Source Short Name:", self.short_name_input)
         form.addRow("Host / IP Address:", self.host_input)
         form.addRow("Port:", self.port_input)
         form.addRow("Database Name:", self.db_input)
-        form.addRow("Default Remote Schema:", self.schema_input)
         form.addRow("Username:", self.user_input)
         form.addRow("Password:", self.password_input)
 
@@ -142,7 +140,6 @@ class PostgresDataSourceDialog(QDialog):
             self.host_input.setText(str(self.conn_data.get("host", "")))
             self.port_input.setText(str(self.conn_data.get("port", "")))
             self.db_input.setText(self.conn_data.get("database") or self.conn_data.get("database_name", ""))
-            self.schema_input.setText(self.conn_data.get("schema") or self.conn_data.get("schema_name", "public"))
             self.user_input.setText(self.conn_data.get("user") or self.conn_data.get("username", ""))
             self.password_input.setText(self.conn_data.get("password", ""))
 
@@ -204,7 +201,7 @@ class PostgresDataSourceDialog(QDialog):
         database = self.db_input.text().strip() or "postgres"
         user = self.user_input.text().strip() or "postgres"
         password = self.password_input.text()
-        schema = self.schema_input.text().strip() or "public"
+        schema = "public"
 
         _cloud_domains = ["aivencloud.com", "elephantsql.com", "amazonaws.com", "heroku.com", "cloud.google.com"]
         is_cloud = any(d in host.lower() for d in _cloud_domains)
@@ -415,8 +412,8 @@ class PostgresDataSourceDialog(QDialog):
             "port": int(self.port_input.text().strip() or 5432),
             "database": self.db_input.text().strip(),
             "database_name": self.db_input.text().strip(),
-            "schema": self.schema_input.text().strip() or "public",
-            "schema_name": self.schema_input.text().strip() or "public",
+            "schema": "public",
+            "schema_name": "public",
             "user": self.user_input.text().strip() or "postgres",
             "username": self.user_input.text().strip() or "postgres",
             "password": self.password_input.text(),
