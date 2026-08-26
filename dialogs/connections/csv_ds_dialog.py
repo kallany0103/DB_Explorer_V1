@@ -74,7 +74,7 @@ class CSVDataSourceDialog(QDialog):
         self.name_input.setPlaceholderText("e.g., E-Commerce Reviews CSV")
 
         self.short_name_input = QLineEdit()
-        self.short_name_input.setPlaceholderText("e.g., ecommerce_reviews_csv")
+        self.short_name_input.setPlaceholderText("e.g. orders_csv, sales_data")
 
         # Mode: Single CSV file vs Directory
         self.mode_combo = QComboBox()
@@ -101,7 +101,7 @@ class CSVDataSourceDialog(QDialog):
         self.header_checkbox.setChecked(True)
 
         layout.addRow("Connection Name:", self.name_input)
-        layout.addRow("Short Name / Schema:", self.short_name_input)
+        layout.addRow("Data Source Short Name:", self.short_name_input)
         layout.addRow("Import Source Mode:", self.mode_combo)
         layout.addRow("File / Folder Path:", path_box)
         layout.addRow("CSV Delimiter:", self.delimiter_combo)
