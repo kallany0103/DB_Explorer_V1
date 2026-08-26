@@ -116,15 +116,15 @@ def ensure_hierarchy_db():
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
 
-    # Copy the bundled, pre-populated database on first run
-    if not os.path.exists(DB_FILE):
-        bundled_db = get_bundled_path("databases/hierarchy.db")
-        if os.path.exists(bundled_db) and bundled_db != DB_FILE:
-            try:
-                shutil.copy2(bundled_db, DB_FILE)
-                print(f"Copied pre-populated database from {bundled_db} to {DB_FILE}")
-            except Exception as e:
-                print(f"Failed to copy bundled database: {e}")
+    # Always overwrite local DB with the bundled, pre-populated database on startup
+    # if not os.path.exists(DB_FILE):
+    bundled_db = get_bundled_path("databases/hierarchy.db")
+    if os.path.exists(bundled_db) and bundled_db != DB_FILE:
+        try:
+            shutil.copy2(bundled_db, DB_FILE)
+            print(f"Copied pre-populated database from {bundled_db} to {DB_FILE}")
+        except Exception as e:
+            print(f"Failed to copy bundled database: {e}")
 
     with sqlite.connect(DB_FILE) as conn:
         conn.execute("PRAGMA foreign_keys = ON")

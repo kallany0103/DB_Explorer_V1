@@ -31,12 +31,12 @@ VSVersionInfo(
         '040904B0',
         [StringStruct('CompanyName', 'Datafluent BD Pvt. Ltd.'),
         StringStruct('FileDescription', 'Universal SQL Client'),
-        StringStruct('FileVersion', '1.36.0.0'),
+        StringStruct('FileVersion', '1.37.0.0'),
         StringStruct('InternalName', 'Universal SQL Client'),
         StringStruct('LegalCopyright', '© Datafluent BD Pvt. Ltd. All rights reserved.'),
         StringStruct('OriginalFilename', 'Universal SQL Client.EXE'),
         StringStruct('ProductName', 'Universal SQL Client'),
-        StringStruct('ProductVersion', '1.36.0.0')])
+        StringStruct('ProductVersion', '1.37.0.0')])
       ]), 
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

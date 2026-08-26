@@ -518,11 +518,12 @@ QComboBox QAbstractItemView::item:selected {
 }
 
 QToolTip { 
-    background-color: #FFFFFF; 
-    color: #1F2937; 
-    border: 1px solid #CBD5E1;
+    background-color: #1F2937; 
+    color: #FFFFFF; 
+    border: 1px solid #374151;
     padding: 4px 8px; 
     font-size: 11px; 
+    opacity: 255;
 }
 
 /* ERD Styles */
