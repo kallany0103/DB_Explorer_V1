@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIcon, QStandardItemModel
 from PySide6.QtCore import Qt, QSize, QSortFilterProxyModel
 from ui.components import SearchBox
+import qtawesome as qta
 
 
 class ConnectionUI:
@@ -26,10 +27,14 @@ class ConnectionUI:
         object_explorer_header_layout = QHBoxLayout(object_explorer_header)
         object_explorer_header_layout.setContentsMargins(8, 2, 8, 6)
         object_explorer_header_layout.setSpacing(10)
+        # Store ref so toggle_left_panel() can adjust margins when collapsing
+        self.manager.explorer_header_layout = object_explorer_header_layout
 
         object_explorer_label = QLabel("Object Explorer")
         object_explorer_label.setObjectName("objectExplorerLabel")
         object_explorer_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        # Store ref so toggle_left_panel() can hide/show it
+        self.manager.explorer_label = object_explorer_label
 
         object_explorer_header_layout.addWidget(object_explorer_label)
 
@@ -67,10 +72,24 @@ class ConnectionUI:
         self.add_new_type_btn.setIcon(QIcon("assets/plus.svg"))
         self.add_new_type_btn.setProperty("class", "sidebar-tool-btn")
         self.add_new_type_btn.clicked.connect(self.manager.add_connection_flow)
+        # Store ref so toggle_left_panel() can hide/show it
+        self.manager.explorer_add_btn = self.add_new_type_btn
 
         object_explorer_header_layout.addStretch()
         object_explorer_header_layout.addWidget(self.manager.explorer_search_container)
         object_explorer_header_layout.addWidget(self.add_new_type_btn)
+
+        # Collapse / expand sidebar button — stays visible even when collapsed
+        self.manager.collapse_panel_btn = QToolButton()
+        self.manager.collapse_panel_btn.setFixedSize(24, 24)
+        self.manager.collapse_panel_btn.setIconSize(QSize(16, 16))
+        self.manager.collapse_panel_btn.setToolTip("Hide Sidebar")
+        self.manager.collapse_panel_btn.setProperty("class", "sidebar-tool-btn")
+        self.manager.collapse_panel_btn.setIcon(qta.icon('mdi.chevron-double-left', color='#6b7280'))
+        self.manager.collapse_panel_btn.clicked.connect(
+            lambda: self.manager.main_window.toggle_left_panel()
+        )
+        object_explorer_header_layout.addWidget(self.manager.collapse_panel_btn)
 
         self.manager.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.manager.vertical_splitter.setHandleWidth(0)
@@ -120,6 +139,10 @@ class ConnectionUI:
 
         layout.addWidget(object_explorer_header)
         layout.addWidget(self.manager.vertical_splitter)
+
+        self.manager.empty_space = QWidget()
+        self.manager.empty_space.hide()
+        layout.addWidget(self.manager.empty_space, 1)
 
     def apply_schema_header_style(self):
         header = self.manager.schema_tree.header()
