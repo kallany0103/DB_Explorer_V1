@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         # Layout Setup
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
-        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setChildrenCollapsible(True)
         self.main_splitter.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCentralWidget(self.main_splitter)
 
@@ -172,7 +172,7 @@ class MainWindow(QMainWindow):
             new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(x_pos, add_tab_btn.height() + 2)))
 
         add_tab_btn.clicked.connect(show_new_tab_menu)
-        self.tab_widget.setCornerWidget(add_tab_btn)
+        self.tab_widget.setCornerWidget(add_tab_btn, Qt.Corner.TopRightCorner)
 
         self.thread_monitor_timer = QTimer()
         self.thread_monitor_timer.timeout.connect(self.update_thread_pool_status)
@@ -561,8 +561,106 @@ class MainWindow(QMainWindow):
     def reset_to_dashboard(self, *args, **kwargs):
         reset_to_dashboard_action(self)
 
+    def toggle_left_panel(self):
+        """Collapse or expand the left sidebar panel.
 
+        When collapsed: all header items except the toggle button are hidden,
+        the stretch spacer is removed so the button sits top-left in a 32 px
+        strip.  Clicking it restores the full sidebar.
+        """
+        import qtawesome as qta
+        from PySide6.QtWidgets import QSpacerItem
+        cm = self.connection_manager
+        is_collapsed = getattr(self, '_sidebar_collapsed', False)
 
+        if not is_collapsed:
+            # ── COLLAPSE ──────────────────────────────────────────────────
+            self._last_left_panel_width = self.main_splitter.sizes()[0]
+
+            # Hide tree content
+            cm.vertical_splitter.hide()
+            if hasattr(cm, 'empty_space'):
+                cm.empty_space.show()
+
+            # Hide header items (label, search, add-btn)
+            if hasattr(cm, 'explorer_label'):
+                cm.explorer_label.hide()
+            if hasattr(cm, 'explorer_search_container'):
+                cm.explorer_search_container.hide()
+            if hasattr(cm, 'explorer_add_btn'):
+                cm.explorer_add_btn.hide()
+
+            # Remove the stretch spacer so the button sits at the top-left
+            if hasattr(cm, 'explorer_header_layout'):
+                layout = cm.explorer_header_layout
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item and isinstance(item.spacerItem(), QSpacerItem):
+                        layout.takeAt(i)
+                        break
+                # Tight margins: just enough room for the button
+                layout.setContentsMargins(2, 6, 2, 0)
+                layout.setSpacing(0)
+
+            # Force the widget to shrink to exactly the button's width
+            cm.setMinimumWidth(28)
+            cm.setMaximumWidth(28)
+            total = sum(self.main_splitter.sizes())
+            self.main_splitter.setSizes([28, total - 28])
+
+            # Flip button icon → expand arrow
+            if hasattr(cm, 'collapse_panel_btn'):
+                from PySide6.QtCore import QSize
+                cm.collapse_panel_btn.setFixedSize(24, 24)
+                cm.collapse_panel_btn.setIcon(
+                    qta.icon('mdi.chevron-double-right', color='#6b7280')
+                )
+                cm.collapse_panel_btn.setToolTip("Show Sidebar")
+
+            self._sidebar_collapsed = True
+
+        else:
+            # ── EXPAND ────────────────────────────────────────────────────
+            # Restore header layout: add stretch back before search/add-btn
+            if hasattr(cm, 'explorer_header_layout'):
+                layout = cm.explorer_header_layout
+                layout.setContentsMargins(8, 2, 8, 6)
+                layout.setSpacing(10)
+                # Re-insert stretch before search_container (index 1)
+                layout.insertStretch(1, 1)
+
+            # Show tree content
+            if hasattr(cm, 'empty_space'):
+                cm.empty_space.hide()
+            cm.vertical_splitter.show()
+
+            # Show header items
+            if hasattr(cm, 'explorer_label'):
+                cm.explorer_label.show()
+            if hasattr(cm, 'explorer_search_container'):
+                cm.explorer_search_container.show()
+            if hasattr(cm, 'explorer_add_btn'):
+                cm.explorer_add_btn.show()
+
+            # Restore previous width constraint
+            cm.setMinimumWidth(0)
+            cm.setMaximumWidth(16777215)
+            
+            # Restore previous width
+            restore_w = getattr(self, '_last_left_panel_width', 280)
+            total = sum(self.main_splitter.sizes())
+            self.main_splitter.setSizes([restore_w, total - restore_w])
+
+            # Flip button icon → collapse arrow
+            if hasattr(cm, 'collapse_panel_btn'):
+                from PySide6.QtCore import QSize
+                cm.collapse_panel_btn.setFixedSize(24, 24)
+                cm.collapse_panel_btn.setIcon(
+                    qta.icon('mdi.chevron-double-left', color='#6b7280')
+                )
+                cm.collapse_panel_btn.setToolTip("Hide Sidebar")
+
+            self._sidebar_collapsed = False
 
     def toggle_maximize(self):
         toggle_maximize_action(self)
