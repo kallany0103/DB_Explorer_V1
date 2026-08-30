@@ -1,8 +1,8 @@
 # ui/title_bar.py
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QPoint, QRectF, Qt, QSize, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -11,6 +11,66 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 import qtawesome as qta
+
+_AVATAR_SIZE = 20
+_RENDER_DPR = 2
+_TITLE_BAR_HEIGHT = 30
+
+
+class UserControl(QWidget):
+    """Compact avatar + chevron control shown in the title bar."""
+
+    clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("titleBarBtnUser")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFixedHeight(_TITLE_BAR_HEIGHT)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 0, 6, 0)
+        layout.setSpacing(3)
+
+        self._avatar_lbl = QLabel()
+        self._avatar_lbl.setFixedSize(_AVATAR_SIZE, _AVATAR_SIZE)
+        self._avatar_lbl.setScaledContents(True)
+        self._avatar_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout.addWidget(self._avatar_lbl)
+
+        self._chevron_lbl = QLabel()
+        self._chevron_lbl.setFixedSize(12, 12)
+        self._chevron_lbl.setScaledContents(True)
+        self._chevron_lbl.setPixmap(_chevron_icon_pixmap(12))
+        self._chevron_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout.addWidget(self._chevron_lbl)
+
+    def set_user_state(self, auth_session) -> None:
+        """Show the Google photo, or a letter avatar, plus the chevron."""
+        if auth_session.is_signed_in:
+            name = auth_session.display_name or "User"
+            initial = (name.split()[0][:1] if name.split() else "?").upper()
+            photo = _rounded_avatar_pixmap(auth_session.avatar, _AVATAR_SIZE)
+            pixmap = photo if photo is not None else _letter_avatar_pixmap(initial, _AVATAR_SIZE)
+            self.setToolTip(f"Signed in as {name}")
+        else:
+            pixmap = qta.icon("mdi.account-circle-outline", color="#555555").pixmap(
+                _AVATAR_SIZE * _RENDER_DPR, _AVATAR_SIZE * _RENDER_DPR
+            )
+            self.setToolTip("Sign in")
+        self._avatar_lbl.setPixmap(pixmap)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class TitleBarWidget(QWidget):
@@ -81,14 +141,7 @@ class TitleBarWidget(QWidget):
         self._btn_settings.clicked.connect(self._window.show_preferences)
         layout.addWidget(self._btn_settings)
 
-        self._btn_user = QPushButton()
-        self._btn_user.setObjectName("titleBarBtnUser")
-        self._btn_user.setIcon(qta.icon("mdi.account-circle-outline", color="#555555"))
-        self._btn_user.setIconSize(QSize(20, 20))
-        self._btn_user.setFixedSize(btn_size)
-        self._btn_user.setToolTip("Sign in")
-        self._btn_user.setCursor(Qt.CursorShape.ArrowCursor)
-        self._btn_user.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_user = UserControl(self)
         self._btn_user.clicked.connect(self._show_account_menu)
         layout.addWidget(self._btn_user)
 
@@ -186,19 +239,66 @@ class TitleBarWidget(QWidget):
         self._window.toggle_maximize()
 
     def set_user_state(self, auth_session) -> None:
-        """Reflect the signed-in state on the user control (initials + tooltip)."""
-        if auth_session.is_signed_in:
-            name = auth_session.display_name or "User"
-            words = [w for w in name.replace("@", " ").split() if w]
-            initials = ("".join(w[0] for w in words[:2])).upper() or "?"
-            self._btn_user.setText(initials)
-            self._btn_user.setIcon(QIcon())
-            self._btn_user.setToolTip(f"Signed in as {name}")
-        else:
-            self._btn_user.setText("")
-            self._btn_user.setIcon(qta.icon("mdi.account-circle-outline", color="#555555"))
-            self._btn_user.setToolTip("Sign in")
+        """Reflect the signed-in state on the user control (avatar + chevron)."""
+        self._btn_user.set_user_state(auth_session)
 
     def _show_account_menu(self) -> None:
         """Open account sign-in choices from the user control."""
         self._window.show_login_menu(self._btn_user)
+
+
+def _rounded_avatar_pixmap(data: bytes | None, size: int = 20) -> QPixmap | None:
+    """Build a circular-clipped avatar from raw image bytes, or None if unusable."""
+    if not data:
+        return None
+    source = QImage.fromData(data)
+    if source.isNull():
+        return None
+    ph = size * _RENDER_DPR
+    source = source.scaled(
+        ph,
+        ph,
+        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    out = QPixmap(ph, ph)
+    out.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    path = QPainterPath()
+    path.addEllipse(QRectF(0, 0, ph, ph))
+    painter.setClipPath(path)
+    painter.drawPixmap(0, 0, QPixmap.fromImage(source))
+    painter.end()
+    return out
+
+
+_LETTER_COLORS = ("#4285F4", "#EA4335", "#FBBC05", "#34A853", "#7B1FA2", "#FF6D00")
+
+
+def _letter_avatar_pixmap(initial: str, size: int = 20) -> QPixmap:
+    """Build a circular coloured avatar showing the user's initial."""
+    ch = (initial or "?").upper()
+    color = _LETTER_COLORS[sum(ord(c) for c in ch) % len(_LETTER_COLORS)]
+    ph = size * _RENDER_DPR
+    out = QPixmap(ph, ph)
+    out.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color))
+    painter.drawEllipse(0, 0, ph, ph)
+    font = QFont()
+    font.setPixelSize(round(ph * 0.5))
+    font.setBold(True)
+    painter.setFont(font)
+    painter.setPen(QColor("#FFFFFF"))
+    painter.drawText(QRectF(0, 0, ph, ph), Qt.AlignmentFlag.AlignCenter, ch)
+    painter.end()
+    return out
+
+
+def _chevron_icon_pixmap(size: int = 12) -> QPixmap:
+    """Render the dropdown chevron at 2x; the label scales it down to fit."""
+    physical = size * _RENDER_DPR
+    return qta.icon("fa5s.chevron-down", color="#555555").pixmap(physical, physical)

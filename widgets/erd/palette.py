@@ -63,6 +63,10 @@ class ElementTile(QPushButton):
         self.setFixedSize(TILE_W, TILE_H)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self.setToolTip(label)
+        self.setStyleSheet(
+            "QToolTip { background-color: #FFFFFF; color: #000000;"
+            " border: 1px solid #CCCCCC; padding: 4px 8px; font-size: 11px; }"
+        )
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCheckable(False)
 

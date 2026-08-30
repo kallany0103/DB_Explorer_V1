@@ -390,25 +390,34 @@ class ConnectionManager(QWidget):
             self.table_details_loader.load_tables_on_expand(target_index, force=True)
             self._schema_spinner.stop()
 
-        if node_type == 'schema_group':
+        _GROUPS_THAT_REFRESH_PARENT = (
+            'schema_group', 
+            'columns_group', 
+            'constraints_group', 
+            'indexes_group', 
+            'triggers_group', 
+            'policies_group'
+        )
+
+        if node_type in _GROUPS_THAT_REFRESH_PARENT:
             parent_index = index.parent()
             if parent_index and parent_index.isValid():
                 parent_item = self.schema_model.itemFromIndex(parent_index)
                 if parent_item:
                     parent_data = parent_item.data(Qt.ItemDataRole.UserRole)
-                    if parent_data and parent_data.get('schema_name'):
+                    if parent_data:
                         self._skip_expansion_restore = collapse
                         _spin_and_reload(parent_index, parent_item)
                         if collapse:
                             QTimer.singleShot(300, lambda: self.schema_tree.collapse(parent_index) if parent_index.isValid() else None)
                             QTimer.singleShot(600, lambda: setattr(self, '_skip_expansion_restore', False))
-                        self.status.showMessage(f"Group '{display_name}' refreshed.", 3000)
+                        self.status.showMessage(f"Parent '{parent_item.text()}' refreshed.", 3000)
                         return
 
         self._skip_expansion_restore = collapse
         _spin_and_reload(index, item)
 
-        if collapse and node_type != 'schema_group':
+        if collapse and node_type not in _GROUPS_THAT_REFRESH_PARENT:
             QTimer.singleShot(300, lambda: self.schema_tree.collapse(index) if index.isValid() else None)
             QTimer.singleShot(600, lambda: setattr(self, '_skip_expansion_restore', False))
 

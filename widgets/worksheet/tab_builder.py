@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QFrame
 
 def add_tab(manager):
     tab_content = QWidget(manager.tab_widget)
+    tab_content.is_worksheet = True
     tab_content.current_limit = 0
     tab_content.current_offset = 0
     tab_content.current_page = 1
@@ -149,19 +150,24 @@ def add_tab(manager):
 
         tab_content.current_page = 1
         tab_content.current_offset = 0
-        page_label_widget = tab_content.findChild(QLabel, "page_label")
-        if page_label_widget:
-            page_label_widget.setText("Page 1")
+        
+        results_info_bar = tab_content.findChild(QWidget, "resultsInfoBar")
+        if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
+            results_info_bar.update_page_ui(tab_content)
+        else:
+            page_label_widget = tab_content.findChild(QLabel, "page_label")
+            if page_label_widget:
+                page_label_widget.setText("Page 1")
 
-        # Sync to Results View Label
-        rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
-        if rows_info_label:
-            limit = tab_content.current_limit
-            offset = tab_content.current_offset
-            if limit > 0:
-                rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
-            else:
-                rows_info_label.setText("No Limit")
+            # Sync to Results View Label
+            rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
+            if rows_info_label:
+                limit = tab_content.current_limit
+                offset = tab_content.current_offset
+                if limit > 0:
+                    rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
+                else:
+                    rows_info_label.setText("No Limit")
                 
     toolbar_widget.limit_changed.connect(on_limit_change)
     layout.addWidget(toolbar_widget)

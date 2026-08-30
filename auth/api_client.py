@@ -1,5 +1,7 @@
 """Minimal HTTP client for the Universal SQL Client API."""
 
+import re
+
 import httpx
 
 from auth import config
@@ -19,6 +21,27 @@ class ApiClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def userinfo_picture(self, access_token: str) -> str | None:
+        """Read the profile picture straight from Google using the access token."""
+        resp = self._client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        resp.raise_for_status()
+        return resp.json().get("picture")
+
+    def fetch_avatar(self, url: str) -> bytes:
+        resp = self._client.get(self._upsize_google_avatar(url))
+        resp.raise_for_status()
+        return resp.content
+
+    @staticmethod
+    def _upsize_google_avatar(url: str) -> str:
+        """Request a larger Google profile image for a sharp render."""
+        if "googleusercontent.com" in url:
+            return re.sub(r"=s\d+(-c)?", "=s256-c", url)
+        return url
 
     def refresh(self, refresh_token: str) -> dict:
         resp = self._client.post(
