@@ -425,13 +425,20 @@ class ResultsManager(QObject):
 
         limit_val = getattr(target_tab, 'current_limit', 0)
         offset_val = getattr(target_tab, 'current_offset', 0)
+        
+        target_tab.has_more_pages = (limit_val > 0) and (row_count >= limit_val)
 
-        if row_count <= 0 or limit_val == 0:
+        if limit_val == 0:
+           target_tab.current_page = 1
            page_label.setText("Page 1")
-           return
-
-        current_page = (offset_val // limit_val) + 1
-        page_label.setText(f"Page {current_page}")
+        else:
+           current_page = (offset_val // limit_val) + 1
+           target_tab.current_page = current_page
+           page_label.setText(f"Page {current_page}")
+           
+        results_info_bar = target_tab.findChild(QWidget, "resultsInfoBar")
+        if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
+            results_info_bar.update_page_ui(target_tab)
 
 
 
@@ -598,24 +605,25 @@ class ResultsManager(QObject):
             # Update values in tab object
             new_limit = limit_spin.value()
             new_offset = offset_spin.value()
-            
+
             tab_content.current_limit = new_limit if new_limit > 0 else 0
             tab_content.current_offset = new_offset
-            
-            # Refresh Display Label (Optional immediate update)
-            rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
-            if rows_info_label:
-                limit_text = str(new_limit) if new_limit > 0 else "All"
-                rows_info_label.setText(f"Settings: Limit {limit_text}, Offset {new_offset}")
+
+            # Recalculate current_page from the new limit/offset
+            if new_limit > 0:
+                tab_content.current_page = (new_offset // new_limit) + 1
+            else:
+                tab_content.current_page = 1
+
+            # Reset has_more_pages — will be recalculated once the query returns
+            tab_content.has_more_pages = False
 
             # Sync to Worksheet Limit Dropdown
             rows_limit_combo = tab_content.findChild(QComboBox, "rows_limit_combo")
             if rows_limit_combo:
-                # Temporarily block signals to avoid recursion if on_limit_change was still auto-executing
                 rows_limit_combo.blockSignals(True)
                 limit_str = str(new_limit) if new_limit > 0 else "No Limit"
-                
-                # If custom limit not in the list, add it numerically
+
                 if rows_limit_combo.findText(limit_str) == -1:
                     insert_idx = 1
                     for i in range(1, rows_limit_combo.count()):
@@ -626,9 +634,17 @@ class ResultsManager(QObject):
                             pass
                         insert_idx += 1
                     rows_limit_combo.insertItem(insert_idx, limit_str)
-                
+
                 rows_limit_combo.setCurrentText(limit_str)
                 rows_limit_combo.blockSignals(False)
+
+            # Refresh pagination toolbar immediately so label/buttons show correct state
+            results_info_bar = tab_content.findChild(QWidget, "resultsInfoBar")
+            if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
+                results_info_bar.update_page_ui(tab_content)
+
+            # Re-execute the query with the new limit/offset
+            self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
     def eventFilter(self, watched, event):
         if watched.objectName() == "table_search_box" and event.type() == QEvent.Type.FocusOut:

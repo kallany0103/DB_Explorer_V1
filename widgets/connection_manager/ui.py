@@ -69,7 +69,7 @@ class ConnectionUI:
         self.add_new_type_btn.setFixedSize(24, 24)
         self.add_new_type_btn.setIconSize(QSize(16, 16))
         self.add_new_type_btn.setToolTip("Add New Connection")
-        self.add_new_type_btn.setIcon(QIcon("assets/plus.svg"))
+        self.add_new_type_btn.setIcon(qta.icon("mdi.database-plus", color="#6b7280"))
         self.add_new_type_btn.setProperty("class", "sidebar-tool-btn")
         self.add_new_type_btn.clicked.connect(self.manager.add_connection_flow)
         # Store ref so toggle_left_panel() can hide/show it

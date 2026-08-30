@@ -14,6 +14,11 @@ from PySide6.QtWidgets import (
 )
 
 
+def _update_tabs_closability(output_tabs):
+    if output_tabs:
+        output_tabs.setTabsClosable(output_tabs.count() > 1)
+
+
 def _stop_chunk_loader_for_table(table_view):
     if not table_view:
         return
@@ -150,6 +155,7 @@ def ensure_output_tabs_widget(manager, tab_content):
 
     output_tabs.addTab(output_container, "Result 1")
     output_tabs.setCurrentIndex(0)
+    _update_tabs_closability(output_tabs)
 
     results_stack.insertWidget(0, output_tabs)
     if old_page_zero is not None:
@@ -253,6 +259,7 @@ def create_output_tab(manager, tab_content, title=None, activate=True):
     new_index = output_tabs.addTab(output_container, default_title)
     if activate:
         output_tabs.setCurrentIndex(new_index)
+    _update_tabs_closability(output_tabs)
     return new_index
 
 
@@ -284,6 +291,7 @@ def ensure_at_least_one_output_tab(manager, tab_content):
         output_layout.addWidget(table_view)
         output_tabs.addTab(output_container, "Result 1")
         output_tabs.setCurrentIndex(0)
+        _update_tabs_closability(output_tabs)
 
 
 def set_output_tab_title(manager, tab_content, output_tab_index, query):
@@ -312,6 +320,8 @@ def handle_output_tab_close(manager, tab_content, index):
     output_tabs.removeTab(index)
     if output_tabs.count() == 0:
         create_output_tab(manager, tab_content, title="Result 1", activate=True)
+    else:
+        _update_tabs_closability(output_tabs)
     manager.sync_row_action_state(tab_content)
 
 

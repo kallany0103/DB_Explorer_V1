@@ -107,6 +107,7 @@ class WorksheetToolbar(QWidget):
         self.cancel_btn = ToolbarActionButton(icon=manager.ws_cancel_action.icon())
         self.cancel_btn.setDefaultAction(manager.ws_cancel_action)
         self.cancel_btn.setIconSize(QSize(16, 16))
+        layout.addWidget(self.cancel_btn)
         layout.addWidget(manager.create_vertical_separator())
 
         # Auto-Commit
@@ -288,8 +289,7 @@ class ResultsInfoToolbar(QWidget):
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(6)
 
-        self.prev_btn = SecondaryButton("◀")
-        self.prev_btn.setFixedWidth(30)
+        self.prev_btn = IconButton(qta.icon("fa5s.chevron-left", color="#555555"), "Previous page")
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prev_btn.setObjectName("prev_btn")
         self.prev_btn.clicked.connect(self._go_prev)
@@ -300,8 +300,7 @@ class ResultsInfoToolbar(QWidget):
         self.page_label.setFont(QFont("Segoe UI Variable", 9))
         self.page_label.setObjectName("page_label")
 
-        self.next_btn = SecondaryButton("▶")
-        self.next_btn.setFixedWidth(30)
+        self.next_btn = IconButton(qta.icon("fa5s.chevron-right", color="#555555"), "Next page")
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_btn.setObjectName("next_btn")
         self.next_btn.clicked.connect(self._go_next)
@@ -344,11 +343,19 @@ class ResultsInfoToolbar(QWidget):
 
     def update_page_ui(self, tab=None):
         tab = tab or self.tab_content
-        self.page_label.setText(f"Page {getattr(tab, 'current_page', 1)}")
-        self.prev_btn.setEnabled(getattr(tab, 'current_page', 1) > 1)
+        current_page = getattr(tab, 'current_page', 1)
+        self.page_label.setText(f"Page {current_page}")
+        self.prev_btn.setEnabled(current_page > 1)
 
         limit = getattr(tab, "current_limit", 0)
         offset = getattr(tab, "current_offset", 0)
+        has_more_pages = getattr(tab, "has_more_pages", False)
+        
+        if limit == 0:
+            self.next_btn.setEnabled(False)
+        else:
+            self.next_btn.setEnabled(has_more_pages)
+
         if limit and limit > 0:
             self.rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
         else:

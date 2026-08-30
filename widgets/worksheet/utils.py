@@ -7,21 +7,24 @@ from PySide6.QtWidgets import QTabBar
 
 
 def renumber_tabs(manager):
-    worksheet_number = 1
-    worksheet_indices = []
+    all_worksheet_indices = []
+    worksheet_number = 0
     for i in range(manager.tab_widget.count()):
-        current_text = manager.tab_widget.tabText(i)
-        if current_text.startswith("Worksheet ") or current_text == "New Tab":
-            manager.tab_widget.setTabText(i, f"Worksheet {worksheet_number}")
-            manager.tab_widget.setTabIcon(i, manager._get_worksheet_tab_icon())
+        widget = manager.tab_widget.widget(i)
+        if getattr(widget, 'is_worksheet', False):
             worksheet_number += 1
-            worksheet_indices.append(i)
+            all_worksheet_indices.append(i)
+            current_text = manager.tab_widget.tabText(i)
+            # Only rename auto-named tabs; leave custom (renamed) names alone.
+            if current_text.startswith("Worksheet ") or current_text == "New Tab":
+                manager.tab_widget.setTabText(i, f"Worksheet {worksheet_number}")
+                manager.tab_widget.setTabIcon(i, manager._get_worksheet_tab_icon())
 
     # Hide the close button when only one worksheet remains so users
     # get a clear visual signal that the last tab cannot be closed.
     tab_bar = manager.tab_widget.tabBar()
-    only_one = len(worksheet_indices) == 1
-    for i in worksheet_indices:
+    only_one = len(all_worksheet_indices) == 1
+    for i in all_worksheet_indices:
         btn = tab_bar.tabButton(i, QTabBar.ButtonPosition.RightSide)
         if btn:
             btn.setVisible(not only_one)

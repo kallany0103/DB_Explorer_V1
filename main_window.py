@@ -1,5 +1,5 @@
 # main_window.py
-from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QMessageBox, QLabel, QMenu
+from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QMessageBox, QLabel, QMenu, QProgressDialog
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint, QEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction
@@ -43,6 +43,8 @@ from widgets.app_shell import (
     import_connections,
 )
 from ui.account_menu import AccountMenu
+from auth.session import AuthSession
+from workers.google_login_worker import GoogleSignInWorker
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -61,6 +63,12 @@ class MainWindow(QMainWindow):
         self.pg_bin_path = ""
         self.use_wsl = False
 
+        self.auth_session = AuthSession(self)
+        self.auth_session.state_changed.connect(self._on_auth_state_changed)
+        self._google_worker = None
+        self._google_progress = None
+        self.auth_session.refresh_avatar()
+
         # 1. Initialize Status Bar (needed by managers)
         self.status = QStatusBar()
         self.setStatusBar(self.status)
@@ -77,6 +85,8 @@ class MainWindow(QMainWindow):
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
 
+        self.tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
         # 3. Create Actions & Menus (needed by managers)
         self._create_actions()
         self._create_menu()
@@ -85,6 +95,7 @@ class MainWindow(QMainWindow):
         self._title_bar = TitleBarWidget(self)
         self._title_bar.embed_menu_bar(self.menuBar())
         self.setMenuWidget(self._title_bar)
+        self._title_bar.set_user_state(self.auth_session)
 
         # 4 Initialize Managers
 
@@ -92,6 +103,11 @@ class MainWindow(QMainWindow):
         self.results_manager = ResultsManager(self)
         self.worksheet_manager = WorksheetManager(self)
         self.dashboard_widget = None
+
+        # Wire tab bar right-click context menu (WorksheetManager must exist first)
+        self.tab_widget.tabBar().customContextMenuRequested.connect(
+            self.worksheet_manager.show_tab_context_menu
+        )
 
         # Keep the splash screen responsive while the main window is being built
         QApplication.processEvents()
@@ -180,10 +196,6 @@ class MainWindow(QMainWindow):
 
         self.restore_session_state()
 
-        # Clamp to available screen size only if the restored geometry overflows
-        # (e.g. multi-monitor session restored on a smaller display). Also reset
-        # a near-full-screen "normal" restore (a frameless-window artifact) back
-        # to the VS Code standard default instead of opening full-screen.
         screen = QApplication.primaryScreen().availableGeometry()
         if not self.isMaximized() and not self.isFullScreen():
             if self.width() >= screen.width() - 40 and self.height() >= screen.height() - 40:
@@ -201,12 +213,9 @@ class MainWindow(QMainWindow):
             self._title_bar.update_maximize_button()
         self._is_maximized: bool = False
 
-        # Install the application-level resize filter so the frameless window
-        # can be resized by dragging any edge or corner below the title bar.
         self._resize_filter = ResizeFilter(self)
         QApplication.instance().installEventFilter(self._resize_filter)
 
-        # Keep the splash screen responsive while the main window is being built
         QApplication.processEvents()
 
         self.main_splitter.setSizes([280, 920])
@@ -228,8 +237,13 @@ class MainWindow(QMainWindow):
         return self.worksheet_manager.add_tab()
 
     def add_erd_tab(self):
+        erd_number = sum(
+            1 for i in range(self.tab_widget.count())
+            if getattr(self.tab_widget.widget(i), "is_empty_erd", False)
+        ) + 1
         erd_widget = ERDWidget({})
-        index = self.tab_widget.addTab(erd_widget, "ERD")
+        erd_widget.is_empty_erd = True
+        index = self.tab_widget.addTab(erd_widget, f"ERD {erd_number}")
         self.tab_widget.setTabIcon(index, qta.icon('fa6s.sitemap'))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
@@ -705,12 +719,12 @@ class MainWindow(QMainWindow):
             return
         menu = AccountMenu(
             parent=self,
-            signed_in=False,
-            display_name="",
-            email="",
-            on_google=lambda: self._show_authentication_notice("Google sign-in"),
+            signed_in=self.auth_session.is_signed_in,
+            display_name=self.auth_session.display_name,
+            email=(self.auth_session.user or {}).get("email", ""),
+            on_google=self._sign_in_google,
             on_email=self.show_login,
-            on_sign_out=lambda: None,
+            on_sign_out=self._sign_out,
         )
         menu.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         menu.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
@@ -736,13 +750,37 @@ class MainWindow(QMainWindow):
         )
         return pos
 
-    def _show_authentication_notice(self, provider):
-        QMessageBox.information(
+    def _sign_in_google(self) -> None:
+        if self._google_worker is not None and self._google_worker.isRunning():
+            return
+        self._google_worker = GoogleSignInWorker(self.auth_session, parent=self)
+        self._google_worker.completed.connect(self._on_google_completed)
+        self._google_worker.start()
+        self._google_progress = QProgressDialog(
+            "Waiting for browser...\nComplete Google sign-in to continue.",
+            "Cancel",
+            0,
+            0,
             self,
-            provider,
-            f"{provider} isn't configured for this workspace yet.\n"
-            "Sign in with email, or continue without signing in.",
         )
+        self._google_progress.setWindowTitle("Google sign-in")
+        self._google_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._google_progress.setMinimumDuration(0)
+        self._google_progress.canceled.connect(self._google_worker.cancel)
+        self._google_progress.show()
+
+    def _on_google_completed(self, success: bool, message: str) -> None:
+        if self._google_progress is not None:
+            self._google_progress.close()
+            self._google_progress = None
+        if not success and message:
+            QMessageBox.warning(self, "Google sign-in", message)
+
+    def _sign_out(self) -> None:
+        self.auth_session.sign_out()
+
+    def _on_auth_state_changed(self, signed_in: bool) -> None:
+        self._title_bar.set_user_state(self.auth_session)
    
 
     def closeEvent(self, event):
@@ -754,15 +792,23 @@ class MainWindow(QMainWindow):
         else:
             msg = "Are you sure you want to exit the application?"
 
-        reply = QMessageBox.question(
-            self,
-            "Confirm Exit",
-            msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Confirm Exit")
+        msg_box.setText(msg)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        
+        yes_btn = msg_box.addButton("Yes", QMessageBox.ButtonRole.YesRole)
+        no_btn = msg_box.addButton("No", QMessageBox.ButtonRole.NoRole)
+        msg_box.setDefaultButton(no_btn)
 
-        if reply == QMessageBox.StandardButton.Yes:
+        if self.isMinimized():
+            self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+        msg_box.exec()
+
+        if msg_box.clickedButton() == yes_btn:
             save_main_window_session(self, self.SESSION_FILE)
 
             # Cancel all running queries before exit

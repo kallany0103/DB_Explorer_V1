@@ -21,8 +21,8 @@ class SecondaryButton(QPushButton):
             
         self.setStyleSheet("""
             QPushButton {
-                min-height: 22px;
-                padding: 2px 8px;
+                min-height: 26px;
+                padding: 4px 12px;
                 border: 1px solid #c4c9d4;
                 border-radius: 4px;
                 background-color: #ffffff;
