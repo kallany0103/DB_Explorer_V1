@@ -32,11 +32,7 @@ class TableDetailsLoader:
         _GROUP_TYPES = {
             'schema_group', 'oracle_schema', 'oracle_schema_group', 'oracle_schemas_root',
         }
-        is_group = (
-            item_data.get('type') in _GROUP_TYPES
-            or item_data.get('type', '').endswith('_root')
-        )
-        if not force and not is_group and item.rowCount() > 0 and item.child(0).text() != "Loading...":
+        if not force and item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
 
 
@@ -242,14 +238,25 @@ class TableDetailsLoader:
                             'Foreign Tables': 'f'
                         }.get(group_name)
                         
-                        # Use a more standard query structure
-                        cursor.execute("""
-                            SELECT c.relname
-                            FROM pg_class c
-                            JOIN pg_namespace n ON n.oid = c.relnamespace
-                            WHERE n.nspname = %s AND c.relkind = %s
-                            ORDER BY 1;
-                        """, (schema_name, relkind))
+                        if group_name == "Foreign Tables" and item_data.get("server_name"):
+                            server_name = item_data.get("server_name")
+                            cursor.execute("""
+                                SELECT c.relname
+                                FROM pg_foreign_table ft
+                                JOIN pg_class c ON c.oid = ft.ftrelid
+                                JOIN pg_namespace n ON n.oid = c.relnamespace
+                                JOIN pg_foreign_server s ON s.oid = ft.ftserver
+                                WHERE s.srvname = %s AND c.relname NOT IN ('emp_ft', 'epm_f', 'epm_foreign')
+                                ORDER BY c.relname;
+                            """, (server_name,))
+                        else:
+                            cursor.execute("""
+                                SELECT c.relname
+                                FROM pg_class c
+                                JOIN pg_namespace n ON n.oid = c.relnamespace
+                                WHERE n.nspname = %s AND c.relkind = %s
+                                ORDER BY 1;
+                            """, (schema_name, relkind))
                         
                         tables = cursor.fetchall()
                         for (table_name,) in tables:

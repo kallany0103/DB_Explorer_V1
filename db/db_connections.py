@@ -63,7 +63,9 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
         else:
             host_key = host
 
-        if not bypass_cooldown and host_key and host_key in _failed_hosts:
+        if bypass_cooldown and host_key:
+            _failed_hosts.pop(host_key, None)
+        elif not bypass_cooldown and host_key and host_key in _failed_hosts:
             if time.time() - _failed_hosts[host_key] < FAILED_HOST_COOLDOWN:
                 return None
             else:
@@ -160,6 +162,8 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
 
         try:
             conn = psycopg2.connect(**params)
+            if host_key:
+                _failed_hosts.pop(host_key, None)
             return conn
         except OperationalError as e:
             if not is_cloud:
@@ -167,6 +171,8 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
                 try:
                     params["sslmode"] = "require"
                     conn = psycopg2.connect(**params)
+                    if host_key:
+                        _failed_hosts.pop(host_key, None)
                     return conn
                 except OperationalError:
                     pass # Fall through to print original error

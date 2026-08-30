@@ -382,9 +382,7 @@ class SQLiteDataSourceDialog(QDialog):
         elif self._preselected_tables is not None:
             selected_tables = self._preselected_tables
 
-        config_data = {}
-        if selected_tables is not None:
-            config_data["selected_tables"] = selected_tables
+        config_data = {"selected_tables": selected_tables}
 
         path = self.path_input.text().strip()
 
