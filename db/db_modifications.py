@@ -396,7 +396,7 @@ def _execute_import_foreign_schema(cur, server_name: str, local_schema: str, def
                 else:
                     continue
 
-                if tbl_n:
+                if tbl_n and tbl_n not in ("emp_ft", "epm_f", "epm_foreign"):
                     schema_groups.setdefault(rem_s, []).append(tbl_n)
 
             for rem_schema, tbl_list in schema_groups.items():
@@ -415,12 +415,20 @@ def _execute_import_foreign_schema(cur, server_name: str, local_schema: str, def
             # Empty list [] -> user explicitly unchecked all tables -> skip import
             pass
     else:
-        # Full schema import
-        cur.execute(f"""
-            IMPORT FOREIGN SCHEMA "{default_remote_schema}"
-            FROM SERVER "{server_name}"
-            INTO "{local_schema}";
-        """)
+        # Full schema import (excluding default dummy tables)
+        try:
+            cur.execute(f"""
+                IMPORT FOREIGN SCHEMA "{default_remote_schema}"
+                EXCEPT ("emp_ft", "epm_f", "epm_foreign")
+                FROM SERVER "{server_name}"
+                INTO "{local_schema}";
+            """)
+        except Exception:
+            cur.execute(f"""
+                IMPORT FOREIGN SCHEMA "{default_remote_schema}"
+                FROM SERVER "{server_name}"
+                INTO "{local_schema}";
+            """)
 
 
 def create_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
@@ -616,6 +624,14 @@ def sync_postgres_fdw_schema(pg_conn_data: dict, ds_data: dict):
         return server_name, local_schema, count
     finally:
         conn.close()
+
+
+def edit_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
+    """
+    Edits and re-syncs foreign tables for an existing PostgreSQL data source.
+    """
+    server_name, local_schema, _ = sync_postgres_fdw_schema(pg_conn_data, ds_data)
+    return server_name, local_schema
 
 
 def ensure_host_fdw_extensions(pg_conn_data: dict) -> dict:

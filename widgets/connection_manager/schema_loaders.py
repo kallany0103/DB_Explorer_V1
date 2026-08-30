@@ -226,8 +226,10 @@ class SchemaLoader:
             server_info = entry.get("server_info", {})
             foreign_tables = entry.get("foreign_tables", [])
 
-            is_healthy = ds_data.get("is_healthy")
-            if is_healthy is None:
+            raw_health = ds_data.get("is_healthy")
+            if raw_health in (False, 0, "0", "false", "False"):
+                is_healthy = False
+            else:
                 source_type = (ds_data.get("source_type") or "POSTGRES").upper()
                 if source_type == "SQLITE":
                     db_path = ds_data.get("db_path") or ds_data.get("file_path")
@@ -307,6 +309,8 @@ class SchemaLoader:
 
             for ft in foreign_tables:
                 ft_name = ft.get("table_name")
+                if ft_name in ("emp_ft", "epm_f", "epm_foreign"):
+                    continue
                 ft_schema = ft.get("schema_name", "public")
 
                 table_item = QStandardItem(ft_name)
@@ -339,6 +343,11 @@ class SchemaLoader:
             ds_type_item.setEditable(False)
             ds_type_item.setData(is_healthy, Qt.ItemDataRole.UserRole + 3)
             self.manager.schema_model.appendRow([ds_item, ds_type_item])
+
+            if ds_item.index().isValid():
+                self.manager.schema_tree.setExpanded(ds_item.index(), True)
+            if ft_root.index().isValid():
+                self.manager.schema_tree.setExpanded(ft_root.index(), True)
 
         # 3. Add Unified Views root node
         unified_views = data.get("unified_views", [])

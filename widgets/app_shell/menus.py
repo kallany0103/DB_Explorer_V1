@@ -62,6 +62,7 @@ def build_main_window_menu(main_window):
     tools_menu.addSeparator()
     tools_menu.addAction(main_window.properties_tool_action)
     tools_menu.addAction(main_window.statistics_tool_action)
+    tools_menu.addAction(main_window.schema_diff_tool_action)
     tools_menu.addSeparator()
     tools_menu.addAction(main_window.refresh_action)
     tools_menu.addAction(main_window.reset_layout_action)
