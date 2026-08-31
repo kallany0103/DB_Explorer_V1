@@ -67,12 +67,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         self.setPen(Qt.PenStyle.NoPen)
         self.setBrush(QBrush(QColor("#EEF2FF")))  # Light indigo fill
 
-        # Drop shadow
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(14)
-        shadow.setColor(QColor(0, 0, 0, 70))
-        shadow.setOffset(0, 3)
-        self.setGraphicsEffect(shadow)
+
 
         #Inline text label
         self._text_item = _LabelTextItem(label, self)
@@ -159,8 +154,12 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         g = self.GAP
         is_selected = (option.state & QStyle.StateFlag.State_Selected) == QStyle.StateFlag.State_Selected
 
-        # Fill
+        # Shadow
         painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 40))
+        painter.drawRoundedRect(r.translated(0, 3), self.CORNER_R, self.CORNER_R)
+
+        # Fill
         painter.setBrush(QBrush(QColor("#EEF2FF")))
         painter.drawRoundedRect(r, self.CORNER_R, self.CORNER_R)
 

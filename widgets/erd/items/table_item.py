@@ -38,14 +38,6 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         self.is_dimmed = False
         self.is_highlighted = False
         
-        # Drop Shadow
-        self.shadow = QGraphicsDropShadowEffect()
-        self.shadow.setBlurRadius(15)
-        self.shadow.setColor(QColor(0, 0, 0, 80))
-        self.shadow.setOffset(0, 4)
-        self.shadow.setEnabled(False)
-        self.setGraphicsEffect(self.shadow)
-        
         self.setAcceptHoverEvents(True)
 
         # Sort columns: PK -> FK -> Name
@@ -154,6 +146,12 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         # Selection highlight
         is_selected = option.state & QStyle.StateFlag.State_Selected
         
+        # Shadow
+        if is_selected:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(0, 0, 0, 40))
+            painter.drawRoundedRect(self.rect().translated(0, 4), 4, 4)
+
         # 1. Draw Background Body (Fill only)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(Qt.GlobalColor.white))
@@ -392,7 +390,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
-            self.shadow.setEnabled(self.isSelected())
+            self.update()
             return value
             
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
