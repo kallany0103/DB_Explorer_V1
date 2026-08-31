@@ -43,6 +43,7 @@ from db.db_modifications import (
     update_data_source,
     delete_data_source,
     create_postgres_fdw_source,
+    edit_postgres_fdw_source,
     sync_postgres_fdw_schema,
     create_sqlite_fdw_source,
     sync_sqlite_fdw_schema,

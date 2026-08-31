@@ -406,11 +406,11 @@ class ConnectionDialogs:
         try:
             server_name = ds_data.get("server_name")
             if source_type == "POSTGRES" and host_conn_data:
-                server_name, local_schema = db.create_postgres_fdw_source(host_conn_data, new_data)
+                server_name, local_schema = db.edit_postgres_fdw_source(host_conn_data, new_data)
                 new_data["server_name"] = server_name
                 new_data["schema_name"] = local_schema
             elif source_type == "SQLITE" and host_conn_data:
-                server_name, local_schema = db.create_sqlite_fdw_source(host_conn_data, new_data)
+                server_name, local_schema, _ = db.sync_sqlite_fdw_schema(host_conn_data, new_data)
                 new_data["server_name"] = server_name
                 new_data["schema_name"] = local_schema
 
@@ -421,10 +421,28 @@ class ConnectionDialogs:
             self.manager._restore_tree_expansion_state()
             self.manager.refresh_all_comboboxes()
 
-            # Refresh Schema Tree for current connection
-            current_index = self.manager.tree.currentIndex()
-            if current_index.isValid():
-                self.manager.item_clicked(current_index, skip_restore=False)
+            # Refresh Schema Tree for active connection
+            if hasattr(self.manager, "active_postgres_conn") and self.manager.active_postgres_conn:
+                active_conn_id = self.manager.active_postgres_conn.get("id")
+                for row in range(self.manager.model.rowCount()):
+                    t_item = self.manager.model.item(row, 0)
+                    if t_item:
+                        for g_row in range(t_item.rowCount()):
+                            g_item = t_item.child(g_row, 0)
+                            if g_item:
+                                for c_row in range(g_item.rowCount()):
+                                    c_item = g_item.child(c_row, 0)
+                                    c_data = c_item.data(Qt.ItemDataRole.UserRole)
+                                    if c_data and c_data.get("id") == active_conn_id:
+                                        p_idx = self.manager.proxy_model.mapFromSource(c_item.index())
+                                        if p_idx.isValid():
+                                            self.manager.tree.setCurrentIndex(p_idx)
+                                            self.manager.item_clicked(p_idx, skip_restore=False)
+                                            break
+            else:
+                current_index = self.manager.tree.currentIndex()
+                if current_index.isValid():
+                    self.manager.item_clicked(current_index, skip_restore=False)
 
             self.manager.status.showMessage(f"Data Source '{new_data.get('name')}' updated successfully.", 4000)
 

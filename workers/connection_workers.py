@@ -489,7 +489,7 @@ class UDSSchemaWorker(QRunnable):
                             JOIN pg_class c ON c.oid = ft.ftrelid
                             JOIN pg_namespace n ON n.oid = c.relnamespace
                             JOIN pg_foreign_server s ON s.oid = ft.ftserver
-                            WHERE s.srvname = %s
+                            WHERE s.srvname = %s AND c.relname NOT IN ('emp_ft', 'epm_f', 'epm_foreign')
                             ORDER BY c.relname;
                         """, (server_name,))
                         foreign_tables = [

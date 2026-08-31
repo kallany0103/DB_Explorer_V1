@@ -4,14 +4,15 @@ import qtawesome as qta
 
 from PySide6.QtWidgets import (
     QWidget, QTextEdit,
-    QFrame, QComboBox, QLabel
+    QFrame, QComboBox, QLabel,
+    QMenu,
 )
 
 from PySide6.QtCore import (
     QRect
 )
 from PySide6.QtGui import (
-    QIcon
+    QIcon, QAction,
 )
 
 from db.transaction_session import TransactionSession
@@ -63,6 +64,7 @@ from widgets.worksheet.history import (
     remove_selected_history as remove_selected_history_action,
     remove_all_history_for_connection as remove_all_history_for_connection_action,
 )
+from dialogs.rename_dialog import RenameTabDialog
 from widgets.worksheet.utils import renumber_tabs as renumber_tabs_action, handle_event_filter, show_info as show_info_action
 from widgets.app_shell.file_ops import open_find_dialog as open_find_dialog_action
 from widgets.worksheet.toolbar_actions import build_worksheet_toolbar_actions
@@ -115,11 +117,10 @@ class WorksheetManager(QWidget):
         return QIcon()
 
     def _next_worksheet_tab_number(self):
-        worksheet_count = 0
-        for i in range(self.tab_widget.count()):
-            tab_text = self.tab_widget.tabText(i)
-            if tab_text.startswith("Worksheet ") or tab_text == "New Tab":
-                worksheet_count += 1
+        worksheet_count = sum(
+            1 for i in range(self.tab_widget.count())
+            if getattr(self.tab_widget.widget(i), 'is_worksheet', False)
+        )
         return worksheet_count + 1
 
     def _start_query_worker(self, current_tab, conn_data, query, output_mode="current", output_tab_index=None):
@@ -197,19 +198,17 @@ class WorksheetManager(QWidget):
         if index < 0:
             index = self.tab_widget.currentIndex()
         if index >= 0 and self.tab_widget.count() > 0:
+            widget = self.tab_widget.widget(index)
             # Prevent closing the last remaining worksheet tab.
-            tab_text = self.tab_widget.tabText(index)
-            is_worksheet = tab_text.startswith("Worksheet ") or tab_text == "New Tab"
-            if is_worksheet:
+            # Use the widget attribute so renamed tabs are still protected.
+            if getattr(widget, 'is_worksheet', False):
                 worksheet_count = sum(
                     1 for i in range(self.tab_widget.count())
-                    if self.tab_widget.tabText(i).startswith("Worksheet ")
-                    or self.tab_widget.tabText(i) == "New Tab"
+                    if getattr(self.tab_widget.widget(i), 'is_worksheet', False)
                 )
                 if worksheet_count <= 1:
                     return
 
-            widget = self.tab_widget.widget(index)
             if widget:
                 if widget in self.running_queries:
                     self.running_queries[widget].cancel()
@@ -499,6 +498,83 @@ class WorksheetManager(QWidget):
 
     def renumber_tabs(self):
         renumber_tabs_action(self)
+
+    def show_tab_context_menu(self, pos) -> None:
+        """Show right-click context menu on the worksheet tab bar."""
+        tab_bar = self.tab_widget.tabBar()
+        clicked_index = tab_bar.tabAt(pos)
+        if clicked_index < 0:
+            return
+
+        menu = QMenu(self.tab_widget)
+        menu.setStyleSheet(
+            """
+                QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
+                QMenu::item { padding: 6px 24px 6px 8px; font-size: 10pt; color: #333333; }
+                QMenu::item:selected { background-color: #e8eaed; color: #000000; }
+                QMenu::icon { padding: 4px; }
+                QMenu::separator { height: 1px; background: #eeeeee; margin: 4px 0px; }
+            """
+        )
+
+        rename_action = QAction(
+            qta.icon("fa5s.edit", color="#555555"), "Rename", self
+        )
+        rename_action.setIconVisibleInMenu(True)
+        rename_action.triggered.connect(lambda: self.rename_tab(clicked_index))
+        menu.addAction(rename_action)
+
+        menu.addSeparator()
+
+        close_action = QAction(
+            qta.icon("fa5s.times", color="#555555"), "Close", self
+        )
+        close_action.setIconVisibleInMenu(True)
+        close_action.triggered.connect(lambda: self.close_tab(clicked_index))
+        menu.addAction(close_action)
+
+        close_others_action = QAction(
+            qta.icon("fa5s.times-circle", color="#555555"), "Close Others", self
+        )
+        close_others_action.setIconVisibleInMenu(True)
+        close_others_action.triggered.connect(
+            lambda: self._close_other_tabs(clicked_index)
+        )
+        # Disable when there is only one tab
+        close_others_action.setEnabled(self.tab_widget.count() > 1)
+        menu.addAction(close_others_action)
+
+        close_all_action = QAction(
+            qta.icon("fa5s.window-close", color="#555555"), "Close All", self
+        )
+        close_all_action.setIconVisibleInMenu(True)
+        close_all_action.triggered.connect(self._close_all_tabs)
+        menu.addAction(close_all_action)
+
+        menu.exec(tab_bar.mapToGlobal(pos))
+
+    def rename_tab(self, index: int) -> None:
+        """Prompt the user for a new name and rename the tab at *index*."""
+        if index < 0 or index >= self.tab_widget.count():
+            return
+        current_name = self.tab_widget.tabText(index)
+        dlg = RenameTabDialog(current_name, parent=self.tab_widget)
+        if dlg.exec() == RenameTabDialog.DialogCode.Accepted and dlg.new_name():
+            self.tab_widget.setTabText(index, dlg.new_name())
+
+    def _close_other_tabs(self, keep_index: int) -> None:
+        """Close all tabs except the one at *keep_index*."""
+        # Collect indices to close in reverse order to avoid index shifting.
+        indices_to_close = [
+            i for i in range(self.tab_widget.count()) if i != keep_index
+        ]
+        for i in reversed(indices_to_close):
+            self.close_tab(i)
+
+    def _close_all_tabs(self) -> None:
+        """Close all tabs (the last worksheet is protected by close_tab)."""
+        for i in reversed(range(self.tab_widget.count())):
+            self.close_tab(i)
 
     def eventFilter(self, obj, event):
         if handle_event_filter(obj, event):

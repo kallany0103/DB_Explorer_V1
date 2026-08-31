@@ -76,6 +76,12 @@ class ConnectionActions:
         self.backup_engine = BackupEngine(self.manager.main_window)
         self.restore_engine = RestoreEngine(self.manager.main_window)
 
+    def open_schema_diff_dialog(self):
+        """Opens the visual Cross-Source Schema Compare & Diff Tool dialog."""
+        from dialogs.schema_diff_dialog import SchemaDiffDialog
+        dlg = SchemaDiffDialog(self.manager)
+        dlg.exec()
+
     def get_connection(self, item_data):
         """Returns a database connection based on db_type."""
         db_type = item_data.get('db_type')
@@ -203,6 +209,17 @@ class ConnectionActions:
                         type_item.setText("Data Source")
                         type_item.setData(is_connected, Qt.ItemDataRole.UserRole + 3)
                         model.dataChanged.emit(type_index, type_index)
+
+                item_data = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(item_data, dict):
+                    item_data["is_healthy"] = is_connected
+                    item.setData(item_data, Qt.ItemDataRole.UserRole)
+                    ds_id = item_data.get("id")
+                    if ds_id:
+                        try:
+                            db.update_data_source(ds_id, item_data)
+                        except Exception:
+                            pass
 
             if is_connected:
                 self.manager.status.showMessage(f"Connection to '{ds_name}' succeeded ({latency} ms)", 5000)

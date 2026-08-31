@@ -140,6 +140,9 @@ def build_main_window_actions(main_window):
     main_window.statistics_tool_action = QAction(qta.icon("mdi.chart-bar", color="#555555"), "Statistics", main_window)
     main_window.statistics_tool_action.triggered.connect(main_window.add_statistics_tab)
 
+    main_window.schema_diff_tool_action = QAction(qta.icon("fa5s.balance-scale", color="#0284c7"), "Schema Compare & Diff Tool...", main_window)
+    main_window.schema_diff_tool_action.triggered.connect(lambda: main_window.connection_manager.connection_actions.open_schema_diff_dialog())
+
     # Safely load the dashboard icon
     try:
         dash_icon = qta.icon("fa5s.th-large", color="#555555")
