@@ -17,7 +17,8 @@ from dialogs import PreferencesDialog
 from widgets.login_dialog import LoginDialog
 from ui.theme import setup_theme
 import db
-
+import qtawesome as qta
+from PySide6.QtWidgets import QSpacerItem
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
@@ -576,14 +577,7 @@ class MainWindow(QMainWindow):
         reset_to_dashboard_action(self)
 
     def toggle_left_panel(self):
-        """Collapse or expand the left sidebar panel.
 
-        When collapsed: all header items except the toggle button are hidden,
-        the stretch spacer is removed so the button sits top-left in a 32 px
-        strip.  Clicking it restores the full sidebar.
-        """
-        import qtawesome as qta
-        from PySide6.QtWidgets import QSpacerItem
         cm = self.connection_manager
         is_collapsed = getattr(self, '_sidebar_collapsed', False)
 
@@ -595,6 +589,8 @@ class MainWindow(QMainWindow):
             cm.vertical_splitter.hide()
             if hasattr(cm, 'empty_space'):
                 cm.empty_space.show()
+            if hasattr(cm, 'collapsed_tools_widget'):
+                cm.collapsed_tools_widget.show()
 
             # Hide header items (label, search, add-btn)
             if hasattr(cm, 'explorer_label'):
@@ -629,13 +625,12 @@ class MainWindow(QMainWindow):
                 cm.collapse_panel_btn.setIcon(
                     qta.icon('mdi.chevron-double-right', color='#6b7280')
                 )
-                cm.collapse_panel_btn.setToolTip("Show Sidebar")
+                cm.collapse_panel_btn.setToolTip("")
 
             self._sidebar_collapsed = True
 
         else:
-            # ── EXPAND ────────────────────────────────────────────────────
-            # Restore header layout: add stretch back before search/add-btn
+            
             if hasattr(cm, 'explorer_header_layout'):
                 layout = cm.explorer_header_layout
                 layout.setContentsMargins(8, 2, 8, 6)
@@ -646,6 +641,8 @@ class MainWindow(QMainWindow):
             # Show tree content
             if hasattr(cm, 'empty_space'):
                 cm.empty_space.hide()
+            if hasattr(cm, 'collapsed_tools_widget'):
+                cm.collapsed_tools_widget.hide()
             cm.vertical_splitter.show()
 
             # Show header items
@@ -672,7 +669,7 @@ class MainWindow(QMainWindow):
                 cm.collapse_panel_btn.setIcon(
                     qta.icon('mdi.chevron-double-left', color='#6b7280')
                 )
-                cm.collapse_panel_btn.setToolTip("Hide Sidebar")
+                cm.collapse_panel_btn.setToolTip("")
 
             self._sidebar_collapsed = False
 
