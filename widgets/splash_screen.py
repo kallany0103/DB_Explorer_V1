@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QPoint, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor, QPainterPath, QMouseEvent
 
-# Height (px) of the hand-drawn progress bar at the bottom of the splash.
 _PROGRESS_BAR_H = 3
 
 

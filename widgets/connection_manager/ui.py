@@ -138,6 +138,49 @@ class ConnectionUI:
         self.manager.vertical_splitter.setSizes([240, 360])
 
         layout.addWidget(object_explorer_header)
+
+        # ── COLLAPSED TOOLS WIDGET ──
+        self.manager.collapsed_tools_widget = QWidget()
+        collapsed_layout = QVBoxLayout(self.manager.collapsed_tools_widget)
+        collapsed_layout.setContentsMargins(2, 10, 2, 0)
+        collapsed_layout.setSpacing(10)
+        collapsed_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+
+        # New Connection Button
+        self.manager.collapsed_add_conn_btn = QToolButton()
+        self.manager.collapsed_add_conn_btn.setFixedSize(24, 24)
+        self.manager.collapsed_add_conn_btn.setIconSize(QSize(16, 16))
+        self.manager.collapsed_add_conn_btn.setToolTip("Add New Connection")
+        self.manager.collapsed_add_conn_btn.setIcon(qta.icon("mdi.database-plus", color="#6b7280"))
+        self.manager.collapsed_add_conn_btn.setProperty("class", "sidebar-tool-btn")
+        self.manager.collapsed_add_conn_btn.clicked.connect(self.manager.add_connection_flow)
+
+        # New Worksheet Button
+        self.manager.collapsed_new_ws_btn = QToolButton()
+        self.manager.collapsed_new_ws_btn.setFixedSize(24, 24)
+        self.manager.collapsed_new_ws_btn.setIconSize(QSize(16, 16))
+        self.manager.collapsed_new_ws_btn.setToolTip("New Worksheet")
+        self.manager.collapsed_new_ws_btn.setIcon(qta.icon('mdi.database-edit', color="#6b7280"))
+        self.manager.collapsed_new_ws_btn.setProperty("class", "sidebar-tool-btn")
+        self.manager.collapsed_new_ws_btn.clicked.connect(lambda: self.manager.main_window.add_tab())
+
+        # New ERD Button
+        self.manager.collapsed_new_erd_btn = QToolButton()
+        self.manager.collapsed_new_erd_btn.setFixedSize(24, 24)
+        self.manager.collapsed_new_erd_btn.setIconSize(QSize(16, 16))
+        self.manager.collapsed_new_erd_btn.setToolTip("New ERD")
+        self.manager.collapsed_new_erd_btn.setIcon(qta.icon('fa6s.sitemap', color="#6b7280"))
+        self.manager.collapsed_new_erd_btn.setProperty("class", "sidebar-tool-btn")
+        self.manager.collapsed_new_erd_btn.clicked.connect(lambda: self.manager.main_window.add_erd_tab())
+
+        collapsed_layout.addWidget(self.manager.collapsed_add_conn_btn)
+        collapsed_layout.addWidget(self.manager.collapsed_new_ws_btn)
+        collapsed_layout.addWidget(self.manager.collapsed_new_erd_btn)
+        
+        self.manager.collapsed_tools_widget.hide()
+        layout.addWidget(self.manager.collapsed_tools_widget)
+        # ────────────────────────────
+
         layout.addWidget(self.manager.vertical_splitter)
 
         self.manager.empty_space = QWidget()
