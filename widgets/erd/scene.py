@@ -1,7 +1,7 @@
 import math
 from typing import Any
 
-from PySide6.QtCore import QLineF, QPointF, Qt
+from PySide6.QtCore import QLineF, QPointF, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QPen, QTransform
 from PySide6.QtWidgets import QDialog, QGraphicsScene
 
@@ -43,13 +43,20 @@ class ERDScene(QGraphicsScene):
         self.setSceneRect(0, 0, 2000, 2000)
         self.alignment_lines = []
         self._router_cache = None
-        
+        self._rect_update_scheduled = False
+
     def update_scene_rect(self) -> None:
-        # Calculate the bounding box of all items and add a 500px margin
+        if self._rect_update_scheduled:
+            return
+        self._rect_update_scheduled = True
+        QTimer.singleShot(0, self._apply_scene_rect)
+
+    def _apply_scene_rect(self) -> None:
+        self._rect_update_scheduled = False
         rect = self.itemsBoundingRect()
         if not rect.isNull():
             self.setSceneRect(rect.adjusted(-SCENE_MARGIN, -SCENE_MARGIN, SCENE_MARGIN, SCENE_MARGIN))
-            self._router_cache = None 
+            self._router_cache = None
             
     def get_router(self) -> ERDRouter:
         if self._router_cache is None:

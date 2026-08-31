@@ -59,12 +59,6 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
         self.setPen(Qt.PenStyle.NoPen)
         self.setBrush(QBrush(QColor("#E8F0FE")))
 
-        # Drop shadow
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(14)
-        shadow.setColor(QColor(0, 0, 0, 70))
-        shadow.setOffset(0, 3)
-        self.setGraphicsEffect(shadow)
 
         self._text_item = _EntityLabelItem(label, self)
         self._text_item.setDefaultTextColor(QColor("#1E3A5F"))
@@ -137,8 +131,12 @@ class ERDEntityItem(QGraphicsRectItem, ResizableItemMixin):
         r = self.rect()
         is_selected = (option.state & QStyle.StateFlag.State_Selected) == QStyle.StateFlag.State_Selected
 
-        # Fill
+        # Shadow
         painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 40))
+        painter.drawRoundedRect(r.translated(0, 3), self.CORNER_R, self.CORNER_R)
+        
+        # Fill
         painter.setBrush(QBrush(QColor("#E8F0FE")))
         painter.drawRoundedRect(r, self.CORNER_R, self.CORNER_R)
 

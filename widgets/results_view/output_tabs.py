@@ -1,3 +1,4 @@
+from collections import Counter
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
@@ -153,7 +154,8 @@ def ensure_output_tabs_widget(manager, tab_content):
     else:
         output_layout.addWidget(create_output_table_view(manager, tab_content))
 
-    output_tabs.addTab(output_container, "Result 1")
+    output_container.setProperty("tab_base_name", "Result")
+    output_tabs.addTab(output_container, "Result")
     output_tabs.setCurrentIndex(0)
     _update_tabs_closability(output_tabs)
 
@@ -242,6 +244,23 @@ def create_output_table_view(manager, tab_content):
     return table_view
 
 
+def _refresh_tab_titles(output_tabs: QTabWidget) -> None:
+    """Re-label every tab: show a number suffix only when the base name appears more than once."""
+    base_names = [
+        output_tabs.widget(i).property("tab_base_name") or "Result"
+        for i in range(output_tabs.count())
+    ]
+    counts = Counter(base_names)
+    seen: dict[str, int] = {}
+    for i in range(output_tabs.count()):
+        base = base_names[i]
+        if counts[base] > 1:
+            seen[base] = seen.get(base, 0) + 1
+            output_tabs.setTabText(i, f"{base} {seen[base]}")
+        else:
+            output_tabs.setTabText(i, base)
+
+
 def create_output_tab(manager, tab_content, title=None, activate=True):
     output_tabs = ensure_output_tabs_widget(manager, tab_content)
     if not output_tabs:
@@ -255,8 +274,10 @@ def create_output_tab(manager, tab_content, title=None, activate=True):
     table_view = create_output_table_view(manager, tab_content)
     output_layout.addWidget(table_view)
 
-    default_title = title or f"Result {output_tabs.count() + 1}"
-    new_index = output_tabs.addTab(output_container, default_title)
+    base_name = title or "Result"
+    output_container.setProperty("tab_base_name", base_name)
+    new_index = output_tabs.addTab(output_container, base_name)
+    _refresh_tab_titles(output_tabs)
     if activate:
         output_tabs.setCurrentIndex(new_index)
     _update_tabs_closability(output_tabs)
@@ -272,12 +293,8 @@ def add_output_tab_with_table_name(manager, tab_content, query=None, table_name=
     if not resolved_table_name and query:
         resolved_table_name = manager._extract_query_table_name(query)
 
-    if resolved_table_name:
-        title = f"{resolved_table_name} {output_tabs.count() + 1}"
-    else:
-        title = f"Result {output_tabs.count() + 1}"
-
-    return create_output_tab(manager, tab_content, title=title, activate=activate)
+    base_name = resolved_table_name if resolved_table_name else "Result"
+    return create_output_tab(manager, tab_content, title=base_name, activate=activate)
 
 
 def ensure_at_least_one_output_tab(manager, tab_content):
@@ -289,7 +306,9 @@ def ensure_at_least_one_output_tab(manager, tab_content):
         output_layout.setSpacing(0)
         table_view = create_output_table_view(manager, tab_content)
         output_layout.addWidget(table_view)
-        output_tabs.addTab(output_container, "Result 1")
+        output_container.setProperty("tab_base_name", "Result")
+        output_tabs.addTab(output_container, "Result")
+        _refresh_tab_titles(output_tabs)
         output_tabs.setCurrentIndex(0)
         _update_tabs_closability(output_tabs)
 
@@ -302,11 +321,12 @@ def set_output_tab_title(manager, tab_content, output_tab_index, query):
         return
 
     table_name = manager._extract_query_table_name(query)
-    if not table_name:
-        table_name = "Result"
+    base_name = table_name if table_name else "Result"
 
-    display_number = output_tab_index + 1
-    output_tabs.setTabText(output_tab_index, f"{table_name} {display_number}")
+    container = output_tabs.widget(output_tab_index)
+    if container:
+        container.setProperty("tab_base_name", base_name)
+    _refresh_tab_titles(output_tabs)
 
 
 def handle_output_tab_close(manager, tab_content, index):
@@ -319,8 +339,9 @@ def handle_output_tab_close(manager, tab_content, index):
     _stop_chunk_loader_for_container(output_container)
     output_tabs.removeTab(index)
     if output_tabs.count() == 0:
-        create_output_tab(manager, tab_content, title="Result 1", activate=True)
+        create_output_tab(manager, tab_content, title="Result", activate=True)
     else:
+        _refresh_tab_titles(output_tabs)
         _update_tabs_closability(output_tabs)
     manager.sync_row_action_state(tab_content)
 
