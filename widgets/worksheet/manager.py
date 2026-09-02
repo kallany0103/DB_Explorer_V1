@@ -517,26 +517,15 @@ class WorksheetManager(QWidget):
             """
         )
 
-        rename_action = QAction(
-            qta.icon("fa5s.edit", color="#555555"), "Rename", self
-        )
-        rename_action.setIconVisibleInMenu(True)
+        rename_action = QAction("Rename", self)
         rename_action.triggered.connect(lambda: self.rename_tab(clicked_index))
         menu.addAction(rename_action)
 
-        menu.addSeparator()
-
-        close_action = QAction(
-            qta.icon("fa5s.times", color="#555555"), "Close", self
-        )
-        close_action.setIconVisibleInMenu(True)
+        close_action = QAction("Close", self)
         close_action.triggered.connect(lambda: self.close_tab(clicked_index))
         menu.addAction(close_action)
 
-        close_others_action = QAction(
-            qta.icon("fa5s.times-circle", color="#555555"), "Close Others", self
-        )
-        close_others_action.setIconVisibleInMenu(True)
+        close_others_action = QAction("Close Others", self)
         close_others_action.triggered.connect(
             lambda: self._close_other_tabs(clicked_index)
         )
@@ -544,10 +533,7 @@ class WorksheetManager(QWidget):
         close_others_action.setEnabled(self.tab_widget.count() > 1)
         menu.addAction(close_others_action)
 
-        close_all_action = QAction(
-            qta.icon("fa5s.window-close", color="#555555"), "Close All", self
-        )
-        close_all_action.setIconVisibleInMenu(True)
+        close_all_action = QAction("Close All", self)
         close_all_action.triggered.connect(self._close_all_tabs)
         menu.addAction(close_all_action)
 
