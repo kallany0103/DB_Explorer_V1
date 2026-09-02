@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
         # Layout Setup
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setHandleWidth(2)
-        self.main_splitter.setChildrenCollapsible(True)
+        self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCentralWidget(self.main_splitter)
 
@@ -131,6 +131,7 @@ class MainWindow(QMainWindow):
         # The ConnectionManager IS the left panel widget
         self.main_splitter.addWidget(self.connection_manager)
         self.main_splitter.addWidget(self.tab_widget)
+        self.tab_widget.setMinimumWidth(400)
 
         # Keep the splash screen responsive while the main window is being built
         QApplication.processEvents()
@@ -147,7 +148,7 @@ class MainWindow(QMainWindow):
         new_tab_menu.setObjectName("new_tab_menu")
         new_tab_menu.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        action_new_worksheet = QAction(qta.icon('mdi.database-edit', scale_factor=1.3), "New Worksheet", self)
+        action_new_worksheet = QAction(qta.icon('mdi.file-document-edit', scale_factor=1.3), "New Worksheet", self)
         action_new_worksheet.setShortcut("Ctrl+N")
         action_new_worksheet.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_worksheet.triggered.connect(self.add_tab)

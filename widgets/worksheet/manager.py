@@ -93,8 +93,8 @@ class WorksheetManager(QWidget):
         self.tab_timers = {}
         self.running_queries = {}
         self.QUERY_TIMEOUT = 300000
-        self.worksheet_icon_key = "mdi.database-edit"
-        self.worksheet_icon_fallback_key = "ri.layout-6-fill"
+        self.worksheet_icon_key = "mdi.file-document-edit"
+        self.worksheet_icon_fallback_key = "mdi.file-document"
         # Maps tab widget → TransactionSession (only present when a transaction is open)
         self.tab_transactions: dict[QWidget, TransactionSession] = {}
         # Maps tab widget → bool (True = auto-commit ON, default)

@@ -160,7 +160,7 @@ class ConnectionUI:
         self.manager.collapsed_new_ws_btn.setFixedSize(24, 24)
         self.manager.collapsed_new_ws_btn.setIconSize(QSize(16, 16))
         self.manager.collapsed_new_ws_btn.setToolTip("New Worksheet")
-        self.manager.collapsed_new_ws_btn.setIcon(qta.icon('mdi.database-edit', color="#6b7280"))
+        self.manager.collapsed_new_ws_btn.setIcon(qta.icon('mdi.file-document-edit', color="#6b7280"))
         self.manager.collapsed_new_ws_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.collapsed_new_ws_btn.clicked.connect(lambda: self.manager.main_window.add_tab())
 
