@@ -83,7 +83,7 @@ class ConnectionUI:
         self.manager.collapse_panel_btn = QToolButton()
         self.manager.collapse_panel_btn.setFixedSize(24, 24)
         self.manager.collapse_panel_btn.setIconSize(QSize(16, 16))
-        self.manager.collapse_panel_btn.setToolTip("Hide Sidebar")
+        self.manager.collapse_panel_btn.setToolTip("Collapse Sidebar")
         self.manager.collapse_panel_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.collapse_panel_btn.setIcon(qta.icon('mdi.chevron-double-left', color='#6b7280'))
         self.manager.collapse_panel_btn.clicked.connect(

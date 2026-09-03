@@ -626,7 +626,7 @@ class MainWindow(QMainWindow):
                 cm.collapse_panel_btn.setIcon(
                     qta.icon('mdi.chevron-double-right', color='#6b7280')
                 )
-                cm.collapse_panel_btn.setToolTip("")
+                cm.collapse_panel_btn.setToolTip("Expand Sidebar")
 
             self._sidebar_collapsed = True
 
@@ -670,7 +670,7 @@ class MainWindow(QMainWindow):
                 cm.collapse_panel_btn.setIcon(
                     qta.icon('mdi.chevron-double-left', color='#6b7280')
                 )
-                cm.collapse_panel_btn.setToolTip("")
+                cm.collapse_panel_btn.setToolTip("Collapse Sidebar")
 
             self._sidebar_collapsed = False
 
