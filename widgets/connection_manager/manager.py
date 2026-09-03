@@ -547,6 +547,9 @@ class ConnectionManager(QWidget):
                 self.load_data()
                 self._restore_tree_expansion_state()
                 self.refresh_all_comboboxes()
+                conn_name = conn_data.get("name", "Connection")
+                from ui.components import ToastNotification
+                ToastNotification.show_toast(self, f"✦  '{conn_name}' deleted successfully!", kind="success")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{exc}")
 

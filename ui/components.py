@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QToolButton, QMenu,
-    QTableView, QHeaderView, QAbstractItemView
+    QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel
 )
-from PySide6.QtGui import QIcon, QAction
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint
 from typing import Optional
 import qtawesome as qta
 
@@ -403,8 +403,123 @@ class PropertyTable(QTableView):
         self.setShowGrid(False)
         self.verticalHeader().setDefaultSectionSize(28)
 
+# ── Toast Notification ────────────────────────────────────────────────────────
+
+_TOAST_STYLES = {
+    "success": {
+        "bg":         "#ECEFF3",
+        "border":     "#B8BEC6",
+        "icon":       "✓",
+        "icon_color": "#1a7a4a",
+    },
+    "error": {
+        "bg":         "#ECEFF3",
+        "border":     "#B8BEC6",
+        "icon":       "✕",
+        "icon_color": "#b91c1c",
+    },
+    "info": {
+        "bg":         "#ECEFF3",
+        "border":     "#B8BEC6",
+        "icon":       "ℹ",
+        "icon_color": "#1e40af",
+    },
+    "warning": {
+        "bg":         "#ECEFF3",
+        "border":     "#B8BEC6",
+        "icon":       "⚠",
+        "icon_color": "#92400e",
+    },
+}
+
+_TOAST_MARGIN   = 18    # px from window edge
+_TOAST_DURATION = 3000  # ms before auto-dismiss
 
 
+class ToastNotification(QWidget):
 
+    def __init__(self, parent: QWidget, message: str,
+                 kind: str = "success", duration: int = _TOAST_DURATION):
+        top = parent.window() if parent else parent
+        super().__init__(top, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
+        style = _TOAST_STYLES.get(kind, _TOAST_STYLES["info"])
+        self._bg     = style["bg"]
+        self._border = style["border"]
+
+        # Layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 10, 18, 10)
+        layout.setSpacing(10)
+
+        icon_lbl = QLabel(style["icon"])
+        icon_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        icon_lbl.setStyleSheet(f"color: {style['icon_color']}; background: transparent;")
+        icon_lbl.setFixedWidth(20)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        msg_lbl = QLabel(message)
+        msg_lbl.setFont(QFont("Segoe UI Variable", 10))
+        msg_lbl.setStyleSheet("color: #1f2937; background: transparent;")
+        msg_lbl.setWordWrap(False)
+
+        layout.addWidget(icon_lbl)
+        layout.addWidget(msg_lbl)
+
+        self.adjustSize()
+        if self.width() < 260:
+            self.setFixedWidth(260)
+
+        self._reposition()
+
+        # Slide-in animation
+        self._anim_in = QPropertyAnimation(self, b"pos", self)
+        self._anim_in.setDuration(280)
+        self._anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim_in.setStartValue(QPoint(self.x(), self.y() + 40))
+        self._anim_in.setEndValue(self.pos())
+
+        # Auto-dismiss
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(duration)
+        self._timer.timeout.connect(self._slide_out)
+
+        self.show()
+        self._anim_in.start()
+        self._timer.start()
+
+    def _reposition(self):
+        parent = self.parent()
+        if parent:
+            tl = parent.mapToGlobal(parent.rect().topLeft())
+            x = tl.x() + parent.width()  - self.width()  - _TOAST_MARGIN
+            y = tl.y() + parent.height() - self.height() - _TOAST_MARGIN
+            self.move(x, y)
+
+    def _slide_out(self):
+        self._anim_out = QPropertyAnimation(self, b"pos", self)
+        self._anim_out.setDuration(250)
+        self._anim_out.setEasingCurve(QEasingCurve.Type.InCubic)
+        self._anim_out.setEndValue(QPoint(self.x(), self.y() + 40))
+        self._anim_out.finished.connect(self.close)
+        self._anim_out.start()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 10, 10)
+        painter.fillPath(path, QColor(self._bg))
+        painter.setPen(QColor(self._border))
+        painter.drawPath(path)
+
+    @classmethod
+    def show_toast(cls, parent: QWidget, message: str,
+                   kind: str = "success", duration: int = _TOAST_DURATION):
+        """Create and show a toast. Returns the widget instance."""
+        return cls(parent, message, kind=kind, duration=duration)
 
