@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize
 
-from ui.components import PrimaryButton, SecondaryButton, ToastNotification
+from ui.components import PrimaryButton, SecondaryButton, ToastNotification, ConfirmDialog
 import db
 from dialogs.connections import (
     CSVConnectionDialog,
@@ -660,7 +660,7 @@ class ConnectionDialogs:
                 self.manager._save_tree_expansion_state()
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
-                ToastNotification.show_toast(self.manager, f"✦  Group '{name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"Group '{name}' created successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to add group:\n{e}")
 
@@ -729,24 +729,25 @@ class ConnectionDialogs:
         group_id = item.data(Qt.ItemDataRole.UserRole + 1)
         group_name = item.text()
         
-        msg = QMessageBox(self.manager)
-        msg.setWindowTitle("Delete Connection Group")
-        msg.setText(f"Are you sure you want to delete the group '{group_name}'?\nThis will also delete ALL connections within this group.")
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.CustomizeWindowHint)
+        confirmed = ConfirmDialog.confirm(
+            parent=self.manager,
+            title="Delete Connection Group",
+            message=f"Are you sure you want to delete the group '{group_name}'?\nThis will also delete ALL connections within this group.",
+            confirm_text="Delete",
+            cancel_text="Cancel",
+            kind="danger",
+        )
+        if not confirmed:
+            return
 
-        msg.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        reply = msg.exec()
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                db.delete_connection_group(group_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                ToastNotification.show_toast(self.manager, f"✦  Group '{group_name}' deleted successfully!", kind="success")
-            except Exception as e:
-                QMessageBox.critical(self.manager, "Error", f"Failed to delete group:\n{e}")
+        try:
+            db.delete_connection_group(group_id)
+            self.manager._save_tree_expansion_state()
+            self.manager.load_data()
+            self.manager._restore_tree_expansion_state()
+            ToastNotification.show_toast(self.manager, f"Group '{group_name}' deleted successfully!", kind="success")
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete group:\n{e}")
 
     def add_new_connection_flow(self):
         selector = ConnectionTypeSelectorDialog(self.manager)
@@ -784,7 +785,7 @@ class ConnectionDialogs:
                     self.manager.refresh_all_comboboxes()
                     ToastNotification.show_toast(
                         self.manager,
-                        f"✦  '{conn_name}' created successfully!",
+                        f"'{conn_name}' created successfully!",
                         kind="success",
                     )
                 except Exception as e:
@@ -858,7 +859,7 @@ class ConnectionDialogs:
                 self.manager._save_tree_expansion_state()
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
-                ToastNotification.show_toast(self.manager, f"✦  Type '{name}' updated successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"Type '{name}' updated successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update type:\n{e}")
 
@@ -869,24 +870,25 @@ class ConnectionDialogs:
         type_id = item.data(Qt.ItemDataRole.UserRole + 1)
         type_name = item.text()
         
-        msg = QMessageBox(self.manager)
-        msg.setWindowTitle("Delete Connection Type")
-        msg.setText(f"Are you sure you want to delete the type '{type_name}'?\nThis will also delete ALL groups and connections within this type.")
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.CustomizeWindowHint)
+        confirmed = ConfirmDialog.confirm(
+            parent=self.manager,
+            title="Delete Connection Type",
+            message=f"Are you sure you want to delete the type '{type_name}'?\nThis will also delete ALL groups and connections within this type.",
+            confirm_text="Delete",
+            cancel_text="Cancel",
+            kind="danger",
+        )
+        if not confirmed:
+            return
 
-        msg.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        reply = msg.exec()
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                db.delete_connection_type(type_id)
-                self.manager._save_tree_expansion_state()
-                self.manager.load_data()
-                self.manager._restore_tree_expansion_state()
-                ToastNotification.show_toast(self.manager, f"✦  Type '{type_name}' deleted successfully!", kind="success")
-            except Exception as e:
-                QMessageBox.critical(self.manager, "Error", f"Failed to delete type:\n{e}")
+        try:
+            db.delete_connection_type(type_id)
+            self.manager._save_tree_expansion_state()
+            self.manager.load_data()
+            self.manager._restore_tree_expansion_state()
+            ToastNotification.show_toast(self.manager, f"Type '{type_name}' deleted successfully!", kind="success")
+        except Exception as e:
+            QMessageBox.critical(self.manager, "Error", f"Failed to delete type:\n{e}")
 
     def add_postgres_connection(self, parent_item):
         connection_group_id = parent_item.data(Qt.ItemDataRole.UserRole + 1)
@@ -901,7 +903,7 @@ class ConnectionDialogs:
                 conn_name = data.get("name", "Connection")
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' created successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save PostgreSQL connection:\n{e}")
 
@@ -918,7 +920,7 @@ class ConnectionDialogs:
                 conn_name = data.get("name", "Connection")
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' created successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save SQLite connection:\n{e}")
 
@@ -935,7 +937,7 @@ class ConnectionDialogs:
                 conn_name = data.get("name", "Connection")
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' created successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save Oracle connection:\n{e}")
 
@@ -959,7 +961,7 @@ class ConnectionDialogs:
                 conn_name = data.get("name", "Connection")
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' created successfully!", kind="success")
 
                 # Automatically enable essential FDW extensions (postgres_fdw, sqlite_fdw, oracle_fdw, file_fdw)
                 try:
@@ -989,7 +991,7 @@ class ConnectionDialogs:
                     conn_name = new_data.get("name", "Connection")
                     db.update_connection(new_data)
                     self._reload_and_expand_group(group_item)
-                    ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' updated successfully!", kind="success")
+                    ToastNotification.show_toast(self.manager, f"'{conn_name}' updated successfully!", kind="success")
                 except Exception as e:
                     QMessageBox.critical(self.manager, "Error", f"Failed to update SQLite connection:\n{e}")
 
@@ -1021,7 +1023,7 @@ class ConnectionDialogs:
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
                 self.manager.refresh_all_comboboxes()
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' updated successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' updated successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update PostgreSQL connection:\n{e}")
 
@@ -1050,7 +1052,7 @@ class ConnectionDialogs:
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
                 self.manager.refresh_all_comboboxes()
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' updated successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' updated successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update Oracle connection:\n{e}")
 
@@ -1069,7 +1071,7 @@ class ConnectionDialogs:
                 conn_name = data.get("name", "Connection")
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' created successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save ServiceNow connection:\n{e}")
 
@@ -1119,7 +1121,7 @@ class ConnectionDialogs:
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
                 self.manager.refresh_all_comboboxes()
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' updated successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' updated successfully!", kind="success")
 
             except Exception as e:
                 QMessageBox.critical(
@@ -1148,7 +1150,7 @@ class ConnectionDialogs:
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
                 self.manager.refresh_all_comboboxes()
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' updated successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' updated successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update ServiceNow connection:\n{e}")
 
@@ -1165,7 +1167,7 @@ class ConnectionDialogs:
                 conn_name = data.get("name", "Connection")
                 db.add_connection(data, connection_group_id)
                 self._reload_and_expand_group(parent_item)
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' created successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' created successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to save CSV connection:\n{e}")
 
@@ -1192,7 +1194,7 @@ class ConnectionDialogs:
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
                 self.manager.refresh_all_comboboxes()
-                ToastNotification.show_toast(self.manager, f"✦  '{conn_name}' updated successfully!", kind="success")
+                ToastNotification.show_toast(self.manager, f"'{conn_name}' updated successfully!", kind="success")
             except Exception as e:
                 QMessageBox.critical(self.manager, "Error", f"Failed to update CSV connection:\n{e}")
     

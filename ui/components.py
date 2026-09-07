@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QToolButton, QMenu,
-    QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel
+    QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
+    QDialog, QVBoxLayout
 )
 from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont
 from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint
@@ -409,26 +410,26 @@ _TOAST_STYLES = {
     "success": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "✓",
-        "icon_color": "#1a7a4a",
+        "icon":       "fa5s.check-circle",
+        "icon_color": "#16a34a",
     },
     "error": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "✕",
-        "icon_color": "#b91c1c",
+        "icon":       "fa5s.times-circle",
+        "icon_color": "#dc2626",
     },
     "info": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "ℹ",
-        "icon_color": "#1e40af",
+        "icon":       "fa5s.info-circle",
+        "icon_color": "#2563eb",
     },
     "warning": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "⚠",
-        "icon_color": "#92400e",
+        "icon":       "fa5s.exclamation-circle",
+        "icon_color": "#d97706",
     },
 }
 
@@ -455,9 +456,9 @@ class ToastNotification(QWidget):
         layout.setContentsMargins(14, 10, 18, 10)
         layout.setSpacing(10)
 
-        icon_lbl = QLabel(style["icon"])
-        icon_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        icon_lbl.setStyleSheet(f"color: {style['icon_color']}; background: transparent;")
+        icon_lbl = QLabel()
+        icon_lbl.setStyleSheet("background: transparent;")
+        icon_lbl.setPixmap(qta.icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
         icon_lbl.setFixedWidth(20)
         icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -522,4 +523,139 @@ class ToastNotification(QWidget):
                    kind: str = "success", duration: int = _TOAST_DURATION):
         """Create and show a toast. Returns the widget instance."""
         return cls(parent, message, kind=kind, duration=duration)
+
+
+# ── Confirmation Dialog ───────────────────────────────────────────────────────
+
+class ConfirmDialog(QDialog):
+    """
+    A modern, sleek confirmation dialog matching the application design system.
+    Replaces standard OS QMessageBox with themed styling, icon badges, and action buttons.
+    """
+
+    def __init__(
+        self,
+        title: str = "Confirm Action",
+        message: str = "Are you sure you want to proceed?",
+        confirm_text: str = "Delete",
+        cancel_text: str = "Cancel",
+        kind: str = "danger",
+        parent: Optional[QWidget] = None,
+    ):
+        top = parent.window() if parent else None
+        super().__init__(top)
+        self.setWindowTitle(title)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.CustomizeWindowHint
+        )
+        self.setModal(True)
+        self.setFixedWidth(420)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ffffff;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 22, 22, 18)
+        layout.setSpacing(20)
+
+        # Content row: Icon badge + Text
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(14)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Badge styling based on kind
+        if kind == "danger":
+            icon_name = "fa5s.trash-alt"
+            icon_color = "#dc2626"
+            bg_color = "#fee2e2"
+            border_color = "#fecaca"
+        elif kind == "warning":
+            icon_name = "fa5s.exclamation-triangle"
+            icon_color = "#d97706"
+            bg_color = "#fef3c7"
+            border_color = "#fde68a"
+        else:
+            icon_name = "fa5s.question-circle"
+            icon_color = "#2563eb"
+            bg_color = "#eff6ff"
+            border_color = "#bfdbfe"
+
+        icon_label = QLabel()
+        icon_label.setFixedSize(40, 40)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 20px;
+            }}
+        """)
+        icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(18, 18))
+        content_layout.addWidget(icon_label)
+
+        # Text column (Title + Message)
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(5)
+
+        title_lbl = QLabel(title)
+        title_lbl.setFont(QFont("Segoe UI Variable", 11, QFont.Weight.DemiBold))
+        title_lbl.setStyleSheet("color: #111827; background: transparent;")
+        text_layout.addWidget(title_lbl)
+
+        msg_lbl = QLabel(message)
+        msg_lbl.setFont(QFont("Segoe UI", 9))
+        msg_lbl.setStyleSheet("color: #4b5563; background: transparent; line-height: 1.4;")
+        msg_lbl.setWordWrap(True)
+        text_layout.addWidget(msg_lbl)
+
+        content_layout.addLayout(text_layout)
+        layout.addLayout(content_layout)
+
+        # Button row: Cancel + Confirm (Delete/Action)
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(8)
+        btn_layout.addStretch()
+
+        self._cancel_btn = SecondaryButton(cancel_text)
+        self._cancel_btn.setMinimumWidth(80)
+        self._cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self._cancel_btn)
+
+        if kind == "danger":
+            self._confirm_btn = DangerButton(confirm_text)
+        else:
+            self._confirm_btn = PrimaryButton(confirm_text)
+        self._confirm_btn.setMinimumWidth(80)
+        self._confirm_btn.setDefault(True)
+        self._confirm_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(self._confirm_btn)
+
+        layout.addLayout(btn_layout)
+
+    @classmethod
+    def confirm(
+        cls,
+        parent: Optional[QWidget] = None,
+        title: str = "Confirm Action",
+        message: str = "Are you sure you want to proceed?",
+        confirm_text: str = "Delete",
+        cancel_text: str = "Cancel",
+        kind: str = "danger",
+    ) -> bool:
+        """Helper to show the dialog modally and return True if accepted."""
+        dlg = cls(
+            title=title,
+            message=message,
+            confirm_text=confirm_text,
+            cancel_text=cancel_text,
+            kind=kind,
+            parent=parent,
+        )
+        return dlg.exec() == QDialog.DialogCode.Accepted
+
 
