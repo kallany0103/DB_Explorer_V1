@@ -531,27 +531,29 @@ class ConnectionManager(QWidget):
     def delete_connection(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         connection_id = conn_data.get("id")
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Delete Connection")
-        msg.setText("Are you sure you want to delete this connection?")
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.CustomizeWindowHint)
+        conn_name = conn_data.get("name", "this connection")
 
-        msg.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        reply = msg.exec()
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                db.delete_connection(connection_id)
-                self._save_tree_expansion_state()
-                self.load_data()
-                self._restore_tree_expansion_state()
-                self.refresh_all_comboboxes()
-                conn_name = conn_data.get("name", "Connection")
-                from ui.components import ToastNotification
-                ToastNotification.show_toast(self, f"✦  '{conn_name}' deleted successfully!", kind="success")
-            except Exception as exc:
-                QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{exc}")
+        from ui.components import ConfirmDialog, ToastNotification
+        confirmed = ConfirmDialog.confirm(
+            parent=self,
+            title="Delete Connection",
+            message=f"Are you sure you want to delete '{conn_name}'?\nThis action cannot be undone.",
+            confirm_text="Delete",
+            cancel_text="Cancel",
+            kind="danger",
+        )
+        if not confirmed:
+            return
+
+        try:
+            db.delete_connection(connection_id)
+            self._save_tree_expansion_state()
+            self.load_data()
+            self._restore_tree_expansion_state()
+            self.refresh_all_comboboxes()
+            ToastNotification.show_toast(self, f"'{conn_name}' deleted successfully!", kind="success")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{exc}")
 
     def item_clicked(self, proxy_index, skip_restore=False):
         source_index = self.proxy_model.mapToSource(proxy_index)
