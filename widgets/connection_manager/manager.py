@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QApplication,
 )
+from ui.components import ToastNotification
 
 import db
 from widgets.erd.widget import ERDWidget
@@ -113,7 +114,7 @@ class ConnectionManager(QWidget):
 
     def generate_erd_for_item(self, item_data, display_name):
         if not item_data or not isinstance(item_data, dict):
-            QMessageBox.warning(self, "Error", "Invalid item data for ERD generation.")
+            ToastNotification.show_toast(self, "Invalid item data for ERD generation.", kind="warning")
             return
 
         # Phase 1 — open the tab instantly with a loading overlay
@@ -135,7 +136,7 @@ class ConnectionManager(QWidget):
         self.thread_pool.start(worker)
 
     def show_error_popup(self, msg):
-        QMessageBox.critical(self, "Error", msg)
+        ToastNotification.show_toast(self, msg, kind="error")
 
     def _get_current_schema_item_data(self):
         index = self.schema_tree.currentIndex()
@@ -184,14 +185,14 @@ class ConnectionManager(QWidget):
         if item_data:
             self.connection_actions.open_create_table_template(item_data)
         else:
-            QMessageBox.warning(self, "Warning", "Please select a schema or table in the Database Schema tree first.")
+            ToastNotification.show_toast(self, "Please select a schema or table in the Database Schema tree first.", kind="warning")
 
     def _create_view_from_menu(self):
         _, item_data, _ = self._get_current_schema_item_data()
         if item_data:
             self.connection_actions.open_create_view_template(item_data)
         else:
-            QMessageBox.warning(self, "Warning", "Please select a schema or table in the Database Schema tree first.")
+            ToastNotification.show_toast(self, "Please select a schema or table in the Database Schema tree first.", kind="warning")
 
     def _query_tool_from_menu(self):
         _, item_data, name = self._get_current_schema_item_data()
@@ -205,14 +206,14 @@ class ConnectionManager(QWidget):
         if item_data and item_data.get("table_name"):
             self.connection_actions.delete_table(item_data, name)
         else:
-            QMessageBox.warning(self, "Warning", "Please select a table or view to delete.")
+            ToastNotification.show_toast(self, "Please select a table or view to delete.", kind="warning")
 
     def _properties_object_from_menu(self):
         _, item_data, name = self._get_current_schema_item_data()
         if item_data:
             self.open_properties_workbench(item_data, name)
         else:
-            QMessageBox.warning(self, "Warning", "Please select an object in the Database Schema tree first.")
+            ToastNotification.show_toast(self, "Please select an object in the Database Schema tree first.", kind="warning")
 
     def eventFilter(self, obj, event):
         if self.tree_helpers.handle_event_filter(obj, event):
@@ -553,7 +554,7 @@ class ConnectionManager(QWidget):
             self.refresh_all_comboboxes()
             ToastNotification.show_toast(self, f"'{conn_name}' deleted successfully!", kind="success")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", f"Failed to delete connection:\n{exc}")
+            ToastNotification.show_toast(self, f"Failed to delete connection: {exc}", kind="error")
 
     def item_clicked(self, proxy_index, skip_restore=False):
         source_index = self.proxy_model.mapToSource(proxy_index)
@@ -717,13 +718,13 @@ class ConnectionManager(QWidget):
 
     def handle_process_finished(self, process_id, message, time_taken, row_count):
         self.status.showMessage(f"Export Finished: {message} ({time_taken:.2f}s)", 5000)
-        QMessageBox.information(self, "Export Complete", message)
+        ToastNotification.show_toast(self, message, kind="success")
         if hasattr(self.main_window, "results_manager"):
             self.main_window.results_manager.handle_process_finished(process_id, message, time_taken, row_count)
 
     def handle_process_error(self, process_id, error_message):
         self.status.showMessage(f"Export Failed: {error_message}", 5000)
-        QMessageBox.critical(self, "Export Error", f"Export failed:\n{error_message}")
+        ToastNotification.show_toast(self, f"Export failed: {error_message}", kind="error")
         if hasattr(self.main_window, "results_manager"):
             self.main_window.results_manager.handle_process_error(process_id, error_message)
 

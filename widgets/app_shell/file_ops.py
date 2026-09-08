@@ -7,7 +7,7 @@ import os
 import json
 from db.db_retrieval import get_hierarchy_data
 from db.db_modifications import add_connection
-from db.db_connections import DB_FILE
+from db.db_connections import DB_FILE, get_downloads_dir
 import sqlite3
     
 
@@ -195,7 +195,7 @@ def export_connections(main_window):
     file_name, _ = QFileDialog.getSaveFileName(
         main_window,
         "Export Connections",
-        "",
+        os.path.join(get_downloads_dir(), "connections.json"),
         "JSON Files (*.json);;All Files (*)",
     )
     if not file_name:

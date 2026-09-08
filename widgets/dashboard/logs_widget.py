@@ -2,6 +2,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import datetime
 import re, datetime
 from typing import List, Dict, Any
@@ -9,6 +10,7 @@ import re
 from PySide6.QtWidgets import QMessageBox, QFileDialog
 import qtawesome as qta
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QThread, Signal
+from db.db_connections import get_downloads_dir
 from ui.components import IconButton
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel, QFont
 from PySide6.QtWidgets import (
@@ -656,7 +658,7 @@ class LogsWidget(QWidget):
         ext = "CSV Files (*.csv)"
         default = "logs.csv"
 
-        path, _ = QFileDialog.getSaveFileName(self, "Save Logs", default, ext)
+        path, _ = QFileDialog.getSaveFileName(self, "Save Logs", os.path.join(get_downloads_dir(), default), ext)
         if not path:
             return
 

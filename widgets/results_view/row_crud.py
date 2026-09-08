@@ -1,9 +1,12 @@
+import os
 import pandas as pd
 from PySide6.QtCore import Qt, QSortFilterProxyModel
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QComboBox, QFileDialog, QMessageBox
+from ui.components import ToastNotification
 
 import db
+from db.db_connections import get_downloads_dir
 from widgets.results_view.value_state import display_cell_text, editor_text_from_raw, editor_text_to_db_value
 
 
@@ -21,7 +24,7 @@ def delete_selected_row(manager):
     qualified_table_name = output_state.get("qualified_table_name")
 
     if not output_state.get("is_editable") or not table_name or not qualified_table_name:
-        QMessageBox.warning(manager.main_window, "Warning", "This result set is read-only. Run a simple single-table SELECT to edit rows.")
+        ToastNotification.show_toast(manager.main_window, "This result set is read-only. Run a simple single-table SELECT to edit rows.", kind="warning")
         return
 
     display_model = table_view.model()
@@ -48,7 +51,7 @@ def delete_selected_row(manager):
             selected_source_rows.add(idx.row())
 
     if not selected_source_rows:
-        QMessageBox.warning(manager.main_window, "Warning", "Please select a row to delete.")
+        ToastNotification.show_toast(manager.main_window, "Please select a row to delete.", kind="warning")
         return
 
     reply = QMessageBox.question(
@@ -127,10 +130,10 @@ def delete_selected_row(manager):
 
     if deleted_count > 0:
         manager.status.showMessage(f"Successfully deleted {deleted_count} row(s).", 3000)
-        QMessageBox.information(manager.main_window, "Success", f"Successfully deleted {deleted_count} row(s).")
+        ToastNotification.show_toast(manager.main_window, f"Successfully deleted {deleted_count} row(s).", kind="success")
 
     if errors:
-        QMessageBox.warning(manager.main_window, "Deletion Errors", "\n".join(errors[:5]))
+        ToastNotification.show_toast(manager.main_window, "\n".join(errors[:5]), kind="error")
 
 
 def model_to_dataframe(manager, model):
@@ -156,20 +159,20 @@ def model_to_dataframe(manager, model):
 def download_result(manager, tab_content):
     table = manager._get_result_table_for_tab(tab_content)
     if not table or not table.model():
-        QMessageBox.warning(manager.main_window, "No Data", "No result data to download")
+        ToastNotification.show_toast(manager.main_window, "No result data to download.", kind="warning")
         return
 
     model = table.model()
     df = model_to_dataframe(manager, model)
 
     if df.empty:
-        QMessageBox.warning(manager.main_window, "No Data", "Result is empty")
+        ToastNotification.show_toast(manager.main_window, "Result is empty.", kind="warning")
         return
 
     file_path, selected_filter = QFileDialog.getSaveFileName(
         manager.main_window,
         "Download Result",
-        "query_result",
+        os.path.join(get_downloads_dir(), "query_result"),
         "CSV (*.csv);;Excel (*.xlsx)",
     )
 
@@ -182,14 +185,14 @@ def download_result(manager, tab_content):
         elif file_path.endswith(".xlsx"):
             df.to_excel(file_path, index=False)
 
-        QMessageBox.information(
+        ToastNotification.show_toast(
             manager.main_window,
-            "Success",
-            f"Result downloaded successfully:\n{file_path}",
+            f"Downloaded successfully: {file_path}",
+            kind="success",
         )
 
     except Exception as e:
-        QMessageBox.critical(manager.main_window, "Error", str(e))
+        ToastNotification.show_toast(manager.main_window, str(e), kind="error")
 
 
 def add_empty_row(manager):
@@ -202,7 +205,7 @@ def add_empty_row(manager):
         return
     output_state = table.property("output_state") or {}
     if not output_state.get("is_editable") or not output_state.get("qualified_table_name"):
-        QMessageBox.warning(manager.main_window, "Warning", "This result set is read-only. Run a simple single-table SELECT to add rows.")
+        ToastNotification.show_toast(manager.main_window, "This result set is read-only. Run a simple single-table SELECT to add rows.", kind="warning")
         return
     model = table.model()
     if isinstance(model, QSortFilterProxyModel):
@@ -239,7 +242,7 @@ def save_new_row(manager):
         return
     output_state = table.property("output_state") or {}
     if not output_state.get("is_editable") or not output_state.get("qualified_table_name"):
-        QMessageBox.warning(manager.main_window, "Warning", "This result set is read-only. Run a simple single-table SELECT to save changes.")
+        ToastNotification.show_toast(manager.main_window, "This result set is read-only. Run a simple single-table SELECT to save changes.", kind="warning")
         return
     model = table.model()
     if isinstance(model, QSortFilterProxyModel):

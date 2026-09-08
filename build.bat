@@ -19,7 +19,7 @@ if not exist ".\venv\Scripts\pyinstaller.exe" (
 :: 2. Re-run PyInstaller to package the latest code changes
 echo [STEP 1/2] Compiling Python code and assets with PyInstaller...
 echo ----------------------------------------------------------
-".\venv\Scripts\pyinstaller.exe" -y Universal_SQL_Client.spec
+".\venv\Scripts\python.exe" -m PyInstaller -y Universal_SQL_Client.spec
 if %ERRORLEVEL% NEQ 0 (
     color 0C
     echo.
@@ -62,9 +62,8 @@ if %ERRORLEVEL% NEQ 0 (
 
 color 0A
 echo.
-echo ==========================================================
+
 echo [SUCCESS] Build pipeline completed successfully!
-echo New installer: dist\Universal_SQL_Client_WINDOWS_1.37_setup.exe
-echo ==========================================================
+echo New installer: dist\Universal_SQL_Client_WINDOWS_1.39_setup.exe
 echo.
 pause

@@ -35,6 +35,13 @@ def user_data_path(relative_path: str) -> str:
     return os.path.join(base, relative_path)
 
 
+def get_downloads_dir() -> str:
+    """Return the user's Downloads folder, falling back to the home directory."""
+    home = os.path.expanduser("~")
+    downloads = os.path.join(home, "Downloads")
+    return downloads if os.path.isdir(downloads) else home
+
+
 # hierarchy.db is a user-writable file — must NOT live inside the install dir
 DB_FILE = user_data_path("databases/hierarchy.db")
 
