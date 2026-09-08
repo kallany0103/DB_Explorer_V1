@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QBrush, QColor
+from ui.components import ToastNotification
 
 import db
 
@@ -81,7 +82,7 @@ def load_connection_history(manager, target_tab):
             history_list_view.setCurrentIndex(first_index)
             display_history_details(manager, first_index, target_tab)
     except Exception as error:
-        QMessageBox.critical(manager.main_window, "Error", f"Failed to load query history:\n{error}")
+        ToastNotification.show_toast(manager.main_window, f"Failed to load query history: {error}", kind="error")
 
 
 def display_history_details(manager, index, target_tab):
@@ -105,7 +106,7 @@ def get_selected_history_item(manager, target_tab):
     history_list_view = target_tab.findChild(QTreeView, "history_list_view")
     selected_indexes = history_list_view.selectionModel().selectedIndexes()
     if not selected_indexes:
-        QMessageBox.information(manager.main_window, "No Selection", "Please select a history item first.")
+        ToastNotification.show_toast(manager.main_window, "Please select a history item first.", kind="info")
         return None
 
     item = selected_indexes[0].model().itemFromIndex(selected_indexes[0])
@@ -125,7 +126,7 @@ def copy_history_to_editor(manager, target_tab):
         editor_stack = target_tab.findChild(QStackedWidget, "editor_stack")
         query_editor = target_tab.findChild(QPlainTextEdit, "query_editor")
         if not query_editor:
-            QMessageBox.warning(manager.main_window, "Editor Not Found", "Could not locate the query editor in this tab.")
+            ToastNotification.show_toast(manager.main_window, "Could not locate the query editor in this tab.", kind="warning")
             return
 
         query_editor.setPlainText(history_data["query"])
@@ -160,14 +161,14 @@ def remove_selected_history(manager, target_tab):
             load_connection_history(manager, target_tab)
             target_tab.findChild(QTextEdit, "history_details_view").clear()
         except Exception as error:
-            QMessageBox.critical(manager.main_window, "Error", f"Failed to remove history item:\n{error}")
+            ToastNotification.show_toast(manager.main_window, f"Failed to remove history item: {error}", kind="error")
 
 
 def remove_all_history_for_connection(manager, target_tab):
     db_combo_box = target_tab.findChild(QComboBox, "db_combo_box")
     conn_data = db_combo_box.currentData()
     if not conn_data:
-        QMessageBox.warning(manager.main_window, "No Connection", "Please select a connection first.")
+        ToastNotification.show_toast(manager.main_window, "Please select a connection first.", kind="info")
         return
 
     conn_id = conn_data.get("id")
@@ -183,4 +184,4 @@ def remove_all_history_for_connection(manager, target_tab):
             db.delete_all_history(conn_id)
             load_connection_history(manager, target_tab)
         except Exception as error:
-            QMessageBox.critical(manager.main_window, "Error", f"Failed to clear history for this connection:\n{error}")
+            ToastNotification.show_toast(manager.main_window, f"Failed to clear history for this connection: {error}", kind="error")

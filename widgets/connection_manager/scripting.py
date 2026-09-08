@@ -1,6 +1,7 @@
 import sqlite3 as sqlite
-from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QMessageBox
+from PySide6.QtWidgets import QComboBox, QPlainTextEdit
 from widgets.worksheet.code_editor import CodeEditor
+from ui.components import ToastNotification
 import db
 
 
@@ -54,7 +55,7 @@ class ScriptGenerator:
                     sql_script = row[0] + ";"
                 conn.close()
             except Exception as e:
-                QMessageBox.critical(self.manager, "Error", f"Could not generate SQLite script: {e}")
+                ToastNotification.show_toast(self.manager, f"Could not generate SQLite script: {e}", kind="error")
                 return
 
         elif db_type == 'postgres':
@@ -139,7 +140,7 @@ class ScriptGenerator:
 
                 db.return_pooled_postgres_connection(conn_data, conn=conn)
             except Exception as e:
-                QMessageBox.critical(self.manager, "Error", f"Could not generate Postgres script: {e}")
+                ToastNotification.show_toast(self.manager, f"Could not generate Postgres script: {e}", kind="error")
                 return
 
         if sql_script:
@@ -202,7 +203,7 @@ class ScriptGenerator:
                 self.open_script_in_editor(item_data, res[0])
             db.return_pooled_postgres_connection(conn_data, conn=conn)
         except Exception as e:
-            QMessageBox.critical(self.manager, "Error", f"Failed to script sequence:\n{e}")
+            ToastNotification.show_toast(self.manager, f"Failed to script sequence: {e}", kind="error")
 
     def script_function_as_create(self, item_data, func_name):
         conn_data = item_data.get('conn_data')
@@ -231,10 +232,10 @@ class ScriptGenerator:
                     sql = sql.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
                 self.open_script_in_editor(item_data, sql + ";")
             else:
-                QMessageBox.warning(self.manager, "Warning", "Could not find function definition.")
+                ToastNotification.show_toast(self.manager, "Could not find function definition.", kind="warning")
             db.return_pooled_postgres_connection(conn_data, conn=conn)
         except Exception as e:
-            QMessageBox.critical(self.manager, "Error", f"Failed to script function:\n{e}")
+            ToastNotification.show_toast(self.manager, f"Failed to script function: {e}", kind="error")
 
     def script_language_as_create(self, item_data, lan_name):
         sql = f"""-- Create Language Script
@@ -297,7 +298,7 @@ $$;"""
         """Generate CREATE TRIGGER script from the trigger definition stored in item_data."""
         trigger_def = item_data.get("trigger_def", "")
         if not trigger_def:
-            QMessageBox.warning(self.manager, "Warning", "Trigger definition not found.")
+            ToastNotification.show_toast(self.manager, "Trigger definition not found.", kind="warning")
             return
 
         # The trigger_def from pg_get_triggerdef already contains the full CREATE TRIGGER statement

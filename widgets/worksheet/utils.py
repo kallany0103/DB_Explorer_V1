@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
-    QMessageBox,
     QToolButton,
 )
 from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QTabBar
+from ui.components import ToastNotification
 
 
 def renumber_tabs(manager):
@@ -46,4 +46,4 @@ def show_info(manager, text, parent=None):
     if parent is None:
         current_tab = manager.tab_widget.currentWidget()
         parent = current_tab if current_tab else manager.main_window
-    QMessageBox.information(parent, "Information", text)
+    ToastNotification.show_toast(parent, text, kind="info")

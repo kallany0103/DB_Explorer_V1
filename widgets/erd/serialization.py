@@ -1,5 +1,6 @@
 """ERD diagram serialization: save/load .erd files and image/PDF export."""
 import json
+import os
 import base64
 from widgets.erd.items.note_item import ERDNoteItem
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -11,6 +12,7 @@ from widgets.erd.items.attribute_item import ERDAttributeItem
 from widgets.erd.items.relationship_diamond_item import ERDRelationshipDiamondItem
 from widgets.erd.items.subject_area_item import ERDSubjectAreaItem
 from widgets.erd.items.floating_connection import ERDFloatingConnectionItem
+from db.db_connections import get_downloads_dir
 
 
 
@@ -107,7 +109,7 @@ def save_erd(widget) -> None:
         if reply == QMessageBox.StandardButton.No:
             return
 
-    file_path, _ = QFileDialog.getSaveFileName(widget, "Save ERD State", "", "ERD Files (*.erd)")
+    file_path, _ = QFileDialog.getSaveFileName(widget, "Save ERD State", os.path.join(get_downloads_dir(), "diagram.erd"), "ERD Files (*.erd)")
     if not file_path:
         return
 
@@ -269,7 +271,7 @@ def save_as_image(widget, ext: str = "png") -> None:
     file_path, _ = QFileDialog.getSaveFileName(
         widget,
         f"Export ERD Diagram as {ext.upper()}",
-        "",
+        os.path.join(get_downloads_dir(), f"diagram.{ext}"),
         filter_str,
     )
     if not file_path:

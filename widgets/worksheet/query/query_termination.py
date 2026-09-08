@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMessageBox
+from ui.components import ToastNotification
 
 from widgets.worksheet.query.query_feedback import replace_message, set_global_status, set_tab_status
 from widgets.worksheet.query.query_runtime import clear_query_runtime
@@ -20,6 +20,6 @@ def finalize_terminated_query(
     set_global_status(manager, global_status_text)
 
     if warning_title and warning_text:
-        QMessageBox.warning(manager, warning_title, warning_text)
+        ToastNotification.show_toast(manager, warning_text, kind="warning")
 
     manager._refresh_editor_layout_for_tab(tab)

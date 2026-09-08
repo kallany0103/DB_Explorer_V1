@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt, Signal
-from ui.components import PrimaryButton, SecondaryButton
+from ui.components import PrimaryButton, SecondaryButton, ToastNotification
 
 
 def _make_msg_box(parent, icon_type: QMessageBox.Icon, title: str, text: str) -> QMessageBox:
@@ -187,7 +187,7 @@ def _format_sql(sql: str) -> str:
 def format_sql_text(manager):
     editor = manager._get_current_editor()
     if not editor:
-        QMessageBox.warning(manager, "Warning", "No active query editor found.")
+        ToastNotification.show_toast(manager, "No active query editor found.", kind="warning")
         return
 
     cursor = editor.textCursor()
@@ -220,9 +220,9 @@ def format_sql_text(manager):
     except ImportError:
         _make_msg_box(manager, QMessageBox.Icon.Critical, "Error", "Library 'sqlglot' is missing.\nPlease run: pip install sqlglot").exec()
     except ParseError as error:
-        _make_msg_box(manager, QMessageBox.Icon.Warning, "Formatting Error", f"SQL Syntax Error: {error}").exec()
+        ToastNotification.show_toast(manager, f"SQL Syntax Error: {error}", kind="warning")
     except Exception as error:
-        _make_msg_box(manager, QMessageBox.Icon.Warning, "Formatting Error", f"Error: {error}").exec()
+        ToastNotification.show_toast(manager, f"Formatting Error: {error}", kind="warning")
 
 
 def clear_query_text(manager):

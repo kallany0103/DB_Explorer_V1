@@ -4,7 +4,6 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QMessageBox, QDialog,
-    QInputDialog,
     QFrame, QLabel, QProgressBar, QStackedWidget
 )
 from PySide6.QtGui import QAction, QTransform, QColor, QUndoStack
@@ -26,7 +25,7 @@ from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
 from ui.components import ToolbarActionButton, SearchBox
 from widgets.erd.commands import AddTableCommand, AddConnectionCommand, AddNoteCommand
 from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
-from widgets.erd.sql_generator import SQLPreviewDialog, generate_sql_script
+from widgets.erd.sql_generator import SQLPreviewDialog, generate_sql_script, DialectPickerDialog
 from widgets.erd.layout_engine import auto_layout as _auto_layout
 from widgets.erd.serialization import (
     serialize_view_state as _serialize_view_state_fn,
@@ -296,12 +295,20 @@ class ERDWidget(QWidget):
         """
         Generates the SQL script and displays it in a preview dialog.
         """
-        dialects = ["postgresql", "sqlite", "generic"]
-        dialect, ok = QInputDialog.getItem(self, "Select SQL Dialect", "Select target dialect:", dialects, 0, False)
-        if ok and dialect:
-            sql_script = generate_sql_script(self.schema_data, dialect=dialect)
-            dialog = SQLPreviewDialog(sql_script, self)
-            dialog.exec()
+        picker = DialectPickerDialog(self)
+        if picker.exec() != QDialog.DialogCode.Accepted:
+            return
+        dialect = picker.selected_dialect()
+        include_drop = picker.include_drop()
+        include_fks = picker.include_fks()
+        sql_script = generate_sql_script(
+            self.schema_data,
+            dialect=dialect,
+            include_drop=include_drop,
+            include_fks=include_fks,
+        )
+        dialog = SQLPreviewDialog(sql_script, self)
+        dialog.exec()
 
     def _create_default_entity(self, pos, name=None):
         table_name = name or self._suggest_entity_name("new_entity")
