@@ -1,13 +1,13 @@
 # widgets/inspector/statistics_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar, QToolButton
 )
 from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
 from PySide6.QtGui import QMovie
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
@@ -44,16 +44,7 @@ class StatisticsWorkbench(QWidget):
         header_layout.addLayout(text_layout)
         
         header_layout.addStretch()
-        self.progress = QLabel()
-        movie = QMovie("assets/spinner.gif")
-        if movie.isValid():
-            movie.setScaledSize(QSize(20, 20))
-            self.progress.setMovie(movie)
-            movie.start()
-        else:
-            self.progress.setText("Loading...")
-        self.progress.setVisible(False)
-        header_layout.addWidget(self.progress)
+
         
         # Add refresh button to match properties_view
         self.refresh_btn = IconButton(qta.icon('mdi.refresh', color='#6b7280'), tooltip="Refresh")
@@ -61,6 +52,34 @@ class StatisticsWorkbench(QWidget):
         header_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(header_frame)
+        
+        self.loading_icon = QToolButton()
+        self.loading_icon.setIcon(
+            qta.icon(
+                "ph.spinner-fill",
+                color="#3b82f6",
+                animation=qta.Spin(self.loading_icon)
+            )
+        )
+        self.loading_icon.setIconSize(QSize(100, 100))
+        self.loading_icon.setStyleSheet("border: none; background: transparent;")
+
+        self.progress_container = QWidget()
+
+        progress_layout = QVBoxLayout(self.progress_container)
+        progress_layout.addStretch()
+
+        h_layout = QHBoxLayout()
+        h_layout.addStretch()
+        h_layout.addWidget(self.loading_icon)
+        h_layout.addStretch()
+
+        progress_layout.addLayout(h_layout)
+        progress_layout.addStretch()
+
+        layout.addWidget(self.progress_container)
+
+        self.progress_container.setVisible(False)
         
         # Content
         self.content_container = QWidget()
@@ -75,6 +94,16 @@ class StatisticsWorkbench(QWidget):
     def refresh_statistics(self):
         if self.item_data:
             self.update_view(self.item_data, self.obj_name, force_refresh=True)
+
+    def show_loading(self, message="Loading..."):
+        """Show the spinner with a message — used when the inspector cannot yet determine
+        which object to inspect (e.g. user clicked a connection type or group node)."""
+        self.item_data = None
+        self.obj_name = None
+        self.header_label.setText("Statistics")
+        self.sub_label.setText(message)
+        self.progress_container.setVisible(True)
+        self.content_container.setVisible(False)
 
     def update_view(self, item_data, obj_name, force_refresh=False):
         if not force_refresh and self.item_data == item_data and self.obj_name == obj_name:
@@ -91,7 +120,8 @@ class StatisticsWorkbench(QWidget):
 
         self.sub_label.setText(f"Type: {item_data.get('type', 'Unknown').capitalize()}")
         
-        self.progress.setVisible(True)
+        self.progress_container.setVisible(True)
+        self.content_container.setVisible(False)
         self.stats_view.clear_stats()
         
         worker = InspectorWorker(item_data, obj_name, task_type="statistics")
@@ -100,7 +130,8 @@ class StatisticsWorkbench(QWidget):
         self.main_window.thread_pool.start(worker)
 
     def _on_stats_loaded(self, data):
-        self.progress.setVisible(False)
+        self.progress_container.setVisible(False)
+        self.content_container.setVisible(True)
         stats_results = data.get("stats", [])
 
         if not stats_results:
@@ -113,7 +144,8 @@ class StatisticsWorkbench(QWidget):
             first = False
 
     def _on_load_error(self, error_msg):
-        self.progress.setVisible(False)
+        self.progress_container.setVisible(False)
+        self.content_container.setVisible(True)
         self.sub_label.setText(f"Error: {error_msg}")
         self.stats_view.clear_stats()
         self.stats_view.display_data(["Error"], [[str(error_msg)]])

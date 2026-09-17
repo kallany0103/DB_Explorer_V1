@@ -120,7 +120,7 @@ class ConnectionSpinner(QObject):
     def __init__(self, parent: QObject = None) -> None:
         super().__init__(parent)
 
-        base = qta.icon("fa5s.circle-notch", color=_SPINNER_COLOR)
+        base = qta.icon("ph.spinner-fill", color=_SPINNER_COLOR)
         self._frames = _build_rotated_frames(
             base, _FRAME_COUNT, _ICON_SIZE, _SUPERSAMPLE
         )

@@ -1,15 +1,104 @@
 from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QToolButton, QMenu,
     QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
-    QDialog, QVBoxLayout
+    QDialog, QVBoxLayout, QProgressBar
 )
 from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread
 from typing import Optional
 import qtawesome as qta
+from workers.workers import WorkerThread
 
 
-class SecondaryButton(QPushButton):
+
+class LoadingButton:
+
+    def start_loading(self, text="Testing"):
+        
+        self._original_text = self.text()
+        self._original_icon = self.icon()
+        self._loading_base_text = text
+        
+        self._progress_value = 0.0
+        self.setEnabled(False)
+        self.setIcon(QIcon())
+
+        # ── Progress bar overlay ──────────────────────────────────────
+        bar_h = 4
+        self._progress_bar = QProgressBar(self)
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(False)
+        self._progress_bar.setFixedHeight(bar_h)
+        self._progress_bar.setGeometry(0, self.height() - bar_h, self.width(), bar_h)
+        self._progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                background: transparent;
+                border-radius: 2px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #0078d4,
+                    stop:0.5 #38bdf8,
+                    stop:1 #0078d4
+                );
+                border-radius: 2px;
+            }
+        """)
+        self._progress_bar.show()
+        self._progress_bar.raise_()
+
+        # ── Progress tick timer (30 ms) ───────────────────────────────
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setInterval(30)
+        self._progress_timer.timeout.connect(self._tick_progress)
+        self._progress_timer.start()
+
+
+    # ── Progress animation ────────────────────────────────────────────
+    def _tick_progress(self):
+        v = self._progress_value
+        if v < 70:
+            v += 1.4          # fast start
+        elif v < 85:
+            v += 0.35         # medium
+        elif v < 93:
+            v += 0.08         # slow
+        else:
+            v += 0.015        # creep — never reaches 100 on its own
+        self._progress_value = min(v, 99.0)
+        pb = getattr(self, '_progress_bar', None)
+        if pb:
+            pb.setValue(int(self._progress_value))
+
+    # ── Stop ──────────────────────────────────────────────────────────
+    def stop_loading(self):
+        # Stop progress timer
+        t = getattr(self, '_progress_timer', None)
+        if t:
+            t.stop(); t.deleteLater(); self._progress_timer = None
+
+        # Flash bar to 100%, then remove after brief pause
+        pb = getattr(self, '_progress_bar', None)
+        if pb:
+            pb.setValue(100)
+            QTimer.singleShot(220, self._remove_progress_bar)
+
+        self.setEnabled(True)
+        self.setText(getattr(self, '_original_text', self.text()))
+        self.setIcon(getattr(self, '_original_icon', QIcon()))
+
+    def _remove_progress_bar(self):
+        pb = getattr(self, '_progress_bar', None)
+        if pb:
+            pb.hide()
+            pb.deleteLater()
+            self._progress_bar = None
+
+
+class SecondaryButton(QPushButton, LoadingButton):
     """
     A standard/secondary button used across the application.
     Features a white background with a light border and hover effects.
@@ -45,7 +134,7 @@ class SecondaryButton(QPushButton):
         """)
 
 
-class PrimaryButton(QPushButton):
+class PrimaryButton(QPushButton, LoadingButton):
     """
     A primary action button, typically blue, used for main actions like 'Save', 'Execute', etc.
     """
@@ -657,5 +746,4 @@ class ConfirmDialog(QDialog):
             parent=parent,
         )
         return dlg.exec() == QDialog.DialogCode.Accepted
-
 

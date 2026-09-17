@@ -635,6 +635,13 @@ class ConnectionManager(QWidget):
         self._spinner.start(item)
         self._active_schema_workers.append(worker)
 
+        self.schema_model.clear()
+        self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+        loading_item = QStandardItem("Loading schema...")
+        loading_item.setEditable(False)
+        self.schema_model.appendRow(loading_item)
+        self._schema_spinner.start(loading_item)
+
         def _remove_worker():
             if worker in self._active_schema_workers:
                 self._active_schema_workers.remove(worker)
@@ -643,6 +650,7 @@ class ConnectionManager(QWidget):
             _remove_worker()
             if current_token == self._schema_load_token:
                 self._spinner.stop()
+                self._schema_spinner.stop()
                 self.schema_tree.repaint()
                 try:
                     populate_fn(data, skip_restore=skip_restore)
@@ -659,6 +667,7 @@ class ConnectionManager(QWidget):
             _remove_worker()
             if current_token == self._schema_load_token:
                 self._spinner.stop()
+                self._schema_spinner.stop()
             self.status.showMessage(f"Error loading schema: {message}", 5000)
             self.show_error_popup(f"Failed to load schema:\n{message}")
 

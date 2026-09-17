@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from ui.components import PasswordBox
-
+import db
 
 class ServiceNowDataSourceDialog(QDialog):
     def __init__(self, parent=None, conn_data=None):

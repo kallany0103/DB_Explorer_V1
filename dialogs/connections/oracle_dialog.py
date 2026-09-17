@@ -4,7 +4,7 @@ import oracledb
 from PySide6.QtWidgets import QLineEdit, QMessageBox
 from ui.components import PasswordBox
 from .base_connection_dialog import BaseConnectionDialog
-import oracledb
+from workers.workers import WorkerThread
 
 
 
@@ -35,16 +35,27 @@ class OracleConnectionDialog(BaseConnectionDialog):
             self.setFixedSize(560, 420)
 
     def test_connection_impl(self):
-        try:
+        self.test_btn.start_loading("Testing")
+
+        def _do_test():
             conn = oracledb.connect(
                 user=self.user_input.text(),
                 password=self.password_input.text(),
                 dsn=self.dsn_input.text()
             )
             conn.close()
+            return True
+
+        self._test_worker = WorkerThread(_do_test)
+        self._test_worker.finished_signal.connect(self._on_test_finished)
+        self._test_worker.start()
+
+    def _on_test_finished(self, result, error):
+        self.test_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Error", f"Failed to connect:\n{error}")
+        else:
             QMessageBox.information(self, "Success", "Connection successful!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
 
     def save_connection_impl(self):
         if not self.name_input.text().strip():
