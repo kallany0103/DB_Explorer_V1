@@ -3,8 +3,8 @@
 import sqlite3 as sqlite
 from PySide6.QtWidgets import QLineEdit, QHBoxLayout, QFileDialog, QMessageBox
 from ui.components import SecondaryButton
+from workers.workers import WorkerThread
 from .base_connection_dialog import BaseConnectionDialog
-
 
 
 
@@ -60,12 +60,24 @@ class SQLiteConnectionDialog(BaseConnectionDialog):
         if not path:
             QMessageBox.warning(self, "Test", "Please provide a database path.")
             return
-        try:
+
+        self.test_btn.start_loading("Testing")
+
+        def _do_test():
             conn = sqlite.connect(path)
             conn.close()
+            return True
+
+        self._test_worker = WorkerThread(_do_test)
+        self._test_worker.finished_signal.connect(self._on_test_finished)
+        self._test_worker.start()
+
+    def _on_test_finished(self, result, error):
+        self.test_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Error", f"Failed to connect:\n{error}")
+        else:
             QMessageBox.information(self, "Success", "Connection successful!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
 
     def save_connection_impl(self):
         if not self.name_input.text().strip():

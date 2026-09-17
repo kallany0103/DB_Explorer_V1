@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView
 )
 from ui.components import PasswordBox, SearchBox, SecondaryButton, PrimaryButton
+from workers.workers import WorkerThread
 
 
 class PostgresDataSourceDialog(QDialog):
@@ -154,8 +155,8 @@ class PostgresDataSourceDialog(QDialog):
         self.save_btn.clicked.connect(self.saveConnection)
 
         button_layout = QHBoxLayout()
-        button_layout.addWidget(self.test_btn)
         button_layout.addStretch()
+        button_layout.addWidget(self.test_btn)
         button_layout.addWidget(self.cancel_btn)
         button_layout.addWidget(self.save_btn)
 
@@ -212,13 +213,29 @@ class PostgresDataSourceDialog(QDialog):
     def testConnection(self):
         try:
             host, port, database, user, password, schema, extra = self._get_connection_params()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
+            return
+
+        self.test_btn.start_loading("Testing")
+
+        def _do_test():
             conn = psycopg2.connect(
                 host=host, port=port, database=database, user=user, password=password, connect_timeout=5, **extra
             )
             conn.close()
+            return True
+
+        self._test_worker = WorkerThread(_do_test)
+        self._test_worker.finished_signal.connect(self._on_test_finished)
+        self._test_worker.start()
+
+    def _on_test_finished(self, result, error):
+        self.test_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Error", f"Failed to connect:\n{error}")
+        else:
             QMessageBox.information(self, "Success", "Connection successful!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to connect:\n{e}")
 
     def _fetch_remote_tables(self, show_popup=True):
         try:

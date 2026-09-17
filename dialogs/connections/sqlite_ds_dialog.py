@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QAbstractItemView
 )
 from ui.components import SearchBox, SecondaryButton, PrimaryButton
+from workers.workers import WorkerThread
 
 
 class SQLiteDataSourceDialog(QDialog):
@@ -214,15 +215,26 @@ class SQLiteDataSourceDialog(QDialog):
             QMessageBox.critical(self, "Error", f"File not found:\n{path}")
             return
 
-        try:
+        self.test_btn.start_loading("Testing")
+
+        def _do_test():
             conn = sqlite.connect(path, timeout=3.0)
             cur = conn.cursor()
             cur.execute("SELECT 1;")
             cur.fetchone()
             conn.close()
+            return True
+
+        self._test_worker = WorkerThread(_do_test)
+        self._test_worker.finished_signal.connect(self._on_test_finished)
+        self._test_worker.start()
+
+    def _on_test_finished(self, result, error):
+        self.test_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Error", f"Could not open SQLite database:\n{error}")
+        else:
             QMessageBox.information(self, "Success", "SQLite database file accessible!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not open SQLite database:\n{e}")
 
     def _fetch_tables(self, show_popup=True):
         path = self.path_input.text().strip()
