@@ -340,6 +340,12 @@ class ConnectionDialogs:
                 data["schema_name"] = local_schema
                 data["fdw_name"] = "sqlite_fdw"
                 fdw_name = "sqlite_fdw"
+            elif code in ("ORACLE", "ORACLE_DB", "ORACLE_FA") and host_conn_data:
+                server_name, local_schema = db.create_oracle_fdw_source(host_conn_data, data)
+                data["server_name"] = server_name
+                data["schema_name"] = local_schema
+                data["fdw_name"] = "oracle_fdw"
+                fdw_name = "oracle_fdw"
             elif code in ("CSV", "FILE") and host_conn_data:
                 server_name, local_schema, table_count = db.create_file_fdw_source(host_conn_data, data)
                 data["server_name"] = server_name
@@ -411,6 +417,10 @@ class ConnectionDialogs:
                 new_data["schema_name"] = local_schema
             elif source_type == "SQLITE" and host_conn_data:
                 server_name, local_schema, _ = db.sync_sqlite_fdw_schema(host_conn_data, new_data)
+                new_data["server_name"] = server_name
+                new_data["schema_name"] = local_schema
+            elif source_type in ("ORACLE", "ORACLE_DB", "ORACLE_FA") and host_conn_data:
+                server_name, local_schema = db.edit_oracle_fdw_source(host_conn_data, new_data)
                 new_data["server_name"] = server_name
                 new_data["schema_name"] = local_schema
 

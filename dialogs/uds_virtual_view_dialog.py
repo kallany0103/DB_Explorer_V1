@@ -21,12 +21,19 @@ class UDSVirtualViewMaskingDialog(QDialog):
 
         self.host_conn_data = host_conn_data or {}
         self.initial_table = initial_table
-        self.foreign_tables = []  # list of dicts: {'schema': s, 'table': t, 'columns': [cols...]}
-        self.joins = []  # list of join config dicts
+        self.foreign_tables = []   # list of dicts: {'server': srv, 'ds_label': label, 'schema': s, 'table': t, 'columns': [...]}
+        self.joins = []            # list of join config dicts
         self._preloaded_foreign_tables = preloaded_foreign_tables  # None = need to fetch
+        # Build server_name → display_name lookup from usf_data_sources metadata
+        self._srv_display: dict = {}
+        for ds in self.host_conn_data.get('usf_data_sources', []):
+            srv = ds.get('server_name') or ''
+            label = ds.get('display_name') or ds.get('name') or ds.get('source_name') or srv
+            if srv:
+                self._srv_display[srv] = label
 
-        self.setWindowTitle("Create UDS Virtual View & Data Masking")
-        self.setMinimumSize(860, 680)
+        self.setWindowTitle("Create UDS Virtual View")
+        self.setMinimumSize(780, 620)
 
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -37,19 +44,19 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self._apply_styles()
 
-        # Header Title
-        header_title = QLabel("UDS Virtual View & Data Masking Creator")
+        # Header
+        header_title = QLabel("UDS Virtual View Creator")
         header_title.setObjectName("dialogTitle")
 
         header_subtitle = QLabel(
-            "Visually combine UDS foreign tables, configure column aliases, and apply column-level data masking."
+            "Visually combine UDS foreign tables, select columns, and configure aliases."
         )
         header_subtitle.setObjectName("dialogSubtitle")
 
         # Tabs
         self.tabs = QTabWidget()
 
-        # ---------------- Tab 1: Visual Builder & Masking ----------------
+        # ---------------- Tab 1: Visual Builder ----------------
         self.tab_builder = QWidget()
         builder_layout = QVBoxLayout(self.tab_builder)
         builder_layout.setContentsMargins(16, 16, 16, 16)
@@ -63,24 +70,28 @@ class UDSVirtualViewMaskingDialog(QDialog):
         config_form.setVerticalSpacing(10)
 
         self.view_name_input = QLineEdit()
-        self.view_name_input.setPlaceholderText("e.g. v_masked_patient_billing")
+        self.view_name_input.setPlaceholderText("e.g. v_employees_summary")
         self.view_name_input.textChanged.connect(self._generate_sql)
-
-        self.target_schema_combo = QComboBox()
-        self.target_schema_combo.addItems(["uds_views", "public"])
-        self.target_schema_combo.currentTextChanged.connect(self._generate_sql)
 
         self.view_type_combo = QComboBox()
         self.view_type_combo.addItems(["Standard VIEW", "MATERIALIZED VIEW"])
         self.view_type_combo.currentTextChanged.connect(self._generate_sql)
 
-        self.primary_table_combo = QComboBox()
+        # Two-step primary table picker — created empty, filled after data loads
+        self.primary_ds_combo, self.primary_table_combo, primary_picker_widget = \
+            self._make_ds_table_picker()
+        # Wire primary-specific callbacks
+        self.primary_ds_combo.currentIndexChanged.connect(
+            lambda: (
+                self._populate_picker(self.primary_ds_combo, self.primary_table_combo),
+                self._rebuild_grid()
+            )
+        )
         self.primary_table_combo.currentIndexChanged.connect(self._on_primary_table_changed)
 
         config_form.addRow("View Name:", self.view_name_input)
-        config_form.addRow("Target Schema:", self.target_schema_combo)
         config_form.addRow("View Type:", self.view_type_combo)
-        config_form.addRow("Primary Foreign Table:", self.primary_table_combo)
+        config_form.addRow("Primary Table:", primary_picker_widget)
 
         builder_layout.addLayout(config_form)
 
@@ -102,8 +113,8 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.joins_container.setSpacing(6)
         builder_layout.addLayout(self.joins_container)
 
-        # Column & Masking Grid
-        grid_lbl = QLabel("Select Columns & Apply Masking Rules")
+        # Column Grid
+        grid_lbl = QLabel("Select Columns")
         grid_lbl.setStyleSheet("font-weight: 600; color: #1f2937; margin-top: 4px;")
         builder_layout.addWidget(grid_lbl)
 
@@ -116,37 +127,28 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.btn_deselect_all = SecondaryButton("Deselect All")
         self.btn_deselect_all.clicked.connect(self._deselect_all_columns)
         grid_toolbar.addWidget(self.btn_deselect_all)
-
-        self.btn_auto_mask = SecondaryButton("Auto-Detect & Mask Sensitive Cols")
-        self.btn_auto_mask.setIcon(qta.icon("fa5s.user-shield", color="#10b981"))
-        self.btn_auto_mask.clicked.connect(self._auto_detect_masking)
-        grid_toolbar.addWidget(self.btn_auto_mask)
         grid_toolbar.addStretch()
 
         builder_layout.addLayout(grid_toolbar)
 
         self.grid = QTableWidget()
-        self.grid.setColumnCount(6)
+        self.grid.setColumnCount(4)
         self.grid.setHorizontalHeaderLabels([
-            "Include", "Source Table", "Column Name", "Output Alias", "Masking Rule", "Generated Expression"
+            "Include", "Source Table", "Column Name", "Output Alias"
         ])
         self.grid.setAlternatingRowColors(True)
         self.grid.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.grid.setColumnWidth(0, 65)
         self.grid.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        self.grid.setColumnWidth(1, 240)
+        self.grid.setColumnWidth(1, 260)
         self.grid.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        self.grid.setColumnWidth(2, 140)
-        self.grid.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        self.grid.setColumnWidth(3, 140)
-        self.grid.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-        self.grid.setColumnWidth(4, 240)
-        self.grid.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.grid.setColumnWidth(2, 160)
+        self.grid.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.grid.verticalHeader().setVisible(False)
         self.grid.cellChanged.connect(self._on_grid_cell_changed)
         builder_layout.addWidget(self.grid, stretch=1)
 
-        self.tabs.addTab(self.tab_builder, "Visual Builder & Masking")
+        self.tabs.addTab(self.tab_builder, "Visual Builder")
 
         # ---------------- Tab 2: SQL & Live Preview ----------------
         self.tab_preview = QWidget()
@@ -173,7 +175,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
 
         # Live Data Preview Section
         prev_toolbar = QHBoxLayout()
-        self.btn_preview_data = SecondaryButton("Preview Sample Masked Data")
+        self.btn_preview_data = SecondaryButton("Preview Sample Data")
         self.btn_preview_data.setIcon(qta.icon("fa5s.eye", color="#0078d4"))
         self.btn_preview_data.clicked.connect(self._preview_masked_data)
         prev_toolbar.addWidget(self.btn_preview_data)
@@ -185,7 +187,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.preview_table.verticalHeader().setVisible(False)
         preview_layout.addWidget(self.preview_table, stretch=1)
 
-        self.tabs.addTab(self.tab_preview, "SQL & Live Data Preview")
+        self.tabs.addTab(self.tab_preview, "SQL & Live Preview")
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         # Bottom Action Buttons
@@ -264,25 +266,31 @@ class UDSVirtualViewMaskingDialog(QDialog):
                 border-bottom: 2px solid #cbd5e1;
                 border-right: 1px solid #e2e8f0;
             }
-            QTableWidget QComboBox {
-                min-height: 24px;
-                max-height: 26px;
-                border: 1px solid #cbd5e1;
+            /* ── Combo dropdown popup ─────────────────────────────────── */
+            QComboBox QAbstractItemView {
+                border: 1px solid #c8d3de;
                 border-radius: 4px;
-                background-color: #ffffff;
-                padding: 1px 6px;
-                font-size: 8.5pt;
-                color: #1e293b;
-            }
-            QTableWidget QComboBox:hover {
-                border-color: #0078d4;
-            }
-            QTableWidget QComboBox QAbstractItemView {
-                background-color: #ffffff;
-                color: #1e293b;
+                background: white;
                 selection-background-color: #e0f2fe;
                 selection-color: #0369a1;
-                border: 1px solid #cbd5e1;
+                padding: 2px;
+                outline: 0;
+            }
+            QComboBox QAbstractItemView::item {
+                padding: 4px 10px;
+                min-height: 22px;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background-color: #f0f9ff;
+                color: #0369a1;
+            }
+            /* Hide the scroll-arrow buttons Qt injects at top/bottom of popup */
+            QComboBoxPrivateScroller {
+                height:     0px;
+                max-height: 0px;
+                border:     none;
+                padding:    0px;
+                margin:     0px;
             }
         """)
 
@@ -301,146 +309,211 @@ class UDSVirtualViewMaskingDialog(QDialog):
         if not self.host_conn_data:
             return
 
-        # Slow path: fetch in background and show overlay
-        self._loading_overlay.show_overlay()
-        self._set_ui_enabled(False)
+        try:
+            conn = db.create_postgres_connection(
+                self.host_conn_data,
+                application_name="Universal SQL Client (Fetch UDS Tables)",
+                bypass_cooldown=True
+            )
+            if not conn:
+                return
 
-        _host_conn = dict(self.host_conn_data)
+            cur = conn.cursor()
+            # Join pg_foreign_server to group tables by Data Source name
+            cur.execute("""
+                SELECT fs.srvname, n.nspname, c.relname
+                FROM pg_foreign_table ft
+                JOIN pg_class c ON c.oid = ft.ftrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
+                ORDER BY fs.srvname, c.relname;
+            """)
+            rows = cur.fetchall()
 
-        def _fetch():
-            tables = []
-            try:
-                conn = db.create_postgres_connection(
-                    _host_conn,
-                    application_name="Universal SQL Client (Fetch UDS Tables)",
-                    bypass_cooldown=True,
-                )
-                if not conn:
-                    return tables
-                cur = conn.cursor()
+            self.foreign_tables = []
+            seen_labels = []   # ordered list of display labels (deduped)
+            for server_name, schema_name, table_name in rows:
                 cur.execute("""
-                    SELECT n.nspname, c.relname
-                    FROM pg_foreign_table ft
-                    JOIN pg_class c ON c.oid = ft.ftrelid
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    ORDER BY n.nspname, c.relname;
-                """)
-                rows = cur.fetchall()
-                for schema_name, table_name in rows:
-                    cur.execute("""
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = %s AND table_name = %s
-                        ORDER BY ordinal_position;
-                    """, (schema_name, table_name))
-                    cols = [r[0] for r in cur.fetchall()]
-                    tables.append({
-                        'schema': schema_name,
-                        'table': table_name,
-                        'full_name': f'"{schema_name}"."{table_name}"',
-                        'columns': cols,
-                    })
-                cur.close()
-                conn.close()
-            except Exception as e:
-                print(f"Notice: Could not load foreign tables for virtual view dialog: {e}")
-            return tables
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = %s
+                    ORDER BY ordinal_position;
+                """, (schema_name, table_name))
+                cols = [r[0] for r in cur.fetchall()]
 
-        def _on_done(tables, error):
-            self._loading_overlay.hide_overlay()
-            self._set_ui_enabled(True)
-            self._apply_foreign_tables(tables or [])
+                # Resolve user-facing label: prefer display_name from usf_data_sources
+                ds_label = self._srv_display.get(server_name) or server_name
 
-        self._bg_worker = WorkerThread(_fetch)
-        self._bg_worker.finished_signal.connect(_on_done)
-        self._bg_worker.start()
+                self.foreign_tables.append({
+                    'server': server_name,
+                    'ds_label': ds_label,
+                    'schema': schema_name,
+                    'table': table_name,
+                    'full_name': f'"{schema_name}"."{table_name}"',
+                    'columns': cols
+                })
+                if ds_label not in seen_labels:
+                    seen_labels.append(ds_label)
 
-    def _set_ui_enabled(self, enabled: bool):
-        """Enable/disable interactive controls while loading."""
-        for w in (
-            self.view_name_input, self.target_schema_combo, self.view_type_combo,
-            self.primary_table_combo, self.btn_add_join, self.btn_select_all,
-            self.btn_deselect_all, self.btn_auto_mask, self.save_btn,
-            self.worksheet_btn, self.btn_preview_data,
-        ):
-            w.setEnabled(enabled)
+            cur.close()
+            conn.close()
 
-    def _apply_foreign_tables(self, tables):
-        """Apply a list of foreign-table dicts to populate the UI."""
-        self.foreign_tables = tables
-
-        # Populate primary table combo
-        self.primary_table_combo.blockSignals(True)
-        self.primary_table_combo.clear()
-        for ft in self.foreign_tables:
-            self.primary_table_combo.addItem(ft['full_name'], ft)
-        self.primary_table_combo.blockSignals(False)
-
-        if self.foreign_tables:
-            # Set initial table if provided
+            # ---- After data is loaded: populate primary picker the same way as any picker ----
+            initial_label = None
             if self.initial_table:
-                for i in range(self.primary_table_combo.count()):
-                    if self.initial_table.lower() in self.primary_table_combo.itemText(i).lower():
-                        self.primary_table_combo.setCurrentIndex(i)
+                for ft in self.foreign_tables:
+                    if self.initial_table.lower() in ft['full_name'].lower():
+                        initial_label = ft['ds_label']
                         break
 
-            self._on_primary_table_changed()
+            self._populate_picker(self.primary_ds_combo, self.primary_table_combo, initial_label)
+            self._rebuild_grid()
+
+        except Exception as e:
+            print(f"Notice: Could not load foreign tables for virtual view dialog: {e}")
+
+    # ------------------------------------------------------------------
+    # Shared DS → Table picker factory + populate helper
+    # ------------------------------------------------------------------
+    def _make_ds_table_picker(self):
+        """Create empty, no-scroll DS combo + table combo with cascade wired.
+
+        Returns (ds_combo, table_combo, container_widget).
+        Call _populate_picker() separately to fill from self.foreign_tables.
+        """
+        from PySide6.QtCore import Qt as _Qt
+
+        def _no_scroll(combo):
+            """Remove scrollbar and ensure popup is wide enough to show full text."""
+            combo.setMaxVisibleItems(50)  # large cap — will be refined after items load
+            view = combo.view()
+            view.setVerticalScrollBarPolicy(_Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            # Belt-and-suspenders: hide via stylesheet too (some styles ignore the policy)
+            view.verticalScrollBar().setStyleSheet("QScrollBar { width: 0px; height: 0px; }")
+            # Minimum popup width so text is never clipped regardless of combo width
+            view.setMinimumWidth(220)
+
+        ds_combo = QComboBox()
+        ds_combo.setPlaceholderText("Data source...")
+        _no_scroll(ds_combo)
+
+        table_combo = QComboBox()
+        table_combo.setPlaceholderText("Table...")
+        _no_scroll(table_combo)
+
+        # Cascade: changing DS auto-fills table combo silently
+        def _fill_tables(label_text):
+            table_combo.blockSignals(True)
+            table_combo.clear()
+            for ft in self.foreign_tables:
+                if ft['ds_label'] == label_text:
+                    table_combo.addItem(ft['table'], ft)
+            table_combo.blockSignals(False)
+
+        ds_combo.currentTextChanged.connect(_fill_tables)
+
+        layout = QHBoxLayout()
+        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(ds_combo, 2)
+        layout.addWidget(table_combo, 3)
+        widget = QWidget()
+        widget.setLayout(layout)
+
+        return ds_combo, table_combo, widget
+
+    def _populate_picker(self, ds_combo, table_combo, initial_label=None):
+        """Fill ds_combo from self.foreign_tables, then seed table_combo.
+
+        This is the single shared populate path used for BOTH the primary
+        picker and every join row picker.
+        """
+        # Collect unique DS labels (preserving order)
+        seen = []
+        for ft in self.foreign_tables:
+            if ft['ds_label'] not in seen:
+                seen.append(ft['ds_label'])
+
+        # Fill DS combo and select — all with signals blocked to prevent recursion
+        ds_combo.blockSignals(True)
+        ds_combo.clear()
+        for label in seen:
+            ds_combo.addItem(label)
+        # Size popup to exactly the number of items (no scroll ever needed)
+        ds_combo.setMaxVisibleItems(max(len(seen), 1))
+        # Selection inside block: setCurrentIndex would fire currentIndexChanged
+        if initial_label and initial_label in seen:
+            idx = seen.index(initial_label)
+            ds_combo.setCurrentIndex(idx)
+        elif seen:
+            ds_combo.setCurrentIndex(0)
+        ds_combo.blockSignals(False)
+
+        # Seed table combo for the selected DS (cascade won't fire — signals blocked above)
+        selected_label = ds_combo.currentText()
+        tables_for_ds = [ft for ft in self.foreign_tables if ft['ds_label'] == selected_label]
+        table_combo.blockSignals(True)
+        table_combo.clear()
+        for ft in tables_for_ds:
+            table_combo.addItem(ft['table'], ft)
+        # Size table popup to exactly the number of tables
+        table_combo.setMaxVisibleItems(max(len(tables_for_ds), 1))
+        table_combo.blockSignals(False)
 
     def _on_primary_table_changed(self):
         primary_ft = self.primary_table_combo.currentData()
-        if not primary_ft and self.foreign_tables:
-            primary_ft = self.foreign_tables[0]
 
         if not self.view_name_input.text().strip() and primary_ft:
-            self.view_name_input.setText(f"v_masked_{primary_ft['table']}")
+            self.view_name_input.setText(f"v_{primary_ft['table']}")
 
         self._rebuild_grid()
 
     def _add_join_row(self):
         join_widget = QWidget()
-        h_layout = QHBoxLayout(join_widget)
-        h_layout.setContentsMargins(0, 2, 0, 2)
-        h_layout.setSpacing(8)
+        row_layout = QHBoxLayout(join_widget)
+        row_layout.setContentsMargins(0, 2, 0, 2)
+        row_layout.setSpacing(6)
 
         join_type_combo = QComboBox()
         join_type_combo.addItems(["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN"])
         join_type_combo.setFixedWidth(110)
 
-        join_table_combo = QComboBox()
-        for ft in self.foreign_tables:
-            join_table_combo.addItem(ft['full_name'], ft)
+        # Reuse the shared DS → table picker factory + populate helper
+        join_ds_combo, join_table_combo, picker_widget = self._make_ds_table_picker()
+        self._populate_picker(join_ds_combo, join_table_combo)  # same call as primary
+        join_ds_combo.currentIndexChanged.connect(self._rebuild_grid)
+        join_table_combo.currentIndexChanged.connect(self._rebuild_grid)
+        join_type_combo.currentIndexChanged.connect(self._rebuild_grid)
 
         on_label = QLabel("ON")
-        on_label.setStyleSheet("font-weight: 600;")
+        on_label.setStyleSheet("font-weight: 600; padding: 0 2px;")
 
         cond_input = QLineEdit()
-        cond_input.setPlaceholderText("e.g. primary_col = join_col")
+        cond_input.setPlaceholderText("e.g. t1.id = t2.emp_id")
         cond_input.textChanged.connect(self._rebuild_grid)
 
-        remove_btn = SecondaryButton("X")
+        remove_btn = SecondaryButton("✕")
         remove_btn.setFixedWidth(30)
         remove_btn.setStyleSheet("color: #ef4444; font-weight: bold;")
 
-        h_layout.addWidget(join_type_combo)
-        h_layout.addWidget(join_table_combo)
-        h_layout.addWidget(on_label)
-        h_layout.addWidget(cond_input, stretch=1)
-        h_layout.addWidget(remove_btn)
+        row_layout.addWidget(join_type_combo)
+        row_layout.addWidget(picker_widget, stretch=3)
+        row_layout.addWidget(on_label)
+        row_layout.addWidget(cond_input, stretch=2)
+        row_layout.addWidget(remove_btn)
 
         self.joins_container.addWidget(join_widget)
 
         join_info = {
             'widget': join_widget,
             'type_combo': join_type_combo,
+            'ds_combo': join_ds_combo,
             'table_combo': join_table_combo,
             'cond_input': cond_input
         }
         self.joins.append(join_info)
 
         remove_btn.clicked.connect(lambda: self._remove_join_row(join_info))
-        join_type_combo.currentIndexChanged.connect(self._rebuild_grid)
-        join_table_combo.currentIndexChanged.connect(self._rebuild_grid)
-
         self._rebuild_grid()
 
     def _remove_join_row(self, join_info):
@@ -469,7 +542,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
             schema_tbl = ft['full_name']
             for col in ft['columns']:
                 self.grid.insertRow(row_idx)
-                self.grid.setRowHeight(row_idx, 36)
+                self.grid.setRowHeight(row_idx, 34)
 
                 # 0. Include Checkbox
                 chk = QCheckBox()
@@ -482,72 +555,23 @@ class UDSVirtualViewMaskingDialog(QDialog):
                 chk_lay.setContentsMargins(0, 0, 0, 0)
                 self.grid.setCellWidget(row_idx, 0, chk_container)
 
-                # 1. Source Table
+                # 1. Source Table (read-only)
                 item_src = QTableWidgetItem(schema_tbl)
                 item_src.setFlags(item_src.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.grid.setItem(row_idx, 1, item_src)
 
-                # 2. Column Name
+                # 2. Column Name (read-only)
                 item_col = QTableWidgetItem(col)
                 item_col.setFlags(item_col.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.grid.setItem(row_idx, 2, item_col)
 
-                # 3. Output Alias
+                # 3. Output Alias (editable)
                 item_alias = QTableWidgetItem(col)
                 self.grid.setItem(row_idx, 3, item_alias)
-
-                # 4. Masking Rule Combo
-                rule_combo = QComboBox()
-                rule_combo.addItems([
-                    "None (Raw Data)",
-                    "Email Masking (e.g. j***n@domain.com)",
-                    "Phone / SSN Masking (e.g. ***-***-1234)",
-                    "Partial Text (First 2 Chars)",
-                    "Full Redaction ('[REDACTED]')",
-                    "MD5 / SHA256 Hash",
-                    "Numeric Noise (Round 100)",
-                    "Custom Expression"
-                ])
-                rule_combo.currentIndexChanged.connect(lambda idx, r=row_idx: self._on_rule_changed(r))
-                self.grid.setCellWidget(row_idx, 4, rule_combo)
-
-                # 5. Generated Expression
-                expr_item = QTableWidgetItem(f'{schema_tbl}."{col}"')
-                self.grid.setItem(row_idx, 5, expr_item)
 
                 row_idx += 1
 
         self.grid.blockSignals(False)
-        self._generate_sql()
-
-    def _on_rule_changed(self, row):
-        combo = self.grid.cellWidget(row, 4)
-        if not combo:
-            return
-
-        rule = combo.currentText()
-        src_tbl = self.grid.item(row, 1).text()
-        col_name = self.grid.item(row, 2).text()
-        col_ref = f'{src_tbl}."{col_name}"'
-
-        expr = col_ref
-        if "Email" in rule:
-            expr = f"regexp_replace({col_ref}::text, '^(.)[^@]*@', '\\1***@')"
-        elif "Phone" in rule or "SSN" in rule:
-            expr = f"regexp_replace({col_ref}::text, '^.*(.{{4}})$', '***-***-\\1')"
-        elif "Partial Text" in rule:
-            expr = f"substr({col_ref}::text, 1, 2) || '***'"
-        elif "Full Redaction" in rule:
-            expr = "'[REDACTED]'"
-        elif "MD5" in rule:
-            expr = f"md5({col_ref}::text)"
-        elif "Numeric Noise" in rule:
-            expr = f"round({col_ref}::numeric, -2)"
-
-        expr_item = self.grid.item(row, 5)
-        if expr_item:
-            expr_item.setText(expr)
-
         self._generate_sql()
 
     def _on_grid_cell_changed(self, *args):
@@ -571,25 +595,9 @@ class UDSVirtualViewMaskingDialog(QDialog):
                     chk.setChecked(False)
         self._generate_sql()
 
-    def _auto_detect_masking(self):
-        sensitive_keywords = ["email", "mail", "ssn", "phone", "mobile", "salary", "password", "secret", "tax_id"]
-        for r in range(self.grid.rowCount()):
-            col_name = self.grid.item(r, 2).text().lower()
-            combo = self.grid.cellWidget(r, 4)
-            if combo:
-                if "email" in col_name or "mail" in col_name:
-                    combo.setCurrentText("Email Masking (e.g. j***n@domain.com)")
-                elif "ssn" in col_name or "phone" in col_name or "mobile" in col_name:
-                    combo.setCurrentText("Phone / SSN Masking (e.g. ***-***-1234)")
-                elif "salary" in col_name or "tax" in col_name:
-                    combo.setCurrentText("Numeric Noise (Round 100)")
-                elif "password" in col_name or "secret" in col_name:
-                    combo.setCurrentText("MD5 / SHA256 Hash")
-        self._generate_sql()
-
     def _generate_sql(self):
-        view_name = self.view_name_input.text().strip() or "v_uds_masked_view"
-        schema_name = self.target_schema_combo.currentText()
+        view_name = self.view_name_input.text().strip() or "v_uds_view"
+        schema_name = "uds_views"  # always target the UDS views schema
         is_mat = "MATERIALIZED" in self.view_type_combo.currentText()
 
         p_data = self.primary_table_combo.currentData()
@@ -603,9 +611,11 @@ class UDSVirtualViewMaskingDialog(QDialog):
             if chk_container:
                 chk = chk_container.findChild(QCheckBox)
                 if chk and chk.isChecked():
-                    alias = self.grid.item(r, 3).text().strip() or self.grid.item(r, 2).text()
-                    expr = self.grid.item(r, 5).text().strip()
-                    select_cols.append(f"  {expr} AS \"{alias}\"")
+                    src_tbl = self.grid.item(r, 1).text()
+                    col_name = self.grid.item(r, 2).text()
+                    alias = self.grid.item(r, 3).text().strip() or col_name
+                    col_ref = f'{src_tbl}."{col_name}"'
+                    select_cols.append(f'  {col_ref} AS "{alias}"')
 
         if not select_cols:
             self.sql_editor.setText("-- Check at least one column to build view.")
@@ -692,7 +702,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
             QMessageBox.warning(self, "Missing Info", "Please configure columns for the view.")
             return
 
-        schema_name = self.target_schema_combo.currentText()
+        schema_name = "uds_views"  # always target the UDS views schema
 
         try:
             conn = db.create_postgres_connection(

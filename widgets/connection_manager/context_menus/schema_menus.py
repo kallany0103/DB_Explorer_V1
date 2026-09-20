@@ -952,7 +952,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Cross-Source View && Data Masking Creator...", "mdi.shield-plus")
+        act = action(self.manager, "Create Cross-Source View...", "mdi.eye-plus")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
         )
@@ -987,11 +987,10 @@ class SchemaMenuBuilder:
     # Unified Views Root (UDS)
 
     def _unified_views_root_menu(self, menu, item, item_data, index):
-        act = action(self.manager, "Create Virtual View && Data Masking...", "mdi.shield-plus")
+        act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
         )
         menu.addAction(act)
 
         self._add_refresh_actions(menu, index)
-

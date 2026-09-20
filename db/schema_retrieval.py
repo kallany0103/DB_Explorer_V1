@@ -508,3 +508,25 @@ def get_oracle_schema(conn_data, schema_name: str | None = None):
 
     return schema
 
+
+def get_oracle_available_schemas(conn_data: dict) -> list:
+    """Retrieves list of available Oracle schemas (database users/owners)."""
+    default_schema = (conn_data.get("user") or conn_data.get("username") or "SYSTEM").upper()
+    conn = get_pooled_oracle_connection(conn_data=conn_data)
+    if not conn:
+        return [default_schema]
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT username FROM all_users ORDER BY username")
+        schemas = [row[0] for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return schemas if schemas else [default_schema]
+    except Exception as e:
+        print(f"Error fetching Oracle schemas: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return [default_schema]
+

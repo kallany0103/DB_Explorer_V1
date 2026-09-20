@@ -634,6 +634,80 @@ def edit_postgres_fdw_source(pg_conn_data: dict, ds_data: dict):
     return server_name, local_schema
 
 
+def create_oracle_fdw_source(pg_conn_data: dict, ds_data: dict):
+    """
+    Provisions Oracle Foreign Data Wrapper (oracle_fdw) on host PostgreSQL database.
+    """
+    conn = create_postgres_connection(
+        pg_conn_data,
+        application_name="Universal SQL Client (Oracle FDW Provisioner)",
+        bypass_cooldown=True
+    )
+    if not conn:
+        raise Exception("Could not connect to host PostgreSQL database.")
+
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        # 1. Ensure oracle_fdw extension exists
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS oracle_fdw;")
+        except Exception as ext_err:
+            print(f"Notice: oracle_fdw extension error on host: {ext_err}")
+
+        # 2. Determine safe server & local schema names
+        raw_name = ds_data.get("short_name") or ds_data.get("source_name") or ds_data.get("name") or "oracle_source"
+        safe_name = _sanitize_identifier(raw_name)
+        server_name = ds_data.get("server_name") or f"srv_{safe_name}"
+
+        dsn = ds_data.get("dsn") or ""
+        if not dsn and ds_data.get("host"):
+            dsn = f"//{ds_data.get('host')}:{ds_data.get('port', 1521)}/{ds_data.get('database') or ds_data.get('service_name', 'ORCL')}"
+
+        oracle_user = ds_data.get("user") or ds_data.get("username") or ""
+        oracle_password = ds_data.get("password") or ""
+        local_schema = ds_data.get("schema_name") or f"{safe_name}_schema"
+        remote_schema = (ds_data.get("remote_schema") or oracle_user or "SYSTEM").upper()
+
+        # 3. Clean up existing server if present
+        cur.execute("SELECT 1 FROM pg_foreign_server WHERE srvname = %s;", (server_name,))
+        if cur.fetchone():
+            cur.execute(f'DROP SERVER "{server_name}" CASCADE;')
+
+        # 4. Create foreign server using oracle_fdw
+        cur.execute(f"""
+            CREATE SERVER "{server_name}"
+            FOREIGN DATA WRAPPER oracle_fdw
+            OPTIONS (dbserver %s);
+        """, (dsn,))
+
+        # 5. Create user mapping for current user
+        cur.execute(f"""
+            CREATE USER MAPPING FOR CURRENT_USER
+            SERVER "{server_name}"
+            OPTIONS (user %s, password %s);
+        """, (oracle_user, oracle_password))
+
+        # 6. Import foreign schema
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}";')
+        
+        selected_tables = ds_data.get("selected_tables") or ds_data.get("tables")
+        _execute_import_foreign_schema(cur, server_name, local_schema, remote_schema, selected_tables)
+
+        cur.close()
+        return server_name, local_schema
+    except Exception as e:
+        print(f"Error provisioning oracle_fdw source: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+edit_oracle_fdw_source = create_oracle_fdw_source
+sync_oracle_fdw_schema = create_oracle_fdw_source
+
+
 def ensure_host_fdw_extensions(pg_conn_data: dict) -> dict:
     """
     Automatically installs/enables necessary FDW extensions on a host PostgreSQL database:

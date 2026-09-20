@@ -222,7 +222,7 @@ class ExplorerMenuBuilder:
             act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
             menu.addAction(act)
 
-            act = action(self.manager, "Create Virtual View && Data Masking...", "mdi.shield-plus")
+            act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
             act.triggered.connect(lambda _, it=connection_item: self.manager.connection_actions.open_uds_virtual_view_dialog(it.data(Qt.ItemDataRole.UserRole)))
             menu.addAction(act)
 
