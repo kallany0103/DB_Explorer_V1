@@ -493,6 +493,10 @@ QComboBox::drop-down {
     border: none;
     width: 20px;
 }
+QComboBox::down-arrow {
+    image: url(assets/chevron-down.svg);
+    width: 10px; height: 10px;
+}
 QComboBox {
     padding-right: 25px;
 }

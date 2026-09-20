@@ -114,6 +114,9 @@ class TableDesignerDialog(QDialog):
             QLabel {
                 color: #374151;
             }
+            QTableWidget::item {
+                padding: 0px;
+            }
             QLineEdit, QComboBox {
                 min-height: 28px;
                 border: 1px solid #d1d5db;
@@ -123,12 +126,13 @@ class TableDesignerDialog(QDialog):
                 color: #1f2937;
             }
             QTableWidget QLineEdit, QTableWidget QComboBox {
-                border: 1px solid #d1d5db;
-                border-radius: 4px;
+                border: 1px solid transparent;
+                border-radius: 0px;
                 min-height: 26px;
                 background-color: white;
+                color: #1f2937;
                 padding: 2px 6px;
-                margin: 3px;
+                margin: 0px;
             }
             QComboBox::drop-down {
                 subcontrol-origin: padding;
