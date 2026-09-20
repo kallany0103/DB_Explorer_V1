@@ -3,11 +3,95 @@ from PySide6.QtWidgets import (
     QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
     QDialog, QVBoxLayout, QProgressBar
 )
-from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread
+from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont, QConicalGradient
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread, QRectF
 from typing import Optional
 import qtawesome as qta
 from workers.workers import WorkerThread
+from PySide6.QtGui import QPen
+
+
+class LoadingOverlay(QWidget):
+
+    def __init__(self, parent=None, label: str = "Loading..."):
+        super().__init__(parent)
+        self._label_text = label
+        self._angle = 0
+
+        # Make the widget cover the entire parent
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
+
+        # Spin timer
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)  # ~60 fps
+        self._timer.timeout.connect(self._tick)
+
+        self.hide()
+
+
+    def show_overlay(self):
+        """Show and start spinning."""
+        if self.parent():
+            self.setGeometry(self.parent().rect())
+        self.raise_()
+        self.show()
+        self._timer.start()
+
+    def hide_overlay(self):
+        """Stop spinning and hide."""
+        self._timer.stop()
+        self.hide()
+
+
+    def _tick(self):
+        self._angle = (self._angle + 5) % 360
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.parent():
+            self.setGeometry(self.parent().rect())
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # ── Semi-transparent background ───────────────────────────────
+        painter.fillRect(self.rect(), QColor(255, 255, 255, 180))
+
+        cx = self.width() // 2
+        cy = self.height() // 2
+        radius = 28
+        pen_w = 5
+
+        # ── Track circle ──────────────────────────────────────────────
+        track_color = QColor("#e2e8f0")
+        painter.setPen(Qt.PenStyle.NoPen)
+        track_pen = QPen(track_color, pen_w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(track_pen)
+        arc_rect = QRectF(cx - radius, cy - radius, radius * 2, radius * 2)
+        painter.drawArc(arc_rect, 0, 360 * 16)
+
+        # ── Spinning arc ──────────────────────────────────────────────
+        spin_pen = QPen(QColor("#0078d4"), pen_w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(spin_pen)
+        start_angle = (90 - self._angle) * 16   # Qt uses 1/16th degree, starts at 12 o'clock
+        span_angle  = -270 * 16                  # 270° sweep
+        painter.drawArc(arc_rect, start_angle, span_angle)
+
+        # ── Label ─────────────────────────────────────────────────────
+        painter.setPen(QColor("#374151"))
+        font = QFont()
+        font.setPointSize(9)
+        font.setWeight(QFont.Weight.Medium)
+        painter.setFont(font)
+        text_rect = QRectF(cx - 120, cy + radius + 12, 240, 22)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, self._label_text)
+
+        painter.end()
 
 
 

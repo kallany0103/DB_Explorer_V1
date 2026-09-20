@@ -68,7 +68,11 @@ from workers.process_worker import ProcessWorker
 from widgets.backup_and_restore.backup.engine import BackupEngine
 from widgets.backup_and_restore.restore.engine import RestoreEngine
 from widgets.usql_tool.terminal_widget import open_usql_tool
-
+from workers.connection_workers import DataSourcePingWorker
+from ui.components import LoadingOverlay
+from workers.workers import WorkerThread
+import db
+        
 
 class ConnectionActions:
     def __init__(self, manager):
@@ -188,7 +192,7 @@ class ConnectionActions:
         if not item_data:
             return
 
-        from workers.connection_workers import DataSourcePingWorker
+        
         ds_name = item_data.get("short_name") or item_data.get("source_name") or item_data.get("display_name") or item_data.get("name") or "Data Source"
         self.manager.status_message_label.setText(f"Testing connection to '{ds_name}'...")
 
@@ -1449,67 +1453,99 @@ $$;'''
         if db_type != 'postgres' or not conn_data:
             QMessageBox.warning(self.manager, "Not Supported", "Foreign Tables are only supported for PostgreSQL.")
             return
+            
+        parent_widget = self.manager.main_window
+        overlay = LoadingOverlay(parent_widget, label="Loading...")
+        overlay.show_overlay()
 
-        try:
-            conn = db.create_postgres_connection(conn_data)
-            cursor = conn.cursor()
-            
-            # Get schemas
-            cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
-            schemas = [row[0] for row in cursor.fetchall()]
-            
-            # Get foreign servers
-            cursor.execute("SELECT srvname FROM pg_foreign_server ORDER BY srvname")
-            servers = [row[0] for row in cursor.fetchall()]
-            
-            conn.close()
+        _conn_data = dict(conn_data)
 
-            dialog = CreateForeignTableDialog(self.manager, schemas, servers, db_type="postgres")
+        def _fetch_data():
+            try:
+                conn = db.create_postgres_connection(_conn_data)
+                cursor = conn.cursor()
+                
+                # Get schemas
+                cursor.execute("SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' ORDER BY nspname")
+                schemas = [row[0] for row in cursor.fetchall()]
+                
+                # Get foreign servers
+                cursor.execute("SELECT srvname FROM pg_foreign_server ORDER BY srvname")
+                servers = [row[0] for row in cursor.fetchall()]
+                
+                conn.close()
+                return {"schemas": schemas, "servers": servers}
+            except Exception as e:
+                return e
+
+        worker = WorkerThread(_fetch_data)
+
+        def _on_loaded(result, error):
+            overlay.hide_overlay()
+            overlay.deleteLater()
             
-            # Pre-fill schema if available from item_data
-            schema_name = item_data.get('schema_name', 'public')
-            if schema_name:
-                index = dialog.schema_combo.findText(schema_name)
-                if index >= 0:
-                    dialog.schema_combo.setCurrentIndex(index)
+            if isinstance(result, Exception):
+                QMessageBox.critical(self.manager, "Error", f"Failed to fetch data for Foreign Table dialog:\n{result}")
+                return
             
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                data = dialog.get_data()
+            if error:
+                QMessageBox.critical(self.manager, "Error", f"Failed to fetch data for Foreign Table dialog:\n{error}")
+                return
                 
-                # Generate SQL
-                columns = []
-                for col in data.get('columns', []):
-                    columns.append(f"{col['name']} {col['type']}")
+            schemas = result.get("schemas", [])
+            servers = result.get("servers", [])
+            
+            try:
+                dialog = CreateForeignTableDialog(self.manager, schemas, servers, db_type="postgres")
                 
-                columns_str = ', '.join(columns)
+                # Pre-fill schema if available from item_data
+                schema_name = item_data.get('schema_name', 'public')
+                if schema_name:
+                    index = dialog.schema_combo.findText(schema_name)
+                    if index >= 0:
+                        dialog.schema_combo.setCurrentIndex(index)
                 
-                server_options = []
-                for key, value in data.get('server_options', {}).items():
-                    server_options.append(f"{key} '{value}'")
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    data = dialog.get_data()
+                    
+                    # Generate SQL
+                    columns = []
+                    for col in data.get('columns', []):
+                        columns.append(f"{col['name']} {col['type']}")
+                    
+                    columns_str = ', '.join(columns)
                 
-                server_options_str = ', '.join(server_options) if server_options else ''
-                
-                foreign_table = data.get('foreign_table', '')
-                if foreign_table:
-                    foreign_table_str = f"OPTIONS (table_name '{foreign_table}')"
-                else:
-                    foreign_table_str = ''
-                
-                sql = f'''CREATE FOREIGN TABLE "{data["schema"]}"."{data["name"]}" ({columns_str})
+                    server_options = []
+                    for key, value in data.get('server_options', {}).items():
+                        server_options.append(f"{key} '{value}'")
+                    
+                    server_options_str = ', '.join(server_options) if server_options else ''
+                    
+                    foreign_table = data.get('foreign_table', '')
+                    if foreign_table:
+                        foreign_table_str = f"OPTIONS (table_name '{foreign_table}')"
+                    else:
+                        foreign_table_str = ''
+                    
+                    sql = f'''CREATE FOREIGN TABLE "{data["schema"]}"."{data["name"]}" ({columns_str})
 SERVER "{data["server"]}"
 {foreign_table_str}
 {server_options_str};'''
 
-                conn = db.create_postgres_connection(conn_data)
-                cursor = conn.cursor()
-                cursor.execute(sql)
-                conn.commit()
-                conn.close()
+                    conn = db.create_postgres_connection(conn_data)
+                    cursor = conn.cursor()
+                    cursor.execute(sql)
+                    conn.commit()
+                    conn.close()
 
-                self._notify_creation_success(data["name"], "Foreign Table", conn_data)
+                    self._notify_creation_success(data["name"], "Foreign Table", conn_data)
 
-        except Exception as e:
-            QMessageBox.critical(self.manager, "Error", f"Failed to create Foreign Table:\n{e}")
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to create Foreign Table:\n{e}")
+
+        worker.finished_signal.connect(_on_loaded)
+        self._ft_worker = worker
+        worker.start()
 
     def open_usql_tool(self, item_data):
         """Open the native USQL tool tool for a PostgreSQL connection."""
@@ -2484,8 +2520,15 @@ SERVER "{data["server"]}"
             QMessageBox.critical(self.manager, "Error", f"Failed to create policy:\n{e}")
 
     def open_uds_virtual_view_dialog(self, item_data=None):
-        """Opens the UDS Virtual View & Data Masking Creator dialog."""
+        """Opens the UDS Virtual View & Data Masking Creator dialog.
+
+        Shows a loading spinner while fetching foreign-table metadata in the
+        background so the UI never freezes.
+        """
         from dialogs.uds_virtual_view_dialog import UDSVirtualViewMaskingDialog
+        from ui.components import LoadingOverlay
+        from workers.workers import WorkerThread
+        import db
 
         host_conn_data = self.manager.active_postgres_conn or {}
         if not host_conn_data and item_data:
@@ -2493,16 +2536,79 @@ SERVER "{data["server"]}"
 
         initial_table = None
         if item_data:
-            initial_table = item_data.get('table_name') or item_data.get('name') or item_data.get('source_name')
+            initial_table = (
+                item_data.get('table_name')
+                or item_data.get('name')
+                or item_data.get('source_name')
+            )
 
-        dlg = UDSVirtualViewMaskingDialog(
-            parent=self.manager.main_window,
-            host_conn_data=host_conn_data,
-            initial_table=initial_table
-        )
-        if dlg.exec():
-            if hasattr(self.manager, "refresh_object_explorer"):
-                if self.manager.proxy_model and self.manager.tree:
-                    curr_idx = self.manager.tree.currentIndex()
-                    if curr_idx and curr_idx.isValid():
-                        self.manager.refresh_object_explorer(curr_idx, collapse=False)
+        # ── Show spinner overlay on the main window ─────────────────────
+        parent_widget = self.manager.main_window
+        overlay = LoadingOverlay(parent_widget, label="Loading UDS schema…")
+        overlay.show_overlay()
+
+        # ── Background fetch ────────────────────────────────────────────
+        _host_conn_data = dict(host_conn_data)  # capture for thread
+
+        def _fetch_foreign_tables():
+            tables = []
+            try:
+                conn = db.create_postgres_connection(
+                    _host_conn_data,
+                    application_name="Universal SQL Client (Fetch UDS Tables)",
+                    bypass_cooldown=True,
+                )
+                if not conn:
+                    return tables
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT n.nspname, c.relname
+                    FROM pg_foreign_table ft
+                    JOIN pg_class c ON c.oid = ft.ftrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    ORDER BY n.nspname, c.relname;
+                """)
+                rows = cur.fetchall()
+                for schema_name, table_name in rows:
+                    cur.execute("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = %s AND table_name = %s
+                        ORDER BY ordinal_position;
+                    """, (schema_name, table_name))
+                    cols = [r[0] for r in cur.fetchall()]
+                    tables.append({
+                        'schema': schema_name,
+                        'table': table_name,
+                        'full_name': f'"{schema_name}"."{table_name}"',
+                        'columns': cols,
+                    })
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f"Notice: Could not pre-load foreign tables for UDS dialog: {e}")
+            return tables
+
+        worker = WorkerThread(_fetch_foreign_tables)
+
+        def _on_loaded(foreign_tables, error):
+            overlay.hide_overlay()
+            overlay.deleteLater()
+
+            dlg = UDSVirtualViewMaskingDialog(
+                parent=parent_widget,
+                host_conn_data=_host_conn_data,
+                initial_table=initial_table,
+                preloaded_foreign_tables=foreign_tables or [],
+            )
+            if dlg.exec():
+                if hasattr(self.manager, "refresh_object_explorer"):
+                    if self.manager.proxy_model and self.manager.tree:
+                        curr_idx = self.manager.tree.currentIndex()
+                        if curr_idx and curr_idx.isValid():
+                            self.manager.refresh_object_explorer(curr_idx, collapse=False)
+
+        worker.finished_signal.connect(_on_loaded)
+        # Keep a reference so the thread isn't garbage-collected
+        self._uds_load_worker = worker
+        worker.start()
