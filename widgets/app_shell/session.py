@@ -98,6 +98,27 @@ def restore_main_window_session(main_window, session_file):
             main_window.restoreGeometry(QByteArray.fromBase64(session_data["window_geometry"].encode()))
         if "window_state" in session_data:
             main_window.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
+
+        # Ensure window is visible on at least one screen
+        window_rect = main_window.frameGeometry()
+        intersecting_screen = None
+        for screen in QApplication.screens():
+            if screen.availableGeometry().intersects(window_rect):
+                intersecting_screen = screen
+                break
+
+        if not intersecting_screen:
+            # Completely off-screen, center it on the primary screen
+            screen_geom = QApplication.primaryScreen().availableGeometry()
+            default_w, default_h = 1200, 800
+            x = screen_geom.x() + (screen_geom.width() - default_w) // 2
+            y = screen_geom.y() + (screen_geom.height() - default_h) // 2
+            main_window.setGeometry(x, y, default_w, default_h)
+        else:
+            # Prevent the title bar from being hidden above the screen top
+            screen_geom = intersecting_screen.availableGeometry()
+            if window_rect.top() < screen_geom.top():
+                main_window.move(window_rect.left(), screen_geom.top())
   
         main_window.pg_bin_path = session_data.get("pg_bin_path", "")
         main_window.use_wsl = session_data.get("use_wsl", False)
