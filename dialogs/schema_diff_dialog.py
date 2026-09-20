@@ -291,29 +291,57 @@ class SchemaDiffDialog(QDialog):
     def _load_connection_dropdowns(self):
         try:
             hierarchy = db.get_hierarchy_data()
-            connections = []
-
-            for type_item in hierarchy:
-                for group_item in type_item.get("usf_connection_groups", []):
-                    for conn in group_item.get("usf_connections", []):
-                        connections.append(conn)
 
             self.src_conn_combo.blockSignals(True)
             self.tgt_conn_combo.blockSignals(True)
             self.src_conn_combo.clear()
             self.tgt_conn_combo.clear()
 
-            for conn in connections:
-                display_name = f"{conn.get('name')} ({conn.get('db_type', 'postgres').upper()})"
-                self.src_conn_combo.addItem(display_name, conn)
-                self.tgt_conn_combo.addItem(display_name, conn)
+            item_count = 0
+            for type_item in hierarchy:
+                for group_item in type_item.get("usf_connection_groups", []):
+                    for conn in group_item.get("usf_connections", []):
+                        conn_name = conn.get('name')
+                        db_type = (conn.get('db_type') or 'postgres').upper()
+                        display_name = f"{conn_name} ({db_type})"
+
+                        self.src_conn_combo.addItem(display_name, conn)
+                        self.tgt_conn_combo.addItem(display_name, conn)
+                        item_count += 1
+
+                        # Add sub Data Sources under UDS connections
+                        uds_sources = conn.get("usf_data_sources", [])
+                        for ds in uds_sources:
+                            ds_name = ds.get("display_name") or ds.get("name") or ds.get("source_name")
+                            ds_schema = ds.get("schema") or ds.get("schema_name") or "public"
+                            ds_type = (ds.get("source_type") or "POSTGRES").upper()
+                            ds_disp = f"  └─ Data Source: {ds_name} [{ds_schema}] ({ds_type})"
+
+                            ds_conn = {
+                                "is_uds_ds": True,
+                                "name": f"{conn_name} -> {ds_name}",
+                                "display_name": ds_name,
+                                "schema_name": ds_schema,
+                                "server_name": ds.get("server_name"),
+                                "source_type": ds_type,
+                                "parent_conn_data": conn,
+                                "host": conn.get("host"),
+                                "port": conn.get("port"),
+                                "database": conn.get("database"),
+                                "user": conn.get("user"),
+                                "password": conn.get("password")
+                            }
+
+                            self.src_conn_combo.addItem(ds_disp, ds_conn)
+                            self.tgt_conn_combo.addItem(ds_disp, ds_conn)
+                            item_count += 1
 
             self.src_conn_combo.blockSignals(False)
             self.tgt_conn_combo.blockSignals(False)
 
-            if connections:
+            if item_count > 0:
                 self._on_src_conn_changed(0)
-                if len(connections) > 1:
+                if item_count > 1:
                     self.tgt_conn_combo.setCurrentIndex(1)
                 self._on_tgt_conn_changed(self.tgt_conn_combo.currentIndex())
         except Exception as e:
@@ -332,9 +360,20 @@ class SchemaDiffDialog(QDialog):
         if not conn_data:
             return
 
-        db_type = (conn_data.get("db_type") or "postgres").lower()
+        if conn_data.get("is_uds_ds"):
+            ds_schema = conn_data.get("schema_name") or "public"
+            combo.addItem(ds_schema, ds_schema)
+            return
+
+        db_type = (conn_data.get("db_type") or conn_data.get("source_type") or "postgres").lower()
         if "sqlite" in db_type:
             combo.addItem("main", "main")
+        elif "oracle" in db_type:
+            schemas = db.get_oracle_available_schemas(conn_data)
+            if not schemas:
+                schemas = [(conn_data.get("user") or conn_data.get("username") or "SYSTEM").upper()]
+            for s in schemas:
+                combo.addItem(s, s)
         else:
             schemas = db.get_postgres_available_schemas(conn_data)
             if not schemas:
@@ -462,7 +501,13 @@ class SchemaDiffDialog(QDialog):
 
     def _open_in_worksheet(self):
         script = self.sql_editor.toPlainText()
-        if script and hasattr(self.manager.main_window, "open_new_worksheet"):
-            tgt_conn = self.tgt_conn_combo.itemData(self.tgt_conn_combo.currentIndex())
-            self.manager.main_window.open_new_worksheet(conn_data=tgt_conn, initial_sql=script)
+        tgt_conn = self.tgt_conn_combo.itemData(self.tgt_conn_combo.currentIndex())
+        if script:
+            if hasattr(self.manager, "connection_actions") and hasattr(self.manager.connection_actions, "open_sql_worksheet"):
+                self.manager.connection_actions.open_sql_worksheet(conn_data=tgt_conn, initial_sql=script)
+            elif hasattr(self.manager, "add_tab"):
+                new_tab = self.manager.add_tab()
+                query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+                if query_editor:
+                    query_editor.setPlainText(script)
             self.accept()

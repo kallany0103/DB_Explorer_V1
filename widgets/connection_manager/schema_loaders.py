@@ -344,10 +344,7 @@ class SchemaLoader:
             ds_type_item.setData(is_healthy, Qt.ItemDataRole.UserRole + 3)
             self.manager.schema_model.appendRow([ds_item, ds_type_item])
 
-            if ds_item.index().isValid():
-                self.manager.schema_tree.setExpanded(ds_item.index(), True)
-            if ft_root.index().isValid():
-                self.manager.schema_tree.setExpanded(ft_root.index(), True)
+
 
         # 3. Add Unified Views root node
         unified_views = data.get("unified_views", [])

@@ -290,13 +290,30 @@ class TreeHelpers:
             state['selection'] = tuple(sel_path)
             
         if conn_id:
+            # Normalise to int so the key always matches what restore_main_window_session
+            # produces after the JSON round-trip (where all keys are parsed as int).
+            try:
+                conn_id = int(conn_id)
+            except (TypeError, ValueError):
+                pass
             self.manager._schema_states[conn_id] = state
 
     def restore_schema_tree_expansion_state(self, conn_id):
         if not conn_id or not hasattr(self.manager, '_schema_states'):
             return
-            
-        state = self.manager._schema_states.get(conn_id)
+
+        # Robust key lookup: JSON round-trip converts all dict keys to str,
+        # then the restore converts them back to int. But conn_data["id"] from
+        # a worker may still be str. Try the exact value first, then both casts.
+        states = self.manager._schema_states
+        state = states.get(conn_id)
+        if state is None:
+            try:
+                state = states.get(int(conn_id))
+            except (TypeError, ValueError):
+                pass
+        if state is None:
+            state = states.get(str(conn_id))
         if not state:
             return
 

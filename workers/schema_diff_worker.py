@@ -29,8 +29,12 @@ class SchemaDiffWorker(QRunnable):
             source_meta = introspect_schema_metadata(self.source_conn, self.source_schema)
             target_meta = introspect_schema_metadata(self.target_conn, self.target_schema)
 
-            diff_result = compare_schemas(source_meta, target_meta)
-            ddl_script = generate_ddl_migration_script(diff_result, target_schema=self.target_schema or "public")
+            target_engine = (self.target_conn.get("db_type") or self.target_conn.get("source_type") or "postgres").lower()
+            ddl_script = generate_ddl_migration_script(
+                diff_result,
+                target_schema=self.target_schema or "public",
+                target_engine=target_engine
+            )
 
             result = {
                 "source_conn": self.source_conn,

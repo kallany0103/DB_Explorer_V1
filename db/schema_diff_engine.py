@@ -76,35 +76,98 @@ def introspect_schema_metadata(conn_data: dict, schema_name: str = None) -> dict
             except Exception as e:
                 print(f"Error introspecting SQLite schema: {e}")
 
+    elif "oracle" in db_type:
+        target_schema = (schema_name or conn_data.get("user") or conn_data.get("username") or "SYSTEM").upper()
+        try:
+            from db.schema_retrieval import get_oracle_schema
+            ora_schema = get_oracle_schema(conn_data, target_schema)
+            for tbl_name, tbl_info in ora_schema.items():
+                cols = {}
+                for col in tbl_info.get("columns", []):
+                    col_name = col["name"]
+                    raw_type = col.get("type", "VARCHAR2(255)")
+                    cols[col_name] = {
+                        "name": col_name,
+                        "raw_type": raw_type.upper(),
+                        "normalized_type": _normalize_type(raw_type),
+                        "nullable": col.get("nullable", True),
+                        "pk": col.get("pk", False)
+                    }
+                tables_meta[tbl_name] = {"columns": cols}
+        except Exception as e:
+            print(f"Error introspecting Oracle schema '{target_schema}': {e}")
+
     else:
-        # PostgreSQL / Host FDW Connection
+        # PostgreSQL / Host FDW Connection or Data Source under UDS
         target_schema = schema_name or conn_data.get("schema_name") or conn_data.get("schema") or "public"
+        host_conn = conn_data.get("parent_conn_data") or conn_data
+
         try:
             pg_conn = create_postgres_connection(
-                conn_data,
+                host_conn,
                 application_name="Universal SQL Client (Schema Diff Introspect)",
                 bypass_cooldown=True
             )
             if pg_conn:
                 cur = pg_conn.cursor()
-                cur.execute("""
-                    SELECT c.table_name, c.column_name, c.data_type, c.is_nullable,
-                           c.udt_name, c.column_default,
-                           COALESCE(tc.constraint_type = 'PRIMARY KEY', FALSE) AS is_pk
-                    FROM information_schema.columns c
-                    LEFT JOIN information_schema.key_column_usage kcu
-                           ON c.table_schema = kcu.table_schema
-                          AND c.table_name = kcu.table_name
-                          AND c.column_name = kcu.column_name
-                    LEFT JOIN information_schema.table_constraints tc
-                           ON kcu.constraint_name = tc.constraint_name
-                          AND kcu.table_schema = tc.table_schema
-                          AND tc.constraint_type = 'PRIMARY KEY'
-                    WHERE c.table_schema = %s
-                    ORDER BY c.table_name, c.ordinal_position;
-                """, (target_schema,))
 
-                for row in cur.fetchall():
+                # If server_name is specified (Data Source under UDS), introspect foreign tables for server_name
+                if conn_data.get("server_name"):
+                    srv_name = conn_data.get("server_name")
+                    cur.execute("""
+                        SELECT c.relname AS table_name,
+                               col.column_name, col.data_type, col.is_nullable,
+                               col.udt_name, col.column_default,
+                               FALSE AS is_pk
+                        FROM pg_foreign_table ft
+                        JOIN pg_class c ON c.oid = ft.ftrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        JOIN pg_foreign_server s ON s.oid = ft.ftserver
+                        JOIN information_schema.columns col ON col.table_schema = n.nspname AND col.table_name = c.relname
+                        WHERE s.srvname = %s AND c.relname NOT IN ('emp_ft', 'epm_f', 'epm_foreign')
+                        ORDER BY c.relname, col.ordinal_position;
+                    """, (srv_name,))
+                else:
+                    cur.execute("""
+                        SELECT c.table_name, c.column_name, c.data_type, c.is_nullable,
+                               c.udt_name, c.column_default,
+                               COALESCE(tc.constraint_type = 'PRIMARY KEY', FALSE) AS is_pk
+                        FROM information_schema.columns c
+                        LEFT JOIN information_schema.key_column_usage kcu
+                               ON c.table_schema = kcu.table_schema
+                              AND c.table_name = kcu.table_name
+                              AND c.column_name = kcu.column_name
+                        LEFT JOIN information_schema.table_constraints tc
+                               ON kcu.constraint_name = tc.constraint_name
+                              AND kcu.table_schema = tc.table_schema
+                              AND tc.constraint_type = 'PRIMARY KEY'
+                        WHERE c.table_schema = %s
+                        ORDER BY c.table_name, c.ordinal_position;
+                    """, (target_schema,))
+
+                rows = cur.fetchall()
+
+                # Fallback to standard schema query if server_name query returned 0 rows
+                if not rows and conn_data.get("server_name"):
+                    cur.execute("""
+                        SELECT c.table_name, c.column_name, c.data_type, c.is_nullable,
+                               c.udt_name, c.column_default,
+                               COALESCE(tc.constraint_type = 'PRIMARY KEY', FALSE) AS is_pk
+                        FROM information_schema.columns c
+                        LEFT JOIN information_schema.key_column_usage kcu
+                               ON c.table_schema = kcu.table_schema
+                              AND c.table_name = kcu.table_name
+                              AND c.column_name = kcu.column_name
+                        LEFT JOIN information_schema.table_constraints tc
+                               ON kcu.constraint_name = tc.constraint_name
+                              AND kcu.table_schema = tc.table_schema
+                              AND tc.constraint_type = 'PRIMARY KEY'
+                        WHERE c.table_schema = %s
+                        ORDER BY c.table_name, c.ordinal_position;
+                    """, (target_schema,))
+                    rows = cur.fetchall()
+
+                for row in rows:
                     tbl_name, col_name, data_type, is_null, udt_name, dflt, is_pk = row
                     raw_type = udt_name or data_type or "VARCHAR"
                     nullable = (is_null == "YES")
@@ -253,13 +316,16 @@ def compare_schemas(source_meta: dict, target_meta: dict) -> dict:
     }
 
 
-def generate_ddl_migration_script(diff_result: dict, target_schema: str = "public") -> str:
+def generate_ddl_migration_script(diff_result: dict, target_schema: str = "public", target_engine: str = "postgres") -> str:
     """
-    Generates ready-to-run DDL migration SQL script for the target database.
+    Generates ready-to-run DDL migration SQL script tailored to the target database engine (PostgreSQL, Oracle, SQLite).
     """
+    is_oracle = target_engine and "oracle" in str(target_engine).lower()
+    is_sqlite = target_engine and "sqlite" in str(target_engine).lower()
+
     sql_lines = [
         f"-- ========================================================",
-        f"-- AUTOMATIC DDL MIGRATION SCRIPT",
+        f"-- AUTOMATIC DDL MIGRATION SCRIPT ({target_engine.upper() if target_engine else 'POSTGRES'})",
         f"-- Target Schema: {target_schema}",
         f"-- Generated by DB Explorer V1 Schema Diff Tool",
         f"-- ========================================================\n"
@@ -274,20 +340,28 @@ def generate_ddl_migration_script(diff_result: dict, target_schema: str = "publi
         if status == "MISSING IN TARGET":
             s_cols = tbl_diff.get("source_columns", {})
             if s_cols:
-                sql_lines.append(f"-- 1. Create missing table: {tbl}")
+                sql_lines.append(f"-- Create missing table: {tbl}")
                 col_defs = []
                 pk_cols = []
                 for c_name, c_info in s_cols.items():
-                    c_type = c_info.get("raw_type", "VARCHAR(255)")
+                    c_type = c_info.get("raw_type", "VARCHAR2(255)" if is_oracle else "VARCHAR(255)")
                     null_str = "" if c_info.get("nullable", True) else " NOT NULL"
                     col_defs.append(f"    \"{c_name}\" {c_type}{null_str}")
                     if c_info.get("pk"):
                         pk_cols.append(f"\"{c_name}\"")
 
                 if pk_cols:
-                    col_defs.append(f"    PRIMARY KEY ({', '.join(pk_cols)})")
+                    if is_oracle:
+                        pk_name = f"PK_{tbl[:20]}".upper()
+                        col_defs.append(f"    CONSTRAINT {pk_name} PRIMARY KEY ({', '.join(pk_cols)})")
+                    else:
+                        col_defs.append(f"    PRIMARY KEY ({', '.join(pk_cols)})")
 
-                sql_lines.append(f"CREATE TABLE IF NOT EXISTS \"{target_schema}\".\"{tbl}\" (")
+                if is_oracle:
+                    sql_lines.append(f"CREATE TABLE \"{target_schema}\".\"{tbl}\" (")
+                else:
+                    sql_lines.append(f"CREATE TABLE IF NOT EXISTS \"{target_schema}\".\"{tbl}\" (")
+
                 sql_lines.append(",\n".join(col_defs))
                 sql_lines.append(");\n")
                 statements_count += 1
@@ -299,15 +373,21 @@ def generate_ddl_migration_script(diff_result: dict, target_schema: str = "publi
                 c_name = c_diff["column_name"]
 
                 if c_status == "MISSING IN TARGET":
-                    s_type = c_diff.get("source_type", "VARCHAR(255)")
+                    s_type = c_diff.get("source_type", "VARCHAR2(255)" if is_oracle else "VARCHAR(255)")
                     null_str = "" if c_diff.get("source_nullable", True) else " NOT NULL"
                     sql_lines.append(f"-- Add missing column '{c_name}' to table '{tbl}'")
-                    sql_lines.append(f"ALTER TABLE \"{target_schema}\".\"{tbl}\" ADD COLUMN \"{c_name}\" {s_type}{null_str};\n")
+                    if is_oracle:
+                        sql_lines.append(f"ALTER TABLE \"{target_schema}\".\"{tbl}\" ADD (\"{c_name}\" {s_type}{null_str});\n")
+                    else:
+                        sql_lines.append(f"ALTER TABLE \"{target_schema}\".\"{tbl}\" ADD COLUMN \"{c_name}\" {s_type}{null_str};\n")
                     statements_count += 1
                 elif c_status == "TYPE MISMATCH":
-                    s_type = c_diff.get("source_type", "VARCHAR(255)")
+                    s_type = c_diff.get("source_type", "VARCHAR2(255)" if is_oracle else "VARCHAR(255)")
                     sql_lines.append(f"-- Alter column '{c_name}' type in table '{tbl}'")
-                    sql_lines.append(f"ALTER TABLE \"{target_schema}\".\"{tbl}\" ALTER COLUMN \"{c_name}\" TYPE {s_type};\n")
+                    if is_oracle:
+                        sql_lines.append(f"ALTER TABLE \"{target_schema}\".\"{tbl}\" MODIFY (\"{c_name}\" {s_type});\n")
+                    else:
+                        sql_lines.append(f"ALTER TABLE \"{target_schema}\".\"{tbl}\" ALTER COLUMN \"{c_name}\" TYPE {s_type};\n")
                     statements_count += 1
 
     if statements_count == 0:

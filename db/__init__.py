@@ -34,6 +34,7 @@ from db.schema_retrieval import (
     get_csv_schema,
     get_servicenow_schema,
     get_postgres_available_schemas,
+    get_oracle_available_schemas,
 )
 
 from db.db_modifications import (
@@ -45,6 +46,9 @@ from db.db_modifications import (
     create_postgres_fdw_source,
     edit_postgres_fdw_source,
     sync_postgres_fdw_schema,
+    create_oracle_fdw_source,
+    edit_oracle_fdw_source,
+    sync_oracle_fdw_schema,
     create_sqlite_fdw_source,
     sync_sqlite_fdw_schema,
     create_file_fdw_source,

@@ -183,6 +183,26 @@ class ConnectionActions:
 
         self.manager.tab_widget.setCurrentWidget(new_tab)
 
+    def open_sql_worksheet(self, conn_data=None, initial_sql=None):
+        """Opens a new SQL Worksheet tab with target connection selected and initial SQL set."""
+        new_tab = self.manager.add_tab()
+        query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+        db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
+
+        if conn_data and db_combo_box:
+            c_id = conn_data.get('id') if isinstance(conn_data, dict) else None
+            for i in range(db_combo_box.count()):
+                data = db_combo_box.itemData(i)
+                if data and c_id and data.get('id') == c_id:
+                    db_combo_box.setCurrentIndex(i)
+                    break
+
+        if initial_sql and query_editor:
+            query_editor.setPlainText(initial_sql)
+
+        self.manager.tab_widget.setCurrentWidget(new_tab)
+        return new_tab
+
     def open_cross_source_query_dialog(self, item_data, table_name=None):
         """Opens the combined Cross-Source View & Data Masking Creator dialog."""
         return self.open_uds_virtual_view_dialog(item_data)
