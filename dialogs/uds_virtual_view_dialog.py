@@ -298,79 +298,83 @@ class UDSVirtualViewMaskingDialog(QDialog):
         """Populate foreign-table list.
 
         If pre-loaded data was injected by the caller (fast path), apply it
-        immediately.  Otherwise fetch from the database in a background thread
-        and show the spinner overlay in the meantime.
+        immediately.  Otherwise fetch from the database.
         """
         if self._preloaded_foreign_tables is not None:
             # Fast path: data already fetched before the dialog was opened
-            self._apply_foreign_tables(self._preloaded_foreign_tables)
-            return
-
-        if not self.host_conn_data:
-            return
-
-        try:
-            conn = db.create_postgres_connection(
-                self.host_conn_data,
-                application_name="Universal SQL Client (Fetch UDS Tables)",
-                bypass_cooldown=True
-            )
-            if not conn:
+            self.foreign_tables = self._preloaded_foreign_tables
+            # The background fetch doesn't have access to self._srv_display, so we augment ds_label here
+            for ft in self.foreign_tables:
+                if 'ds_label' not in ft:
+                    server_name = ft.get('server', 'Unknown Server')
+                    ft['ds_label'] = self._srv_display.get(server_name) or server_name
+        else:
+            if not self.host_conn_data:
                 return
 
-            cur = conn.cursor()
-            # Join pg_foreign_server to group tables by Data Source name
-            cur.execute("""
-                SELECT fs.srvname, n.nspname, c.relname
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
-                ORDER BY fs.srvname, c.relname;
-            """)
-            rows = cur.fetchall()
+            try:
+                conn = db.create_postgres_connection(
+                    self.host_conn_data,
+                    application_name="Universal SQL Client (Fetch UDS Tables)",
+                    bypass_cooldown=True
+                )
+                if not conn:
+                    return
 
-            self.foreign_tables = []
-            seen_labels = []   # ordered list of display labels (deduped)
-            for server_name, schema_name, table_name in rows:
+                cur = conn.cursor()
+                # Join pg_foreign_server to group tables by Data Source name
                 cur.execute("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_schema = %s AND table_name = %s
-                    ORDER BY ordinal_position;
-                """, (schema_name, table_name))
-                cols = [r[0] for r in cur.fetchall()]
+                    SELECT fs.srvname, n.nspname, c.relname
+                    FROM pg_foreign_table ft
+                    JOIN pg_class c ON c.oid = ft.ftrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
+                    ORDER BY fs.srvname, c.relname;
+                """)
+                rows = cur.fetchall()
 
-                # Resolve user-facing label: prefer display_name from usf_data_sources
-                ds_label = self._srv_display.get(server_name) or server_name
+                self.foreign_tables = []
+                seen_labels = []   # ordered list of display labels (deduped)
+                for server_name, schema_name, table_name in rows:
+                    cur.execute("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = %s AND table_name = %s
+                        ORDER BY ordinal_position;
+                    """, (schema_name, table_name))
+                    cols = [r[0] for r in cur.fetchall()]
 
-                self.foreign_tables.append({
-                    'server': server_name,
-                    'ds_label': ds_label,
-                    'schema': schema_name,
-                    'table': table_name,
-                    'full_name': f'"{schema_name}"."{table_name}"',
-                    'columns': cols
-                })
-                if ds_label not in seen_labels:
-                    seen_labels.append(ds_label)
+                    # Resolve user-facing label: prefer display_name from usf_data_sources
+                    ds_label = self._srv_display.get(server_name) or server_name
 
-            cur.close()
-            conn.close()
+                    self.foreign_tables.append({
+                        'server': server_name,
+                        'ds_label': ds_label,
+                        'schema': schema_name,
+                        'table': table_name,
+                        'full_name': f'"{schema_name}"."{table_name}"',
+                        'columns': cols
+                    })
+                    if ds_label not in seen_labels:
+                        seen_labels.append(ds_label)
 
-            # ---- After data is loaded: populate primary picker the same way as any picker ----
-            initial_label = None
-            if self.initial_table:
-                for ft in self.foreign_tables:
-                    if self.initial_table.lower() in ft['full_name'].lower():
-                        initial_label = ft['ds_label']
-                        break
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error loading foreign tables: {e}")
+                return
 
-            self._populate_picker(self.primary_ds_combo, self.primary_table_combo, initial_label)
-            self._rebuild_grid()
+        # ---- After data is loaded: populate primary picker the same way as any picker ----
+        initial_label = None
+        if self.initial_table:
+            for ft in self.foreign_tables:
+                if self.initial_table.lower() in ft['full_name'].lower():
+                    initial_label = ft['ds_label']
+                    break
 
-        except Exception as e:
-            print(f"Notice: Could not load foreign tables for virtual view dialog: {e}")
+        self._populate_picker(self.primary_ds_combo, self.primary_table_combo, initial_label)
+        self._rebuild_grid()
+
 
     # ------------------------------------------------------------------
     # Shared DS → Table picker factory + populate helper
