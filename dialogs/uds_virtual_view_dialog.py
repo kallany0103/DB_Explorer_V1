@@ -9,18 +9,21 @@ from PySide6.QtWidgets import (
     QMessageBox, QLabel, QTabWidget, QWidget, QComboBox, QCheckBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QAbstractItemView
 )
-from ui.components import SearchBox, SecondaryButton, PrimaryButton
+from ui.components import SearchBox, SecondaryButton, PrimaryButton, LoadingOverlay
+from workers.workers import WorkerThread
 import db
 
 
 class UDSVirtualViewMaskingDialog(QDialog):
-    def __init__(self, parent=None, host_conn_data=None, initial_table=None):
+    def __init__(self, parent=None, host_conn_data=None, initial_table=None,
+                 preloaded_foreign_tables=None):
         super().__init__(parent)
 
         self.host_conn_data = host_conn_data or {}
         self.initial_table = initial_table
-        self.foreign_tables = [] # list of dicts: {'schema': s, 'table': t, 'columns': [cols...]}
-        self.joins = [] # list of join config dicts
+        self.foreign_tables = []  # list of dicts: {'schema': s, 'table': t, 'columns': [cols...]}
+        self.joins = []  # list of join config dicts
+        self._preloaded_foreign_tables = preloaded_foreign_tables  # None = need to fetch
 
         self.setWindowTitle("Create UDS Virtual View & Data Masking")
         self.setMinimumSize(860, 680)
@@ -212,7 +215,10 @@ class UDSVirtualViewMaskingDialog(QDialog):
         layout.addWidget(self.tabs, stretch=1)
         layout.addLayout(button_layout)
 
-        # Load foreign tables from host
+        # Spinner overlay (shown when fetching tables in the background)
+        self._loading_overlay = LoadingOverlay(self, label="Loading UDS schema…")
+
+        # Load foreign tables – use pre-loaded data when available, else fetch in background
         self._load_available_foreign_tables()
 
     def _apply_styles(self):
@@ -281,69 +287,104 @@ class UDSVirtualViewMaskingDialog(QDialog):
         """)
 
     def _load_available_foreign_tables(self):
+        """Populate foreign-table list.
+
+        If pre-loaded data was injected by the caller (fast path), apply it
+        immediately.  Otherwise fetch from the database in a background thread
+        and show the spinner overlay in the meantime.
+        """
+        if self._preloaded_foreign_tables is not None:
+            # Fast path: data already fetched before the dialog was opened
+            self._apply_foreign_tables(self._preloaded_foreign_tables)
+            return
+
         if not self.host_conn_data:
             return
 
-        try:
-            conn = db.create_postgres_connection(
-                self.host_conn_data,
-                application_name="Universal SQL Client (Fetch UDS Tables)",
-                bypass_cooldown=True
-            )
-            if not conn:
-                return
+        # Slow path: fetch in background and show overlay
+        self._loading_overlay.show_overlay()
+        self._set_ui_enabled(False)
 
-            cur = conn.cursor()
-            # Fetch all foreign tables and their schemas
-            cur.execute("""
-                SELECT n.nspname, c.relname
-                FROM pg_foreign_table ft
-                JOIN pg_class c ON c.oid = ft.ftrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                ORDER BY n.nspname, c.relname;
-            """)
-            rows = cur.fetchall()
+        _host_conn = dict(self.host_conn_data)
 
-            self.foreign_tables = []
-            for schema_name, table_name in rows:
-                # Fetch columns for table
+        def _fetch():
+            tables = []
+            try:
+                conn = db.create_postgres_connection(
+                    _host_conn,
+                    application_name="Universal SQL Client (Fetch UDS Tables)",
+                    bypass_cooldown=True,
+                )
+                if not conn:
+                    return tables
+                cur = conn.cursor()
                 cur.execute("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_schema = %s AND table_name = %s
-                    ORDER BY ordinal_position;
-                """, (schema_name, table_name))
-                cols = [r[0] for r in cur.fetchall()]
+                    SELECT n.nspname, c.relname
+                    FROM pg_foreign_table ft
+                    JOIN pg_class c ON c.oid = ft.ftrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    ORDER BY n.nspname, c.relname;
+                """)
+                rows = cur.fetchall()
+                for schema_name, table_name in rows:
+                    cur.execute("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = %s AND table_name = %s
+                        ORDER BY ordinal_position;
+                    """, (schema_name, table_name))
+                    cols = [r[0] for r in cur.fetchall()]
+                    tables.append({
+                        'schema': schema_name,
+                        'table': table_name,
+                        'full_name': f'"{schema_name}"."{table_name}"',
+                        'columns': cols,
+                    })
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f"Notice: Could not load foreign tables for virtual view dialog: {e}")
+            return tables
 
-                self.foreign_tables.append({
-                    'schema': schema_name,
-                    'table': table_name,
-                    'full_name': f'"{schema_name}"."{table_name}"',
-                    'columns': cols
-                })
+        def _on_done(tables, error):
+            self._loading_overlay.hide_overlay()
+            self._set_ui_enabled(True)
+            self._apply_foreign_tables(tables or [])
 
-            cur.close()
-            conn.close()
+        self._bg_worker = WorkerThread(_fetch)
+        self._bg_worker.finished_signal.connect(_on_done)
+        self._bg_worker.start()
 
-            # Populate primary table combo
-            self.primary_table_combo.blockSignals(True)
-            self.primary_table_combo.clear()
-            for ft in self.foreign_tables:
-                self.primary_table_combo.addItem(ft['full_name'], ft)
-            self.primary_table_combo.blockSignals(False)
+    def _set_ui_enabled(self, enabled: bool):
+        """Enable/disable interactive controls while loading."""
+        for w in (
+            self.view_name_input, self.target_schema_combo, self.view_type_combo,
+            self.primary_table_combo, self.btn_add_join, self.btn_select_all,
+            self.btn_deselect_all, self.btn_auto_mask, self.save_btn,
+            self.worksheet_btn, self.btn_preview_data,
+        ):
+            w.setEnabled(enabled)
 
-            if self.foreign_tables:
-                # Set initial table if provided
-                if self.initial_table:
-                    for i in range(self.primary_table_combo.count()):
-                        if self.initial_table.lower() in self.primary_table_combo.itemText(i).lower():
-                            self.primary_table_combo.setCurrentIndex(i)
-                            break
+    def _apply_foreign_tables(self, tables):
+        """Apply a list of foreign-table dicts to populate the UI."""
+        self.foreign_tables = tables
 
-                self._on_primary_table_changed()
+        # Populate primary table combo
+        self.primary_table_combo.blockSignals(True)
+        self.primary_table_combo.clear()
+        for ft in self.foreign_tables:
+            self.primary_table_combo.addItem(ft['full_name'], ft)
+        self.primary_table_combo.blockSignals(False)
 
-        except Exception as e:
-            print(f"Notice: Could not load foreign tables for virtual view dialog: {e}")
+        if self.foreign_tables:
+            # Set initial table if provided
+            if self.initial_table:
+                for i in range(self.primary_table_combo.count()):
+                    if self.initial_table.lower() in self.primary_table_combo.itemText(i).lower():
+                        self.primary_table_combo.setCurrentIndex(i)
+                        break
+
+            self._on_primary_table_changed()
 
     def _on_primary_table_changed(self):
         primary_ft = self.primary_table_combo.currentData()
