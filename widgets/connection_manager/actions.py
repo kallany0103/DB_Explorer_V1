@@ -2582,14 +2582,15 @@ SERVER "{data["server"]}"
                     return tables
                 cur = conn.cursor()
                 cur.execute("""
-                    SELECT n.nspname, c.relname
+                    SELECT fs.srvname, n.nspname, c.relname
                     FROM pg_foreign_table ft
                     JOIN pg_class c ON c.oid = ft.ftrelid
                     JOIN pg_namespace n ON n.oid = c.relnamespace
-                    ORDER BY n.nspname, c.relname;
+                    JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
+                    ORDER BY fs.srvname, c.relname;
                 """)
                 rows = cur.fetchall()
-                for schema_name, table_name in rows:
+                for server_name, schema_name, table_name in rows:
                     cur.execute("""
                         SELECT column_name
                         FROM information_schema.columns
@@ -2598,6 +2599,7 @@ SERVER "{data["server"]}"
                     """, (schema_name, table_name))
                     cols = [r[0] for r in cur.fetchall()]
                     tables.append({
+                        'server': server_name,
                         'schema': schema_name,
                         'table': table_name,
                         'full_name': f'"{schema_name}"."{table_name}"',
