@@ -375,13 +375,13 @@ class MainWindow(QMainWindow):
         if self.dashboard_widget is not None:
             self.dashboard_widget.request_stats_update(manual=True)
 
-        # For connection type (depth 1) or group (depth 2) nodes, show loading spinner
+        # For connection type (depth 1) or group (depth 2) nodes, show empty state
         # in any open inspector tabs — they have no meaningful properties/statistics yet.
         if depth in (0, 1, 2):
             for i in range(self.tab_widget.count()):
                 widget = self.tab_widget.widget(i)
                 if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
-                    widget.show_loading("Select a database to view details")
+                    widget.show_empty_state("Select a database or object to view details")
             return
 
         if depth != 3 or not item_data:

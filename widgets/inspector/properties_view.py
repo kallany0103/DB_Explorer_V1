@@ -102,9 +102,8 @@ class PropertiesWorkbench(QWidget):
         if self.item_data:
             self.update_view(self.item_data, self.obj_name, force_refresh=True)
 
-    def show_loading(self, message="Loading..."):
-        """Show the spinner with a message — used when the inspector cannot yet determine
-        which object to inspect (e.g. user clicked a connection type or group node)."""
+    def show_empty_state(self, message="Select an object to view properties"):
+        """Show an empty state without the loading spinner."""
         self.item_data = None
         self.obj_name = None
         self.header_label.setText("Properties")
@@ -113,6 +112,21 @@ class PropertiesWorkbench(QWidget):
             qta.icon('mdi.cube-outline', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
+        self.loading_icon.setVisible(False)
+        self.progress_container.setVisible(True)
+        self.scroll.setVisible(False)
+
+    def show_loading(self, message="Loading..."):
+        """Show the spinner with a message — used when the inspector is loading data."""
+        self.item_data = None
+        self.obj_name = None
+        self.header_label.setText("Properties")
+        self.sub_label.setText(message)
+        self.icon_label.setPixmap(
+            qta.icon('mdi.cube-outline', color='#94a3b8').pixmap(24, 24)
+        )
+        self._clear_container()
+        self.loading_icon.setVisible(True)
         self.progress_container.setVisible(True)
         self.scroll.setVisible(False)
 
@@ -174,6 +188,7 @@ class PropertiesWorkbench(QWidget):
         if not item_data:
             return
         
+        self.loading_icon.setVisible(True)
         self.progress_container.setVisible(True)
         self.scroll.setVisible(False)
         worker = InspectorWorker(item_data, obj_name, task_type="properties")
