@@ -22,8 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QPushButton,
 )
-from ui.components import PrimaryButton, SecondaryButton
-
+from dialogs.uds_virtual_view_dialog import UDSVirtualViewMaskingDialog
 from dialogs.schema_objects import (
     CreateTableDialog, 
     CreateViewDialog, 
@@ -69,7 +68,7 @@ from widgets.backup_and_restore.backup.engine import BackupEngine
 from widgets.backup_and_restore.restore.engine import RestoreEngine
 from widgets.usql_tool.terminal_widget import open_usql_tool
 from workers.connection_workers import DataSourcePingWorker
-from ui.components import LoadingOverlay
+from ui.components import LoadingOverlay, PrimaryButton, SecondaryButton
 from workers.workers import WorkerThread
 import db
         
@@ -2545,11 +2544,6 @@ SERVER "{data["server"]}"
         Shows a loading spinner while fetching foreign-table metadata in the
         background so the UI never freezes.
         """
-        from dialogs.uds_virtual_view_dialog import UDSVirtualViewMaskingDialog
-        from ui.components import LoadingOverlay
-        from workers.workers import WorkerThread
-        import db
-
         host_conn_data = self.manager.active_postgres_conn or {}
         if not host_conn_data and item_data:
             host_conn_data = item_data.get('conn_data') or item_data

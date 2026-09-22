@@ -95,13 +95,23 @@ class StatisticsWorkbench(QWidget):
         if self.item_data:
             self.update_view(self.item_data, self.obj_name, force_refresh=True)
 
-    def show_loading(self, message="Loading..."):
-        """Show the spinner with a message — used when the inspector cannot yet determine
-        which object to inspect (e.g. user clicked a connection type or group node)."""
+    def show_empty_state(self, message="Select an object to view statistics"):
+        """Show an empty state without the loading spinner."""
         self.item_data = None
         self.obj_name = None
         self.header_label.setText("Statistics")
         self.sub_label.setText(message)
+        self.loading_icon.setVisible(False)
+        self.progress_container.setVisible(True)
+        self.content_container.setVisible(False)
+
+    def show_loading(self, message="Loading..."):
+        """Show the spinner with a message — used when the inspector is loading data."""
+        self.item_data = None
+        self.obj_name = None
+        self.header_label.setText("Statistics")
+        self.sub_label.setText(message)
+        self.loading_icon.setVisible(True)
         self.progress_container.setVisible(True)
         self.content_container.setVisible(False)
 
@@ -120,6 +130,7 @@ class StatisticsWorkbench(QWidget):
 
         self.sub_label.setText(f"Type: {item_data.get('type', 'Unknown').capitalize()}")
         
+        self.loading_icon.setVisible(True)
         self.progress_container.setVisible(True)
         self.content_container.setVisible(False)
         self.stats_view.clear_stats()
