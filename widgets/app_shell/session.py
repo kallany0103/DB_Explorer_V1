@@ -12,19 +12,17 @@ def save_main_window_session(main_window, session_file):
     main_window.connection_manager._save_tree_expansion_state()
     main_window.connection_manager._save_schema_tree_expansion_state()
     
-    # On a frameless window (custom title bar) Qt enters WindowFullScreen on
-    # maximize, so saveGeometry() would persist a full-screen rect and restore
-    # the app full-screen on next launch. Save the normal geometry instead.
-    window_rect = None
-    if main_window.isMaximized() or main_window.isFullScreen():
-        normal = main_window.normalGeometry()
-        window_rect = [normal.x(), normal.y(), normal.width(), normal.height()]
+    is_maximized = main_window.isMaximized() or main_window.isFullScreen()
+    normal = main_window.normalGeometry()
+    window_rect = [normal.x(), normal.y(), normal.width(), normal.height()]
 
     session_data = {
+        "is_maximized": is_maximized,
         "window_geometry": main_window.saveGeometry().toBase64().data().decode(),
         "window_state": main_window.saveState().toBase64().data().decode(),
         "window_rect": window_rect,
         "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
+        "oracle_bin_path": getattr(main_window, "oracle_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
         "theme": getattr(main_window, "theme", "Grey (Default)"),
         "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])),
@@ -99,15 +97,18 @@ def restore_main_window_session(main_window, session_file):
         if "window_state" in session_data:
             main_window.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
 
-        # Ensure window is visible on at least one screen
+        # Ensure window is visible on at least one screen and fully clamped
         window_rect = main_window.frameGeometry()
         intersecting_screen = None
+        max_area = 0
         for screen in QApplication.screens():
-            if screen.availableGeometry().intersects(window_rect):
+            intersect = screen.availableGeometry().intersected(window_rect)
+            area = intersect.width() * intersect.height()
+            if area > max_area:
+                max_area = area
                 intersecting_screen = screen
-                break
 
-        if not intersecting_screen:
+        if not intersecting_screen or max_area == 0:
             # Completely off-screen, center it on the primary screen
             screen_geom = QApplication.primaryScreen().availableGeometry()
             default_w, default_h = 1200, 800
@@ -115,12 +116,36 @@ def restore_main_window_session(main_window, session_file):
             y = screen_geom.y() + (screen_geom.height() - default_h) // 2
             main_window.setGeometry(x, y, default_w, default_h)
         else:
-            # Prevent the title bar from being hidden above the screen top
             screen_geom = intersecting_screen.availableGeometry()
-            if window_rect.top() < screen_geom.top():
-                main_window.move(window_rect.left(), screen_geom.top())
+            new_x = window_rect.x()
+            new_y = window_rect.y()
+            new_w = window_rect.width()
+            new_h = window_rect.height()
+            
+            if new_w > screen_geom.width():
+                new_w = screen_geom.width()
+            if new_h > screen_geom.height():
+                new_h = screen_geom.height()
+                
+            main_window.resize(new_w, new_h)
+            
+            if new_y < screen_geom.top():
+                new_y = screen_geom.top()
+            elif new_y + new_h > screen_geom.bottom():
+                new_y = max(screen_geom.top(), screen_geom.bottom() - new_h)
+                
+            if new_x < screen_geom.left():
+                new_x = screen_geom.left()
+            elif new_x + new_w > screen_geom.right():
+                new_x = max(screen_geom.left(), screen_geom.right() - new_w)
+                
+            main_window.move(new_x, new_y)
+
+        if session_data.get("is_maximized"):
+            main_window.showMaximized()
   
         main_window.pg_bin_path = session_data.get("pg_bin_path", "")
+        main_window.oracle_bin_path = session_data.get("oracle_bin_path", "")
         main_window.use_wsl = session_data.get("use_wsl", False)
         main_window.theme = session_data.get("theme", "Grey (Default)")
 

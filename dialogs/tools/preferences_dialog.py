@@ -42,6 +42,25 @@ class PreferencesDialog(QDialog):
         help_label.setStyleSheet("color: gray; font-size: 8pt;")
         form_layout.addRow("", help_label)
         
+        # Oracle Binary Path
+        self.oracle_bin_edit = QLineEdit()
+        self.oracle_bin_edit.setText(getattr(self.main_window, "oracle_bin_path", ""))
+        self.oracle_bin_edit.setPlaceholderText("Path to Oracle bin directory (e.g. C:\\oracle\\product\\19.0.0\\client_1\\bin)")
+        
+        oracle_bin_btn = SecondaryButton("Browse...")
+        oracle_bin_btn.clicked.connect(self.browse_oracle_bin)
+        
+        oracle_bin_layout = QHBoxLayout()
+        oracle_bin_layout.addWidget(self.oracle_bin_edit)
+        oracle_bin_layout.addWidget(oracle_bin_btn)
+        
+        form_layout.addRow("Oracle Binary Path:", oracle_bin_layout)
+        
+        # Oracle Help text
+        oracle_help_label = QLabel("Specify the directory containing sqlplus.")
+        oracle_help_label.setStyleSheet("color: gray; font-size: 8pt;")
+        form_layout.addRow("", oracle_help_label)
+        
         # Use WSL
         self.use_wsl_check = QCheckBox("Use WSL for PostgreSQL tools")
         self.use_wsl_check.setChecked(getattr(self.main_window, "use_wsl", False))
@@ -85,9 +104,15 @@ class PreferencesDialog(QDialog):
         if directory:
             self.pg_bin_edit.setText(directory)
 
+    def browse_oracle_bin(self):
+        directory = QFileDialog.getExistingDirectory(self, "Select Oracle Bin Directory", self.oracle_bin_edit.text())
+        if directory:
+            self.oracle_bin_edit.setText(directory)
+
     def get_settings(self):
         return {
             "pg_bin_path": self.pg_bin_edit.text().strip(),
+            "oracle_bin_path": self.oracle_bin_edit.text().strip(),
             "use_wsl": self.use_wsl_check.isChecked(),
             "theme": self.theme_combo.currentText()
         }
