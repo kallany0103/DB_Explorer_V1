@@ -803,3 +803,39 @@ class ImportConnectionsWorker(QRunnable):
                 })
             result.append(type_out)
         return result
+
+
+# ── Sync Foreign Schema Worker ────────────────────────────────────────────────
+
+class SyncForeignSchemaSignals(QObject):
+    finished = Signal(dict)   # {"server_name": str, "local_schema": str, "count": int}
+    error    = Signal(str)
+
+
+class SyncForeignSchemaWorker(QRunnable):
+    """Background worker to run IMPORT FOREIGN SCHEMA without blocking the UI."""
+
+    def __init__(self, host_conn_data: dict, ds_data: dict, source_type: str):
+        super().__init__()
+        self.host_conn_data = host_conn_data
+        self.ds_data        = ds_data
+        self.source_type    = source_type.upper()
+        self.signals        = SyncForeignSchemaSignals()
+
+    def run(self):
+        try:
+            if self.source_type == "SQLITE":
+                server_name, local_schema, count = db.sync_sqlite_fdw_schema(
+                    self.host_conn_data, self.ds_data
+                )
+            else:
+                server_name, local_schema, count = db.sync_postgres_fdw_schema(
+                    self.host_conn_data, self.ds_data
+                )
+            self.signals.finished.emit({
+                "server_name":  server_name,
+                "local_schema": local_schema,
+                "count":        count,
+            })
+        except Exception as exc:
+            self.signals.error.emit(str(exc))

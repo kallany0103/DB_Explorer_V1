@@ -160,6 +160,37 @@ class ConnectionSpinner(QObject):
         if not self._timer.isActive():
             self._timer.start()
 
+    def attach(self, item) -> None:
+        """Add a spinner to *item* without stopping any currently spinning items.
+
+        Use this instead of ``start()`` when you want to spin a secondary item
+        (e.g. a schema-tree row during a background operation) while leaving
+        the primary connection-tree spinner running uninterrupted.
+        """
+        if item is None:
+            return
+
+        # Avoid double-attaching the same item
+        for entry in self._items:
+            if entry['item'] == item:
+                return
+
+        try:
+            saved_icon = item.icon()
+        except RuntimeError:
+            return  # Item already deleted
+
+        self._items.append({'item': item, 'saved_icon': saved_icon})
+        self._running = True
+        try:
+            item.setIcon(self._frames[self._frame_idx])
+        except RuntimeError:
+            pass
+
+        if not self._timer.isActive():
+            self._timer.start()
+
+
     def stop(self, item=None) -> None:
         """Stop animation and restore *item*'s original icon. If item is None, stop all."""
         if item is None:
@@ -173,7 +204,7 @@ class ConnectionSpinner(QObject):
             self._running = False
         else:
             for i, entry in enumerate(self._items):
-                if entry['item'] is item:
+                if entry['item'] == item:
                     try:
                         item.setIcon(entry['saved_icon'])
                     except RuntimeError:

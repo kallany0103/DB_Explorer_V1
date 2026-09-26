@@ -4,7 +4,7 @@ import time
 import uuid
 
 import db
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -215,10 +215,37 @@ class ConnectionActions:
         ds_name = item_data.get("short_name") or item_data.get("source_name") or item_data.get("display_name") or item_data.get("name") or "Data Source"
         self.manager.status_message_label.setText(f"Testing connection to '{ds_name}'...")
 
+        # ── Start spinner on the tree item ────────────────────────────────────
+        if item is not None:
+            self.manager._schema_spinner.attach(item)
+
         host_conn_data = item_data.get("conn_data")
         worker = DataSourcePingWorker(item_data, host_conn_data)
 
+        watchdog = QTimer()
+        watchdog.setSingleShot(True)
+
+        def _stop_spinner():
+            watchdog.stop()
+            if item is not None:
+                self.manager._schema_spinner.stop(item)
+
+        def _on_ping_error(err_msg, _worker=None):
+            _stop_spinner()
+            self.manager.status.showMessage(f"Connection test error: {err_msg}", 5000)
+            self.manager.status_message_label.setText(f"Error testing '{ds_name}'")
+            QMessageBox.critical(
+                self.manager,
+                "Connection Test Error",
+                f"🔴 Error testing '{ds_name}':\n\n{err_msg}"
+            )
+
+        watchdog.timeout.connect(lambda: _on_ping_error("Connection test timed out after 15 seconds."))
+        watchdog.start(15000)
+
         def _on_ping_finished(res):
+            _keep_alive = worker  # Prevent premature GC of worker/signals
+            _stop_spinner()
             is_connected = res.get("is_connected")
             msg = res.get("message", "")
             latency = res.get("latency_ms", 0.0)
@@ -262,7 +289,9 @@ class ConnectionActions:
                 )
 
         worker.signals.finished.connect(_on_ping_finished)
+        worker.signals.error.connect(lambda err: _on_ping_error(err, worker))
         self.manager.thread_pool.start(worker)
+
 
     def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
         if not item_data:
