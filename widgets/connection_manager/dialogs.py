@@ -1,5 +1,6 @@
 import os
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from workers.connection_workers import SyncForeignSchemaWorker
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -509,7 +510,11 @@ class ConnectionDialogs:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete data source:\n{e}")
 
     def sync_foreign_schema(self, item):
-        """Re-runs IMPORT FOREIGN SCHEMA to sync remote tables for the selected data source/foreign server."""
+        """Re-runs IMPORT FOREIGN SCHEMA to sync remote tables for the selected data source/foreign server.
+
+        Runs asynchronously on a background thread so the UI stays responsive
+        and displays a spinner on the tree item while the operation is in progress.
+        """
         if not item:
             return
         item_data = item.data(Qt.ItemDataRole.UserRole)
@@ -527,18 +532,46 @@ class ConnectionDialogs:
         source_type = (ds_data.get("source_type") or "POSTGRES").upper()
 
         self.manager.status.showMessage(f"Syncing foreign schema for '{ds_name}'...", 4000)
-        try:
-            if source_type == "SQLITE":
-                server_name, local_schema, count = db.sync_sqlite_fdw_schema(host_conn_data, ds_data)
-            else:
-                server_name, local_schema, count = db.sync_postgres_fdw_schema(host_conn_data, ds_data)
+
+        # ── Start spinner on the tree item ─────────────────────────────────────
+        self.manager._schema_spinner.attach(item)
+
+        worker = SyncForeignSchemaWorker(host_conn_data, ds_data, source_type)
+
+        watchdog = QTimer()
+        watchdog.setSingleShot(True)
+
+        def _stop_spinner():
+            watchdog.stop()
+            self.manager._schema_spinner.stop(item)
+
+        def _on_sync_error(err_msg, _worker=None):
+            _stop_spinner()
+            self.manager.status.showMessage(f"Foreign schema sync error: {err_msg}", 5000)
+            QMessageBox.critical(
+                self.manager,
+                "Sync Schema Error",
+                f"🔴 Failed to synchronize foreign schema '{ds_name}':\n\n{err_msg}"
+            )
+
+        watchdog.timeout.connect(lambda: _on_sync_error("Operation timed out. Please check your connection and try again."))
+        watchdog.start(15000)
+
+        def _on_sync_finished(result):
+            _keep_alive = worker  # Prevent premature GC of worker/signals
+            _stop_spinner()
+            server_name  = result.get("server_name", "")
+            local_schema = result.get("local_schema", "")
+            count        = result.get("count", 0)
 
             # Refresh Schema Tree for current connection
             current_index = self.manager.tree.currentIndex()
             if current_index.isValid():
                 self.manager.item_clicked(current_index, skip_restore=False)
 
-            self.manager.status.showMessage(f"Foreign schema for '{ds_name}' synced successfully ({count} foreign tables).", 5000)
+            self.manager.status.showMessage(
+                f"Foreign schema for '{ds_name}' synced successfully ({count} foreign tables).", 5000
+            )
             QMessageBox.information(
                 self.manager,
                 "Sync Complete",
@@ -547,9 +580,10 @@ class ConnectionDialogs:
                 f"• Schema: {local_schema}\n"
                 f"• Imported Foreign Tables: {count}"
             )
-        except Exception as e:
-            self.manager.status.showMessage(f"Failed to sync foreign schema: {e}", 5000)
-            QMessageBox.critical(self.manager, "Sync Failed", f"Failed to sync foreign schema for '{ds_name}':\n{e}")
+
+        worker.signals.finished.connect(_on_sync_finished)
+        worker.signals.error.connect(lambda err: _on_sync_error(err, worker))
+        self.manager.thread_pool.start(worker)
                 
     def show_connection_details(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)

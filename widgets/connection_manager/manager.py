@@ -6,7 +6,7 @@ Package-native implementation used as the primary ConnectionManager entrypoint.
 import traceback
 import qtawesome as qta
 from PySide6.QtCore import Qt, QModelIndex, QTimer
-from PySide6.QtGui import QStandardItem
+from PySide6.QtGui import QStandardItem, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QMessageBox,
@@ -668,6 +668,9 @@ class ConnectionManager(QWidget):
             if current_token == self._schema_load_token:
                 self._spinner.stop()
                 self._schema_spinner.stop()
+                # Clear the "Loading schema..." placeholder so it doesn't get stuck
+                self.schema_model.clear()
+                self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
             self.status.showMessage(f"Error loading schema: {message}", 5000)
             self.show_error_popup(f"Failed to load schema:\n{message}")
 
