@@ -53,6 +53,10 @@ def build_main_window_menu(main_window):
     actions_menu = menubar.addMenu("Actions")
     actions_menu.addAction(main_window.execute_action)
     actions_menu.addAction(main_window.execute_new_tab_action)
+    actions_menu.addSeparator()
+    actions_menu.addAction(main_window.execute_usql_action)
+    actions_menu.addAction(main_window.execute_sqlplus_action)
+    actions_menu.addSeparator()
     actions_menu.addAction(main_window.explain_action)
     actions_menu.addAction(main_window.cancel_action)
 

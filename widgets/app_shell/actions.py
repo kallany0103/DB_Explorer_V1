@@ -43,6 +43,14 @@ def build_main_window_actions(main_window):
     main_window.execute_new_tab_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.execute_new_tab_action.triggered.connect(main_window.execute_query_in_new_output_tab)
 
+    main_window.execute_usql_action = QAction(qta.icon("fa5s.terminal", color="#555555"), "Execute SQL via usql", main_window)
+    main_window.execute_usql_action.triggered.connect(lambda: main_window.execute_via_native_cli("psql"))
+    main_window.execute_usql_action.setEnabled(False)
+
+    main_window.execute_sqlplus_action = QAction(qta.icon("fa5s.terminal", color="#555555"), "Execute SQL via SQL*Plus", main_window)
+    main_window.execute_sqlplus_action.triggered.connect(lambda: main_window.execute_via_native_cli("sqlplus"))
+    main_window.execute_sqlplus_action.setEnabled(False)
+
     main_window.explain_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain", main_window)
     main_window.explain_action.setShortcut("Ctrl+E")
     main_window.explain_action.triggered.connect(main_window.explain_query)

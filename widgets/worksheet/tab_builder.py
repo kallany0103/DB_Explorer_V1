@@ -134,6 +134,7 @@ def add_tab(manager):
 
     db_combo_box.currentIndexChanged.connect(update_conn_status_icon)
     db_combo_box.currentIndexChanged.connect(lambda: manager.results_manager.refresh_processes_view())
+    db_combo_box.currentIndexChanged.connect(lambda: manager.main_window._update_cli_action_states())
     
     QTimer.singleShot(100, update_conn_status_icon)
 

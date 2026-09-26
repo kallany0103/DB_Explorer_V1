@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.setIconSize(QSize(16, 16))
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
+        self.tab_widget.currentChanged.connect(self._update_cli_action_states)
 
         self.tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
@@ -422,6 +423,16 @@ class MainWindow(QMainWindow):
     def execute_query_in_new_output_tab(self):
         return self.worksheet_manager.execute_query(output_mode="new")
 
+    def execute_via_native_cli(self, cli_type: str) -> None:
+        from widgets.tools.cli_launcher import execute_via_native_cli
+        execute_via_native_cli(self, cli_type)
+
+
+
+    def _update_cli_action_states(self, index: object = None) -> None:
+        from widgets.tools.cli_launcher import update_cli_action_states
+        update_cli_action_states(self, index)
+
     def commit_transaction(self):
         return self.worksheet_manager.commit_transaction()
 
@@ -488,7 +499,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.40</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.41</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()

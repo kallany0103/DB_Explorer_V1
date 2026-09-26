@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Universal SQL Client"
-#define MyAppVersion "1.40"
+#define MyAppVersion "1.41"
 #define MyAppPublisher "Datafluent BD"
 #define MyAppURL "https://www.datafluent.team"
 #define MyAppExeName "Universal SQL Client.exe"
@@ -29,6 +29,7 @@ ArchitecturesAllowed=x64compatible
 ; the 64-bit view of the registry.
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
+DefaultGroupName={#MyAppName}
 LicenseFile=license.txt
 ; Allow user to choose between 'All Users' (admin) and 'Current User' (lowest).
 PrivilegesRequired=lowest
@@ -54,9 +55,9 @@ Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app_icon.ico"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app_icon.ico"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\assets\app_icon.ico"
-Name: "{autoprograms}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [UninstallDelete]
 ; Remove everything left in the install folder after the uninstaller runs
@@ -74,8 +75,8 @@ const
 
 procedure InitializeWizard;
 begin
-  { Pre-select "I accept the agreement" on the license page }
-  WizardForm.LicenseAcceptedRadio.Checked := True;
+  { By default, Inno Setup leaves 'I do not accept the agreement' selected. }
+  { We deliberately leave it unselected so the user is forced to explicitly agree. }
 end;
 
 procedure DeinitializeUninstall;
