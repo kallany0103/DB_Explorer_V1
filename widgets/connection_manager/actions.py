@@ -2573,9 +2573,14 @@ SERVER "{data["server"]}"
         Shows a loading spinner while fetching foreign-table metadata in the
         background so the UI never freezes.
         """
-        host_conn_data = self.manager.active_postgres_conn or {}
-        if not host_conn_data and item_data:
-            host_conn_data = item_data.get('conn_data') or item_data
+        host_conn_data = None
+        if isinstance(item_data, dict):
+            if 'conn_data' in item_data and isinstance(item_data['conn_data'], dict):
+                host_conn_data = item_data['conn_data']
+            elif 'host' in item_data or 'database' in item_data or 'id' in item_data:
+                host_conn_data = item_data
+        if not host_conn_data:
+            host_conn_data = getattr(self.manager, "active_postgres_conn", None) or {}
 
         initial_table = None
         if item_data:
@@ -2592,47 +2597,14 @@ SERVER "{data["server"]}"
 
         # ── Background fetch ────────────────────────────────────────────
         _host_conn_data = dict(host_conn_data)  # capture for thread
+        _cached_schema = getattr(self.manager, "last_uds_schema_data", None)
 
         def _fetch_foreign_tables():
-            tables = []
             try:
-                conn = db.create_postgres_connection(
-                    _host_conn_data,
-                    application_name="Universal SQL Client (Fetch UDS Tables)",
-                    bypass_cooldown=True,
-                )
-                if not conn:
-                    return tables
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT fs.srvname, n.nspname, c.relname
-                    FROM pg_foreign_table ft
-                    JOIN pg_class c ON c.oid = ft.ftrelid
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
-                    ORDER BY fs.srvname, c.relname;
-                """)
-                rows = cur.fetchall()
-                for server_name, schema_name, table_name in rows:
-                    cur.execute("""
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = %s AND table_name = %s
-                        ORDER BY ordinal_position;
-                    """, (schema_name, table_name))
-                    cols = [r[0] for r in cur.fetchall()]
-                    tables.append({
-                        'server': server_name,
-                        'schema': schema_name,
-                        'table': table_name,
-                        'full_name': f'"{schema_name}"."{table_name}"',
-                        'columns': cols,
-                    })
-                cur.close()
-                conn.close()
+                return db.get_uds_tables(_host_conn_data, cached_schema_data=_cached_schema)
             except Exception as e:
-                print(f"Notice: Could not pre-load foreign tables for UDS dialog: {e}")
-            return tables
+                print(f"Notice: Could not load foreign tables for UDS dialog: {e}")
+                return []
 
         worker = WorkerThread(_fetch_foreign_tables)
 

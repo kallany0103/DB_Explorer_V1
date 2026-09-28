@@ -4,6 +4,10 @@
     font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
 }
 
+QComboBox {
+    combobox-popup: 0;
+}
+
 QSplitter::handle { background: #E4E8ED; border: none; }
 QMainWindow, QToolBar { background-color: #ECEFF3; color: #1f2937; }
 QStatusBar { background-color: #F2F4F7; color: #1f2937; border-top: 1px solid #D1D6DD; }

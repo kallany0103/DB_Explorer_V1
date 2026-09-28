@@ -952,7 +952,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Create Cross-Source View...", "mdi.eye-plus")
+        act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
         )
@@ -987,7 +987,7 @@ class SchemaMenuBuilder:
     # Unified Views Root (UDS)
 
     def _unified_views_root_menu(self, menu, item, item_data, index):
-        act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
+        act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
         )
