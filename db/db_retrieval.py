@@ -1,4 +1,6 @@
 #db_retrival.py
+import os
+import json
 import sqlite3 as sqlite
 from db.db_connections import DB_FILE, get_pooled_postgres_connection, return_pooled_postgres_connection
 from db.type_utils import normalize_type  # noqa: F401 – re-exported for backward compatibility
@@ -566,3 +568,266 @@ def get_data_sources_by_connection(connection_id):
                 "db_type": (r[4] or "postgres").lower(),
             })
         return result
+
+
+def get_uds_tables(host_conn_data, cached_schema_data=None):
+    """
+    Retrieves all available tables and columns for a UDS host connection.
+    Supports:
+    1. Cached UDS schema data (from schema tree) if provided.
+    2. pg_foreign_table on the host PostgreSQL database.
+    3. Data sources from SQLite hierarchy.db (usf_data_sources table):
+       - SQLite database files directly via sqlite3 (PRAGMA table_info).
+       - Tables defined in config_json (selected_tables).
+       - CSV data source files.
+       - Direct connection to remote PostgreSQL sources with timeout.
+    Returns list of dicts:
+    [{'server': srv, 'ds_label': label, 'schema': s, 'table': t, 'full_name': f'"{s}"."{t}"', 'columns': [...]}]
+    """
+    tables = []
+    seen_tables = set()  # (ds_label.lower(), table_name.lower())
+    host_conn_data = host_conn_data or {}
+    conn_id = host_conn_data.get('id')
+
+    # Build server_name -> display_name lookup
+    srv_display = {}
+    for ds in host_conn_data.get('usf_data_sources', []):
+        srv = ds.get('server_name') or ''
+        label = ds.get('display_name') or ds.get('name') or ds.get('source_name') or srv
+        if srv:
+            srv_display[srv] = label
+
+    # 1. First, check cached_schema_data if available (instant UI sync)
+    if cached_schema_data and isinstance(cached_schema_data, dict):
+        for entry in cached_schema_data.get('data_sources', []):
+            ds_data = entry.get('ds_data', {})
+            ds_name = ds_data.get('display_name') or ds_data.get('source_name') or ds_data.get('name') or "Data Source"
+            srv_name = ds_data.get('server_name') or ds_name
+            stype = (ds_data.get('source_type') or 'POSTGRES').upper()
+            db_path = ds_data.get('db_path') or ds_data.get('file_path')
+
+            sqlite_cols = {}
+            if stype == 'SQLITE' and db_path and os.path.exists(db_path):
+                try:
+                    with sqlite.connect(db_path) as s_conn:
+                        s_cur = s_conn.cursor()
+                        for (t_name,) in s_cur.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'").fetchall():
+                            s_cur.execute(f'PRAGMA table_info("{t_name}");')
+                            sqlite_cols[t_name.lower()] = [c[1] for c in s_cur.fetchall()]
+                except Exception:
+                    pass
+
+            for ft in entry.get('foreign_tables', []):
+                t_name = ft.get('table_name')
+                s_name = ft.get('schema_name', 'public')
+                if not t_name or t_name in ('emp_ft', 'epm_f', 'epm_foreign'):
+                    continue
+                key = (ds_name.lower(), t_name.lower())
+                if key not in seen_tables:
+                    seen_tables.add(key)
+                    cols = sqlite_cols.get(t_name.lower(), ['id'])
+                    tables.append({
+                        'server': srv_name,
+                        'ds_label': ds_name,
+                        'schema': s_name,
+                        'table': t_name,
+                        'full_name': f'"{s_name}"."{t_name}"',
+                        'columns': cols,
+                    })
+
+    # 2. Query host PostgreSQL pg_foreign_table (if any FDW tables exist)
+    if host_conn_data.get('host') or host_conn_data.get('dsn'):
+        try:
+            conn = get_pooled_postgres_connection(
+                host_conn_data,
+                application_name="Universal SQL Client (Fetch UDS Tables)",
+                use_pool=True,
+            )
+            if conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT fs.srvname, n.nspname, c.relname
+                    FROM pg_foreign_table ft
+                    JOIN pg_class c ON c.oid = ft.ftrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
+                    ORDER BY fs.srvname, c.relname;
+                """)
+                rows = cur.fetchall()
+                for server_name, schema_name, table_name in rows:
+                    if table_name in ('emp_ft', 'epm_f', 'epm_foreign'):
+                        continue
+                    server_name = server_name or "Unknown Server"
+                    ds_label = srv_display.get(server_name) or server_name
+
+                    key = (ds_label.lower(), table_name.lower())
+                    if key not in seen_tables:
+                        try:
+                            cur.execute("""
+                                SELECT column_name
+                                FROM information_schema.columns
+                                WHERE table_schema = %s AND table_name = %s
+                                ORDER BY ordinal_position;
+                            """, (schema_name, table_name))
+                            cols = [r[0] for r in cur.fetchall()]
+                        except Exception:
+                            cols = ['id']
+
+                        seen_tables.add(key)
+                        tables.append({
+                            'server': server_name,
+                            'ds_label': ds_label,
+                            'schema': schema_name,
+                            'table': table_name,
+                            'full_name': f'"{schema_name}"."{table_name}"',
+                            'columns': cols or ['id'],
+                        })
+                cur.close()
+                conn.close()
+        except Exception:
+            pass
+
+    # 3. Query registered data sources from DB_FILE (usf_data_sources)
+    raw_data_sources = get_data_sources_by_connection(conn_id) if conn_id else []
+    if not raw_data_sources and host_conn_data.get('usf_data_sources'):
+        raw_data_sources = host_conn_data.get('usf_data_sources', [])
+
+    for ds in raw_data_sources:
+        ds_name = ds.get('display_name') or ds.get('source_name') or ds.get('name') or "Data Source"
+        srv_name = ds.get('server_name') or f"srv_{ds_name.lower().replace(' ', '_')}"
+        stype = (ds.get('source_type') or 'POSTGRES').upper()
+        db_path = ds.get('db_path') or ds.get('file_path')
+
+        # 3a. SQLite Data Source
+        if stype == 'SQLITE' and db_path and os.path.exists(db_path):
+            try:
+                with sqlite.connect(db_path) as s_conn:
+                    s_cur = s_conn.cursor()
+                    s_cur.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;")
+                    for (t_name,) in s_cur.fetchall():
+                        key = (ds_name.lower(), t_name.lower())
+                        if key not in seen_tables:
+                            seen_tables.add(key)
+                            s_cur.execute(f'PRAGMA table_info("{t_name}");')
+                            cols = [c[1] for c in s_cur.fetchall()]
+                            tables.append({
+                                'server': srv_name,
+                                'ds_label': ds_name,
+                                'schema': 'main',
+                                'table': t_name,
+                                'full_name': f'"main"."{t_name}"',
+                                'columns': cols or ['id'],
+                            })
+            except Exception:
+                pass
+
+        # 3b. Remote PostgreSQL Data Source
+        elif stype == 'POSTGRES':
+            # Check config_json / selected_tables
+            sel_tables = ds.get('selected_tables')
+            if not sel_tables and ds.get('config_json'):
+                try:
+                    cfg = json.loads(ds['config_json']) if isinstance(ds['config_json'], str) else ds['config_json']
+                    sel_tables = cfg.get('selected_tables', [])
+                except Exception:
+                    pass
+
+            if sel_tables:
+                for item in sel_tables:
+                    if isinstance(item, dict):
+                        t_name = item.get('name') or item.get('table_name')
+                        s_name = item.get('schema') or item.get('schema_name') or 'public'
+                    else:
+                        t_name = str(item)
+                        s_name = 'public'
+                    if t_name:
+                        key = (ds_name.lower(), t_name.lower())
+                        if key not in seen_tables:
+                            seen_tables.add(key)
+                            tables.append({
+                                'server': srv_name,
+                                'ds_label': ds_name,
+                                'schema': s_name,
+                                'table': t_name,
+                                'full_name': f'"{s_name}"."{t_name}"',
+                                'columns': ['id'],
+                            })
+            else:
+                remote_tbls = {}
+                r_user = ds.get('username') or ds.get('user')
+                r_pwd = ds.get('password')
+                r_host = ds.get('host')
+                r_port = ds.get('port') or 5432
+                r_db = ds.get('database_name') or ds.get('database')
+                if r_host and r_user and r_db:
+                    try:
+                        import psycopg2
+                        p_conn = psycopg2.connect(
+                            host=r_host, port=r_port, user=r_user, password=r_pwd, dbname=r_db,
+                            connect_timeout=1
+                        )
+                        p_cur = p_conn.cursor()
+                        p_cur.execute("""
+                            SELECT table_name, column_name, table_schema
+                            FROM information_schema.columns
+                            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+                            ORDER BY table_name, ordinal_position;
+                        """)
+                        from collections import defaultdict
+                        tbl_dict = defaultdict(lambda: {'schema': 'public', 'cols': []})
+                        for r_tbl, r_col, r_sch in p_cur.fetchall():
+                            tbl_dict[r_tbl]['schema'] = r_sch
+                            tbl_dict[r_tbl]['cols'].append(r_col)
+                        remote_tbls = tbl_dict
+                        p_conn.close()
+                    except Exception:
+                        pass
+
+                if remote_tbls:
+                    for r_tbl, info in remote_tbls.items():
+                        key = (ds_name.lower(), r_tbl.lower())
+                        if key not in seen_tables:
+                            seen_tables.add(key)
+                            tables.append({
+                                'server': srv_name,
+                                'ds_label': ds_name,
+                                'schema': info['schema'],
+                                'table': r_tbl,
+                                'full_name': f'"{info["schema"]}"."{r_tbl}"',
+                                'columns': info['cols'] or ['id'],
+                            })
+
+        # 3c. CSV / File Data Source
+        elif stype in ('CSV', 'FILE', 'FLAT_FILE'):
+            if db_path and os.path.exists(db_path):
+                csv_files = []
+                if os.path.isfile(db_path):
+                    csv_files.append(db_path)
+                elif os.path.isdir(db_path):
+                    for root, _, files in os.walk(db_path):
+                        for f in files:
+                            if f.lower().endswith('.csv'):
+                                csv_files.append(os.path.join(root, f))
+                for cf in csv_files:
+                    t_name = os.path.splitext(os.path.basename(cf))[0]
+                    key = (ds_name.lower(), t_name.lower())
+                    if key not in seen_tables:
+                        seen_tables.add(key)
+                        cols = ['id']
+                        try:
+                            import csv
+                            with open(cf, 'r', encoding='utf-8', errors='ignore') as f:
+                                reader = csv.reader(f)
+                                cols = next(reader)
+                        except Exception:
+                            pass
+                        tables.append({
+                            'server': srv_name,
+                            'ds_label': ds_name,
+                            'schema': 'csv_main',
+                            'table': t_name,
+                            'full_name': f'"csv_main"."{t_name}"',
+                            'columns': cols or ['id'],
+                        })
+
+    return tables

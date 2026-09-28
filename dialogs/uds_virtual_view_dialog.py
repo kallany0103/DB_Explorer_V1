@@ -7,7 +7,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout,
     QMessageBox, QLabel, QTabWidget, QWidget, QComboBox, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QAbstractItemView
+    QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QAbstractItemView,
+    QListView
 )
 from ui.components import SearchBox, SecondaryButton, PrimaryButton, LoadingOverlay
 from workers.workers import WorkerThread
@@ -32,7 +33,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
             if srv:
                 self._srv_display[srv] = label
 
-        self.setWindowTitle("Create UDS Virtual View")
+        self.setWindowTitle("Create Unified View")
         self.setMinimumSize(780, 620)
 
         self.setWindowFlags(
@@ -45,7 +46,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self._apply_styles()
 
         # Header
-        header_title = QLabel("UDS Virtual View Creator")
+        header_title = QLabel("Unified View Creator")
         header_title.setObjectName("dialogTitle")
 
         header_subtitle = QLabel(
@@ -73,7 +74,10 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.view_name_input.setPlaceholderText("e.g. v_employees_summary")
         self.view_name_input.textChanged.connect(self._generate_sql)
 
-        self.view_type_combo = QComboBox()
+        self.view_type_combo = QComboBox(self)
+        self.view_type_combo.setStyleSheet("combobox-popup: 0;")
+        self.view_type_combo.setView(QListView())
+        self.view_type_combo.setMaxVisibleItems(15)
         self.view_type_combo.addItems(["Standard VIEW", "MATERIALIZED VIEW"])
         self.view_type_combo.currentTextChanged.connect(self._generate_sql)
 
@@ -81,12 +85,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.primary_ds_combo, self.primary_table_combo, primary_picker_widget = \
             self._make_ds_table_picker()
         # Wire primary-specific callbacks
-        self.primary_ds_combo.currentIndexChanged.connect(
-            lambda: (
-                self._populate_picker(self.primary_ds_combo, self.primary_table_combo),
-                self._rebuild_grid()
-            )
-        )
+        self.primary_ds_combo.currentIndexChanged.connect(self._rebuild_grid)
         self.primary_table_combo.currentIndexChanged.connect(self._on_primary_table_changed)
 
         config_form.addRow("View Name:", self.view_name_input)
@@ -198,7 +197,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
         self.cancel_btn = SecondaryButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
 
-        self.save_btn = PrimaryButton("Create View")
+        self.save_btn = PrimaryButton("Create Unified View")
         self.save_btn.setIcon(qta.icon("fa5s.save", color="#ffffff"))
         self.save_btn.clicked.connect(self.create_view)
 
@@ -236,8 +235,74 @@ class UDSVirtualViewMaskingDialog(QDialog):
             }
             QTabBar::tab:selected { background: #ffffff; font-weight: 600; color: #0078d4; border-bottom: 1px solid #ffffff; }
             QTabBar::tab:hover:!selected { background: #e5e7eb; }
-            QLineEdit, QComboBox { min-height: 28px; border: 1px solid #d1d5db; border-radius: 5px; background: white; padding: 2px 8px; color: #1f2937; }
+            QLineEdit, QComboBox {
+                min-height: 28px;
+                border: 1px solid #d1d5db;
+                border-radius: 5px;
+                background: white;
+                padding: 2px 8px;
+                color: #1f2937;
+            }
             QLineEdit:focus, QComboBox:focus { border: 1px solid #0078d4; }
+            QComboBox {
+                combobox-popup: 0;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 0px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                width: 0px;
+                height: 0px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                color: #1f2937;
+                selection-background-color: #DDE2E8;
+                selection-color: #1f2937;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 2px;
+                outline: none;
+            }
+            QComboBox QAbstractItemView::item {
+                min-height: 24px;
+                padding: 4px 8px;
+                color: #1f2937;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background-color: #EEF1F6;
+                color: #1f2937;
+            }
+            QComboBox QAbstractItemView::item:selected {
+                background-color: #DDE2E8;
+                color: #1f2937;
+            }
+            QComboBox QScrollBar:vertical {
+                width: 6px;
+                background: transparent;
+                margin: 0;
+            }
+            QComboBox QScrollBar::handle:vertical {
+                background: #cbd5e1;
+                min-height: 20px;
+                border-radius: 3px;
+            }
+            QComboBox QScrollBar::handle:vertical:hover {
+                background: #94a3b8;
+            }
+            QComboBox QScrollBar::add-line:vertical,
+            QComboBox QScrollBar::sub-line:vertical {
+                height: 0px;
+                width: 0px;
+                background: none;
+                border: none;
+            }
+            QComboBox QScrollBar::add-page:vertical,
+            QComboBox QScrollBar::sub-page:vertical {
+                background: none;
+            }
             QTableWidget {
                 border: 1px solid #d1d5db;
                 border-radius: 6px;
@@ -266,32 +331,6 @@ class UDSVirtualViewMaskingDialog(QDialog):
                 border-bottom: 2px solid #cbd5e1;
                 border-right: 1px solid #e2e8f0;
             }
-            /* ── Combo dropdown popup ─────────────────────────────────── */
-            QComboBox QAbstractItemView {
-                border: 1px solid #c8d3de;
-                border-radius: 4px;
-                background: white;
-                selection-background-color: #e0f2fe;
-                selection-color: #0369a1;
-                padding: 2px;
-                outline: 0;
-            }
-            QComboBox QAbstractItemView::item {
-                padding: 4px 10px;
-                min-height: 22px;
-            }
-            QComboBox QAbstractItemView::item:hover {
-                background-color: #f0f9ff;
-                color: #0369a1;
-            }
-            /* Hide the scroll-arrow buttons Qt injects at top/bottom of popup */
-            QComboBoxPrivateScroller {
-                height:     0px;
-                max-height: 0px;
-                border:     none;
-                padding:    0px;
-                margin:     0px;
-            }
         """)
 
     def _load_available_foreign_tables(self):
@@ -300,79 +339,33 @@ class UDSVirtualViewMaskingDialog(QDialog):
         If pre-loaded data was injected by the caller (fast path), apply it
         immediately.  Otherwise fetch from the database.
         """
-        if self._preloaded_foreign_tables is not None:
+        if self._preloaded_foreign_tables:
             # Fast path: data already fetched before the dialog was opened
-            self.foreign_tables = self._preloaded_foreign_tables
-            # The background fetch doesn't have access to self._srv_display, so we augment ds_label here
-            for ft in self.foreign_tables:
-                if 'ds_label' not in ft:
-                    server_name = ft.get('server', 'Unknown Server')
-                    ft['ds_label'] = self._srv_display.get(server_name) or server_name
+            self.foreign_tables = list(self._preloaded_foreign_tables)
         else:
-            if not self.host_conn_data:
-                return
+            self.foreign_tables = db.get_uds_tables(self.host_conn_data)
 
-            try:
-                conn = db.create_postgres_connection(
-                    self.host_conn_data,
-                    application_name="Universal SQL Client (Fetch UDS Tables)",
-                    bypass_cooldown=True
-                )
-                if not conn:
-                    return
+        # Augment ds_label if missing
+        for ft in self.foreign_tables:
+            if 'ds_label' not in ft:
+                server_name = ft.get('server', 'Unknown Server')
+                ft['ds_label'] = self._srv_display.get(server_name) or server_name
 
-                cur = conn.cursor()
-                # Join pg_foreign_server to group tables by Data Source name
-                cur.execute("""
-                    SELECT fs.srvname, n.nspname, c.relname
-                    FROM pg_foreign_table ft
-                    JOIN pg_class c ON c.oid = ft.ftrelid
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
-                    ORDER BY fs.srvname, c.relname;
-                """)
-                rows = cur.fetchall()
-
-                self.foreign_tables = []
-                seen_labels = []   # ordered list of display labels (deduped)
-                for server_name, schema_name, table_name in rows:
-                    cur.execute("""
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = %s AND table_name = %s
-                        ORDER BY ordinal_position;
-                    """, (schema_name, table_name))
-                    cols = [r[0] for r in cur.fetchall()]
-
-                    # Resolve user-facing label: prefer display_name from usf_data_sources
-                    ds_label = self._srv_display.get(server_name) or server_name
-
-                    self.foreign_tables.append({
-                        'server': server_name,
-                        'ds_label': ds_label,
-                        'schema': schema_name,
-                        'table': table_name,
-                        'full_name': f'"{schema_name}"."{table_name}"',
-                        'columns': cols
-                    })
-                    if ds_label not in seen_labels:
-                        seen_labels.append(ds_label)
-
-                cur.close()
-                conn.close()
-            except Exception as e:
-                print(f"Error loading foreign tables: {e}")
-                return
-
-        # ---- After data is loaded: populate primary picker the same way as any picker ----
+        # ---- After data is loaded: populate primary picker ----
         initial_label = None
         if self.initial_table:
             for ft in self.foreign_tables:
-                if self.initial_table.lower() in ft['full_name'].lower():
+                if self.initial_table.lower() in ft['full_name'].lower() or self.initial_table.lower() == ft['table'].lower():
                     initial_label = ft['ds_label']
                     break
 
         self._populate_picker(self.primary_ds_combo, self.primary_table_combo, initial_label)
+        if self.initial_table:
+            for i in range(self.primary_table_combo.count()):
+                ft_data = self.primary_table_combo.itemData(i)
+                if ft_data and (self.initial_table.lower() in ft_data['full_name'].lower() or self.initial_table.lower() == ft_data['table'].lower()):
+                    self.primary_table_combo.setCurrentIndex(i)
+                    break
         self._rebuild_grid()
 
 
@@ -380,30 +373,22 @@ class UDSVirtualViewMaskingDialog(QDialog):
     # Shared DS → Table picker factory + populate helper
     # ------------------------------------------------------------------
     def _make_ds_table_picker(self):
-        """Create empty, no-scroll DS combo + table combo with cascade wired.
+        """Create empty, no-arrow DS combo + table combo with cascade wired.
 
         Returns (ds_combo, table_combo, container_widget).
         Call _populate_picker() separately to fill from self.foreign_tables.
         """
-        from PySide6.QtCore import Qt as _Qt
-
-        def _no_scroll(combo):
-            """Remove scrollbar and ensure popup is wide enough to show full text."""
-            combo.setMaxVisibleItems(50)  # large cap — will be refined after items load
-            view = combo.view()
-            view.setVerticalScrollBarPolicy(_Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            # Belt-and-suspenders: hide via stylesheet too (some styles ignore the policy)
-            view.verticalScrollBar().setStyleSheet("QScrollBar { width: 0px; height: 0px; }")
-            # Minimum popup width so text is never clipped regardless of combo width
-            view.setMinimumWidth(220)
-
-        ds_combo = QComboBox()
+        ds_combo = QComboBox(self)
+        ds_combo.setStyleSheet("combobox-popup: 0;")
         ds_combo.setPlaceholderText("Data source...")
-        _no_scroll(ds_combo)
+        ds_combo.setView(QListView())
+        ds_combo.setMaxVisibleItems(15)
 
-        table_combo = QComboBox()
+        table_combo = QComboBox(self)
+        table_combo.setStyleSheet("combobox-popup: 0;")
         table_combo.setPlaceholderText("Table...")
-        _no_scroll(table_combo)
+        table_combo.setView(QListView())
+        table_combo.setMaxVisibleItems(15)
 
         # Cascade: changing DS auto-fills table combo silently
         def _fill_tables(label_text):
@@ -413,6 +398,8 @@ class UDSVirtualViewMaskingDialog(QDialog):
                 if ft['ds_label'] == label_text:
                     table_combo.addItem(ft['table'], ft)
             table_combo.blockSignals(False)
+            if table_combo.count() > 0:
+                table_combo.setCurrentIndex(0)
 
         ds_combo.currentTextChanged.connect(_fill_tables)
 
@@ -443,8 +430,6 @@ class UDSVirtualViewMaskingDialog(QDialog):
         ds_combo.clear()
         for label in seen:
             ds_combo.addItem(label)
-        # Size popup to exactly the number of items (no scroll ever needed)
-        ds_combo.setMaxVisibleItems(max(len(seen), 1))
         # Selection inside block: setCurrentIndex would fire currentIndexChanged
         if initial_label and initial_label in seen:
             idx = seen.index(initial_label)
@@ -460,9 +445,9 @@ class UDSVirtualViewMaskingDialog(QDialog):
         table_combo.clear()
         for ft in tables_for_ds:
             table_combo.addItem(ft['table'], ft)
-        # Size table popup to exactly the number of tables
-        table_combo.setMaxVisibleItems(max(len(tables_for_ds), 1))
         table_combo.blockSignals(False)
+        if table_combo.count() > 0:
+            table_combo.setCurrentIndex(0)
 
     def _on_primary_table_changed(self):
         primary_ft = self.primary_table_combo.currentData()
@@ -478,7 +463,10 @@ class UDSVirtualViewMaskingDialog(QDialog):
         row_layout.setContentsMargins(0, 2, 0, 2)
         row_layout.setSpacing(6)
 
-        join_type_combo = QComboBox()
+        join_type_combo = QComboBox(self)
+        join_type_combo.setStyleSheet("combobox-popup: 0;")
+        join_type_combo.setView(QListView())
+        join_type_combo.setMaxVisibleItems(15)
         join_type_combo.addItems(["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN"])
         join_type_combo.setFixedWidth(110)
 
@@ -637,7 +625,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
                 if j_cond:
                     join_strs.append(f"{j_type} {j_data['full_name']} ON {j_cond}")
                 else:
-                    join_strs.append(f"{j_type} {j_data['full_name']}")
+                    join_strs.append(f"{j_type} {j_data['full_name']} ON /* Specify ON condition e.g. t1.id = t2.id */")
 
         joins_str = ("\n" + "\n".join(join_strs)) if join_strs else ""
 
@@ -646,11 +634,33 @@ class UDSVirtualViewMaskingDialog(QDialog):
 
         self.sql_editor.setText(sql)
 
+    def _validate_joins(self) -> bool:
+        """Checks if all added join rows have an ON condition specified."""
+        for j in self.joins:
+            j_data = j['table_combo'].currentData()
+            j_cond = j['cond_input'].text().strip()
+            if j_data and not j_cond:
+                tbl_name = j_data.get('table', 'table')
+                j_type = j['type_combo'].currentText()
+                QMessageBox.warning(
+                    self,
+                    "Incomplete Join Condition",
+                    f"Please specify an 'ON' condition for the {j_type} with table '{tbl_name}'.\n\n"
+                    f"For example:\n\"main\".\"categories\".\"category_id\" = \"public\".\"course\".\"id\"\n\n"
+                    f"If you do not want to join this table, click the red ✕ button on that row to remove it."
+                )
+                j['cond_input'].setFocus()
+                return False
+        return True
+
     def _on_tab_changed(self, index):
         if index == 1:
             self._generate_sql()
 
     def _preview_masked_data(self):
+        if not self._validate_joins():
+            return
+
         sql = self.sql_editor.toPlainText().strip()
         if not sql or sql.startswith("--"):
             QMessageBox.warning(self, "Preview Error", "Please configure columns and view name first.")
@@ -696,6 +706,9 @@ class UDSVirtualViewMaskingDialog(QDialog):
             QMessageBox.critical(self, "Preview Query Error", f"Could not execute preview query:\n{e}")
 
     def create_view(self):
+        if not self._validate_joins():
+            return
+
         view_name = self.view_name_input.text().strip()
         if not view_name:
             QMessageBox.warning(self, "Missing Info", "Please provide a View Name.")
@@ -733,7 +746,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
             self.accept()
 
         except Exception as e:
-            QMessageBox.critical(self, "Creation Error", f"Could not create Virtual View on host database:\n{e}")
+            QMessageBox.critical(self, "Creation Error", f"Could not create Unified View on host database:\n{e}")
 
     def open_in_worksheet(self):
         sql = self.sql_editor.toPlainText().strip()

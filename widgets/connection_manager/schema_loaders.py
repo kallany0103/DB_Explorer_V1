@@ -199,6 +199,7 @@ class SchemaLoader:
             self.manager._restore_schema_tree_expansion_state(conn_data.get("id"))
 
     def populate_uds_schema(self, data, skip_restore=False):
+        self.manager.last_uds_schema_data = data
         conn_data = data.get("conn_data", {})
         data_sources = data.get("data_sources", [])
 
