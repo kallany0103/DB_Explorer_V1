@@ -205,6 +205,20 @@ def _resolve_sqlite_column_specs(conn, query, description):
     return specs
 
 
+def _resolve_oracle_column_specs(description):
+    from db.query_describe import _format_oracle_type
+    specs = []
+    for desc in description:
+        col_name = _description_value(desc, "name", 0, "")
+        data_type = _format_oracle_type(desc)
+        null_ok = _description_value(desc, "null_ok", 6)
+        spec = _default_column_spec(col_name, data_type)
+        if null_ok is not None:
+            spec["nullable"] = bool(null_ok)
+        specs.append(spec)
+    return specs
+
+
 def resolve_column_specs(code, conn, conn_data, query, description):
     columns = [_description_value(desc, "name", 0, "") for desc in description]
 
@@ -212,7 +226,10 @@ def resolve_column_specs(code, conn, conn_data, query, description):
         specs = _resolve_postgres_column_specs(conn, conn_data, description)
     elif code == "SQLITE":
         specs = _resolve_sqlite_column_specs(conn, query, description)
+    elif code in ("ORACLE", "ORACLE_DB"):
+        specs = _resolve_oracle_column_specs(description)
     else:
         specs = [_default_column_spec(name) for name in columns]
 
     return columns, specs
+

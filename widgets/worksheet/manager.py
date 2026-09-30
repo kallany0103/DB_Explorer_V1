@@ -41,6 +41,7 @@ from widgets.worksheet.query_executor import (
     on_query_error_signal,
     explain_plan_query as explain_plan_query_action,
     explain_query as explain_query_action,
+    describe_query as describe_query_action,
     execute_query as execute_query_action,
     update_timer_label as update_timer_label_action,
     show_error_popup as show_error_popup_action,
@@ -260,6 +261,9 @@ class WorksheetManager(QWidget):
 
     def explain_query(self):
         explain_query_action(self)
+
+    def describe_query(self):
+        describe_query_action(self)
 
     def execute_query(self, conn_data=None, query=None, output_mode="current", preserve_pagination=False):
         """Execute a query. In auto-commit mode runs normally; otherwise uses an implicit transaction."""

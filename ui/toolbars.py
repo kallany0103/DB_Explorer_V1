@@ -145,6 +145,16 @@ class WorksheetToolbar(QWidget):
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
         layout.addWidget(self.explain_combo)
 
+        # Describe (parse) select query
+        if hasattr(manager, 'ws_describe_action'):
+            self.describe_btn = ToolbarActionButton(icon=manager.ws_describe_action.icon())
+            self.describe_btn.setDefaultAction(manager.ws_describe_action)
+            self.describe_btn.setIconSize(QSize(16, 16))
+            self.describe_btn.setMinimumWidth(26)
+            self.describe_btn.setToolTip("Describe (parse) select query (Shift+F4)")
+            layout.addWidget(self.describe_btn)
+
+
         # Edit Menu
         self.edit_btn = QToolButton()
         # self.edit_btn.setText("Edit")

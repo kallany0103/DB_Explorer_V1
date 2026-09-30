@@ -72,6 +72,13 @@ def show_editor_context_menu(manager, pos, editor):
     explain_plan_action.triggered.connect(manager.explain_plan_query)
     menu.addAction(explain_plan_action)
 
+    describe_action = QAction(qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager)
+    describe_action.setIconVisibleInMenu(True)
+    describe_action.setShortcut("Shift+F4")
+    describe_action.triggered.connect(manager.describe_query)
+    menu.addAction(describe_action)
+
+
     menu.addSeparator()
     format_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", manager)
     format_action.setIconVisibleInMenu(False)

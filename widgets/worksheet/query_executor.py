@@ -169,6 +169,36 @@ def explain_query(manager):
     )
 
 
+def describe_query(manager):
+    current_tab = manager.tab_widget.currentWidget()
+    if not current_tab:
+        manager.show_info("Please open a worksheet tab with a database connection to describe a query.")
+        return
+
+    query_editor = get_query_editor(current_tab)
+    conn_data = get_tab_connection_data(current_tab)
+
+    if not conn_data:
+        manager.show_info("Please select a database connection for the current worksheet.")
+        return
+
+    selected_query = extract_query_under_cursor(query_editor) if query_editor else ""
+    if not selected_query or not selected_query.strip():
+        manager.show_info("Please select or place the cursor in a SELECT query to describe.")
+        return
+
+    from db.query_describe import validate_and_clean_select_query
+    try:
+        clean_query = validate_and_clean_select_query(selected_query)
+    except ValueError as val_err:
+        manager.show_info(str(val_err))
+        return
+
+    from dialogs.tools.query_describe_dialog import QueryDescribeDialog
+    dlg = QueryDescribeDialog(parent=manager.main_window, conn_data=conn_data, query=clean_query)
+    dlg.exec()
+
+
 def execute_query(manager, conn_data=None, query=None, output_mode="current", preserve_pagination=False):
     current_tab = manager.tab_widget.currentWidget()
     if not current_tab:
