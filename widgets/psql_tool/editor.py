@@ -1,4 +1,4 @@
-# widgets/usql_tool/editor.py
+# widgets/psql_tool/editor.py
 """
 QPlainTextEdit subclass behaving like a real terminal pane.
 """
@@ -18,7 +18,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QLabel, QMenu, QPlainTextEdit
 
-from widgets.usql_tool.constants import _TERM_MAX_BLOCKS
+from widgets.psql_tool.constants import _TERM_MAX_BLOCKS
 
 
 class _TerminalEdit(QPlainTextEdit):

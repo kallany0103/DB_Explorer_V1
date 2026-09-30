@@ -168,6 +168,11 @@ QMenu::item:selected {
     color: #000000;
 }
 
+QMenu::item:disabled {
+    color: #a0a8b4;
+    background-color: transparent;
+}
+
 QTableView QTableCornerButton::section { background-color: #9FA6AF; border: 1px solid #B8BEC6; }
 #resultsHeader QPushButton, #editorHeader QPushButton { background-color: #ffffff; border: 1px solid #B8BEC6; padding: 5px 15px; font-size: 9pt; }
 #resultsHeader QPushButton:hover, #editorHeader QPushButton:hover { background-color: #ECEFF3; }

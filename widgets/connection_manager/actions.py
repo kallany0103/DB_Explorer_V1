@@ -67,6 +67,8 @@ from workers.process_worker import ProcessWorker
 from widgets.backup_and_restore.backup.engine import BackupEngine
 from widgets.backup_and_restore.restore.engine import RestoreEngine
 from widgets.usql_tool.terminal_widget import open_usql_tool
+from widgets.psql_tool.terminal_widget import open_psql_tool
+from widgets.sqlplus_tool.terminal_widget import open_sqlplus_tool
 from workers.connection_workers import DataSourcePingWorker
 from ui.components import LoadingOverlay, PrimaryButton, SecondaryButton
 from workers.workers import WorkerThread
@@ -1596,11 +1598,25 @@ SERVER "{data["server"]}"
         worker.start()
 
     def open_usql_tool(self, item_data):
-        """Open the native USQL tool tool for a PostgreSQL connection."""
+        """Open the UDS USQL tool terminal."""
         if not item_data:
             return
         conn_data = item_data.get("conn_data") or item_data
         open_usql_tool(conn_data, self.manager)
+
+    def open_psql_tool(self, item_data):
+        """Open the native psql terminal for a PostgreSQL connection."""
+        if not item_data:
+            return
+        conn_data = item_data.get("conn_data") or item_data
+        open_psql_tool(conn_data, self.manager)
+
+    def open_sqlplus_tool(self, item_data):
+        """Open the native SQL*Plus terminal for an Oracle connection."""
+        if not item_data:
+            return
+        conn_data = item_data.get("conn_data") or item_data
+        open_sqlplus_tool(conn_data, self.manager)
 
     def refresh_materialized_view(self, item_data, name, concurrently=False):
         if not item_data:

@@ -190,10 +190,29 @@ class ExplorerMenuBuilder:
     
     def _connection_menu(self, menu, item, index):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
-        
+
+        # Resolve connection type code early — used by Terminal submenu and UDS branch
+        connection_item = item
+        parent_item = connection_item.parent()
+        grandparent_item = parent_item.parent() if parent_item else None
+        code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
+
+        # Terminal submenu — only the matching terminal is enabled
+        term_sub = submenu(menu, "Terminal", "mdi.console")
+
+        psql_act = action(self.manager, "PSQL Tool", "mdi.console")
+        psql_act.setEnabled(code == "POSTGRES")
+        psql_act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
+        term_sub.addAction(psql_act)
+
+        sqlplus_act = action(self.manager, "SQL*Plus Tool", "mdi.database-cog")
+        sqlplus_act.setEnabled(code in ("ORACLE_DB", "ORACLE_FA"))
+        sqlplus_act.triggered.connect(lambda: self.manager.connection_actions.open_sqlplus_tool(conn_data))
+        term_sub.addAction(sqlplus_act)
         
         # parent_item = item.parent()
         # grandparent_item = parent_item.parent() if parent_item else None
@@ -204,12 +223,7 @@ class ExplorerMenuBuilder:
         #     act.triggered.connect(lambda: self.manager.connection_dialogs.add_data_source(item))
         #     menu.addAction(act)
      
-        connection_item = item
-
-        # ensure we are at connection node (safety)
-        parent_item = connection_item.parent()
-        grandparent_item = parent_item.parent() if parent_item else None
-        code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        # connection_item, parent_item, grandparent_item, code resolved at method top
         
         if code == "UDS":
             act = action(self.manager, "Add Data Source", "mdi.database-plus")
@@ -220,6 +234,14 @@ class ExplorerMenuBuilder:
             
             act = action(self.manager,"Edit Unified Data Source","mdi.pencil-outline")
             act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
+            menu.addAction(act)
+
+            act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
+            act.triggered.connect(lambda _, it=connection_item: self.manager.connection_actions.open_uds_virtual_view_dialog(it.data(Qt.ItemDataRole.UserRole)))
+            menu.addAction(act)
+
+            act = action(self.manager, "USQL Tool", "mdi.console")
+            act.triggered.connect(lambda: self.manager.connection_actions.open_usql_tool(conn_data))
             menu.addAction(act)
 
             menu.addSeparator()
@@ -239,11 +261,6 @@ class ExplorerMenuBuilder:
             menu.addAction(act)
 
             return
-        
-        if code == 'POSTGRES':
-            act = action(self.manager, "USQL Tool", "mdi.console")
-            act.triggered.connect(lambda: self.manager.connection_actions.open_usql_tool(conn_data))
-            menu.addAction(act)
         
         menu.addSeparator()
         

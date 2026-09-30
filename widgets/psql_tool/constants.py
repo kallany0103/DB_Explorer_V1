@@ -55,7 +55,7 @@ QLabel#term_err_lbl {
 
 _BANNER: str = (
     "┌──────────────────────────────────────────────────────────────────┐\n"
-    "│  USQL Tool  •  PostgreSQL Interactive Terminal                   │\n"
+    "│  PSQL Tool  •  PostgreSQL Interactive Terminal                   │\n"
     "├──────────────────────────────────────────────────────────────────┤\n"
     "│  \\?        Show all commands and help                            │\n"
     "│  \\l        List databases                                        │\n"

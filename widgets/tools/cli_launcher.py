@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from widgets.worksheet.query.query_preparation import get_query_editor, get_tab_connection_data
+from widgets.psql_tool.discovery import find_psql
+from widgets.sqlplus_tool.discovery import find_sqlplus, instantclient_dir
 
 if TYPE_CHECKING:
     from main_window import MainWindow
@@ -55,6 +57,9 @@ def execute_via_native_cli(main_window: "MainWindow", cli_type: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(sql)
+            # SQL*Plus requires a terminator to execute the buffer and return to prompt
+            if cli_type == "sqlplus" and not sql.strip().endswith((";", "/")):
+                f.write("\n/\n")
     except OSError as exc:
         main_window.worksheet_manager.show_info(f"Failed to write temp SQL file: {exc}")
         return
@@ -111,14 +116,18 @@ def _resolve_cli_path(main_window: "MainWindow", cli_type: str) -> str:
     that the OS PATH is used as a fallback."""
     if cli_type == "psql":
         pg_bin = getattr(main_window, "pg_bin_path", "")
-        return str(Path(pg_bin) / "psql.exe") if pg_bin else "psql"
+        if pg_bin:
+            return str(Path(pg_bin) / "psql.exe")
+        return find_psql() or "psql"
     if cli_type == "sqlplus":
         oracle_bin = getattr(main_window, "oracle_bin_path", "")
-        return str(Path(oracle_bin) / "sqlplus.exe") if oracle_bin else "sqlplus"
+        if oracle_bin:
+            return str(Path(oracle_bin) / "sqlplus.exe")
+        return find_sqlplus() or "sqlplus"
     return cli_type
 
 
-def _open_terminal(cmd_args: list[str], env: dict | None = None) -> None:
+def _open_terminal(cmd_args: list[str] | str, env: dict | None = None) -> None:
     """Spawn a detached cmd.exe window and run *cmd_args* inside it.
 
     Uses ``CREATE_NEW_CONSOLE`` so the window is independent of the
@@ -181,7 +190,8 @@ def _launch_psql(
     # Sequence: run file → interactive session → delete temp file.
     # cmd /k keeps the window open after everything finishes so the user can
     # review the output even after closing the interactive session.
-    cmd_args = ["cmd", "/k", f"{run_cmd} & {interactive_cmd} & {cleanup}"]
+    # We pass a string to prevent subprocess from escaping quotes for cmd.exe
+    cmd_args = f'cmd /k "{run_cmd} & {interactive_cmd} & {cleanup}"'
     try:
         _open_terminal(cmd_args, env=child_env)
     except OSError as exc:
@@ -194,24 +204,77 @@ def _launch_sqlplus(
     cli_path: str,
     temp_path: str,
 ) -> None:
-    """Build the sqlplus connection string and open a terminal window."""
-    user = conn_data.get("user", "")
-    password = conn_data.get("password", "")
-    host = conn_data.get("host", "localhost")
-    port = conn_data.get("port", "1521")
-    sid = conn_data.get("database") or conn_data.get("db") or ""
-    conn_str = f"{user}/{password}@{host}:{port}/{sid}"
+    """Build the sqlplus connection string and open a terminal window.
 
-    run_args: list[str] = [cli_path, conn_str, f"@{temp_path}"]
-    interactive_args: list[str] = [cli_path, conn_str]
+    Uses ``/NOLOG`` + a wrapper login script so credentials are never passed on
+    the command line.  The login script CONNECTs, runs the user's query, then
+    SQL*Plus stays alive at the interactive ``SQL>`` prompt.
+    """
+    user = conn_data.get("user") or conn_data.get("username") or ""
+    password = conn_data.get("password") or ""
+    
+    # If the user specified a custom DSN string in connection settings, use it directly.
+    # Otherwise, build the Easy Connect string.
+    dsn = conn_data.get("dsn")
+    if dsn:
+        easy_connect = f"{user}/{password}@{dsn}"
+    else:
+        host = conn_data.get("host") or "localhost"
+        port = conn_data.get("port") or "1521"
+        sid = conn_data.get("service_name") or conn_data.get("database") or conn_data.get("db") or ""
+        easy_connect = f"{user}/{password}@//{host}:{port}/{sid}"
 
-    run_cmd = subprocess.list2cmdline(run_args)
-    interactive_cmd = subprocess.list2cmdline(interactive_args)
-    cleanup = subprocess.list2cmdline(["del", "/q", temp_path])
-
-    # Sequence: run file → interactive session → delete temp file.
-    cmd_args = ["cmd", "/k", f"{run_cmd} & {interactive_cmd} & {cleanup}"]
+    # Login script: CONNECT → set formatting → run query → stay at SQL>.
+    login_fd, login_path = tempfile.mkstemp(suffix=".sql", prefix="usql_sqlplus_login_")
     try:
-        _open_terminal(cmd_args)
+        with os.fdopen(login_fd, "w", encoding="utf-8") as lf:
+            lf.write(f"CONNECT {easy_connect}\n")
+            # Pre-configure SQL*Plus formatting to prevent ugly 80-char wrapping
+            lf.write("SET LINESIZE 32000\n")
+            lf.write("SET PAGESIZE 100\n")
+            lf.write("SET TAB OFF\n")
+            lf.write("SET TRIMSPOOL ON\n")
+            lf.write("SET TRIMOUT ON\n")
+            lf.write(f"@{temp_path}\n")
+    except OSError as exc:
+        main_window.worksheet_manager.show_info(f"Failed to write SQL*Plus login script: {exc}")
+        return
+
+    child_env = os.environ.copy()
+    ic_dir = instantclient_dir()
+
+    bundled_admin = (
+        Path(__file__).parent.parent.parent
+        / "resources" / "oracle" / "instantclient" / "network" / "admin"
+    )
+    if bundled_admin.is_dir():
+        child_env["TNS_ADMIN"] = str(bundled_admin)
+
+    if ic_dir:
+        env_path = child_env.get("PATH", "")
+        if ic_dir not in env_path:
+            child_env["PATH"] = ic_dir + os.pathsep + env_path
+        child_env["TNS_ADMIN"] = os.path.join(ic_dir, "network", "admin")
+
+    # Write a .bat launcher to avoid nested-quote hell in cmd /k "...".
+    # The bat: runs sqlplus (/NOLOG + login script) → user gets SQL> prompt
+    # → after EXIT, temp files are deleted.
+    bat_fd, bat_path = tempfile.mkstemp(suffix=".bat", prefix="usql_sqlplus_run_")
+    try:
+        with os.fdopen(bat_fd, "w", encoding="ascii") as bf:
+            bf.write("@echo off\n")
+            # Force the Windows console buffer to be extremely wide so it generates
+            # a horizontal scrollbar instead of aggressively wrapping text to the next line.
+            bf.write("mode con cols=1000\n")
+            bf.write(f'"{cli_path}" /NOLOG @"{login_path}"\n')
+            bf.write(f'del /q "{temp_path}" "{login_path}"\n')
+    except OSError as exc:
+        main_window.worksheet_manager.show_info(f"Failed to write SQL*Plus launcher: {exc}")
+        return
+
+    try:
+        # Pass as a single string to let Popen handle cmd.exe's weird quoting
+        _open_terminal(f'cmd.exe /k "{bat_path}"', env=child_env)
     except OSError as exc:
         main_window.worksheet_manager.show_info(f"Failed to launch sqlplus terminal: {exc}")
+

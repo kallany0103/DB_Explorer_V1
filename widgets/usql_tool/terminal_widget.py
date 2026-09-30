@@ -24,14 +24,14 @@ from PySide6.QtWidgets import (
 )
 
 # from widgets.usql_tool.constants import _BANNER
-from widgets.usql_tool.constants import _HISTORY_FILE
-from widgets.usql_tool.constants import _APP_DATA_DIR
-from widgets.usql_tool.constants import _PTY_DRAIN_TIMEOUT_S
-from widgets.usql_tool.constants import _PTY_DRAIN_SLEEP_S
-from widgets.usql_tool.constants import _STYLE
+from widgets.psql_tool.constants import _HISTORY_FILE
+from widgets.psql_tool.constants import _APP_DATA_DIR
+from widgets.psql_tool.constants import _PTY_DRAIN_TIMEOUT_S
+from widgets.psql_tool.constants import _PTY_DRAIN_SLEEP_S
+from widgets.psql_tool.constants import _STYLE
 from ui.components import SecondaryButton
-from widgets.usql_tool.editor import _TerminalEdit
-from widgets.usql_tool.discovery import find_psql
+from widgets.psql_tool.editor import _TerminalEdit
+from widgets.psql_tool.discovery import find_psql
 from widgets.worksheet.autocomplete import CompletionEngine
 
 try:
@@ -395,7 +395,7 @@ class USQLToolWidget(QWidget):
             ):
                 self._current_db = self._pending_db_switch_from
                 self._pending_db_switch_from = ""
-                self._update_tab_title(f"USQL Tool – {self._current_db}")
+                self._update_tab_title(f"PSQL Tool – {self._current_db}")
                 self._update_conn_label()
             elif (
                 "you are now connected" in text_lower
@@ -477,7 +477,7 @@ class USQLToolWidget(QWidget):
                         else:
                             i += 1
                     self._conn = c
-                    self._update_tab_title(f"USQL Tool – {self._current_db}")
+                    self._update_tab_title(f"PSQL Tool – {self._current_db}")
                     self._update_conn_label()
 
                 self._reconnect()
@@ -502,7 +502,7 @@ class USQLToolWidget(QWidget):
             if len(lower_parts) >= 2:
                 self._pending_db_switch_from = self._current_db
                 self._current_db = lower_parts[1]
-                self._update_tab_title(f"USQL Tool – {self._current_db}")
+                self._update_tab_title(f"PSQL Tool – {self._current_db}")
                 self._update_conn_label()
                 if self._completion_engine is not None:
                     updated_conn = {**self._conn, "database": self._current_db}
@@ -705,7 +705,7 @@ def open_usql_tool(conn: dict, manager=None) -> USQLToolWidget:
             icon = qta.icon("fa5s.terminal", color="#a6e3a1")
 
         db_name = (conn or {}).get("database") or (conn or {}).get("db") or "psql"
-        index = tab_widget.addTab(widget, icon, f"USQL Tool – {db_name}")
+        index = tab_widget.addTab(widget, icon, f"PSQL Tool – {db_name}")
         tab_widget.setCurrentIndex(index)
     else:
         widget.resize(960, 640)
