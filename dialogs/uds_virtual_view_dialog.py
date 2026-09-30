@@ -703,7 +703,19 @@ class UDSVirtualViewMaskingDialog(QDialog):
             self.preview_table.resizeColumnsToContents()
 
         except Exception as e:
-            QMessageBox.critical(self, "Preview Query Error", f"Could not execute preview query:\n{e}")
+            err_msg = str(e)
+            if "does not exist" in err_msg and ("main." in err_msg or "csv_main." in err_msg):
+                QMessageBox.warning(
+                    self,
+                    "Remote View Limitation",
+                    f"Could not execute preview query on host database:\n{err_msg}\n\n"
+                    "Why this happens:\n"
+                    "The primary table belongs to a local file data source (SQLite/CSV) that only exists on your computer. "
+                    "The remote PostgreSQL host cannot query local files on your PC directly.\n\n"
+                    "To create server-side Unified Views, select tables from database sources whose foreign tables are synced to the host database (e.g. PostgreSQL data sources)."
+                )
+            else:
+                QMessageBox.critical(self, "Preview Query Error", f"Could not execute preview query:\n{e}")
 
     def create_view(self):
         if not self._validate_joins():
@@ -746,7 +758,19 @@ class UDSVirtualViewMaskingDialog(QDialog):
             self.accept()
 
         except Exception as e:
-            QMessageBox.critical(self, "Creation Error", f"Could not create Unified View on host database:\n{e}")
+            err_msg = str(e)
+            if "does not exist" in err_msg and ("main." in err_msg or "csv_main." in err_msg):
+                QMessageBox.warning(
+                    self,
+                    "Remote View Limitation",
+                    f"Could not create Unified View on host database:\n{err_msg}\n\n"
+                    "Why this happens:\n"
+                    "The view definition references a local file data source (SQLite/CSV) that resides on your computer. "
+                    "The remote PostgreSQL host cannot directly query local files on your PC to compile a server-side view.\n\n"
+                    "Tip: To save server-side Unified Views, use tables from synced database sources (like PostgreSQL data sources), or use 'Open in SQL Worksheet'."
+                )
+            else:
+                QMessageBox.critical(self, "Creation Error", f"Could not create Unified View on host database:\n{e}")
 
     def open_in_worksheet(self):
         sql = self.sql_editor.toPlainText().strip()

@@ -4,7 +4,9 @@ from dialogs.tools import (
     ExportDialog,
     SearchObjectsDialog,
     PreferencesDialog,
+    QueryDescribeDialog,
 )
+
 
 from dialogs.connections import (
     BaseConnectionDialog,
@@ -57,6 +59,8 @@ __all__ = [
     "ExportDialog",
     "SearchObjectsDialog",
     "PreferencesDialog",
+    "QueryDescribeDialog",
+
 
     # Connections
     "BaseConnectionDialog",

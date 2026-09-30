@@ -45,6 +45,14 @@ def build_worksheet_toolbar_actions(manager):
         )
     )
 
+    manager.ws_describe_action = QAction(
+        qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager
+    )
+    manager.ws_describe_action.setToolTip("Describe (parse) select query (Shift+F4)")
+    manager.ws_describe_action.setShortcut("Shift+F4")
+    manager.ws_describe_action.triggered.connect(main_window.describe_query)
+
+
     manager.ws_undo_action = QAction(
         qta.icon("fa5s.undo", color="#555555"), "Undo", manager
     )

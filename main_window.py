@@ -570,6 +570,10 @@ class MainWindow(QMainWindow):
     def explain_plan_query(self):
         self.worksheet_manager.explain_plan_query()
 
+    def describe_query(self):
+        self.worksheet_manager.describe_query()
+
+
     def cancel_current_query(self):
         self.worksheet_manager.cancel_current_query()
 

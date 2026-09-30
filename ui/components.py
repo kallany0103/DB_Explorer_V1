@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QProgressBar
 )
 from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont, QConicalGradient
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread, QRectF
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread, QRectF, QSize
 from typing import Optional
 import qtawesome as qta
 from workers.workers import WorkerThread
@@ -13,42 +13,49 @@ from PySide6.QtGui import QPen
 
 class LoadingOverlay(QWidget):
 
-    def __init__(self, parent=None, label: str = "Loading..."):
+    def __init__(self, parent=None, label: str = ""):
         super().__init__(parent)
         self._label_text = label
-        self._angle = 0
 
-        # Make the widget cover the entire parent
+        # Make the widget cover the entire parent and block mouse events behind it
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setAutoFillBackground(False)
 
-        # Spin timer
-        self._timer = QTimer(self)
-        self._timer.setInterval(16)  # ~60 fps
-        self._timer.timeout.connect(self._tick)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addStretch()
+
+        h_layout = QHBoxLayout()
+        h_layout.addStretch()
+
+        self.loading_icon = QToolButton(self)
+        self.loading_icon.setIcon(
+            qta.icon(
+                "ph.spinner-fill",
+                color="#3b82f6",
+                animation=qta.Spin(self.loading_icon)
+            )
+        )
+        self.loading_icon.setIconSize(QSize(64, 64))
+        self.loading_icon.setStyleSheet("border: none; background: transparent;")
+        h_layout.addWidget(self.loading_icon)
+        h_layout.addStretch()
+
+        layout.addLayout(h_layout)
+        layout.addStretch()
 
         self.hide()
 
-
     def show_overlay(self):
-        """Show and start spinning."""
+        """Show the overlay and center it over parent."""
         if self.parent():
             self.setGeometry(self.parent().rect())
         self.raise_()
         self.show()
-        self._timer.start()
 
     def hide_overlay(self):
-        """Stop spinning and hide."""
-        self._timer.stop()
+        """Stop and hide the overlay."""
         self.hide()
-
-
-    def _tick(self):
-        self._angle = (self._angle + 5) % 360
-        self.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -57,40 +64,8 @@ class LoadingOverlay(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # ── Semi-transparent background ───────────────────────────────
-        painter.fillRect(self.rect(), QColor(255, 255, 255, 180))
-
-        cx = self.width() // 2
-        cy = self.height() // 2
-        radius = 28
-        pen_w = 5
-
-        # ── Track circle ──────────────────────────────────────────────
-        track_color = QColor("#e2e8f0")
-        painter.setPen(Qt.PenStyle.NoPen)
-        track_pen = QPen(track_color, pen_w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        painter.setPen(track_pen)
-        arc_rect = QRectF(cx - radius, cy - radius, radius * 2, radius * 2)
-        painter.drawArc(arc_rect, 0, 360 * 16)
-
-        # ── Spinning arc ──────────────────────────────────────────────
-        spin_pen = QPen(QColor("#0078d4"), pen_w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        painter.setPen(spin_pen)
-        start_angle = (90 - self._angle) * 16   # Qt uses 1/16th degree, starts at 12 o'clock
-        span_angle  = -270 * 16                  # 270° sweep
-        painter.drawArc(arc_rect, start_angle, span_angle)
-
-        # ── Label ─────────────────────────────────────────────────────
-        painter.setPen(QColor("#374151"))
-        font = QFont()
-        font.setPointSize(9)
-        font.setWeight(QFont.Weight.Medium)
-        painter.setFont(font)
-        text_rect = QRectF(cx - 120, cy + radius + 12, 240, 22)
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, self._label_text)
-
+        # Clean semi-transparent background consistent with properties & statistics view
+        painter.fillRect(self.rect(), QColor(248, 250, 252, 215))
         painter.end()
 
 

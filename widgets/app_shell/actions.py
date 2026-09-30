@@ -61,6 +61,14 @@ def build_main_window_actions(main_window):
     main_window.explain_plan_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain (Plan)", main_window)
     main_window.explain_plan_action.triggered.connect(main_window.explain_plan_query)
 
+    main_window.describe_query_action = QAction(
+        qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", main_window
+    )
+    main_window.describe_query_action.setShortcut("Shift+F4")
+    main_window.describe_query_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    main_window.describe_query_action.triggered.connect(main_window.describe_query)
+
+
     main_window.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", main_window)
     main_window.cancel_action.setShortcut("Alt+End")
     main_window.cancel_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
