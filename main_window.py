@@ -499,10 +499,86 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.41</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.43</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()
+
+    def update_edit_menu_states(self) -> None:
+        """Gray out Edit menu actions based on the current editor state.
+
+        Called each time the user opens the Edit menu via aboutToShow.
+        """
+        editor = self._get_current_editor()
+
+        if not editor:
+            # No active editor — gray out all text-dependent actions.
+            for act in (
+                self.undo_action,
+                self.redo_action,
+                self.cut_action,
+                self.copy_action,
+                self.paste_action,
+                self.select_all_action,
+                self.clear_all_action,
+                self.find_action,
+                self.replace_action,
+                self.format_sql_action,
+                self.goto_line_action,
+                self.comment_block_action,
+                self.uncomment_block_action,
+                self.upper_case_action,
+                self.lower_case_action,
+                self.initial_caps_action,
+            ):
+                act.setEnabled(False)
+            return
+
+        # Re-enable everything first, then selectively disable.
+        for act in (
+            self.undo_action,
+            self.redo_action,
+            self.cut_action,
+            self.copy_action,
+            self.paste_action,
+            self.select_all_action,
+            self.clear_all_action,
+            self.find_action,
+            self.replace_action,
+            self.format_sql_action,
+            self.goto_line_action,
+            self.comment_block_action,
+            self.uncomment_block_action,
+            self.upper_case_action,
+            self.lower_case_action,
+            self.initial_caps_action,
+        ):
+            act.setEnabled(True)
+
+        has_selection = editor.textCursor().hasSelection()
+        has_text = bool(editor.toPlainText())
+        clipboard = QApplication.clipboard()
+        has_clipboard = clipboard.mimeData().hasText()
+
+        # Undo / Redo
+        self.undo_action.setEnabled(editor.document().isUndoAvailable())
+        self.redo_action.setEnabled(editor.document().isRedoAvailable())
+
+        # Cut / Copy only when text is selected
+        self.cut_action.setEnabled(has_selection)
+        self.copy_action.setEnabled(has_selection)
+
+        # Paste only when clipboard has text
+        self.paste_action.setEnabled(has_clipboard)
+
+        # Clear / Format require text in the editor
+        self.clear_all_action.setEnabled(has_text)
+        self.format_sql_action.setEnabled(has_text)
+
+        # Case transforms require a selection
+        self.upper_case_action.setEnabled(has_selection)
+        self.lower_case_action.setEnabled(has_selection)
+        self.initial_caps_action.setEnabled(has_selection)
 
     def undo_text(self):
         self.worksheet_manager.undo_text()
@@ -846,6 +922,13 @@ class MainWindow(QMainWindow):
                 db.close_all_postgres_pools()
             except Exception as e:
                 print(f"Error closing connection pools: {e}")
+
+            # Close any external CLI terminals (psql / SQL*Plus) with the app
+            try:
+                from widgets.tools.cli_launcher import close_cli_terminals
+                close_cli_terminals(self)
+            except Exception as e:
+                print(f"Error closing CLI terminals: {e}")
 
             event.accept()
         else:

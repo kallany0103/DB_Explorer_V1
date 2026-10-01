@@ -49,6 +49,7 @@ def build_main_window_menu(main_window):
     edit_menu.addAction(main_window.lower_case_action)
     edit_menu.addAction(main_window.initial_caps_action)
     edit_menu.addSeparator()
+    edit_menu.aboutToShow.connect(main_window.update_edit_menu_states)
 
     actions_menu = menubar.addMenu("Actions")
     actions_menu.addAction(main_window.execute_action)

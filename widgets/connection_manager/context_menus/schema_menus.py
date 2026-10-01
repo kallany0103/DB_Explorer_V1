@@ -452,7 +452,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "USQL Tool", "mdi.console")
+        act = action(self.manager, "PSQL Tool", "mdi.console")
         act.triggered.connect(lambda: open_usql_tool(item_data.get("conn_data") or item_data, self.manager))
         menu.addAction(act)
 

@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Universal SQL Client"
-#define MyAppVersion "1.41"
+#define MyAppVersion "1.43"
 #define MyAppPublisher "Datafluent BD"
 #define MyAppURL "https://www.datafluent.team"
 #define MyAppExeName "Universal SQL Client.exe"
@@ -20,6 +20,12 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; Lets setup/uninstall detect a running instance (mutex is held by main.py)
+; and show the standard close-application prompt instead of file-in-use errors.
+AppMutex=UniversalSQLClientAppMutex
+CloseApplications=yes
+CloseApplicationsFilter=*.exe
+RestartApplications=no
 ; "ArchitecturesAllowed=x64compatible" specifies that Setup cannot run
 ; on anything but x64 and Windows 11 on Arm.
 ArchitecturesAllowed=x64compatible
@@ -48,10 +54,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\Universal SQL Client\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; PyInstaller output — includes all Python runtime, app code, assets, ui, pg_client, etc.
 Source: "dist\Universal SQL Client\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Databases folder (may contain writable user data; kept separate from PyInstaller output)
 Source: "databases\*"; DestDir: "{app}\databases"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Assets folder (icons, images; kept separate so icon paths resolve correctly at install time)
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Oracle Instant Client — shipped via installer to keep PyInstaller bundle lean
+Source: "resources\oracle\instantclient\*"; DestDir: "{app}\resources\oracle\instantclient"; Flags: ignoreversion recursesubdirs createallsubdirs
+; CData connector wheels (ServiceNow, CSV) — large binaries kept outside PyInstaller bundle
+Source: "drivers\*"; DestDir: "{app}\drivers"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
@@ -73,10 +85,56 @@ const
   UninstallKeyHKLM = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6A6E3F74-646B-414F-866F-1DB1E5AD7194}_is1';
   UninstallKeyHKCU = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6A6E3F74-646B-414F-866F-1DB1E5AD7194}_is1';
 
-procedure InitializeWizard;
+{ InitializeWizard is intentionally omitted.
+  Inno Setup's default LicensePage behaviour already leaves
+  'I do not accept' unselected when a LicenseFile is specified — no override needed. }
+
+var
+  UninstallDataPage: TInputOptionWizardPage;
+
+function InitializeUninstall(): Boolean;
 begin
-  { By default, Inno Setup leaves 'I do not accept the agreement' selected. }
-  { We deliberately leave it unselected so the user is forced to explicitly agree. }
+  UninstallDataPage := CreateInputOptionPage(wpWelcome,
+    'Uninstall options', 'Remove your personal data?',
+    'Universal SQL Client will be uninstalled. Your personal data is kept ' +
+    'unless you select the options below. Deleted data can''t be recovered.',
+    False, False);
+  UninstallDataPage.Add('Remove app data (saved &connections, history, and preferences)');
+  UninstallDataPage.Add('Remove saved &credentials (passwords and tokens)');
+  UninstallDataPage.Values[0] := False;
+  UninstallDataPage.Values[1] := False;
+  Result := True;
+end;
+
+procedure DeleteCredential(Target: String);
+var
+  ResultCode: Integer;
+begin
+  Exec('cmdkey.exe', '/delete:"' + Target + '"', '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if UninstallDataPage.Values[0] then
+    begin
+      DelTree(ExpandConstant('{userappdata}\Universal SQL Client'), True, True, True);
+      DelTree(ExpandConstant('{userappdata}\DBExplorer'), True, True, True);
+      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\DBExplorer');
+    end;
+    if UninstallDataPage.Values[1] then
+    begin
+      { Best effort: keyring WinVaultKeyring stores under the service name or }
+      { {username}@{service} compound targets. Missing entries are ignored. }
+      DeleteCredential('Universal SQL Client');
+      DeleteCredential('access_token@Universal SQL Client');
+      DeleteCredential('refresh_token@Universal SQL Client');
+      DeleteCredential('user@Universal SQL Client');
+      DeleteCredential('avatar@Universal SQL Client');
+    end;
+  end;
 end;
 
 procedure DeinitializeUninstall;

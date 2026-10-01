@@ -2,8 +2,13 @@
 title Universal SQL Client - Build and Package Pipeline
 color 0B
 
+:: Derive version from the .iss file so this script never goes stale
+for /f "tokens=3 delims= " %%V in ('findstr /r "#define MyAppVersion" Universal_SQL_Client.iss') do (
+    set "APP_VERSION=%%~V"
+)
+
 echo ==========================================================
-echo               UNIVERSAL SQL CLIENT BUILD PIPELINE                 
+echo               UNIVERSAL SQL CLIENT BUILD PIPELINE
 echo ==========================================================
 echo.
 
@@ -64,6 +69,6 @@ color 0A
 echo.
 
 echo [SUCCESS] Build pipeline completed successfully!
-echo New installer: dist\Universal_SQL_Client_WINDOWS_1.39_setup.exe
+echo New installer: dist\Universal_SQL_Client_WINDOWS_%APP_VERSION%_setup.exe
 echo.
 pause
