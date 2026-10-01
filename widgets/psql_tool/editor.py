@@ -11,12 +11,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetrics,
     QKeyEvent,
+    QPainter,
     QTextCharFormat,
     QTextCursor,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QApplication, QLabel, QMenu, QPlainTextEdit
+from PySide6.QtWidgets import QApplication, QMenu, QPlainTextEdit
 
 from widgets.psql_tool.constants import _TERM_MAX_BLOCKS
 
@@ -89,6 +91,9 @@ class _TerminalEdit(QPlainTextEdit):
         super().__init__()
         self.setObjectName("usql_term")
         self._input_start: int = 0
+        # True when the previous chunk ended with a bare CR whose LF may
+        # arrive at the start of the next chunk (PTY reads split anywhere).
+        self._pending_cr: bool = False
         self.setMaximumBlockCount(_TERM_MAX_BLOCKS)
         self.setUndoRedoEnabled(False)
         self.setAcceptDrops(True)
@@ -96,21 +101,14 @@ class _TerminalEdit(QPlainTextEdit):
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        # Ghost-text autocomplete state
+        # Ghost-text autocomplete state (painted in paintEvent so the
+        # baseline always matches the document layout).
         self._engine = None
         self._conn_data: dict | None = None
         self._ghost_text: str = ""
         self._ghost_prefix: str = ""
         self._ghost_full_match: str = ""
         self._ghost_accepting: bool = False
-
-        self._ghost_label = QLabel(self.viewport())
-        self._ghost_label.setStyleSheet(
-            "QLabel { color: #5b6078; background: transparent; border: none; "
-            "margin: 0; padding: 0; }"
-        )
-        self._ghost_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._ghost_label.hide()
 
         self.cursorPositionChanged.connect(self._on_cursor_moved)
         self.updateRequest.connect(self._on_update_request)
@@ -127,6 +125,17 @@ class _TerminalEdit(QPlainTextEdit):
         restored.  This keeps the cursor logically at the end of the
         input region after every output chunk.
         """
+        # Heal a CR/LF pair split across two PTY reads: the previous chunk
+        # ended with a bare CR, so a leading LF here completes it instead of
+        # starting a new overwrite cycle mid-document.
+        if self._pending_cr:
+            self._pending_cr = False
+            if text.startswith("\n"):
+                text = text[1:]
+        if text.endswith("\r"):
+            text = text[:-1]
+            self._pending_cr = True
+
         cursor = self.textCursor()
 
         # Save current user input
@@ -142,8 +151,11 @@ class _TerminalEdit(QPlainTextEdit):
         # Insert new output with ANSI coloring applied
         self._insert_ansi_text(cursor, text)
 
-        # Advance the protected boundary
-        self._input_start = cursor.position()
+        # Advance the protected boundary. It must never retreat: a trailing
+        # CR parks the cursor at a line start mid-document, and recording
+        # that would make every later append land mid-document, shuffling
+        # older lines (duplicated separators, detached prompts) around.
+        self._input_start = max(self._input_start, cursor.position())
 
         # Restore user's in-progress input
         if user_input:
@@ -161,12 +173,29 @@ class _TerminalEdit(QPlainTextEdit):
         QTextCharFormat foreground colors.  All other escape sequences are
         stripped (not rendered as garbage).
         """
+        # Windows console programs (e.g. sqlplus.exe) emit "\r\r\n" line
+        # endings through the PTY. Collapse them first: otherwise every line
+        # break looks like a carriage return and wipes the line just written.
+        text = re.sub(r"\r+\n", "\n", text)
         parts = text.split('\r')
         for i, part in enumerate(parts):
             if i > 0:
-                # Simulate terminal carriage return: clear the current line up to cursor
-                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock, QTextCursor.MoveMode.KeepAnchor)
-                cursor.removeSelectedText()
+                # True terminal carriage return: go back to column 0 and
+                # overwrite the cells that follow. Never delete the line —
+                # deleting shifts every tracked offset (including
+                # _input_start) so later output lands mid-document, splicing
+                # fragments of different rows together.
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                plain_len = len(self._ANSI_RE.sub("", part))
+                if plain_len:
+                    end = cursor.position() + plain_len
+                    block_end = cursor.block().position() + cursor.block().length() - 1
+                    end = min(end, block_end)
+                    if end > cursor.position():
+                        cursor.setPosition(
+                            end, QTextCursor.MoveMode.KeepAnchor
+                        )
+                        cursor.removeSelectedText()
 
             fmt = cursor.charFormat()
             last_end = 0
@@ -314,34 +343,51 @@ class _TerminalEdit(QPlainTextEdit):
         self._ghost_text = ""
         self._ghost_prefix = ""
         self._ghost_full_match = ""
-        self._ghost_label.hide()
+        self.viewport().update()
         if self._engine:
             self._engine.reset_active_list()
 
     def _clear_ghost(self) -> None:
-        """Hide the ghost label and discard any pending suggestion."""
+        """Discard any pending suggestion and repaint to remove it."""
         self._ghost_text = ""
         self._ghost_prefix = ""
         self._ghost_full_match = ""
-        self._ghost_label.hide()
+        self.viewport().update()
 
     def _update_ghost_label(self) -> None:
-        """Refresh ghost label text, font, and position."""
-        if not self._ghost_text:
-            self._ghost_label.hide()
-            return
-        self._ghost_label.setFont(self.font())
-        self._ghost_label.setText(self._ghost_text)
-        self._ghost_label.adjustSize()
-        self._update_ghost_label_pos()
-        self._ghost_label.show()
-        self._ghost_label.raise_()
+        """Request a repaint so paintEvent draws the ghost at the baseline."""
+        self.viewport().update()
 
     def _update_ghost_label_pos(self) -> None:
-        """Move the ghost label to sit immediately after the cursor."""
+        """Kept for compatibility; painting tracks the cursor automatically."""
         if self._ghost_text:
-            cr = self.cursorRect()
-            self._ghost_label.move(cr.right(), cr.top())
+            self.viewport().update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self._ghost_text:
+            return
+        cursor = self.textCursor()
+        block = cursor.block()
+        layout = block.layout()
+        if layout is None:
+            return
+        cr = self.cursorRect()
+        if not self.viewport().rect().intersects(cr):
+            return
+        line = layout.lineForTextPosition(cursor.positionInBlock())
+        painter = QPainter(self.viewport())
+        painter.setFont(self.document().defaultFont())
+        painter.setPen(QColor("#5b6078"))
+        if line is not None:
+            block_geo = self.blockBoundingGeometry(block).translated(self.contentOffset())
+            baseline_y = block_geo.top() + line.y() + line.ascent()
+            x = cr.left() + self.cursorWidth()
+            painter.drawText(x, int(baseline_y), self._ghost_text)
+        else:
+            metrics = QFontMetrics(self.document().defaultFont())
+            painter.drawText(cr.left() + self.cursorWidth(), cr.top() + metrics.ascent(), self._ghost_text)
+        painter.end()
 
     def _on_cursor_moved(self) -> None:
         """Clear ghost text whenever the cursor moves (unless we caused it)."""
@@ -349,9 +395,9 @@ class _TerminalEdit(QPlainTextEdit):
             self._clear_ghost()
 
     def _on_update_request(self, _rect, dy: int) -> None:
-        """Reposition the ghost label when the viewport scrolls."""
+        """Viewport scroll repaints automatically; nothing to reposition."""
         if dy and self._ghost_text:
-            self._update_ghost_label_pos()
+            self.viewport().update()
 
 
     # Key handling — the heart of the terminal feel

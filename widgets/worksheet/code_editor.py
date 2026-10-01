@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QWidget,
     QTextEdit,
-    QLabel,
 )
 # QTextCursor 
 from PySide6.QtGui import (
@@ -107,13 +106,8 @@ class CodeEditor(QPlainTextEdit):
         self.cursorPositionChanged.connect(self._on_cursor_moved)
         self.updateRequest.connect(self._on_update_request)
 
-        self._ghost_label = QLabel(self.viewport())
-        self._ghost_label.setStyleSheet(
-            "QLabel { color: #AAAAAA; background: transparent; border: none; "
-            "margin: 0; padding: 0; }"
-        )
-        self._ghost_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._ghost_label.hide()
+        # Ghost text is painted directly in paintEvent (same baseline as the
+        # document layout) so it can never drift above/below the typed text.
 
         self.updateLineNumberAreaWidth(0)
         self.updateFoldingMarkers()
@@ -719,34 +713,54 @@ class CodeEditor(QPlainTextEdit):
         self._ghost_text = ""
         self._ghost_prefix = ""
         self._ghost_full_match = ""
-        self._ghost_label.hide()
+        self.viewport().update()
         if self._engine:
             self._engine.reset_active_list()
 
     def _clear_ghost(self):
-        """Hide the ghost label and discard any pending suggestion."""
+        """Discard any pending suggestion and repaint to remove it."""
         self._ghost_text = ""
         self._ghost_prefix = ""
         self._ghost_full_match = ""
-        self._ghost_label.hide()
+        self.viewport().update()
 
     def _update_ghost_label(self):
-        """Refresh ghost label text, font, and position."""
-        if not self._ghost_text:
-            self._ghost_label.hide()
-            return
-        self._ghost_label.setFont(self.font())
-        self._ghost_label.setText(self._ghost_text)
-        self._ghost_label.adjustSize()
-        self._update_ghost_label_pos()
-        self._ghost_label.show()
-        self._ghost_label.raise_()
+        """Request a repaint so paintEvent draws the ghost at the baseline."""
+        if self._ghost_text:
+            self.viewport().update()
+        else:
+            self.viewport().update()
 
     def _update_ghost_label_pos(self):
-        """Move the ghost label to sit immediately after the cursor."""
+        """Kept for compatibility; painting tracks the cursor automatically."""
         if self._ghost_text:
-            cr = self.cursorRect()
-            self._ghost_label.move(cr.right(), cr.top())
+            self.viewport().update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._ghost_text:
+            return
+        cursor = self.textCursor()
+        block = cursor.block()
+        layout = block.layout()
+        if layout is None:
+            return
+        cr = self.cursorRect()
+        if not self.viewport().rect().intersects(cr):
+            return
+        line = layout.lineForTextPosition(cursor.positionInBlock())
+        painter = QPainter(self.viewport())
+        painter.setFont(self.document().defaultFont())
+        painter.setPen(QColor("#AAAAAA"))
+        if line is not None:
+            block_geo = self.blockBoundingGeometry(block).translated(self.contentOffset())
+            baseline_y = block_geo.top() + line.y() + line.ascent()
+            x = cr.left() + self.cursorWidth()
+            painter.drawText(x, int(baseline_y), self._ghost_text)
+        else:
+            metrics = QFontMetrics(self.document().defaultFont())
+            painter.drawText(cr.left() + self.cursorWidth(), cr.top() + metrics.ascent(), self._ghost_text)
+        painter.end()
 
     def _on_cursor_moved(self):
         """Clear ghost text whenever the cursor moves (unless we caused it)."""
@@ -754,9 +768,9 @@ class CodeEditor(QPlainTextEdit):
             self._clear_ghost()
 
     def _on_update_request(self, _rect, dy):
-        """Reposition the ghost label when the viewport scrolls."""
+        """Viewport scroll repaints automatically; nothing to reposition."""
         if dy and self._ghost_text:
-            self._update_ghost_label_pos()
+            self.viewport().update()
 
     def keyPressEvent(self, event):
         engine = self._engine

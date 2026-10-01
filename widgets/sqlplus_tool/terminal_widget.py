@@ -41,6 +41,12 @@ except ImportError:
 
 _RESIZE_DEBOUNCE_MS = 350
 
+# Keep the hidden console's buffer wider than any plausible formatted row.
+# Windows consoles wrap output at the buffer width regardless of LINESIZE
+# (same reason the external launcher runs `mode con cols=1000`). The Qt pane
+# scrolls horizontally (NoWrap), so a wide buffer is invisible to the user.
+_MIN_CONSOLE_COLS = 1000
+
 
 class SQLPlusToolWidget(QWidget):
     """
@@ -263,7 +269,7 @@ class SQLPlusToolWidget(QWidget):
         easy_connect = self._build_easy_connect()
 
         try:
-            self._pty = PTY(term_cols, 40)
+            self._pty = PTY(max(term_cols, _MIN_CONSOLE_COLS), 40)
             # Pass /NOLOG first, then connect via stdin to avoid password in process list
             cmd_line = f'"{sqlplus_path}" /NOLOG'
             self._pty.spawn(cmd_line)
@@ -271,9 +277,23 @@ class SQLPlusToolWidget(QWidget):
             self._spawn_time = time.time()
             self._reader_thread = threading.Thread(target=self._pty_reader, daemon=True)
             self._reader_thread.start()
-            # Send CONNECT command via PTY stdin — password never appears in cmd args
+            # Send CONNECT command via PTY stdin — password never appears in cmd args.
+            # NOTE: sqlplus on Windows only submits a line on CR; a bare LF
+            # is ignored, so every write must end with "\r\n" (same pattern
+            # as USQLToolWidget). Pasted multi-line text is normalized too.
             time.sleep(0.3)
-            self._pty.write(f"CONNECT {easy_connect}\n")
+            self._pty.write(f"CONNECT {easy_connect}\r\n")
+            # Same formatting as the external SQL*Plus launcher: without this
+            # SQL*Plus defaults to LINESIZE 80 and wraps wide result sets
+            # across multiple staggered line groups.
+            for _fmt_cmd in (
+                "SET LINESIZE 32000",
+                "SET PAGESIZE 100",
+                "SET TAB OFF",
+                "SET TRIMSPOOL ON",
+                "SET TRIMOUT ON",
+            ):
+                self._pty.write(f"{_fmt_cmd}\r\n")
         except Exception as e:
             self._show_error(f"Failed to start SQL*Plus: {e}")
             self._term.append_output(f"\nERROR: Failed to start SQL*Plus: {e}\n")
@@ -312,7 +332,7 @@ class SQLPlusToolWidget(QWidget):
 
     def _on_command_entered(self, cmd: str) -> None:
         if self._pty and self._running:
-            self._pty.write(cmd + "\n")
+            self._pty.write(cmd.rstrip("\n").replace("\n", "\r\n") + "\r\n")
         if cmd.strip():
             self._history.append(cmd)
             self._history_index = len(self._history)
@@ -370,7 +390,7 @@ class SQLPlusToolWidget(QWidget):
         usable_w = self._term.viewport().width() - vbar_w
         cols = max(80, usable_w // char_w) if char_w > 0 and usable_w > 0 else 80
         try:
-            self._pty.set_size(cols, 40)
+            self._pty.set_size(max(cols, _MIN_CONSOLE_COLS), 40)
         except Exception:
             pass
 
@@ -380,7 +400,7 @@ class SQLPlusToolWidget(QWidget):
         self._running = False
         if self._pty:
             try:
-                self._pty.write("EXIT\n")
+                self._pty.write("EXIT\r\n")
                 time.sleep(0.1)
                 self._pty.close()
             except Exception:

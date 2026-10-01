@@ -127,18 +127,70 @@ def _resolve_cli_path(main_window: "MainWindow", cli_type: str) -> str:
     return cli_type
 
 
-def _open_terminal(cmd_args: list[str] | str, env: dict | None = None) -> None:
+def _open_terminal(
+    cmd_args: list[str] | str, env: dict | None = None
+) -> subprocess.Popen | None:
     """Spawn a detached cmd.exe window and run *cmd_args* inside it.
 
     Uses ``CREATE_NEW_CONSOLE`` so the window is independent of the
-    application's own console (if any).
+    application's own console (if any). Returns the process handle so the
+    caller can register it for cleanup when the app exits.
     """
-    subprocess.Popen(
-        cmd_args,
-        shell=False,
-        creationflags=subprocess.CREATE_NEW_CONSOLE,
-        env=env,
-    )
+    try:
+        return subprocess.Popen(
+            cmd_args,
+            shell=False,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            env=env,
+        )
+    except OSError:
+        return None
+
+
+def register_cli_terminal(
+    main_window: "MainWindow", proc: subprocess.Popen | None, temp_files: list[str]
+) -> None:
+    """Track an external CLI terminal so it can be closed with the app."""
+    if proc is None:
+        return
+    tracked = getattr(main_window, "_cli_terminals", None)
+    if tracked is None:
+        tracked = []
+        main_window._cli_terminals = tracked
+    tracked.append((proc, list(temp_files)))
+
+
+def close_cli_terminals(main_window: "MainWindow") -> None:
+    """Terminate all tracked external CLI terminals and clean up temp files.
+
+    Best effort: failures are ignored so application shutdown never blocks.
+    """
+    tracked = getattr(main_window, "_cli_terminals", None) or []
+    main_window._cli_terminals = []
+    for proc, temp_files in tracked:
+        try:
+            if proc.poll() is None:
+                try:
+                    # Tree-kill takes down cmd.exe together with its
+                    # sqlplus/psql children; hidden so no window flashes.
+                    subprocess.run(
+                        ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                        capture_output=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        timeout=10,
+                    )
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        for path in temp_files:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 def _launch_psql(
@@ -188,14 +240,24 @@ def _launch_psql(
     child_env["PGPASSWORD"] = password
 
     # Sequence: run file → interactive session → delete temp file.
-    # cmd /k keeps the window open after everything finishes so the user can
-    # review the output even after closing the interactive session.
+    # cmd /c closes the window once the interactive session exits and the
+    # temp file is deleted.
     # We pass a string to prevent subprocess from escaping quotes for cmd.exe
-    cmd_args = f'cmd /k "{run_cmd} & {interactive_cmd} & {cleanup}"'
+    cmd_args = f'cmd /c "{run_cmd} & {interactive_cmd} & {cleanup}"'
     try:
-        _open_terminal(cmd_args, env=child_env)
+        register_cli_terminal(
+            main_window, _open_terminal(cmd_args, env=child_env), [temp_path]
+        )
     except OSError as exc:
         main_window.worksheet_manager.show_info(f"Failed to launch psql terminal: {exc}")
+
+
+# Display width for the external SQL*Plus window: wide enough for typical
+# result sets, narrow enough to fit a normal console without scrolling.
+_SQLPLUS_LINESIZE = 200
+# Text columns wider than this get a COLUMN FORMAT cap so a single
+# VARCHAR2(80+) cannot stretch every row past the window width.
+_SQLPLUS_CHAR_WIDTH_CAP = 40
 
 
 def _launch_sqlplus(
@@ -225,16 +287,39 @@ def _launch_sqlplus(
         easy_connect = f"{user}/{password}@//{host}:{port}/{sid}"
 
     # Login script: CONNECT → set formatting → run query → stay at SQL>.
+    # Wide text columns are narrowed inside the session itself (SPOOL a
+    # generated COLUMN FORMAT script, then run it): no extra DB round-trip
+    # from Python, so launching stays instant. Formats persist for the rest
+    # of the interactive session; overlong values wrap, never truncate.
+    fmt_fd, fmt_path = tempfile.mkstemp(suffix=".sql", prefix="usql_sqlplus_fmt_")
+    os.close(fmt_fd)
     login_fd, login_path = tempfile.mkstemp(suffix=".sql", prefix="usql_sqlplus_login_")
     try:
         with os.fdopen(login_fd, "w", encoding="utf-8") as lf:
             lf.write(f"CONNECT {easy_connect}\n")
-            # Pre-configure SQL*Plus formatting to prevent ugly 80-char wrapping
-            lf.write("SET LINESIZE 32000\n")
+            lf.write(f"SET LINESIZE {_SQLPLUS_LINESIZE}\n")
             lf.write("SET PAGESIZE 100\n")
             lf.write("SET TAB OFF\n")
             lf.write("SET TRIMSPOOL ON\n")
             lf.write("SET TRIMOUT ON\n")
+            lf.write("SET HEADING OFF\n")
+            lf.write("SET FEEDBACK OFF\n")
+            lf.write("SET DEFINE OFF\n")
+            # TERMOUT OFF hides the generated COLUMN lines from the screen;
+            # SPOOL still captures them into the format script.
+            lf.write("SET TERMOUT OFF\n")
+            lf.write(f"SPOOL {fmt_path}\n")
+            lf.write(
+                "SELECT 'COLUMN \"' || column_name || '\" FORMAT "
+                f"A{_SQLPLUS_CHAR_WIDTH_CAP}' FROM user_tab_columns "
+                "WHERE data_type LIKE '%CHAR%' "
+                f"AND char_length > {_SQLPLUS_CHAR_WIDTH_CAP};\n"
+            )
+            lf.write("SPOOL OFF\n")
+            lf.write("SET TERMOUT ON\n")
+            lf.write("SET HEADING ON\n")
+            lf.write("SET FEEDBACK ON\n")
+            lf.write(f"@{fmt_path}\n")
             lf.write(f"@{temp_path}\n")
     except OSError as exc:
         main_window.worksheet_manager.show_info(f"Failed to write SQL*Plus login script: {exc}")
@@ -256,7 +341,7 @@ def _launch_sqlplus(
             child_env["PATH"] = ic_dir + os.pathsep + env_path
         child_env["TNS_ADMIN"] = os.path.join(ic_dir, "network", "admin")
 
-    # Write a .bat launcher to avoid nested-quote hell in cmd /k "...".
+    # Write a .bat launcher to avoid nested-quote hell in cmd /c "...".
     # The bat: runs sqlplus (/NOLOG + login script) → user gets SQL> prompt
     # → after EXIT, temp files are deleted.
     bat_fd, bat_path = tempfile.mkstemp(suffix=".bat", prefix="usql_sqlplus_run_")
@@ -267,14 +352,20 @@ def _launch_sqlplus(
             # a horizontal scrollbar instead of aggressively wrapping text to the next line.
             bf.write("mode con cols=1000\n")
             bf.write(f'"{cli_path}" /NOLOG @"{login_path}"\n')
-            bf.write(f'del /q "{temp_path}" "{login_path}"\n')
+            bf.write(f'del /q "{temp_path}" "{login_path}" "{fmt_path}"\n')
+            bf.write('del /q "%~f0"\n')
     except OSError as exc:
         main_window.worksheet_manager.show_info(f"Failed to write SQL*Plus launcher: {exc}")
         return
 
     try:
         # Pass as a single string to let Popen handle cmd.exe's weird quoting
-        _open_terminal(f'cmd.exe /k "{bat_path}"', env=child_env)
+        # /c closes the window once EXIT in SQL*Plus ends the session.
+        register_cli_terminal(
+            main_window,
+            _open_terminal(f'cmd.exe /c "{bat_path}"', env=child_env),
+            [temp_path, login_path, fmt_path, bat_path],
+        )
     except OSError as exc:
         main_window.worksheet_manager.show_info(f"Failed to launch sqlplus terminal: {exc}")
 

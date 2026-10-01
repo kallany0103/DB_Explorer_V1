@@ -1,4 +1,5 @@
 # main.py
+import ctypes
 import sys
 import os
 import pathlib
@@ -14,6 +15,22 @@ from ui.theme import setup_theme
 from main_window import MainWindow
 
 os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
+
+# The AppMutex name must match the AppMutex directive in Universal_SQL_Client.iss.
+# Holding this mutex lets the installer/uninstaller detect a running instance.
+_APP_MUTEX_NAME = "UniversalSQLClientAppMutex"
+_app_mutex_handle = None
+
+
+def _acquire_app_mutex() -> None:
+    global _app_mutex_handle
+    if sys.platform != "win32":
+        return
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        _app_mutex_handle = kernel32.CreateMutexW(None, 0, _APP_MUTEX_NAME)
+    except Exception:
+        _app_mutex_handle = None
 
 
 class _StartupWorker(QThread):
@@ -39,6 +56,8 @@ class _StartupWorker(QThread):
 if __name__ == "__main__":
 
     multiprocessing.freeze_support()  # required for ProcessPoolExecutor in PyInstaller executable
+
+    _acquire_app_mutex()
 
     app = QApplication(sys.argv)
 

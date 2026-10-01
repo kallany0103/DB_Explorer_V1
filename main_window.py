@@ -499,7 +499,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.42</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.43</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()
@@ -922,6 +922,13 @@ class MainWindow(QMainWindow):
                 db.close_all_postgres_pools()
             except Exception as e:
                 print(f"Error closing connection pools: {e}")
+
+            # Close any external CLI terminals (psql / SQL*Plus) with the app
+            try:
+                from widgets.tools.cli_launcher import close_cli_terminals
+                close_cli_terminals(self)
+            except Exception as e:
+                print(f"Error closing CLI terminals: {e}")
 
             event.accept()
         else:
