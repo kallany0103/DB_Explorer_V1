@@ -1,4 +1,2 @@
 resources/oracle/instantclient/*.dll filter=lfs diff=lfs merge=lfs -text
-resources/oracle/instantclient/*.sym filter=lfs diff=lfs merge=lfs -text
-resources/oracle/instantclient/*.jar filter=lfs diff=lfs merge=lfs -text
 resources/oracle/instantclient/*.exe filter=lfs diff=lfs merge=lfs -text
