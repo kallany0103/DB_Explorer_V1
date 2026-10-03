@@ -37,7 +37,7 @@ VSVersionInfo(
         StringStruct('OriginalFilename', 'Universal SQL Client.EXE'),
         StringStruct('ProductName', 'Universal SQL Client'),
         StringStruct('ProductVersion', '1.43.0.0')]
-      ]), 
+      )]), 
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
 )

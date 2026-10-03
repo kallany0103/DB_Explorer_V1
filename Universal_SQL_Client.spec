@@ -10,12 +10,19 @@ datas = [
 binaries = []
 hiddenimports = [
     'psycopg2',
-    'oracledb',
     'pandas',
     'openpyxl',
     'sqlglot',
     'keyring.backends.Windows',
 ]
+# oracledb thin mode requires the full cryptography package (x509,
+# hazmat bindings, _rust extension). A bare hiddenimports entry for
+# 'cryptography'/'oracledb' is NOT enough under PyInstaller and produces
+# DPY-3016 ("cryptography package cannot be imported / cannot import
+# name x509") in the frozen exe — collect all submodules/binaries.
+for _pkg in ('oracledb', 'cryptography', 'cffi'):
+    tmp_pkg = collect_all(_pkg)
+    datas += tmp_pkg[0]; binaries += tmp_pkg[1]; hiddenimports += tmp_pkg[2]
 tmp_ret = collect_all('PySide6')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('cdata')

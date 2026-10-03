@@ -90,19 +90,12 @@ const
   'I do not accept' unselected when a LicenseFile is specified — no override needed. }
 
 var
-  UninstallDataPage: TInputOptionWizardPage;
+  RemoveData: Boolean;
 
 function InitializeUninstall(): Boolean;
 begin
-  UninstallDataPage := CreateInputOptionPage(wpWelcome,
-    'Uninstall options', 'Remove your personal data?',
-    'Universal SQL Client will be uninstalled. Your personal data is kept ' +
-    'unless you select the options below. Deleted data can''t be recovered.',
-    False, False);
-  UninstallDataPage.Add('Remove app data (saved &connections, history, and preferences)');
-  UninstallDataPage.Add('Remove saved &credentials (passwords and tokens)');
-  UninstallDataPage.Values[0] := False;
-  UninstallDataPage.Values[1] := False;
+  RemoveData := (MsgBox('Do you want to remove your personal data (saved connections, history, and credentials)?' + #13#10 + #13#10 +
+    'Deleted data cannot be recovered.', mbConfirmation, MB_YESNO) = idYes);
   Result := True;
 end;
 
@@ -118,16 +111,14 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
-    if UninstallDataPage.Values[0] then
+    if RemoveData then
     begin
       DelTree(ExpandConstant('{userappdata}\Universal SQL Client'), True, True, True);
       DelTree(ExpandConstant('{userappdata}\DBExplorer'), True, True, True);
       RegDeleteKeyIncludingSubkeys(HKCU, 'Software\DBExplorer');
-    end;
-    if UninstallDataPage.Values[1] then
-    begin
-      { Best effort: keyring WinVaultKeyring stores under the service name or }
-      { {username}@{service} compound targets. Missing entries are ignored. }
+
+      // Best effort: keyring WinVaultKeyring stores under the service name or
+      // {username}@{service} compound targets. Missing entries are ignored.
       DeleteCredential('Universal SQL Client');
       DeleteCredential('access_token@Universal SQL Client');
       DeleteCredential('refresh_token@Universal SQL Client');
