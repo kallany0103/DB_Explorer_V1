@@ -367,26 +367,18 @@ class _TerminalEdit(QPlainTextEdit):
         super().paintEvent(event)
         if not self._ghost_text:
             return
-        cursor = self.textCursor()
-        block = cursor.block()
-        layout = block.layout()
-        if layout is None:
-            return
         cr = self.cursorRect()
         if not self.viewport().rect().intersects(cr):
             return
-        line = layout.lineForTextPosition(cursor.positionInBlock())
+        # Anchor the ghost to the cursor rect itself (same top/ascent as the
+        # typed text) so it can never drift above/below the current line.
         painter = QPainter(self.viewport())
         painter.setFont(self.document().defaultFont())
         painter.setPen(QColor("#5b6078"))
-        if line is not None:
-            block_geo = self.blockBoundingGeometry(block).translated(self.contentOffset())
-            baseline_y = block_geo.top() + line.y() + line.ascent()
-            x = cr.left() + self.cursorWidth()
-            painter.drawText(x, int(baseline_y), self._ghost_text)
-        else:
-            metrics = QFontMetrics(self.document().defaultFont())
-            painter.drawText(cr.left() + self.cursorWidth(), cr.top() + metrics.ascent(), self._ghost_text)
+        metrics = QFontMetrics(self.document().defaultFont())
+        x = cr.left() + self.cursorWidth()
+        y = cr.top() + metrics.ascent()
+        painter.drawText(x, y, self._ghost_text)
         painter.end()
 
     def _on_cursor_moved(self) -> None:

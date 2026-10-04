@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import threading
 import time
-from pathlib import Path
 
 import qtawesome as qta
 from PySide6.QtCore import QTimer, Signal
@@ -32,7 +31,7 @@ from widgets.psql_tool.constants import (
     _STYLE,
 )
 from widgets.psql_tool.editor import _TerminalEdit
-from widgets.sqlplus_tool.discovery import find_sqlplus, instantclient_dir
+from widgets.sqlplus_tool.discovery import admin_dir, find_sqlplus, instantclient_dir
 
 try:
     from winpty import PTY
@@ -256,15 +255,13 @@ class SQLPlusToolWidget(QWidget):
         # Always override TNS_ADMIN to point at the bundled sqlnet.ora so that
         # the Oracle 23c client picks up our auth-protocol settings (ORA-28041
         # fix). A system-level TNS_ADMIN from an existing Oracle home must not
-        # take precedence over our bundled configuration.
-        _bundled_admin = (
-            Path(__file__).parent.parent.parent
-            / "resources" / "oracle" / "instantclient" / "network" / "admin"
-        )
+        # take precedence over our bundled configuration. admin_dir()
+        # resolves the frozen (installed/dist) and dev layouts.
+        _bundled_admin = admin_dir()
         if ic_dir:
             os.environ["TNS_ADMIN"] = os.path.join(ic_dir, "network", "admin")
-        elif _bundled_admin.is_dir():
-            os.environ["TNS_ADMIN"] = str(_bundled_admin)
+        elif _bundled_admin:
+            os.environ["TNS_ADMIN"] = _bundled_admin
 
         easy_connect = self._build_easy_connect()
 

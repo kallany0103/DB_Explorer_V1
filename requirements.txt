@@ -2,6 +2,8 @@
 psycopg2-binary
 sqlglot>=20.0.0
 oracledb
+cryptography>=42
+cffi
 pandas
 Pyside6
 qtawesome>=1.4.0
