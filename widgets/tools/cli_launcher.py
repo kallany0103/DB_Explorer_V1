@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from widgets.worksheet.query.query_preparation import get_query_editor, get_tab_connection_data
 from widgets.psql_tool.discovery import find_psql
-from widgets.sqlplus_tool.discovery import find_sqlplus, instantclient_dir
+from widgets.sqlplus_tool.discovery import admin_dir, find_sqlplus, instantclient_dir
 
 if TYPE_CHECKING:
     from main_window import MainWindow
@@ -328,12 +328,9 @@ def _launch_sqlplus(
     child_env = os.environ.copy()
     ic_dir = instantclient_dir()
 
-    bundled_admin = (
-        Path(__file__).parent.parent.parent
-        / "resources" / "oracle" / "instantclient" / "network" / "admin"
-    )
-    if bundled_admin.is_dir():
-        child_env["TNS_ADMIN"] = str(bundled_admin)
+    bundled_admin = admin_dir()
+    if bundled_admin:
+        child_env["TNS_ADMIN"] = bundled_admin
 
     if ic_dir:
         env_path = child_env.get("PATH", "")
