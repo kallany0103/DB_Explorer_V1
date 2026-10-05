@@ -145,7 +145,16 @@ class WorksheetToolbar(QWidget):
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
         layout.addWidget(self.explain_combo)
 
-        # Describe (parse) select query
+        # Describe (F4) - table and schema
+        if hasattr(manager, 'ws_describe_object_action'):
+            self.describe_obj_btn = ToolbarActionButton(icon=manager.ws_describe_object_action.icon())
+            self.describe_obj_btn.setDefaultAction(manager.ws_describe_object_action)
+            self.describe_obj_btn.setIconSize(QSize(16, 16))
+            self.describe_obj_btn.setMinimumWidth(26)
+            self.describe_obj_btn.setToolTip("Describe (F4)")
+            layout.addWidget(self.describe_obj_btn)
+
+        # Describe (parse) select query (Shift+F4)
         if hasattr(manager, 'ws_describe_action'):
             self.describe_btn = ToolbarActionButton(icon=manager.ws_describe_action.icon())
             self.describe_btn.setDefaultAction(manager.ws_describe_action)

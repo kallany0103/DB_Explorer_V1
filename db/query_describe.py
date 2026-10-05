@@ -26,23 +26,72 @@ def _strip_sql_comments(query: str) -> str:
     return "\n".join(lines).strip()
 
 
-def validate_and_clean_select_query(query: str) -> str:
+RESERVED_SQL_KEYWORDS = {
+    "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER",
+    "CROSS", "ON", "AND", "OR", "NOT", "GROUP", "BY", "ORDER", "HAVING", "LIMIT",
+    "OFFSET", "FETCH", "FIRST", "ROWS", "ONLY", "UNION", "ALL", "INTERSECT", "MINUS",
+    "EXCEPT", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "MERGE",
+    "CREATE", "ALTER", "DROP", "TRUNCATE", "TABLE", "VIEW", "INDEX", "TRIGGER",
+    "PROCEDURE", "FUNCTION", "DATABASE", "SCHEMA", "GRANT", "REVOKE", "COMMIT",
+    "ROLLBACK", "SAVEPOINT", "CASE", "WHEN", "THEN", "ELSE", "END", "AS", "DISTINCT",
+    "IN", "IS", "NULL", "LIKE", "ILIKE", "BETWEEN", "EXISTS", "WITH", "EXEC", "EXECUTE",
+    "BEGIN", "DECLARE",
+}
+
+IDENT_SEG_PAT = r'(?:"[^"]+"|\`[^\`]+\`|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_#$]*)'
+IDENT_FULL_PAT = re.compile(rf'^(?:{IDENT_SEG_PAT}\s*\.\s*)*{IDENT_SEG_PAT}$')
+
+
+def resolve_describe_query(query: str) -> tuple[str, str | None]:
     """
-    Validates that the query is a SELECT query and strips comments and trailing semicolons.
-    Raises ValueError if not a valid SELECT query.
+    Resolves a raw input string for Describe into an executable SELECT statement
+    and an optional object name.
+
+    Supports:
+    1. Full SELECT or WITH queries -> returns (clean_query, None)
+    2. DESC / DESCRIBE command (e.g. DESC employees) -> returns ("SELECT * FROM employees", "employees")
+    3. Standalone table / view name (e.g. employees, hr.employees, "Emam"."credential") -> returns ("SELECT * FROM <table>", "<table>")
+
+    Raises ValueError if input is empty, a SQL keyword, or an unsupported statement.
     """
     if not query or not query.strip():
-        raise ValueError("Please provide a SQL query to describe.")
+        raise ValueError("Please provide a SQL query or table name to describe.")
 
     clean = _strip_sql_comments(query).strip().rstrip(";")
     if not clean:
         raise ValueError("Query contains only comments or empty text.")
 
-    upper = clean.upper()
-    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
-        raise ValueError("Query Describe only supports SELECT statements.")
+    # 1. Check for DESC / DESCRIBE prefix
+    desc_match = re.match(r"^(?:DESCRIBE|DESC)\s+(.+)$", clean, re.IGNORECASE)
+    if desc_match:
+        target = desc_match.group(1).strip().rstrip(";")
+        if not target:
+            raise ValueError("Please specify an object name after DESC / DESCRIBE.")
+        return f"SELECT * FROM {target}", target
 
-    return clean
+    # 2. Check for SELECT or WITH queries
+    upper = clean.upper()
+    if upper.startswith("SELECT") or upper.startswith("WITH"):
+        if upper in ("SELECT", "WITH"):
+            raise ValueError("Please provide a complete SELECT query or table name to describe.")
+        return clean, None
+
+    # 3. Check for standalone table / object identifier (e.g. employees, hr.employees, "Emam"."credential")
+    if IDENT_FULL_PAT.match(clean):
+        if clean.upper() in RESERVED_SQL_KEYWORDS:
+            raise ValueError(f"'{clean}' is a SQL keyword, not a table name. Please select a table name or SELECT query to describe.")
+        return f"SELECT * FROM {clean}", clean
+
+    raise ValueError("Query Describe only supports SELECT statements or table/view names (e.g. employees, hr.departments, DESC table_name).")
+
+
+def validate_and_clean_select_query(query: str) -> str:
+    """
+    Validates that the query or table name can be described and returns the executable SELECT query.
+    Maintained for backwards compatibility.
+    """
+    clean_query, _ = resolve_describe_query(query)
+    return clean_query
 
 
 def _format_oracle_type(desc) -> str:

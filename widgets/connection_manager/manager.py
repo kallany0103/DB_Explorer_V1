@@ -175,6 +175,10 @@ class ConnectionManager(QWidget):
     def open_statistics_workbench(self, item_data, obj_name):
         self.main_window.show_statistics_workbench(item_data, obj_name)
 
+    def describe_object(self, item_data, obj_name):
+        conn_data = item_data.get("connection") or item_data if isinstance(item_data, dict) else None
+        self.main_window.describe_object(target=obj_name, conn_data=conn_data)
+
     def _get_selected_schema_item_data(self) -> dict | None:
         """Return the UserRole data dict for the currently selected schema-tree item."""
         _, item_data, _ = self._get_current_schema_item_data()

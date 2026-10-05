@@ -32,7 +32,13 @@ def stub(*_):
 
 
 def add_properties_statistics_actions(menu, manager, item_data, obj_name):
-    """Add Properties/Statistics items that open or refresh inspector workbench tabs."""
+    """Add Describe/Properties/Statistics items that open or refresh inspector workbench tabs."""
+    desc_act = action(manager, "Describe...", "mdi.information-outline", shortcut="F4")
+    desc_act.triggered.connect(
+        lambda _checked=False, data=item_data, name=obj_name: manager.describe_object(data, name)
+    )
+    menu.addAction(desc_act)
+
     act = action(manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
     act.triggered.connect(
         lambda _checked=False, data=item_data, name=obj_name: manager.open_properties_workbench(data, name)

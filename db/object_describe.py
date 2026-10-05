@@ -1,0 +1,794 @@
+"""
+db/object_describe.py
+Provides metadata inspection and describe functionality for database tables, views,
+and schemas across Oracle, PostgreSQL, SQLite, and other supported engines.
+Modeled after the "Describe (F4)" feature in Toad for Oracle.
+"""
+
+import re
+import db
+from db.result_metadata import _description_value
+
+
+def parse_object_identifier(raw: str) -> tuple[str | None, str]:
+    """
+    Parses a raw object identifier string into (schema_name, object_name).
+    Handles unquoted, double-quoted, bracketed, and backticked identifiers.
+    E.g.:
+      'employees' -> (None, 'employees')
+      'hr.employees' -> ('hr', 'employees')
+      '"Emam"."credential"' -> ('Emam', 'credential')
+      '[dbo].[Orders]' -> ('dbo', 'Orders')
+    """
+    raw = raw.strip().rstrip(";")
+    desc_match = re.match(r"^(?:DESCRIBE|DESC)\s+(.+)$", raw, re.IGNORECASE)
+    if desc_match:
+        raw = desc_match.group(1).strip().rstrip(";")
+
+    # Split by dot outside quotes
+    tokens = []
+    current = []
+    in_quote = None
+    for char in raw:
+        if in_quote:
+            current.append(char)
+            if (in_quote == '"' and char == '"') or \
+               (in_quote == '`' and char == '`') or \
+               (in_quote == '[' and char == ']'):
+                in_quote = None
+        else:
+            if char in ('"', '`', '['):
+                in_quote = char
+                current.append(char)
+            elif char == '.':
+                tokens.append("".join(current).strip())
+                current = []
+            else:
+                current.append(char)
+    if current:
+        tokens.append("".join(current).strip())
+
+    cleaned = []
+    for t in tokens:
+        clean_t = t.strip()
+        if (clean_t.startswith('"') and clean_t.endswith('"')) or \
+           (clean_t.startswith('`') and clean_t.endswith('`')):
+            clean_t = clean_t[1:-1]
+        elif clean_t.startswith('[') and clean_t.endswith(']'):
+            clean_t = clean_t[1:-1]
+        if clean_t:
+            cleaned.append(clean_t)
+
+    if not cleaned:
+        return None, ""
+    if len(cleaned) == 1:
+        return None, cleaned[0]
+    elif len(cleaned) == 2:
+        return cleaned[0], cleaned[1]
+    else:
+        return cleaned[-2], cleaned[-1]
+
+
+def _detect_db_code(conn_data: dict) -> str:
+    code = (conn_data.get("code") or conn_data.get("type") or "").upper()
+    if not code:
+        if conn_data.get("service_name") or "oracle" in str(conn_data.get("driver", "")).lower():
+            code = "ORACLE"
+        elif conn_data.get("host"):
+            code = "POSTGRES"
+        elif conn_data.get("db_path"):
+            code = "SQLITE"
+    return code
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POSTGRESQL DESCRIBE IMPLEMENTATION
+# ─────────────────────────────────────────────────────────────────────────────
+def _describe_postgres(conn_data: dict, schema_hint: str | None, object_name: str) -> dict:
+    conn = db.create_postgres_connection(
+        conn_data,
+        application_name="Universal SQL Client (Object Describe)",
+        bypass_cooldown=True
+    )
+    if not conn:
+        raise ConnectionError("Failed to connect to PostgreSQL database.")
+
+    cursor = conn.cursor()
+    try:
+        # Check if the target is a schema (only if schema_hint is None)
+        if not schema_hint:
+            cursor.execute("SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = %s", (object_name,))
+            schema_row = cursor.fetchone()
+            if schema_row:
+                # Target is a schema!
+                return _describe_postgres_schema(cursor, object_name, schema_row[1])
+
+        # Otherwise target is treated as a table or view
+        effective_schema = schema_hint or "public"
+
+        # Check table / view existence in pg_class
+        cursor.execute("""
+            SELECT c.oid, c.relkind, pg_get_userbyid(c.relowner), n.nspname,
+                   c.reltuples::bigint, pg_size_pretty(pg_total_relation_size(c.oid)),
+                   obj_description(c.oid, 'pg_class')
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = %s AND c.relname = %s;
+        """, (effective_schema, object_name))
+        tbl_row = cursor.fetchone()
+
+        if not tbl_row and not schema_hint:
+            # Try finding table in any non-system schema
+            cursor.execute("""
+                SELECT c.oid, c.relkind, pg_get_userbyid(c.relowner), n.nspname,
+                       c.reltuples::bigint, pg_size_pretty(pg_total_relation_size(c.oid)),
+                       obj_description(c.oid, 'pg_class')
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relname = %s AND n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema'
+                ORDER BY (n.nspname = 'public') DESC
+                LIMIT 1;
+            """, (object_name,))
+            tbl_row = cursor.fetchone()
+            if tbl_row:
+                effective_schema = tbl_row[3]
+
+        if not tbl_row:
+            # Check if it was meant to be a schema
+            cursor.execute("SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = %s", (object_name,))
+            schema_row = cursor.fetchone()
+            if schema_row:
+                return _describe_postgres_schema(cursor, object_name, schema_row[1])
+            raise ValueError(f"Table or Schema '{object_name}' not found in database.")
+
+        oid, relkind, owner, schema_name, row_est, total_size, comment = tbl_row
+        relkind_map = {
+            'r': 'Table',
+            'p': 'Partitioned table',
+            'v': 'View',
+            'm': 'Materialized view',
+            'f': 'Foreign table',
+            'S': 'Sequence'
+        }
+        obj_type = relkind_map.get(relkind, 'Table')
+
+        # 1. Fetch Columns
+        cursor.execute("""
+            SELECT 
+                a.attnum,
+                a.attname,
+                pg_catalog.format_type(a.atttypid, a.atttypmod) as data_type,
+                NOT a.attnotnull as nullable,
+                pg_get_expr(d.adbin, d.adrelid) as default_val,
+                EXISTS (
+                    SELECT 1 FROM pg_constraint pk
+                    WHERE pk.contype = 'p' AND pk.conrelid = a.attrelid AND a.attnum = ANY(pk.conkey)
+                ) as is_pk,
+                EXISTS (
+                    SELECT 1 FROM pg_constraint fk
+                    WHERE fk.contype = 'f' AND fk.conrelid = a.attrelid AND a.attnum = ANY(fk.conkey)
+                ) as is_fk,
+                col_description(a.attrelid, a.attnum) as comment
+            FROM pg_attribute a
+            LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+            WHERE a.attrelid = %s AND a.attnum > 0 AND NOT a.attisdropped
+            ORDER BY a.attnum;
+        """, (oid,))
+        columns = []
+        for r in cursor.fetchall():
+            columns.append({
+                "position": r[0],
+                "name": r[1],
+                "data_type": r[2],
+                "nullable": bool(r[3]),
+                "default": r[4] or "",
+                "is_pk": bool(r[5]),
+                "is_fk": bool(r[6]),
+                "comment": r[7] or "",
+            })
+
+        # 2. Fetch Indexes
+        cursor.execute("""
+            SELECT
+                i.relname AS index_name,
+                pg_get_indexdef(ix.indexrelid, 0, true) AS index_def,
+                ix.indisunique AS is_unique,
+                am.amname AS index_type
+            FROM pg_index ix
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_am am ON am.oid = i.relam
+            WHERE ix.indrelid = %s
+            ORDER BY i.relname;
+        """, (oid,))
+        indexes = []
+        for r in cursor.fetchall():
+            indexes.append({
+                "name": r[0],
+                "definition": r[1] or "",
+                "unique": bool(r[2]),
+                "type": r[3] or "btree"
+            })
+
+        # 3. Fetch Constraints
+        cursor.execute("""
+            SELECT 
+                conname,
+                CASE contype
+                    WHEN 'p' THEN 'Primary Key'
+                    WHEN 'f' THEN 'Foreign Key'
+                    WHEN 'u' THEN 'Unique'
+                    WHEN 'c' THEN 'Check'
+                    ELSE contype::text
+                END,
+                pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = %s
+            ORDER BY conname;
+        """, (oid,))
+        constraints = []
+        for r in cursor.fetchall():
+            constraints.append({
+                "name": r[0],
+                "type": r[1],
+                "definition": r[2] or ""
+            })
+
+        # 4. Fetch Sample Data (up to 50 rows)
+        sample_headers = [c["name"] for c in columns]
+        sample_rows = []
+        try:
+            full_quoted_name = f'"{schema_name}"."{object_name}"'
+            cursor.execute(f"SELECT * FROM {full_quoted_name} LIMIT 50")
+            sample_rows = cursor.fetchall()
+        except Exception:
+            sample_rows = []
+
+        # 5. Build DDL Script
+        ddl_lines = [f"CREATE {obj_type.upper()} \"{schema_name}\".\"{object_name}\" ("]
+        col_defs = []
+        for c in columns:
+            null_str = "" if c["nullable"] else " NOT NULL"
+            def_str = f" DEFAULT {c['default']}" if c["default"] else ""
+            col_defs.append(f"    \"{c['name']}\" {c['data_type']}{def_str}{null_str}")
+        for cst in constraints:
+            if cst["type"] == "Primary Key":
+                col_defs.append(f"    CONSTRAINT \"{cst['name']}\" {cst['definition']}")
+        ddl_lines.append(",\n".join(col_defs))
+        ddl_lines.append(");")
+        ddl_script = "\n".join(ddl_lines)
+
+        return {
+            "target_type": "table" if "Table" in obj_type else "view",
+            "name": object_name,
+            "schema": schema_name,
+            "title": f'"{schema_name}"."{object_name}"',
+            "object_type": obj_type,
+            "details": {
+                "Schema": schema_name,
+                "Owner": owner or "postgres",
+                "Object Type": obj_type,
+                "Estimated Rows": row_est if row_est is not None else "N/A",
+                "Total Size": total_size or "N/A",
+                "Columns Count": len(columns),
+                "Comment": comment or ""
+            },
+            "columns": columns,
+            "indexes": indexes,
+            "constraints": constraints,
+            "sample_data": {
+                "headers": sample_headers,
+                "rows": sample_rows
+            },
+            "ddl": ddl_script
+        }
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _describe_postgres_schema(cursor, schema_name: str, owner: str) -> dict:
+    # 1. Fetch tables in schema
+    cursor.execute("""
+        SELECT 
+            c.relname,
+            CASE c.relkind
+                WHEN 'r' THEN 'Table'
+                WHEN 'p' THEN 'Partitioned table'
+                WHEN 'm' THEN 'Materialized view'
+                WHEN 'f' THEN 'Foreign table'
+                ELSE 'Table'
+            END,
+            COALESCE(c.reltuples::bigint, 0),
+            pg_size_pretty(pg_total_relation_size(c.oid)),
+            (SELECT count(*) FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped),
+            obj_description(c.oid, 'pg_class')
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relkind IN ('r', 'p', 'm', 'f')
+        ORDER BY c.relname;
+    """, (schema_name,))
+    tables = []
+    for r in cursor.fetchall():
+        tables.append({
+            "name": r[0],
+            "type": r[1],
+            "estimated_rows": r[2],
+            "size": r[3] or "0 bytes",
+            "columns_count": r[4],
+            "comment": r[5] or ""
+        })
+
+    # 2. Fetch views in schema
+    cursor.execute("""
+        SELECT 
+            c.relname,
+            pg_get_userbyid(c.relowner),
+            obj_description(c.oid, 'pg_class')
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relkind = 'v'
+        ORDER BY c.relname;
+    """, (schema_name,))
+    views = []
+    for r in cursor.fetchall():
+        views.append({
+            "name": r[0],
+            "owner": r[1],
+            "comment": r[2] or ""
+        })
+
+    # 3. Fetch functions in schema
+    cursor.execute("""
+        SELECT 
+            p.proname || '(' || pg_get_function_arguments(p.oid) || ')',
+            pg_get_userbyid(p.proowner),
+            l.lanname,
+            obj_description(p.oid, 'pg_proc')
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+        WHERE n.nspname = %s
+        ORDER BY 1;
+    """, (schema_name,))
+    functions = []
+    for r in cursor.fetchall():
+        functions.append({
+            "name": r[0],
+            "owner": r[1],
+            "language": r[2],
+            "comment": r[3] or ""
+        })
+
+    ddl_script = f"CREATE SCHEMA \"{schema_name}\" AUTHORIZATION \"{owner}\";\n\n" \
+                 f"-- Contains {len(tables)} tables, {len(views)} views, {len(functions)} functions"
+
+    return {
+        "target_type": "schema",
+        "name": schema_name,
+        "schema": schema_name,
+        "title": f'Schema: "{schema_name}"',
+        "object_type": "Schema",
+        "details": {
+            "Schema Name": schema_name,
+            "Owner": owner,
+            "Total Tables": len(tables),
+            "Total Views": len(views),
+            "Total Functions": len(functions),
+        },
+        "tables": tables,
+        "views": views,
+        "functions": functions,
+        "ddl": ddl_script
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SQLITE DESCRIBE IMPLEMENTATION
+# ─────────────────────────────────────────────────────────────────────────────
+def _describe_sqlite(conn_data: dict, schema_hint: str | None, object_name: str) -> dict:
+    db_path = conn_data.get("db_path")
+    if not db_path:
+        raise ValueError("SQLite database path is missing.")
+
+    conn = db.create_sqlite_connection(db_path)
+    if not conn:
+        raise ConnectionError("Failed to connect to SQLite database.")
+
+    cursor = conn.cursor()
+    try:
+        # Check if object exists in sqlite_master
+        cursor.execute("SELECT type, name, sql FROM sqlite_master WHERE lower(name) = lower(?)", (object_name,))
+        row = cursor.fetchone()
+
+        # If not found as table, check if object_name is 'main' or sqlite schema/db
+        if not row:
+            if object_name.lower() in ("main", "database", "sqlite"):
+                return _describe_sqlite_schema(cursor, object_name, db_path)
+            raise ValueError(f"Table or View '{object_name}' not found in SQLite database.")
+
+        obj_type_raw, tbl_name, raw_sql = row
+        obj_type = "View" if obj_type_raw.lower() == "view" else "Table"
+
+        # 1. Fetch Columns
+        cursor.execute(f'PRAGMA table_info("{tbl_name}")')
+        columns = []
+        for r in cursor.fetchall():
+            columns.append({
+                "position": r[0] + 1,
+                "name": r[1],
+                "data_type": r[2] or "TEXT",
+                "nullable": not bool(r[3]),
+                "default": r[4] or "",
+                "is_pk": bool(r[5]),
+                "is_fk": False,
+                "comment": ""
+            })
+
+        # 2. Fetch Foreign Keys
+        cursor.execute(f'PRAGMA foreign_key_list("{tbl_name}")')
+        fk_columns = set()
+        constraints = []
+        for r in cursor.fetchall():
+            from_col = r[3]
+            to_tbl = r[2]
+            to_col = r[4]
+            fk_columns.add(from_col)
+            constraints.append({
+                "name": f"FK_{tbl_name}_{from_col}",
+                "type": "Foreign Key",
+                "definition": f"FOREIGN KEY ({from_col}) REFERENCES {to_tbl}({to_col})"
+            })
+
+        for c in columns:
+            if c["name"] in fk_columns:
+                c["is_fk"] = True
+
+        # 3. Fetch Indexes
+        cursor.execute(f'PRAGMA index_list("{tbl_name}")')
+        indexes = []
+        for r in cursor.fetchall():
+            idx_name = r[1]
+            is_unique = bool(r[2])
+            indexes.append({
+                "name": idx_name,
+                "definition": f"UNIQUE={is_unique}",
+                "unique": is_unique,
+                "type": "index"
+            })
+
+        # 4. Fetch Sample Data
+        sample_headers = [c["name"] for c in columns]
+        sample_rows = []
+        try:
+            cursor.execute(f'SELECT * FROM "{tbl_name}" LIMIT 50')
+            sample_rows = cursor.fetchall()
+        except Exception:
+            sample_rows = []
+
+        return {
+            "target_type": "table" if obj_type == "Table" else "view",
+            "name": tbl_name,
+            "schema": "main",
+            "title": f'"{tbl_name}"',
+            "object_type": obj_type,
+            "details": {
+                "Database File": db_path,
+                "Object Type": obj_type,
+                "Columns Count": len(columns),
+                "Indexes Count": len(indexes)
+            },
+            "columns": columns,
+            "indexes": indexes,
+            "constraints": constraints,
+            "sample_data": {
+                "headers": sample_headers,
+                "rows": sample_rows
+            },
+            "ddl": raw_sql or f"CREATE {obj_type.upper()} {tbl_name};"
+        }
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _describe_sqlite_schema(cursor, schema_name: str, db_path: str) -> dict:
+    cursor.execute("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    tables = []
+    views = []
+    for r in cursor.fetchall():
+        name, otype = r
+        if otype == "view":
+            views.append({"name": name, "owner": "main", "comment": ""})
+        else:
+            tables.append({
+                "name": name,
+                "type": "Table",
+                "estimated_rows": "N/A",
+                "size": "N/A",
+                "columns_count": 0,
+                "comment": ""
+            })
+
+    return {
+        "target_type": "schema",
+        "name": schema_name,
+        "schema": schema_name,
+        "title": f"SQLite Database: {schema_name}",
+        "object_type": "Schema",
+        "details": {
+            "Database File": db_path,
+            "Tables": len(tables),
+            "Views": len(views)
+        },
+        "tables": tables,
+        "views": views,
+        "functions": [],
+        "ddl": f"-- SQLite Database: {db_path}\n-- Contains {len(tables)} tables, {len(views)} views"
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ORACLE DESCRIBE IMPLEMENTATION
+# ─────────────────────────────────────────────────────────────────────────────
+def _describe_oracle(conn_data: dict, schema_hint: str | None, object_name: str) -> dict:
+    conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+    if not conn:
+        raise ConnectionError("Failed to connect to Oracle database.")
+
+    cursor = conn.cursor()
+    try:
+        eff_owner = (schema_hint or conn_data.get("user") or "").upper()
+        eff_obj = object_name.upper()
+
+        # Check if object is a schema / user in Oracle
+        if not schema_hint:
+            cursor.execute("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = :usr", usr=eff_obj)
+            usr_row = cursor.fetchone()
+            if usr_row:
+                return _describe_oracle_schema(cursor, eff_obj)
+
+        # Check table in ALL_TABLES / ALL_VIEWS
+        cursor.execute("""
+            SELECT OWNER, TABLE_NAME, 'TABLE' AS OBJ_TYPE, NUM_ROWS
+            FROM ALL_TABLES
+            WHERE (OWNER = :own OR :own IS NULL) AND TABLE_NAME = :obj
+            UNION ALL
+            SELECT OWNER, VIEW_NAME, 'VIEW' AS OBJ_TYPE, NULL
+            FROM ALL_VIEWS
+            WHERE (OWNER = :own OR :own IS NULL) AND VIEW_NAME = :obj
+        """, own=eff_owner or None, obj=eff_obj)
+        tbl_row = cursor.fetchone()
+
+        if not tbl_row:
+            # Check if user meant schema
+            cursor.execute("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = :usr", usr=eff_obj)
+            usr_row = cursor.fetchone()
+            if usr_row:
+                return _describe_oracle_schema(cursor, eff_obj)
+            raise ValueError(f"Table or Schema '{object_name}' not found in Oracle database.")
+
+        owner, tbl_name, obj_type, num_rows = tbl_row
+
+        # 1. Fetch Columns
+        cursor.execute("""
+            SELECT 
+                COLUMN_ID,
+                COLUMN_NAME,
+                DATA_TYPE,
+                DATA_LENGTH,
+                DATA_PRECISION,
+                DATA_SCALE,
+                NULLABLE,
+                DATA_DEFAULT
+            FROM ALL_TAB_COLS
+            WHERE OWNER = :own AND TABLE_NAME = :obj AND HIDDEN_COLUMN = 'NO'
+            ORDER BY COLUMN_ID
+        """, own=owner, obj=tbl_name)
+
+        columns = []
+        for r in cursor.fetchall():
+            col_id, col_name, dtype, dlen, dprec, dscale, nullable, ddef = r
+            if dtype == "NUMBER":
+                if dprec and dscale:
+                    dtype_str = f"NUMBER({dprec},{dscale})"
+                elif dprec:
+                    dtype_str = f"NUMBER({dprec})"
+                else:
+                    dtype_str = "NUMBER"
+            elif dtype in ("VARCHAR2", "CHAR", "RAW"):
+                dtype_str = f"{dtype}({dlen})"
+            else:
+                dtype_str = dtype
+
+            columns.append({
+                "position": col_id,
+                "name": col_name,
+                "data_type": dtype_str,
+                "nullable": (nullable == "Y"),
+                "default": str(ddef).strip() if ddef else "",
+                "is_pk": False,
+                "is_fk": False,
+                "comment": ""
+            })
+
+        # 2. Fetch PK / FK Constraints
+        cursor.execute("""
+            SELECT 
+                c.CONSTRAINT_NAME,
+                c.CONSTRAINT_TYPE,
+                cc.COLUMN_NAME,
+                c.R_CONSTRAINT_NAME
+            FROM ALL_CONSTRAINTS c
+            JOIN ALL_CONS_COLUMNS cc ON c.OWNER = cc.OWNER AND c.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+            WHERE c.OWNER = :own AND c.TABLE_NAME = :obj
+        """, own=owner, obj=tbl_name)
+        constraints = []
+        for r in cursor.fetchall():
+            cname, ctype, colname, r_cname = r
+            type_label = "Other"
+            if ctype == "P":
+                type_label = "Primary Key"
+                for c in columns:
+                    if c["name"] == colname:
+                        c["is_pk"] = True
+            elif ctype == "R":
+                type_label = "Foreign Key"
+                for c in columns:
+                    if c["name"] == colname:
+                        c["is_fk"] = True
+            elif ctype == "U":
+                type_label = "Unique"
+            elif ctype == "C":
+                type_label = "Check"
+
+            constraints.append({
+                "name": cname,
+                "type": type_label,
+                "definition": f"COLUMN: {colname}" + (f" -> REF: {r_cname}" if r_cname else "")
+            })
+
+        # 3. Fetch Indexes
+        cursor.execute("""
+            SELECT INDEX_NAME, UNIQUENESS, INDEX_TYPE
+            FROM ALL_INDEXES
+            WHERE OWNER = :own AND TABLE_NAME = :obj
+            ORDER BY INDEX_NAME
+        """, own=owner, obj=tbl_name)
+        indexes = []
+        for r in cursor.fetchall():
+            indexes.append({
+                "name": r[0],
+                "definition": f"{r[1]} {r[2]}",
+                "unique": (r[1] == "UNIQUE"),
+                "type": r[2] or "NORMAL"
+            })
+
+        # 4. Fetch Sample Data
+        sample_headers = [c["name"] for c in columns]
+        sample_rows = []
+        try:
+            cursor.execute(f'SELECT * FROM "{owner}"."{tbl_name}" FETCH FIRST 50 ROWS ONLY')
+            sample_rows = cursor.fetchall()
+        except Exception:
+            sample_rows = []
+
+        # 5. DDL
+        ddl_script = f"-- Oracle Table: {owner}.{tbl_name}\n" \
+                     f"CREATE {obj_type} \"{owner}\".\"{tbl_name}\" (\n"
+        col_strs = []
+        for c in columns:
+            null_part = "" if c["nullable"] else " NOT NULL"
+            col_strs.append(f"    \"{c['name']}\" {c['data_type']}{null_part}")
+        ddl_script += ",\n".join(col_strs) + "\n);"
+
+        return {
+            "target_type": "table" if obj_type == "TABLE" else "view",
+            "name": tbl_name,
+            "schema": owner,
+            "title": f'"{owner}"."{tbl_name}"',
+            "object_type": obj_type.title(),
+            "details": {
+                "Owner": owner,
+                "Object Type": obj_type.title(),
+                "Estimated Rows": num_rows if num_rows is not None else "N/A",
+                "Columns Count": len(columns),
+                "Indexes Count": len(indexes)
+            },
+            "columns": columns,
+            "indexes": indexes,
+            "constraints": constraints,
+            "sample_data": {
+                "headers": sample_headers,
+                "rows": sample_rows
+            },
+            "ddl": ddl_script
+        }
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _describe_oracle_schema(cursor, schema_name: str) -> dict:
+    cursor.execute("""
+        SELECT TABLE_NAME, 'Table' as OBJ_TYPE, NUM_ROWS
+        FROM ALL_TABLES WHERE OWNER = :own
+        UNION ALL
+        SELECT VIEW_NAME, 'View' as OBJ_TYPE, NULL
+        FROM ALL_VIEWS WHERE OWNER = :own
+        ORDER BY 1
+    """, own=schema_name)
+    tables = []
+    views = []
+    for r in cursor.fetchall():
+        name, otype, num_rows = r
+        if otype == "View":
+            views.append({"name": name, "owner": schema_name, "comment": ""})
+        else:
+            tables.append({
+                "name": name,
+                "type": "Table",
+                "estimated_rows": num_rows if num_rows is not None else "N/A",
+                "size": "N/A",
+                "columns_count": 0,
+                "comment": ""
+            })
+
+    return {
+        "target_type": "schema",
+        "name": schema_name,
+        "schema": schema_name,
+        "title": f"Oracle Schema: {schema_name}",
+        "object_type": "Schema",
+        "details": {
+            "Schema / User": schema_name,
+            "Tables Count": len(tables),
+            "Views Count": len(views)
+        },
+        "tables": tables,
+        "views": views,
+        "functions": [],
+        "ddl": f"-- Oracle Schema: {schema_name}\n-- Contains {len(tables)} tables, {len(views)} views"
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUBLIC ENTRYPOINT
+# ─────────────────────────────────────────────────────────────────────────────
+def describe_database_object(conn_data: dict, raw_target: str) -> dict:
+    """
+    Main entry point for 'Describe' (Table and Schema).
+    Dispatches to PostgreSQL, SQLite, Oracle, or fallback.
+    """
+    if not isinstance(conn_data, dict) or not conn_data:
+        raise ValueError("Invalid connection information.")
+
+    if not raw_target or not raw_target.strip():
+        raise ValueError("Please provide a table or schema name to describe.")
+
+    schema_hint, object_name = parse_object_identifier(raw_target)
+    if not object_name:
+        raise ValueError("Please provide a valid table or schema name to describe.")
+
+    code = _detect_db_code(conn_data)
+
+    if code in ("ORACLE", "ORACLE_DB"):
+        return _describe_oracle(conn_data, schema_hint, object_name)
+    elif code in ("POSTGRES", "POSTGRESQL"):
+        return _describe_postgres(conn_data, schema_hint, object_name)
+    elif code == "SQLITE":
+        return _describe_sqlite(conn_data, schema_hint, object_name)
+    else:
+        # Fallback using postgres-compatible queries or zero-row describe
+        try:
+            return _describe_postgres(conn_data, schema_hint, object_name)
+        except Exception:
+            raise ValueError(f"Describe object is not supported for database engine: {code}")

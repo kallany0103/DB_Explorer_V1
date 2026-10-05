@@ -15,6 +15,7 @@ from widgets.worksheet.query.query_dispatch import dispatch_query
 from widgets.worksheet.query.query_explain import build_explain_sql, validate_explain_connection
 from widgets.worksheet.query.query_preparation import (
     apply_select_pagination,
+    extract_identifier_under_cursor,
     extract_query_under_cursor,
     get_query_editor,
     get_tab_connection_data,
@@ -170,6 +171,10 @@ def explain_query(manager):
 
 
 def describe_query(manager):
+    """
+    Toad for Oracle: 'Describe (Parse) Select Query' (Shift+F4).
+    Parses the active SELECT statement or selection without executing/fetching rows.
+    """
     current_tab = manager.tab_widget.currentWidget()
     if not current_tab:
         manager.show_info("Please open a worksheet tab with a database connection to describe a query.")
@@ -182,20 +187,106 @@ def describe_query(manager):
         manager.show_info("Please select a database connection for the current worksheet.")
         return
 
-    selected_query = extract_query_under_cursor(query_editor) if query_editor else ""
-    if not selected_query or not selected_query.strip():
-        manager.show_info("Please select or place the cursor in a SELECT query to describe.")
-        return
+    from db.query_describe import resolve_describe_query
 
-    from db.query_describe import validate_and_clean_select_query
-    try:
-        clean_query = validate_and_clean_select_query(selected_query)
-    except ValueError as val_err:
-        manager.show_info(str(val_err))
+    clean_query = ""
+    object_name = None
+    resolve_error = None
+
+    # 1. If text is explicitly highlighted/selected, prioritize the selection
+    cursor = query_editor.textCursor() if query_editor else None
+    if cursor and cursor.hasSelection():
+        selected_text = cursor.selectedText().replace('\u2029', '\n').strip()
+        if selected_text:
+            try:
+                clean_query, object_name = resolve_describe_query(selected_text)
+            except ValueError as val_err:
+                manager.show_info(str(val_err))
+                return
+
+    # 2. If no selection, check query under cursor
+    if not clean_query:
+        selected_query = extract_query_under_cursor(query_editor) if query_editor else ""
+        if selected_query and selected_query.strip():
+            try:
+                clean_query, object_name = resolve_describe_query(selected_query)
+            except ValueError as val_err:
+                resolve_error = str(val_err)
+
+    if not clean_query:
+        msg = resolve_error or "Please place the cursor in or select a SELECT query to describe."
+        manager.show_info(msg)
         return
 
     from dialogs.tools.query_describe_dialog import QueryDescribeDialog
-    dlg = QueryDescribeDialog(parent=manager.main_window, conn_data=conn_data, query=clean_query)
+    dlg = QueryDescribeDialog(parent=manager.main_window, conn_data=conn_data, query=clean_query, object_name=object_name)
+    dlg.exec()
+
+
+RESERVED_SQL_KEYWORDS = {
+    "SELECT", "FROM", "WHERE", "INSERT", "INTO", "UPDATE", "DELETE",
+    "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER", "CROSS", "ON",
+    "GROUP", "BY", "ORDER", "HAVING", "LIMIT", "OFFSET", "UNION", "ALL",
+    "SET", "VALUES", "AS", "AND", "OR", "NOT", "IN", "IS", "NULL",
+    "CASE", "WHEN", "THEN", "ELSE", "END", "DISTINCT", "EXISTS", "BETWEEN",
+    "CREATE", "ALTER", "DROP", "TABLE", "VIEW", "SCHEMA", "DATABASE", "INDEX",
+}
+
+
+def describe_object(manager, target: str = None, conn_data: dict = None):
+    """
+    Toad for Oracle: 'Describe' (F4).
+    Describes database tables, views, and schemas.
+    """
+    current_tab = manager.tab_widget.currentWidget()
+
+    # 1. Resolve connection data
+    if not conn_data:
+        if current_tab:
+            conn_data = get_tab_connection_data(current_tab)
+        if not conn_data:
+            conn_mgr = getattr(manager.main_window, "connection_manager", None)
+            if conn_mgr and hasattr(conn_mgr, "_get_selected_schema_item_data"):
+                item_data = conn_mgr._get_selected_schema_item_data()
+                if item_data:
+                    conn_data = item_data.get("connection") or item_data
+
+    if not conn_data:
+        manager.show_info("Please select a database connection to describe an object.")
+        return
+
+    query_editor = get_query_editor(current_tab) if current_tab else None
+    resolved_target = (target or "").strip()
+
+    # 2. If target not provided, resolve from editor selection or cursor
+    if not resolved_target and query_editor:
+        cursor = query_editor.textCursor()
+        if cursor and cursor.hasSelection():
+            sel = cursor.selectedText().replace('\u2029', '\n').strip()
+            # If selection is a single token / name without newlines
+            if sel and "\n" not in sel and len(sel) < 128:
+                resolved_target = sel
+
+        if not resolved_target:
+            ident = extract_identifier_under_cursor(query_editor)
+            if ident and ident.upper() not in RESERVED_SQL_KEYWORDS:
+                resolved_target = ident
+
+    # 3. If still empty, prompt the user with QInputDialog
+    if not resolved_target:
+        from PySide6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(
+            manager.main_window,
+            "Describe (F4)",
+            "Enter Table, View, or Schema name:\n(e.g., employees, hr.departments, public)",
+        )
+        if ok and text and text.strip():
+            resolved_target = text.strip()
+        else:
+            return
+
+    from dialogs.tools.object_describe_dialog import ObjectDescribeDialog
+    dlg = ObjectDescribeDialog(parent=manager.main_window, conn_data=conn_data, target=resolved_target)
     dlg.exec()
 
 

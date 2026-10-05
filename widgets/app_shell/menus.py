@@ -59,10 +59,12 @@ def build_main_window_menu(main_window):
     actions_menu.addAction(main_window.execute_sqlplus_action)
     actions_menu.addSeparator()
     actions_menu.addAction(main_window.explain_action)
+    actions_menu.addAction(main_window.describe_object_action)
     actions_menu.addAction(main_window.describe_query_action)
     actions_menu.addAction(main_window.cancel_action)
 
     tools_menu = menubar.addMenu("Tools")
+    tools_menu.addAction(main_window.describe_object_action)
     tools_menu.addAction(main_window.describe_query_action)
     tools_menu.addSeparator()
     tools_menu.addAction(main_window.query_tool_action)

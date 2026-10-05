@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QProgressBar
 )
 from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont, QConicalGradient
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread, QRectF, QSize
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread, QRectF, QSize, QEvent
 from typing import Optional
 import qtawesome as qta
 from workers.workers import WorkerThread
@@ -16,6 +16,8 @@ class LoadingOverlay(QWidget):
     def __init__(self, parent=None, label: str = ""):
         super().__init__(parent)
         self._label_text = label
+        if parent:
+            parent.installEventFilter(self)
 
         # Make the widget cover the entire parent and block mouse events behind it
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
@@ -57,10 +59,12 @@ class LoadingOverlay(QWidget):
         """Stop and hide the overlay."""
         self.hide()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.parent():
+    def eventFilter(self, obj, event):
+        if obj == self.parent() and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             self.setGeometry(self.parent().rect())
+            if self.isVisible():
+                self.raise_()
+        return super().eventFilter(obj, event)
 
     def paintEvent(self, event):
         painter = QPainter(self)
