@@ -61,9 +61,18 @@ def build_main_window_actions(main_window):
     main_window.explain_plan_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain (Plan)", main_window)
     main_window.explain_plan_action.triggered.connect(main_window.explain_plan_query)
 
+    main_window.describe_object_action = QAction(
+        qta.icon("fa5s.info-circle", color="#555555"), "Describe", main_window
+    )
+    main_window.describe_object_action.setToolTip("Describe Table or Schema (F4)")
+    main_window.describe_object_action.setShortcut("F4")
+    main_window.describe_object_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    main_window.describe_object_action.triggered.connect(main_window.describe_object)
+
     main_window.describe_query_action = QAction(
         qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", main_window
     )
+    main_window.describe_query_action.setToolTip("Describe (parse) select query (Shift+F4)")
     main_window.describe_query_action.setShortcut("Shift+F4")
     main_window.describe_query_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.describe_query_action.triggered.connect(main_window.describe_query)

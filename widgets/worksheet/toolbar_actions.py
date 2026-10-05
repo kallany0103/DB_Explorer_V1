@@ -45,6 +45,13 @@ def build_worksheet_toolbar_actions(manager):
         )
     )
 
+    manager.ws_describe_object_action = QAction(
+        qta.icon("fa5s.info-circle", color="#555555"), "Describe", manager
+    )
+    manager.ws_describe_object_action.setToolTip("Describe Table or Schema (F4)")
+    manager.ws_describe_object_action.setShortcut("F4")
+    manager.ws_describe_object_action.triggered.connect(main_window.describe_object)
+
     manager.ws_describe_action = QAction(
         qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager
     )

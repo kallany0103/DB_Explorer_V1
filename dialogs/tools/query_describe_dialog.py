@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 )
 import qtawesome as qta
 
-from ui.components import SecondaryButton
+from ui.components import SecondaryButton, LoadingOverlay
 from workers.workers import WorkerThread
 from db.query_describe import describe_select_query, format_describe_text
 
@@ -223,15 +223,19 @@ class QueryDescribeDialog(QDialog):
     for a given SELECT query.
     """
 
-    def __init__(self, parent=None, conn_data=None, query: str = ""):
+    def __init__(self, parent=None, conn_data=None, query: str = "", object_name: str = None):
         super().__init__(parent)
         self.conn_data = conn_data or {}
         self.query = query or ""
+        self.object_name = object_name
         self.columns = []
         self._filtered_columns = []
         self._worker = None
 
-        self.setWindowTitle("Query Describe")
+        if self.object_name:
+            self.setWindowTitle(f"Describe: {self.object_name}")
+        else:
+            self.setWindowTitle("Query Describe")
         self.resize(750, 520)
         self.setMinimumSize(520, 360)
         self.setSizeGripEnabled(True)
@@ -323,7 +327,12 @@ class QueryDescribeDialog(QDialog):
         if len(query_preview) > 100:
             query_preview = query_preview[:97] + "..."
 
-        self.header_label = QLabel(f"<b>Query:</b> <code>{query_preview}</code>")
+        if self.object_name:
+            self.header_label = QLabel(
+                f"<b>Table:</b> <code>{self.object_name}</code> &nbsp;&nbsp;<span style='color:#64748b;'>({query_preview})</span>"
+            )
+        else:
+            self.header_label = QLabel(f"<b>Query:</b> <code>{query_preview}</code>")
         self.header_label.setStyleSheet("""
             QLabel {
                 background: #f8fafc;
@@ -377,12 +386,13 @@ class QueryDescribeDialog(QDialog):
         """)
         self.stack.addWidget(self.table)
 
-        # 3. Loading / Error Message Container
+        # 3. Error Message Container (shown only if describe fails)
         self.status_view = QWidget()
         status_layout = QVBoxLayout(self.status_view)
         status_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label = QLabel("Parsing and describing query...")
-        self.status_label.setStyleSheet("color: #64748b; font-size: 11pt; font-weight: 500;")
+        self.status_label = QLabel()
+        self.status_label.setStyleSheet("color: #dc2626; font-size: 10.5pt; font-weight: 500;")
+        self.status_label.setWordWrap(True)
         status_layout.addWidget(self.status_label)
         self.stack.addWidget(self.status_view)
 
@@ -405,21 +415,6 @@ class QueryDescribeDialog(QDialog):
 
         bottom_bar.addStretch()
 
-        # Read-only badge
-        self.readonly_badge = QLabel("Read-only")
-        self.readonly_badge.setStyleSheet("""
-            QLabel {
-                background-color: #f1f5f9;
-                color: #475569;
-                border: 1px solid #cbd5e1;
-                border-radius: 3px;
-                padding: 2px 8px;
-                font-size: 8pt;
-                font-weight: 600;
-            }
-        """)
-        bottom_bar.addWidget(self.readonly_badge)
-
         # Close button
         self.close_btn = SecondaryButton("Close")
         self.close_btn.setFixedWidth(80)
@@ -427,6 +422,9 @@ class QueryDescribeDialog(QDialog):
         bottom_bar.addWidget(self.close_btn)
 
         layout.addLayout(bottom_bar)
+
+        # Common Loading Spinner Overlay
+        self._loading_overlay = LoadingOverlay(self)
 
     def _create_v_separator(self):
         sep = QFrame()
@@ -441,19 +439,17 @@ class QueryDescribeDialog(QDialog):
         self.stack.setCurrentIndex(mode)
 
     def _start_describe(self):
-        self.stack.setCurrentIndex(2)
-        self.status_label.setText("Describing query...")
-        self.status_label.setStyleSheet("color: #0284c7; font-size: 11pt; font-weight: 500;")
+        self._loading_overlay.show_overlay()
 
         self._worker = WorkerThread(describe_select_query, self.conn_data, self.query)
         self._worker.finished_signal.connect(self._on_describe_finished)
         self._worker.start()
 
     def _on_describe_finished(self, result, error):
+        self._loading_overlay.hide_overlay()
         if error:
             err_msg = str(error)
             self.status_label.setText(f"Error describing query:\n\n{err_msg}")
-            self.status_label.setStyleSheet("color: #dc2626; font-size: 10pt; font-weight: 500;")
             self.stack.setCurrentIndex(2)
             return
 
@@ -461,6 +457,22 @@ class QueryDescribeDialog(QDialog):
         self._filtered_columns = list(self.columns)
         self._update_display()
         self._set_view_mode(0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_loading_overlay") and self._loading_overlay.isVisible():
+            self._loading_overlay.setGeometry(self.rect())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "_loading_overlay") and self._loading_overlay.isVisible():
+            self._loading_overlay.setGeometry(self.rect())
+            self._loading_overlay.raise_()
+
+    def closeEvent(self, event):
+        if hasattr(self, "_loading_overlay"):
+            self._loading_overlay.hide_overlay()
+        super().closeEvent(event)
 
     def _on_filter_changed(self, text: str):
         filter_text = text.strip().lower()
@@ -555,10 +567,16 @@ class QueryDescribeDialog(QDialog):
         if not text:
             return
 
+        if self.object_name:
+            safe_name = self.object_name.replace('"', '').replace('.', '_').replace('[', '').replace(']', '').replace('`', '')
+            default_name = f"describe_{safe_name}.txt"
+        else:
+            default_name = "query_describe.txt"
+
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Query Describe",
-            "query_describe.txt",
+            default_name,
             "Text Files (*.txt);;SQL Files (*.sql);;CSV Files (*.csv);;All Files (*.*)",
         )
         if file_path:

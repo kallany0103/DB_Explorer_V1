@@ -1,6 +1,10 @@
+import re
 from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QTabWidget
 
 from widgets.worksheet.code_editor import CodeEditor
+
+IDENT_SEG_PAT = r'(?:"[^"]+"|\`[^\`]+\`|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_#$]*)'
+IDENT_FIND_PAT = re.compile(rf'{IDENT_SEG_PAT}(?:\s*\.\s*{IDENT_SEG_PAT})*')
 
 
 def get_query_editor(current_tab):
@@ -30,6 +34,24 @@ def extract_query_under_cursor(query_editor):
             break
         start = end + 1
     return selected_query
+
+
+def extract_identifier_under_cursor(query_editor) -> str:
+    """Extracts a table or object identifier directly under the editor text cursor."""
+    if not query_editor:
+        return ""
+    cursor = query_editor.textCursor()
+    if cursor.hasSelection():
+        return cursor.selectedText().replace('\u2029', '\n').strip()
+
+    block = cursor.block()
+    line_text = block.text()
+    col = cursor.positionInBlock()
+
+    for m in IDENT_FIND_PAT.finditer(line_text):
+        if m.start() <= col <= m.end():
+            return m.group(0).strip()
+    return ""
 
 
 def get_tab_connection_data(current_tab):
