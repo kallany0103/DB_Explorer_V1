@@ -3,12 +3,17 @@ import os
 import threading
 import sqlite3 as sqlite
 import db
-from db.db_connections import create_servicenow_connection
+from db.db_connections import create_servicenow_connection, get_pooled_oracle_connection
 
 try:
     import psycopg2
 except ImportError:
     psycopg2 = None
+
+try:
+    import oracledb
+except ImportError:
+    oracledb = None
 
 
 SQL_KEYWORDS = [
@@ -210,6 +215,70 @@ def _fetch_db_words(conn_data):
             except Exception as e:
                 print(f"ServiceNow autocomplete fetch error: {e}")
 
+        elif code in ("ORACLE", "ORACLE_DB"):
+            if oracledb is None:
+                return [], [], {}, {}
+            conn = get_pooled_oracle_connection(conn_data=conn_data)
+            if not conn:
+                return [], [], {}, {}
+            try:
+                cur = conn.cursor()
+
+                # Schemas: all Oracle users — small view, fast
+                cur.execute("SELECT username FROM all_users ORDER BY username")
+                schemas = [row[0].lower() for row in cur.fetchall()]
+
+                # Tables/views: current user's own objects (user_objects) plus
+                # objects in other schemas where the user has SELECT privilege.
+                # Avoids scanning the entire all_objects which contains thousands
+                # of Oracle-internal system tables the user never queries.
+                cur.execute(
+                    "SELECT object_type, object_name FROM user_objects "
+                    "WHERE object_type IN ('TABLE', 'VIEW') ORDER BY object_name"
+                )
+                own_rows = cur.fetchall()
+
+                cur.execute(
+                    "SELECT DISTINCT tp.table_schema, tp.table_name "
+                    "FROM all_tab_privs tp "
+                    "WHERE tp.privilege = 'SELECT' AND tp.grantee IN (USER, 'PUBLIC') "
+                    "AND tp.table_schema != USER "
+                    "ORDER BY tp.table_schema, tp.table_name"
+                )
+                priv_rows = cur.fetchall()
+
+                # Columns: only the current user's own tables — fast, no filter needed.
+                # all_tab_columns without a WHERE is millions of rows on any real Oracle DB.
+                cur.execute(
+                    "SELECT table_name, column_name "
+                    "FROM user_tab_columns ORDER BY table_name, column_id"
+                )
+                col_rows = cur.fetchall()
+            finally:
+                conn.close()
+
+            current_user = (conn_data.get("user") or conn_data.get("username") or "").lower()
+
+            # Build table lists
+            own_tables = [row[1] for row in own_rows]
+            priv_tables = list({row[1] for row in priv_rows})
+            tables = list({*own_tables, *priv_tables})
+
+            schema_tables: dict = {}
+            if current_user:
+                schema_tables[current_user] = own_tables
+            for schema, tbl in priv_rows:
+                schema_tables.setdefault(schema.lower(), []).append(tbl)
+
+            # Columns keyed by table name and by owner.table
+            table_columns: dict = {}
+            for tbl, col in col_rows:
+                table_columns.setdefault(tbl.lower(), []).append(col)
+                if current_user:
+                    table_columns.setdefault(f"{current_user}.{tbl.lower()}", []).append(col)
+
+            return schemas, tables, schema_tables, table_columns
+
     except Exception:
         pass
     return [], [], {}, {}
@@ -299,6 +368,35 @@ def fetch_columns(conn_data, table_name):
                 return cols
             except Exception:
                 pass
+
+        elif code in ("ORACLE", "ORACLE_DB"):
+            if oracledb is None:
+                return []
+            conn = get_pooled_oracle_connection(conn_data=conn_data)
+            if not conn:
+                return []
+            try:
+                cur = conn.cursor()
+                clean_tbl = table_name.split(".")[-1].upper()
+                if "." in table_name:
+                    owner = table_name.split(".")[0].upper()
+                    cur.execute(
+                        "SELECT column_name FROM all_tab_columns "
+                        "WHERE owner = :owner AND table_name = :tbl ORDER BY column_id",
+                        {"owner": owner, "tbl": clean_tbl},
+                    )
+                else:
+                    cur.execute(
+                        "SELECT column_name FROM user_tab_columns "
+                        "WHERE table_name = :tbl ORDER BY column_id",
+                        {"tbl": clean_tbl},
+                    )
+                rows = cur.fetchall()
+                return [row[0] for row in rows]
+            except Exception:
+                pass
+            finally:
+                conn.close()
 
     except Exception:
         pass

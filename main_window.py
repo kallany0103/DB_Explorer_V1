@@ -202,9 +202,21 @@ class MainWindow(QMainWindow):
         screen = QApplication.primaryScreen().availableGeometry()
         if not self.isMaximized() and not self.isFullScreen():
             if self.width() >= screen.width() - 40 and self.height() >= screen.height() - 40:
-                default_w, default_h = 1200, 800
-                x = screen.x() + (screen.width() - default_w) // 2
-                y = screen.y() + (screen.height() - default_h) // 2
+                # Dynamic default: 75% of available screen area.
+                # _MIN_* are soft targets only — always clamped to the actual
+                # screen size so the title bar never goes off-screen at high
+                # DPI scaling (e.g. 200% on a 1080p display → 960×540 logical).
+                _RATIO = 0.75
+                _MIN_W, _MIN_H = 900, 600
+                _MAX_W, _MAX_H = 1600, 1050
+                default_w = max(_MIN_W, min(int(screen.width() * _RATIO), _MAX_W))
+                default_h = max(_MIN_H, min(int(screen.height() * _RATIO), _MAX_H))
+                # Never exceed the actual available screen area
+                default_w = min(default_w, screen.width())
+                default_h = min(default_h, screen.height())
+                # Center on screen, but clamp so the window is never off-screen
+                x = max(screen.x(), screen.x() + (screen.width() - default_w) // 2)
+                y = max(screen.y(), screen.y() + (screen.height() - default_h) // 2)
                 self.setGeometry(x, y, default_w, default_h)
             elif self.width() > screen.width() or self.height() > screen.height():
                 self.resize(
@@ -499,7 +511,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.43</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()
