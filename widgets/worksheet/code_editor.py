@@ -705,6 +705,16 @@ class CodeEditor(QPlainTextEdit):
                 prefix_len,
             )
             cursor.insertText(full_word.upper())
+        elif prefix_len > 0:
+            # Non-keyword with a typed prefix (e.g. a table/column from Oracle which
+            # stores names in uppercase). Replace the prefix so the accepted result
+            # is the canonical form from the engine list, not prefix + ghost-suffix.
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Left,
+                QTextCursor.MoveMode.KeepAnchor,
+                prefix_len,
+            )
+            cursor.insertText(full_word)
         else:
             cursor.insertText(self._ghost_text)
 
@@ -723,6 +733,26 @@ class CodeEditor(QPlainTextEdit):
         self._ghost_prefix = ""
         self._ghost_full_match = ""
         self.viewport().update()
+
+    def _try_uppercase_word_before_cursor(self):
+        """If the word immediately left of the cursor is a SQL keyword, uppercase it in place."""
+        engine = self._engine
+        if not engine:
+            return
+        word = self._word_before_cursor()
+        if not word or not engine.is_keyword(word):
+            return
+        upper = word.upper()
+        if word == upper:
+            return  # already uppercase — nothing to do
+        cursor = self.textCursor()
+        cursor.movePosition(
+            QTextCursor.MoveOperation.Left,
+            QTextCursor.MoveMode.KeepAnchor,
+            len(word),
+        )
+        cursor.insertText(upper)
+        self.setTextCursor(cursor)
 
     def _update_ghost_label(self):
         """Request a repaint so paintEvent draws the ghost at the baseline."""
@@ -776,6 +806,11 @@ class CodeEditor(QPlainTextEdit):
                 self._clear_ghost()
                 return
 
+        # 1b. Tab with no ghost — uppercase the current word if it is a keyword
+        if engine and not self._ghost_text and event.key() == Qt.Key.Key_Tab:
+            self._try_uppercase_word_before_cursor()
+            return
+
         # 2. Ctrl+Space — force-show ghost for current prefix
         if (event.modifiers() == Qt.KeyboardModifier.ControlModifier
                 and event.key() == Qt.Key.Key_Space):
@@ -796,6 +831,29 @@ class CodeEditor(QPlainTextEdit):
             super().keyPressEvent(event)
             if word:
                 if engine.is_schema(word):
+                    # Uppercase the schema name in the editor (before the dot)
+                    upper = word.upper()
+                    if word != upper:
+                        cur = self.textCursor()
+                        # Step back over the dot we just inserted, select schema word
+                        cur.movePosition(
+                            QTextCursor.MoveOperation.Left,
+                            QTextCursor.MoveMode.MoveAnchor,
+                            1,
+                        )
+                        cur.movePosition(
+                            QTextCursor.MoveOperation.Left,
+                            QTextCursor.MoveMode.KeepAnchor,
+                            len(word),
+                        )
+                        cur.insertText(upper)
+                        # Reposition after the dot
+                        cur.movePosition(
+                            QTextCursor.MoveOperation.Right,
+                            QTextCursor.MoveMode.MoveAnchor,
+                            1,
+                        )
+                        self.setTextCursor(cur)
                     items = engine.fetch_for_schema_dot(self._conn_data, word)
                 else:
                     items = engine.get_columns_for_table(self._conn_data, word)
@@ -815,9 +873,10 @@ class CodeEditor(QPlainTextEdit):
         if not engine:
             return
 
-        # 5. Reset to base word list on word-breaking characters
+        # 5. Reset to base word list on word-breaking characters; also auto-uppercase keywords
         text = event.text()
         if text and text in ' \t\n\r;,()=!<>+-*/%|&\'"':
+            self._try_uppercase_word_before_cursor()
             engine.reset_active_list()
             return
 

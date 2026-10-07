@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Universal SQL Client"
-#define MyAppVersion "1.43"
+#define MyAppVersion "1.44"
 #define MyAppPublisher "Datafluent BD"
 #define MyAppURL "https://www.datafluent.team"
 #define MyAppExeName "Universal SQL Client.exe"
@@ -50,6 +50,9 @@ WizardStyle=modern
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+ConfirmUninstall=Are you sure you want to uninstall %1?%n%n(You will be asked whether to keep your saved connections and settings on the next screen.)
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
@@ -90,13 +93,211 @@ const
   'I do not accept' unselected when a LicenseFile is specified — no override needed. }
 
 var
-  RemoveData: Boolean;
+  RemoveConnections: Boolean;
+  RemoveSettings: Boolean;
+  RemoveCreds: Boolean;
+  ChkBase, Chk1, Chk2, Chk3, ChkMaster: TNewCheckBox;
+
+function ParamEnabled(const Name: String): Boolean;
+begin
+  Result := ExpandConstant('{param:' + Name + '|0}') = '1';
+end;
 
 function InitializeUninstall(): Boolean;
 begin
-  RemoveData := (MsgBox('Do you want to remove your personal data (saved connections, history, and credentials)?' + #13#10 + #13#10 +
-    'Deleted data cannot be recovered.', mbConfirmation, MB_YESNO) = idYes);
+  { Interactive mode defaults to keep everything; the options page below
+    lets the user opt in. Silent mode keeps everything unless the caller
+    passes /REMOVECONNECTIONS=1 /REMOVESETTINGS=1 /REMOVECREDS=1. }
+  RemoveConnections := UninstallSilent and ParamEnabled('REMOVECONNECTIONS');
+  RemoveSettings := UninstallSilent and ParamEnabled('REMOVESETTINGS');
+  RemoveCreds := UninstallSilent and ParamEnabled('REMOVECREDS');
   Result := True;
+end;
+
+procedure ChkMasterClick(Sender: TObject);
+begin
+  if ChkMaster.Checked then
+  begin
+    Chk1.Checked := True;
+    Chk2.Checked := True;
+    Chk3.Checked := True;
+    Chk1.Enabled := False;
+    Chk2.Enabled := False;
+    Chk3.Enabled := False;
+  end
+  else
+  begin
+    Chk1.Enabled := True;
+    Chk2.Enabled := True;
+    Chk3.Enabled := True;
+  end;
+end;
+
+procedure InitializeUninstallProgressForm();
+var
+  Page: TNewNotebookPage;
+  GoButton: TNewButton;
+  Header, DescBase, DescMaster, Desc1, Desc2, Desc3, Footer: TNewStaticText;
+  BaseTop, BaseLeft, BaseWidth: Integer;
+  OrigName, OrigDesc: String;
+  OrigCancelEnabled: Boolean;
+  OrigCancelModal: Integer;
+begin
+  if UninstallSilent then
+    Exit;
+
+  BaseTop := UninstallProgressForm.StatusLabel.Top;
+  BaseLeft := UninstallProgressForm.StatusLabel.Left;
+  BaseWidth := UninstallProgressForm.StatusLabel.Width;
+
+  { Extra "Uninstall" button that closes our options page with mrOK. }
+  GoButton := TNewButton.Create(UninstallProgressForm);
+  GoButton.Parent := UninstallProgressForm;
+  GoButton.Left := UninstallProgressForm.CancelButton.Left
+    - UninstallProgressForm.CancelButton.Width - ScaleX(10);
+  GoButton.Top := UninstallProgressForm.CancelButton.Top;
+  GoButton.Width := UninstallProgressForm.CancelButton.Width;
+  GoButton.Height := UninstallProgressForm.CancelButton.Height;
+  GoButton.Caption := 'Uninstall';
+  GoButton.ModalResult := mrOk;
+  GoButton.TabOrder := UninstallProgressForm.CancelButton.TabOrder;
+  UninstallProgressForm.CancelButton.TabOrder := GoButton.TabOrder + 1;
+
+  Page := TNewNotebookPage.Create(UninstallProgressForm);
+  Page.Notebook := UninstallProgressForm.InnerNotebook;
+  Page.Parent := UninstallProgressForm.InnerNotebook;
+  Page.Align := alClient;
+  UninstallProgressForm.InnerNotebook.ActivePage := Page;
+
+  Header := TNewStaticText.Create(UninstallProgressForm);
+  Header.Parent := Page;
+  Header.Top := BaseTop;
+  Header.Left := BaseLeft;
+  Header.Width := BaseWidth;
+  Header.Height := ScaleY(16);
+  Header.AutoSize := False;
+  Header.ShowAccelChar := False;
+  Header.Caption := 'Select the components you want to remove:';
+
+  ChkBase := TNewCheckBox.Create(UninstallProgressForm);
+  ChkBase.Parent := Page;
+  ChkBase.Top := BaseTop + ScaleY(24);
+  ChkBase.Left := BaseLeft;
+  ChkBase.Width := BaseWidth;
+  ChkBase.Caption := 'Remove Universal SQL Client application files';
+  ChkBase.Checked := True;
+  ChkBase.Enabled := False;
+
+  DescBase := TNewStaticText.Create(UninstallProgressForm);
+  DescBase.Parent := Page;
+  DescBase.Top := ChkBase.Top + ScaleY(18);
+  DescBase.Left := BaseLeft + ScaleX(16);
+  DescBase.Width := BaseWidth - ScaleX(16);
+  DescBase.Height := ScaleY(16);
+  DescBase.AutoSize := False;
+  DescBase.ShowAccelChar := False;
+  DescBase.Caption := 'Required. Uninstalls the program from your computer.';
+
+  ChkMaster := TNewCheckBox.Create(UninstallProgressForm);
+  ChkMaster.Parent := Page;
+  ChkMaster.Top := DescBase.Top + ScaleY(24);
+  ChkMaster.Left := BaseLeft;
+  ChkMaster.Width := BaseWidth;
+  ChkMaster.Caption := 'Completely remove all user data and settings';
+  ChkMaster.Checked := False;
+  ChkMaster.OnClick := @ChkMasterClick;
+
+  DescMaster := TNewStaticText.Create(UninstallProgressForm);
+  DescMaster.Parent := Page;
+  DescMaster.Top := ChkMaster.Top + ScaleY(18);
+  DescMaster.Left := BaseLeft + ScaleX(16);
+  DescMaster.Width := BaseWidth - ScaleX(16);
+  DescMaster.Height := ScaleY(16);
+  DescMaster.AutoSize := False;
+  DescMaster.ShowAccelChar := False;
+  DescMaster.Caption := 'Select this to permanently delete everything.';
+
+  Chk1 := TNewCheckBox.Create(UninstallProgressForm);
+  Chk1.Parent := Page;
+  Chk1.Top := DescMaster.Top + ScaleY(24);
+  Chk1.Left := BaseLeft + ScaleX(16);
+  Chk1.Width := BaseWidth - ScaleX(16);
+  Chk1.Caption := 'Delete saved connections and query history';
+  Chk1.Checked := False;
+
+  Desc1 := TNewStaticText.Create(UninstallProgressForm);
+  Desc1.Parent := Page;
+  Desc1.Top := Chk1.Top + ScaleY(18);
+  Desc1.Left := BaseLeft + ScaleX(32);
+  Desc1.Width := BaseWidth - ScaleX(32);
+  Desc1.Height := ScaleY(26);
+  Desc1.AutoSize := False;
+  Desc1.ShowAccelChar := False;
+  Desc1.Caption := 'Removes servers and hierarchy.db in ' +
+    '%APPDATA%\Universal SQL Client.';
+
+  Chk2 := TNewCheckBox.Create(UninstallProgressForm);
+  Chk2.Parent := Page;
+  Chk2.Top := Desc1.Top + ScaleY(26);
+  Chk2.Left := BaseLeft + ScaleX(16);
+  Chk2.Width := BaseWidth - ScaleX(16);
+  Chk2.Caption := 'Delete settings and terminal history';
+  Chk2.Checked := False;
+
+  Desc2 := TNewStaticText.Create(UninstallProgressForm);
+  Desc2.Parent := Page;
+  Desc2.Top := Chk2.Top + ScaleY(18);
+  Desc2.Left := BaseLeft + ScaleX(32);
+  Desc2.Width := BaseWidth - ScaleX(32);
+  Desc2.Height := ScaleY(26);
+  Desc2.AutoSize := False;
+  Desc2.ShowAccelChar := False;
+  Desc2.Caption := 'Removes preferences, psql_history.json, and registry settings.';
+
+  Chk3 := TNewCheckBox.Create(UninstallProgressForm);
+  Chk3.Parent := Page;
+  Chk3.Top := Desc2.Top + ScaleY(26);
+  Chk3.Left := BaseLeft + ScaleX(16);
+  Chk3.Width := BaseWidth - ScaleX(16);
+  Chk3.Caption := 'Sign out and delete stored credentials';
+  Chk3.Checked := False;
+
+  Desc3 := TNewStaticText.Create(UninstallProgressForm);
+  Desc3.Parent := Page;
+  Desc3.Top := Chk3.Top + ScaleY(18);
+  Desc3.Left := BaseLeft + ScaleX(32);
+  Desc3.Width := BaseWidth - ScaleX(32);
+  Desc3.Height := ScaleY(26);
+  Desc3.AutoSize := False;
+  Desc3.ShowAccelChar := False;
+  Desc3.Caption := 'Removes login tokens from Windows Credential Manager.';
+
+
+  OrigName := UninstallProgressForm.PageNameLabel.Caption;
+  OrigDesc := UninstallProgressForm.PageDescriptionLabel.Caption;
+  OrigCancelEnabled := UninstallProgressForm.CancelButton.Enabled;
+  OrigCancelModal := UninstallProgressForm.CancelButton.ModalResult;
+
+  UninstallProgressForm.PageNameLabel.Caption := 'Uninstall {#MyAppName}';
+  UninstallProgressForm.PageDescriptionLabel.Caption :=
+    'Remove user data and settings';
+  UninstallProgressForm.CancelButton.Enabled := True;
+  UninstallProgressForm.CancelButton.ModalResult := mrCancel;
+
+  if UninstallProgressForm.ShowModal = mrCancel then
+    Abort;
+
+  RemoveConnections := Chk1.Checked;
+  RemoveSettings := Chk2.Checked;
+  RemoveCreds := Chk3.Checked;
+
+  GoButton.Visible := False;
+  UninstallProgressForm.PageNameLabel.Caption := OrigName;
+  UninstallProgressForm.PageDescriptionLabel.Caption := OrigDesc;
+  UninstallProgressForm.CancelButton.Enabled := OrigCancelEnabled;
+  UninstallProgressForm.CancelButton.ModalResult := OrigCancelModal;
+  UninstallProgressForm.InnerNotebook.ActivePage :=
+    UninstallProgressForm.InstallingPage;
 end;
 
 procedure DeleteCredential(Target: String);
@@ -111,12 +312,20 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
-    if RemoveData then
+    if RemoveConnections then
     begin
+      Log('Uninstall: deleting %APPDATA%\Universal SQL Client');
       DelTree(ExpandConstant('{userappdata}\Universal SQL Client'), True, True, True);
+    end;
+    if RemoveSettings then
+    begin
+      Log('Uninstall: deleting %APPDATA%\DBExplorer and HKCU\Software\DBExplorer');
       DelTree(ExpandConstant('{userappdata}\DBExplorer'), True, True, True);
       RegDeleteKeyIncludingSubkeys(HKCU, 'Software\DBExplorer');
-
+    end;
+    if RemoveCreds then
+    begin
+      Log('Uninstall: deleting stored credentials');
       // Best effort: keyring WinVaultKeyring stores under the service name or
       // {username}@{service} compound targets. Missing entries are ignored.
       DeleteCredential('Universal SQL Client');

@@ -42,6 +42,8 @@ def execute_via_native_cli(main_window: "MainWindow", cli_type: str) -> None:
 
     # Prefer selected text; fall back to full editor content.
     sql = editor.textCursor().selectedText()
+    if sql:
+        sql = sql.replace("\u2029", "\n")
     if not sql:
         sql = editor.toPlainText()
 
