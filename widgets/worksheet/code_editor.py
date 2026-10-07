@@ -739,19 +739,31 @@ class CodeEditor(QPlainTextEdit):
         engine = self._engine
         if not engine:
             return
-        word = self._word_before_cursor()
-        if not word or not engine.is_keyword(word):
+        
+        cursor = self.textCursor()
+        pos = cursor.position()
+        text = self.toPlainText()[:pos]
+        match = re.search(r'(\w+)\s*$', text)
+        if not match:
             return
+            
+        word = match.group(1)
+        if not engine.is_keyword(word):
+            return
+            
         upper = word.upper()
         if word == upper:
             return  # already uppercase — nothing to do
-        cursor = self.textCursor()
-        cursor.movePosition(
-            QTextCursor.MoveOperation.Left,
-            QTextCursor.MoveMode.KeepAnchor,
-            len(word),
-        )
+            
+        # Get exact positions of the word so we don't accidentally swallow whitespace/newlines
+        start_pos = match.start(1)
+        end_pos = match.end(1)
+        
+        cursor.setPosition(start_pos)
+        cursor.setPosition(end_pos, QTextCursor.MoveMode.KeepAnchor)
         cursor.insertText(upper)
+        # Restore cursor to original position, adjusted for any length difference (though upper() shouldn't change length)
+        cursor.setPosition(pos)
         self.setTextCursor(cursor)
 
     def _update_ghost_label(self):
