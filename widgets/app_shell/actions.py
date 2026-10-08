@@ -85,6 +85,8 @@ def build_main_window_actions(main_window):
     main_window.describe_query_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.describe_query_action.triggered.connect(main_window.describe_query)
 
+    main_window.change_password_action = QAction(qta.icon("mdi.key-change", color="#555555"), "Change Password", main_window)
+    main_window.change_password_action.triggered.connect(main_window.change_password)
 
     main_window.cancel_action = QAction(QIcon("assets/cancel_icon.png"), "Cancel", main_window)
     main_window.cancel_action.setShortcut("Alt+End")

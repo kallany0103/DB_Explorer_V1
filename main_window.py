@@ -667,6 +667,16 @@ class MainWindow(QMainWindow):
     def quick_describe(self, target: str = None, conn_data: dict = None):
         self.worksheet_manager.quick_describe(target=target, conn_data=conn_data)
 
+    def change_password(self):
+        index = self.connection_manager.tree.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "No selection", "Please select a connection in the Object Explorer first.")
+            return
+        source_index = self.connection_manager.proxy_model.mapToSource(index)
+        item = self.connection_manager.model.itemFromIndex(source_index)
+        if item:
+            self.connection_manager.connection_dialogs.change_server_password(item)
+
 
     def cancel_current_query(self):
         self.worksheet_manager.cancel_current_query()

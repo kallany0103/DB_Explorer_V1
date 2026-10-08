@@ -318,6 +318,14 @@ class ExplorerMenuBuilder:
         #     act = action(self.manager,"Edit Unified Data Source","mdi.pencil-outline")
         #     act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
         #     menu.addAction(act)
+
+        # if code in ('POSTGRES'):
+        #     act = action(self.manager, "Update Saved Password...", "mdi.key-outline")
+        #     act.triggered.connect(lambda: self.manager.connection_dialogs.change_connection_password(item))
+        #     menu.addAction(act)
+
+
+
         
         menu.addSeparator()
         

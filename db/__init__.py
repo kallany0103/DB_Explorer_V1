@@ -8,6 +8,8 @@ from db.db_connections import (
     return_pooled_postgres_connection,
     PooledPostgresConnection,
     close_all_postgres_pools,
+    invalidate_pool,
+    invalidate_oracle_pool,
     resource_path,
     DB_FILE,
 )
@@ -90,6 +92,8 @@ __all__ = [
     "return_pooled_postgres_connection",
     "PooledPostgresConnection",
     "close_all_postgres_pools",
+    "invalidate_pool",
+    "invalidate_oracle_pool",
     "resource_path",
     "DB_FILE",
     "ensure_hierarchy_db",
