@@ -285,8 +285,68 @@ def describe_object(manager, target: str = None, conn_data: dict = None):
         else:
             return
 
+    # Normalize partially selected or malformed quotes (e.g. Emam"."credential)
+    from db.object_describe import parse_object_identifier
+    s_hint, o_name = parse_object_identifier(resolved_target)
+    if s_hint and o_name:
+        resolved_target = f'"{s_hint}"."{o_name}"'
+    elif o_name:
+        resolved_target = o_name
+
     from dialogs.tools.object_describe_dialog import ObjectDescribeDialog
     dlg = ObjectDescribeDialog(parent=manager.main_window, conn_data=conn_data, target=resolved_target)
+    dlg.exec()
+
+
+def quick_describe(manager, target: str = None, conn_data: dict = None):
+    """
+    Toad for Oracle: 'Quick Describe' (Ctrl+D).
+    Lightweight, fast describe window for database objects with instant editor insertion.
+    """
+    current_tab = manager.tab_widget.currentWidget()
+
+    # 1. Resolve connection data
+    if not conn_data:
+        if current_tab:
+            conn_data = get_tab_connection_data(current_tab)
+        if not conn_data:
+            conn_mgr = getattr(manager.main_window, "connection_manager", None)
+            if conn_mgr and hasattr(conn_mgr, "_get_selected_schema_item_data"):
+                item_data = conn_mgr._get_selected_schema_item_data()
+                if item_data:
+                    conn_data = item_data.get("connection") or item_data
+
+    # 2. If target not provided, resolve from editor selection or cursor
+    resolved_target = (target or "").strip()
+    query_editor = get_query_editor(current_tab) if current_tab else None
+    if not resolved_target and query_editor:
+        cursor = query_editor.textCursor()
+        if cursor and cursor.hasSelection():
+            sel = cursor.selectedText().replace('\u2029', '\n').strip()
+            if sel and "\n" not in sel and len(sel) < 128:
+                resolved_target = sel
+
+        if not resolved_target:
+            ident = extract_identifier_under_cursor(query_editor)
+            if ident and ident.upper() not in RESERVED_SQL_KEYWORDS:
+                resolved_target = ident
+
+    # Normalize partially selected or malformed quotes
+    if resolved_target:
+        from db.object_describe import parse_object_identifier
+        s_hint, o_name = parse_object_identifier(resolved_target)
+        if s_hint and o_name:
+            resolved_target = f'"{s_hint}"."{o_name}"'
+        elif o_name:
+            resolved_target = o_name
+
+    from dialogs.tools.quick_describe_dialog import QuickDescribeDialog
+    dlg = QuickDescribeDialog(
+        parent=manager.main_window,
+        conn_data=conn_data,
+        target=resolved_target,
+        worksheet_manager=manager,
+    )
     dlg.exec()
 
 

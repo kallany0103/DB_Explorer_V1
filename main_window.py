@@ -664,6 +664,9 @@ class MainWindow(QMainWindow):
     def describe_object(self, target: str = None, conn_data: dict = None):
         self.worksheet_manager.describe_object(target=target, conn_data=conn_data)
 
+    def quick_describe(self, target: str = None, conn_data: dict = None):
+        self.worksheet_manager.quick_describe(target=target, conn_data=conn_data)
+
 
     def cancel_current_query(self):
         self.worksheet_manager.cancel_current_query()

@@ -69,6 +69,14 @@ def build_main_window_actions(main_window):
     main_window.describe_object_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.describe_object_action.triggered.connect(main_window.describe_object)
 
+    main_window.quick_describe_action = QAction(
+        qta.icon("fa5s.search-plus", color="#555555"), "Quick Describe", main_window
+    )
+    main_window.quick_describe_action.setToolTip("Quick Describe (Ctrl+D)")
+    main_window.quick_describe_action.setShortcut("Ctrl+D")
+    main_window.quick_describe_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+    main_window.quick_describe_action.triggered.connect(main_window.quick_describe)
+
     main_window.describe_query_action = QAction(
         qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", main_window
     )

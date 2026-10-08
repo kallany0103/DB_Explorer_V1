@@ -52,6 +52,13 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_describe_object_action.setShortcut("F4")
     manager.ws_describe_object_action.triggered.connect(main_window.describe_object)
 
+    manager.ws_quick_describe_action = QAction(
+        qta.icon("fa5s.search-plus", color="#555555"), "Quick Describe", manager
+    )
+    manager.ws_quick_describe_action.setToolTip("Quick Describe (Ctrl+D)")
+    manager.ws_quick_describe_action.setShortcut("Ctrl+D")
+    manager.ws_quick_describe_action.triggered.connect(main_window.quick_describe)
+
     manager.ws_describe_action = QAction(
         qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager
     )

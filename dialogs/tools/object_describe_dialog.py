@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QMessageBox,
+    QComboBox,
+    QFileDialog,
 )
 import qtawesome as qta
 
@@ -121,6 +123,14 @@ class ObjectDescribeDialog(QDialog):
         self.copy_ddl_btn.setToolTip("Copy DDL Script to Clipboard")
         self.copy_ddl_btn.clicked.connect(self._copy_ddl)
         header_layout.addWidget(self.copy_ddl_btn)
+
+        # View Schema button (shown when table has parent schema info)
+        self.schema_jump_btn = QToolButton()
+        self.schema_jump_btn.setIcon(qta.icon("mdi.database-outline", color="#475569"))
+        self.schema_jump_btn.setToolTip("View Parent Schema Details")
+        self.schema_jump_btn.clicked.connect(self._jump_to_schema_tab)
+        self.schema_jump_btn.setVisible(False)
+        header_layout.addWidget(self.schema_jump_btn)
 
         layout.addWidget(header_frame)
 
@@ -312,12 +322,31 @@ class ObjectDescribeDialog(QDialog):
                 self.data_table.setItem(r_idx, c_idx, QTableWidgetItem(val_str))
         self.tabs.addTab(self.data_table, qta.icon("fa5s.table", color="#475569"), f"Data Preview ({len(rows)})")
 
-        # 5. DDL Script Tab
-        self.ddl_editor = self._create_code_editor(self.meta.get("ddl", ""))
-        self.tabs.addTab(self.ddl_editor, qta.icon("mdi.script-text-outline", color="#475569"), "DDL Script")
+        # 5. Scripts Tab (Toad for Oracle Style Suite)
+        scripts = self.meta.get("scripts", {})
+        if not scripts:
+            scripts = {"Full DDL": self.meta.get("ddl", "")}
+        self.scripts_widget = self._build_scripts_tab_widget(scripts, default_key="Full DDL")
+        self.ddl_editor = getattr(self.scripts_widget, "editor", None)
+        self.tabs.addTab(self.scripts_widget, qta.icon("mdi.script-text-outline", color="#475569"), "Scripts")
+
+        # 6. Parent Schema Tab (describing both Table and Schema simultaneously)
+        schema_info = self.meta.get("schema_info")
+        if schema_info:
+            schema_name = schema_info.get("name") or self.meta.get("schema") or "Schema"
+            self.schema_tab = self._build_schema_container_widget(schema_info)
+            self.tabs.addTab(self.schema_tab, qta.icon("mdi.database-outline", color="#475569"), f"Schema ({schema_name})")
+            if hasattr(self, "schema_jump_btn"):
+                self.schema_jump_btn.setVisible(True)
+                self.schema_jump_btn.setToolTip(f"View Parent Schema ({schema_name})")
+        else:
+            if hasattr(self, "schema_jump_btn"):
+                self.schema_jump_btn.setVisible(False)
 
         cols_count = len(self.meta.get("columns", []))
-        self.status_label.setText(f"{cols_count} columns in {self.meta.get('name')}")
+        schema_name = self.meta.get("schema") or ""
+        schema_str = f" in schema {schema_name}" if schema_name else ""
+        self.status_label.setText(f"{cols_count} columns in {self.meta.get('name')}{schema_str}")
 
     def _populate_columns_table(self, table: QTableWidget, columns: list[dict]):
         table.setRowCount(len(columns))
@@ -410,9 +439,13 @@ class ObjectDescribeDialog(QDialog):
                 self.schema_funcs.setItem(row, 3, QTableWidgetItem(f.get("comment", "")))
             self.tabs.addTab(self.schema_funcs, qta.icon("mdi.function", color="#475569"), f"Functions ({len(funcs)})")
 
-        # 4. DDL / Summary Tab
-        self.ddl_editor = self._create_code_editor(self.meta.get("ddl", ""))
-        self.tabs.addTab(self.ddl_editor, qta.icon("mdi.script-text-outline", color="#475569"), "Summary / Script")
+        # 4. Scripts Tab
+        scripts = self.meta.get("scripts", {})
+        if not scripts:
+            scripts = {"Full DDL": self.meta.get("ddl", "")}
+        self.schema_scripts_widget = self._build_scripts_tab_widget(scripts, default_key="Full DDL")
+        self.ddl_editor = getattr(self.schema_scripts_widget, "editor", None)
+        self.tabs.addTab(self.schema_scripts_widget, qta.icon("mdi.script-text-outline", color="#475569"), "Scripts")
 
         self.status_label.setText(f"{len(tables)} tables, {len(views)} views in schema {self.meta.get('name')}")
 
@@ -422,6 +455,99 @@ class ObjectDescribeDialog(QDialog):
         schema_name = self.meta.get("name")
         full_target = f'"{schema_name}"."{table_name}"' if schema_name else table_name
         self.target = full_target
+        self._start_fetch()
+
+    def _jump_to_schema_tab(self):
+        if hasattr(self, "schema_tab") and self.schema_tab:
+            self.tabs.setCurrentWidget(self.schema_tab)
+
+    def _build_schema_container_widget(self, schema_meta: dict) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+
+        schema_name = schema_meta.get("name") or "Schema"
+        owner = schema_meta.get("details", {}).get("Owner") or schema_meta.get("details", {}).get("Schema / User", "")
+        tables = schema_meta.get("tables", [])
+        views = schema_meta.get("views", [])
+        funcs = schema_meta.get("functions", [])
+
+        stats_banner = QLabel(
+            f"<b>Schema:</b> <code>{schema_name}</code> &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Owner:</b> {owner} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Tables:</b> {len(tables)} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"<b>Views:</b> {len(views)}"
+            + (f" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Functions:</b> {len(funcs)}" if funcs else "")
+        )
+        stats_banner.setStyleSheet("""
+            QLabel {
+                background: #f1f5f9;
+                border: 1px solid #e2e8f0;
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: #334155;
+                font-size: 8.5pt;
+            }
+        """)
+        layout.addWidget(stats_banner)
+
+        sub_tabs = QTabWidget()
+        sub_tabs.setStyleSheet(self.tabs.styleSheet())
+
+        # Tables sub-tab
+        s_tables = self._create_data_table([
+            "Table Name", "Type", "Columns", "Est. Rows", "Total Size", "Comment"
+        ])
+        s_tables.setRowCount(len(tables))
+        for row, t in enumerate(tables):
+            name_item = QTableWidgetItem(t.get("name", ""))
+            name_item.setFont(self._bold_font())
+            s_tables.setItem(row, 0, name_item)
+            s_tables.setItem(row, 1, QTableWidgetItem(t.get("type", "Table")))
+            s_tables.setItem(row, 2, QTableWidgetItem(str(t.get("columns_count", 0))))
+            s_tables.setItem(row, 3, QTableWidgetItem(str(t.get("estimated_rows", "N/A"))))
+            s_tables.setItem(row, 4, QTableWidgetItem(t.get("size", "")))
+            s_tables.setItem(row, 5, QTableWidgetItem(t.get("comment", "")))
+        s_tables.doubleClicked.connect(lambda idx, s=schema_name, tbl=s_tables: self._on_sub_table_double_clicked(s, tbl.item(idx.row(), 0).text()))
+        sub_tabs.addTab(s_tables, qta.icon("fa5s.table", color="#475569"), f"Tables ({len(tables)})")
+
+        if views:
+            s_views = self._create_data_table(["View Name", "Owner", "Comment"])
+            s_views.setRowCount(len(views))
+            for row, v in enumerate(views):
+                name_item = QTableWidgetItem(v.get("name", ""))
+                name_item.setFont(self._bold_font())
+                s_views.setItem(row, 0, name_item)
+                s_views.setItem(row, 1, QTableWidgetItem(v.get("owner", "")))
+                s_views.setItem(row, 2, QTableWidgetItem(v.get("comment", "")))
+            sub_tabs.addTab(s_views, qta.icon("mdi.eye", color="#475569"), f"Views ({len(views)})")
+
+        if funcs:
+            s_funcs = self._create_data_table(["Function / Signature", "Owner", "Language", "Comment"])
+            s_funcs.setRowCount(len(funcs))
+            for row, f in enumerate(funcs):
+                name_item = QTableWidgetItem(f.get("name", ""))
+                name_item.setFont(self._bold_font())
+                s_funcs.setItem(row, 0, name_item)
+                s_funcs.setItem(row, 1, QTableWidgetItem(f.get("owner", "")))
+                s_funcs.setItem(row, 2, QTableWidgetItem(f.get("language", "")))
+                s_funcs.setItem(row, 3, QTableWidgetItem(f.get("comment", "")))
+            sub_tabs.addTab(s_funcs, qta.icon("mdi.function", color="#475569"), f"Functions ({len(funcs)})")
+
+        sub_scripts = schema_meta.get("scripts", {})
+        if not sub_scripts:
+            sub_scripts = {"Full DDL": schema_meta.get("ddl", "")}
+        s_scripts_widget = self._build_scripts_tab_widget(sub_scripts, default_key="Full DDL")
+        sub_tabs.addTab(s_scripts_widget, qta.icon("mdi.script-text-outline", color="#475569"), "Schema Scripts")
+
+        layout.addWidget(sub_tabs, stretch=1)
+        return container
+
+    def _on_sub_table_double_clicked(self, schema_name: str, table_name: str):
+        full_target = f'"{schema_name}"."{table_name}"' if schema_name else table_name
+        self.target = full_target
+        self.setWindowTitle(f"Describe - {self.target}")
         self._start_fetch()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -482,11 +608,214 @@ class ObjectDescribeDialog(QDialog):
         f.setBold(True)
         return f
 
+    def _build_scripts_tab_widget(self, scripts_dict: dict, default_key: str = "Full DDL") -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(4, 6, 4, 4)
+        layout.setSpacing(6)
+
+        # Toolbar Frame
+        toolbar_frame = QFrame()
+        toolbar_frame.setStyleSheet("""
+            QFrame {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 4px;
+                padding: 3px 6px;
+            }
+        """)
+        tb_layout = QHBoxLayout(toolbar_frame)
+        tb_layout.setContentsMargins(4, 2, 4, 2)
+        tb_layout.setSpacing(8)
+
+        lbl = QLabel("Script Type:")
+        lbl.setStyleSheet("font-weight: 600; color: #475569; font-size: 8.5pt;")
+        tb_layout.addWidget(lbl)
+
+        combo = QComboBox()
+        combo.setStyleSheet("""
+            QComboBox {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 3px 10px;
+                font-size: 8.5pt;
+                font-weight: 500;
+                color: #0f172a;
+                min-width: 180px;
+            }
+            QComboBox:hover {
+                border-color: #0284c7;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 18px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                selection-background-color: #e0f2fe;
+                selection-color: #0284c7;
+            }
+        """)
+        for s_name in scripts_dict.keys():
+            combo.addItem(s_name)
+
+        if default_key in scripts_dict:
+            combo.setCurrentText(default_key)
+        tb_layout.addWidget(combo)
+
+        tb_layout.addStretch()
+
+        copy_btn = QToolButton()
+        copy_btn.setText("Copy")
+        copy_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        copy_btn.setToolTip("Copy displayed script to clipboard")
+        copy_btn.setStyleSheet("""
+            QToolButton {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 8.5pt;
+                color: #334155;
+            }
+            QToolButton:hover {
+                background: #f1f5f9;
+                border-color: #94a3b8;
+            }
+        """)
+        tb_layout.addWidget(copy_btn)
+
+        worksheet_btn = QToolButton()
+        worksheet_btn.setText("Open in Worksheet")
+        worksheet_btn.setIcon(qta.icon("fa5s.external-link-alt", color="#0284c7"))
+        worksheet_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        worksheet_btn.setToolTip("Open script in a new SQL Worksheet tab")
+        worksheet_btn.setStyleSheet("""
+            QToolButton {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 8.5pt;
+                color: #0369a1;
+                font-weight: 600;
+            }
+            QToolButton:hover {
+                background: #f0f9ff;
+                border-color: #0284c7;
+            }
+        """)
+        tb_layout.addWidget(worksheet_btn)
+
+        save_btn = QToolButton()
+        save_btn.setText("Save...")
+        save_btn.setIcon(qta.icon("fa5s.save", color="#475569"))
+        save_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        save_btn.setToolTip("Save script as .sql file")
+        save_btn.setStyleSheet("""
+            QToolButton {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 8.5pt;
+                color: #334155;
+            }
+            QToolButton:hover {
+                background: #f1f5f9;
+                border-color: #94a3b8;
+            }
+        """)
+        tb_layout.addWidget(save_btn)
+
+        layout.addWidget(toolbar_frame)
+
+        initial_text = scripts_dict.get(combo.currentText(), "")
+        editor = self._create_code_editor(initial_text)
+        layout.addWidget(editor, stretch=1)
+
+        container.editor = editor
+        container.combo = combo
+
+        combo.currentTextChanged.connect(lambda text: editor.setPlainText(scripts_dict.get(text, "")))
+        copy_btn.clicked.connect(lambda: self._copy_script_text(editor.toPlainText(), combo.currentText()))
+        worksheet_btn.clicked.connect(lambda: self._open_script_in_worksheet(editor.toPlainText()))
+        save_btn.clicked.connect(lambda: self._save_script_to_file(editor.toPlainText(), combo.currentText()))
+
+        return container
+
+    def _copy_script_text(self, sql: str, script_name: str):
+        if sql:
+            QApplication.clipboard().setText(sql)
+            self.status_label.setText(f"'{script_name}' copied to clipboard!")
+
+    def _open_script_in_worksheet(self, sql: str):
+        if not sql:
+            return
+        p = self.parent()
+        opened = False
+        while p is not None:
+            if hasattr(p, "_open_script_in_editor"):
+                p._open_script_in_editor({"conn_data": self.conn_data}, sql)
+                opened = True
+                break
+            elif hasattr(p, "connection_manager") and hasattr(p.connection_manager, "script_generator"):
+                p.connection_manager.script_generator.open_script_in_editor({"conn_data": self.conn_data}, sql)
+                opened = True
+                break
+            elif hasattr(p, "worksheet_manager"):
+                new_tab = p.worksheet_manager.add_tab()
+                if new_tab:
+                    from widgets.worksheet.editor import CodeEditor
+                    qe = new_tab.findChild(CodeEditor, "query_editor") or new_tab.findChild(QPlainTextEdit, "query_editor")
+                    if qe:
+                        qe.setPlainText(sql)
+                    p.worksheet_manager.tab_widget.setCurrentWidget(new_tab)
+                opened = True
+                break
+            p = p.parent()
+
+        if opened:
+            self.status_label.setText("Script opened in SQL Worksheet.")
+        else:
+            QApplication.clipboard().setText(sql)
+            self.status_label.setText("Copied script to clipboard (Worksheet not directly accessible).")
+
+    def _save_script_to_file(self, sql: str, script_name: str):
+        if not sql:
+            return
+        obj_name = self.meta.get("name", "script")
+        clean_type = script_name.lower().replace(" ", "_").replace("&", "and").replace("/", "_")
+        default_filename = f"{obj_name}_{clean_type}.sql"
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save SQL Script",
+            default_filename,
+            "SQL Files (*.sql);;All Files (*)"
+        )
+        if filepath:
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(sql)
+                self.status_label.setText(f"Script saved to {filepath}")
+            except Exception as e:
+                QMessageBox.warning(self, "Save Error", f"Failed to save file:\n{e}")
+
     def _copy_ddl(self):
-        ddl = self.meta.get("ddl", "")
+        curr = self.tabs.currentWidget()
+        if hasattr(self, "schema_tab") and curr == self.schema_tab:
+            schema_info = self.meta.get("schema_info") or {}
+            scripts = schema_info.get("scripts", {})
+            ddl = scripts.get("Full DDL") or schema_info.get("ddl") or self.meta.get("ddl", "")
+        else:
+            scripts = self.meta.get("scripts", {})
+            ddl = scripts.get("Full DDL") or self.meta.get("ddl", "")
         if ddl:
             QApplication.clipboard().setText(ddl)
-            self.status_label.setText("DDL script copied to clipboard!")
+            self.status_label.setText("Full DDL script copied to clipboard!")
 
     def _on_filter_changed(self, text: str):
         filter_text = text.strip().lower()

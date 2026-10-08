@@ -154,6 +154,15 @@ class WorksheetToolbar(QWidget):
             self.describe_obj_btn.setToolTip("Describe (F4)")
             layout.addWidget(self.describe_obj_btn)
 
+        # Quick Describe (Ctrl+D)
+        if hasattr(manager, 'ws_quick_describe_action'):
+            self.quick_describe_btn = ToolbarActionButton(icon=manager.ws_quick_describe_action.icon())
+            self.quick_describe_btn.setDefaultAction(manager.ws_quick_describe_action)
+            self.quick_describe_btn.setIconSize(QSize(16, 16))
+            self.quick_describe_btn.setMinimumWidth(26)
+            self.quick_describe_btn.setToolTip("Quick Describe (Ctrl+D)")
+            layout.addWidget(self.quick_describe_btn)
+
         # Describe (parse) select query (Shift+F4)
         if hasattr(manager, 'ws_describe_action'):
             self.describe_btn = ToolbarActionButton(icon=manager.ws_describe_action.icon())
