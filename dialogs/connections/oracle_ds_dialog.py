@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView
 )
 from ui.components import PasswordBox, SearchBox, SecondaryButton, PrimaryButton
+from db.db_connections import get_pooled_oracle_connection
 
 
 class OracleDataSourceDialog(QDialog):
@@ -210,10 +211,13 @@ class OracleDataSourceDialog(QDialog):
 
     def testConnection(self):
         try:
-            conn = oracledb.connect(
-                user=self.user_input.text().strip(),
-                password=self.password_input.text().strip(),
-                dsn=self._get_dsn()
+            conn = get_pooled_oracle_connection(
+                conn_data={
+                    "user": self.user_input.text().strip(),
+                    "password": self.password_input.text().strip(),
+                    "dsn": self._get_dsn()
+                },
+                use_pool=False
             )
             conn.close()
             QMessageBox.information(self, "Success", "Oracle connection successful!")
@@ -233,7 +237,14 @@ class OracleDataSourceDialog(QDialog):
         self.table_tree.clear()
 
         try:
-            conn = oracledb.connect(user=user, password=pwd, dsn=dsn)
+            conn = get_pooled_oracle_connection(
+                conn_data={
+                    "user": user,
+                    "password": pwd,
+                    "dsn": dsn
+                },
+                use_pool=False
+            )
             cur = conn.cursor()
             cur.execute("SELECT table_name FROM user_tables ORDER BY table_name")
             tables = [row[0] for row in cur.fetchall()]
