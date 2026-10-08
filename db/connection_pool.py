@@ -388,6 +388,73 @@ def close_all_pools():
     logger.info("All connection pools closed")
 
 
+def invalidate_pool(conn_params: Dict) -> bool:
+    """
+    Close and evict the cached pool for the given connection parameters.
+
+    Call this after editing a connection's credentials (name, password, user,
+    host, etc.) so that the next query creates a fresh pool with the updated
+    parameters instead of reusing the stale cached one.
+
+    Args:
+        conn_params: Connection parameters dict (host, port, database, user).
+                     The password is not part of the pool key.
+
+    Returns:
+        True if a pool was found and evicted, False otherwise.
+    """
+    pool_key = (
+        conn_params.get('host', ''),
+        int(conn_params.get('port') or 5432),
+        conn_params.get('database', ''),
+        conn_params.get('user', '')
+    )
+
+    with _pools_lock:
+        pool = _connection_pools.pop(pool_key, None)
+
+    if pool is not None:
+        try:
+            pool.close_all()
+        except Exception:
+            pass
+        logger.debug(f"Invalidated connection pool for key {pool_key}")
+        return True
+
+    return False
+
+
+def invalidate_oracle_pool(conn_params: Dict) -> bool:
+    """
+    Close and evict the cached Oracle pool for the given connection parameters.
+
+    Args:
+        conn_params: Connection parameters dict (host, port, service_name, user).
+
+    Returns:
+        True if a pool was found and evicted, False otherwise.
+    """
+    pool_key = (
+        conn_params.get('host', ''),
+        int(conn_params.get('port') or 1521),
+        conn_params.get('service_name', ''),
+        conn_params.get('user', '')
+    )
+
+    with _oracle_pools_lock:
+        pool = _oracle_connection_pools.pop(pool_key, None)
+
+    if pool is not None:
+        try:
+            pool.close()
+        except Exception:
+            pass
+        logger.debug(f"Invalidated Oracle connection pool for key {pool_key}")
+        return True
+
+    return False
+
+
 def get_or_create_oracle_pool(conn_params: Dict, 
                               min_connections: int = 2,
                               max_connections: int = 5) -> "oracledb.ConnectionPool":

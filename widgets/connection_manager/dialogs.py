@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize
 
-from ui.components import PrimaryButton, SecondaryButton, ToastNotification, ConfirmDialog
+from ui.components import PrimaryButton, SecondaryButton, ToastNotification, ConfirmDialog, PasswordBox
 import db
 from dialogs.connections import (
     CSVConnectionDialog,
@@ -33,6 +33,8 @@ from dialogs.connections import (
 	ServiceNowDataSourceDialog,
 )
 from db.db_retrieval import get_connection_types
+import psycopg2
+from psycopg2 import sql as pgsql
 
 class ConnectionTypeSelectorDialog(QDialog):
     def __init__(self, parent=None):
@@ -223,6 +225,93 @@ class ConnectionTypeSelectorDialog(QDialog):
         
         self.next_btn.setEnabled(True)
 
+
+
+class ChangePasswordDialog(QDialog):
+    def __init__(self, parent=None, conn_name=""):
+        super().__init__(parent)
+        self.setWindowTitle(f"Change Password - {conn_name}")
+        self.setFixedSize(400, 150)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog | 
+            Qt.WindowType.WindowTitleHint | 
+            Qt.WindowType.WindowCloseButtonHint
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        form = QFormLayout()
+        
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setPlaceholderText("Enter new password...")
+        form.addRow("New Password:", self.password_input)
+        
+        layout.addLayout(form)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.cancel_btn = SecondaryButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.cancel_btn)
+        
+        self.save_btn = PrimaryButton("Save")
+        self.save_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(self.save_btn)
+        
+        layout.addLayout(btn_layout)
+
+    def get_password(self):
+        return self.password_input.text()
+
+
+class ChangeServerPasswordDialog(QDialog):
+    def __init__(self, parent=None, conn_name=""):
+        super().__init__(parent)
+        self.setWindowTitle(f"Change Server Password - {conn_name}")
+        self.setFixedSize(450, 200)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog | 
+            Qt.WindowType.WindowTitleHint | 
+            Qt.WindowType.WindowCloseButtonHint
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        info = QLabel("This will change the actual password on the database server.")
+        info.setStyleSheet("color: #6b7280; font-style: italic; margin-bottom: 10px;")
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        
+        self.old_password_input = PasswordBox()
+        self.old_password_input.setPlaceholderText("Current valid password...")
+        form.addRow("Current Password:", self.old_password_input)
+        
+        self.new_password_input = PasswordBox()
+        self.new_password_input.setPlaceholderText("New password...")
+        form.addRow("New Password:", self.new_password_input)
+        
+        layout.addLayout(form)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.cancel_btn = SecondaryButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.cancel_btn)
+        
+        self.reset_btn = PrimaryButton("Change Password")
+        self.reset_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(self.reset_btn)
+        
+        layout.addLayout(btn_layout)
+
+    def get_passwords(self):
+        return self.old_password_input.text(), self.new_password_input.text()
 
 
 class ConnectionDialogs:
@@ -1039,6 +1128,161 @@ class ConnectionDialogs:
                 except Exception as e:
                     QMessageBox.critical(self.manager, "Error", f"Failed to update SQLite connection:\n{e}")
 
+    def change_connection_password(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+        if not conn_data:
+            return
+
+        conn_name = conn_data.get("name", "Connection")
+        dialog = ChangePasswordDialog(self.manager, conn_name=conn_name)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_password = dialog.get_password()
+            
+            new_data = dict(conn_data)
+            new_data["password"] = new_password
+            
+            try:
+                db.update_connection(new_data)
+                
+                parent_item = item.parent()
+                grandparent_item = parent_item.parent() if parent_item else None
+                code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+                
+                if code in ('POSTGRES', 'UDS'):
+                    db.invalidate_pool(new_data)
+                elif code in ('ORACLE_FA', 'ORACLE_DB'):
+                    db.invalidate_oracle_pool(new_data)
+                    
+                if (
+                    hasattr(self.manager, "active_postgres_conn")
+                    and self.manager.active_postgres_conn
+                    and self.manager.active_postgres_conn.get("id") == new_data.get("id")
+                ):
+                    self.manager.active_postgres_conn = new_data
+                
+                item.setData(new_data, Qt.ItemDataRole.UserRole)
+                ToastNotification.show_toast(self.manager, f"Password for '{conn_name}' updated!", kind="success")
+                
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to change password:\n{e}")
+
+    def change_server_password(self, item):
+        conn_data = item.data(Qt.ItemDataRole.UserRole)
+        if not conn_data:
+            return
+
+        parent_item = item.parent()
+        grandparent_item = parent_item.parent() if parent_item else None
+        code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
+        
+        if code not in ('POSTGRES'):
+            QMessageBox.warning(self.manager, "Unsupported", "Changing the server password via this menu is only supported for PostgreSQL at this time.")
+            return
+
+        conn_name = conn_data.get("name", "Connection")
+        dialog = ChangeServerPasswordDialog(self.manager, conn_name=conn_name)
+        
+        # Pre-fill current password if it exists in conn_data
+        existing_pwd = conn_data.get("password", "")
+        if existing_pwd is not None and existing_pwd != "":
+            dialog.old_password_input.setText(str(existing_pwd))
+            
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            old_pwd, new_pwd = dialog.get_passwords()
+            if not new_pwd:
+                QMessageBox.warning(self.manager, "Error", "New password cannot be empty.")
+                return
+                
+            username = conn_data.get("user")
+            if not username:
+                QMessageBox.warning(self.manager, "Error", "No user configured for this connection.")
+                return
+                
+            temp_conn_data = dict(conn_data)
+            temp_conn_data["password"] = old_pwd
+
+            self.manager.status.showMessage("Changing server password...", 3000)
+
+            try:
+                import psycopg2
+                from psycopg2 import sql as pgsql
+
+                host = temp_conn_data.get("host") 
+                port = temp_conn_data.get("port")
+                database = temp_conn_data.get("database") 
+                
+                if not host:
+                    QMessageBox.warning(self.manager, "Error", "No host configured for this connection.")
+                    return
+                if not port:
+                    QMessageBox.warning(self.manager, "Error", "No port configured for this connection.")
+                    return
+                if not database:
+                    QMessageBox.warning(self.manager, "Error", "No database configured for this connection.")
+                    return
+
+                try:
+                    port = int(port)
+                except (ValueError, TypeError):
+                    QMessageBox.warning(self.manager, "Error", f"Invalid port number: {port}")
+                    return
+
+                conn = None
+                last_error = None
+                try:
+                    conn = psycopg2.connect(
+                        host=host,
+                        port=port,
+                        database=database,
+                        user=username,
+                        password=old_pwd,
+                        connect_timeout=10
+                    )
+                except psycopg2.OperationalError as attempt_err:
+                    last_error = attempt_err
+
+                if conn is None:
+                    err_str = str(last_error)
+                    if "authentication failed" in err_str.lower():
+                        QMessageBox.critical(
+                            self.manager,
+                            "Wrong Current Password",
+                            f"The 'Current Password' you entered is incorrect.\n\n"
+                            f"Please enter the password that is currently active on the "
+                            f"PostgreSQL server for user '{username}'."
+                        )
+                    else:
+                        QMessageBox.critical(self.manager, "Connection Failed", f"Could not reach the server:\n{last_error}")
+                    return
+
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    query = pgsql.SQL("ALTER USER {} WITH PASSWORD %s").format(pgsql.Identifier(username))
+                    cur.execute(query, (new_pwd,))
+                conn.close()
+
+                # Server password changed — sync the app's stored password too
+                temp_conn_data["password"] = new_pwd
+                db.update_connection(temp_conn_data)
+                db.invalidate_pool(temp_conn_data)
+
+                if (
+                    hasattr(self.manager, "active_postgres_conn")
+                    and self.manager.active_postgres_conn
+                    and self.manager.active_postgres_conn.get("id") == temp_conn_data.get("id")
+                ):
+                    self.manager.active_postgres_conn = temp_conn_data
+
+                item.setData(temp_conn_data, Qt.ItemDataRole.UserRole)
+                ToastNotification.show_toast(
+                    self.manager,
+                    f"Server password for '{username}' successfully changed!",
+                    kind="success"
+                )
+
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to change server password:\n{e}")
+
     def edit_pg_connection(self, item):
         conn_data = item.data(Qt.ItemDataRole.UserRole)
         if not conn_data:
@@ -1056,13 +1300,22 @@ class ConnectionDialogs:
         dialog.port_input.setText(str(conn_data.get("port", "")))
         dialog.db_input.setText(conn_data.get("database", ""))
         dialog.user_input.setText(conn_data.get("user", ""))
-        dialog.password_input.setText(conn_data.get("password", ""))
+        dialog.password_input.setText(str(conn_data.get("password", "") or ""))
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")
             try:
                 conn_name = new_data.get("name", "Connection")
                 db.update_connection(new_data)
+                # Evict stale pool so next query uses updated credentials
+                db.invalidate_pool(new_data)
+                # Sync the in-memory active connection reference if it's the same one
+                if (
+                    hasattr(self.manager, "active_postgres_conn")
+                    and self.manager.active_postgres_conn
+                    and self.manager.active_postgres_conn.get("id") == new_data.get("id")
+                ):
+                    self.manager.active_postgres_conn = new_data
                 self.manager._save_tree_expansion_state()
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
@@ -1084,14 +1337,16 @@ class ConnectionDialogs:
         dialog = OracleConnectionDialog(self.manager, is_editing=True, type_id=type_id, group_id=group_id)
         dialog.name_input.setText(conn_data.get("name", ""))
         dialog.user_input.setText(conn_data.get("user", ""))
-        dialog.password_input.setText(conn_data.get("password", ""))
-        dialog.dsn_input.setText(conn_data.get("dsn", ""))
+        dialog.password_input.setText(str(conn_data.get("password", "") or ""))
+        dialog.dsn_input.setText(conn_data.get("dsn", "") or "")
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")
             try:
                 conn_name = new_data.get("name", "Connection")
                 db.update_connection(new_data)
+                # Evict stale Oracle pool so next query uses updated credentials
+                db.invalidate_oracle_pool(new_data)
                 self.manager._save_tree_expansion_state()
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()
@@ -1151,7 +1406,7 @@ class ConnectionDialogs:
         dialog.port_input.setText(str(conn_data.get("port", "")))
         dialog.db_input.setText(conn_data.get("database", ""))
         dialog.user_input.setText(conn_data.get("user", ""))
-        dialog.password_input.setText(conn_data.get("password", ""))
+        dialog.password_input.setText(str(conn_data.get("password", "") or ""))
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
 
@@ -1161,6 +1416,15 @@ class ConnectionDialogs:
             try:
                 conn_name = new_data.get("name", "Connection")
                 db.update_connection(new_data)
+                # Evict stale pool so next query uses updated credentials
+                db.invalidate_pool(new_data)
+                # Sync the in-memory active connection reference if it's the same one
+                if (
+                    hasattr(self.manager, "active_postgres_conn")
+                    and self.manager.active_postgres_conn
+                    and self.manager.active_postgres_conn.get("id") == new_data.get("id")
+                ):
+                    self.manager.active_postgres_conn = new_data
                 self.manager._save_tree_expansion_state()
                 self.manager.load_data()
                 self.manager._restore_tree_expansion_state()

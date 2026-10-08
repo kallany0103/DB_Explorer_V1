@@ -62,6 +62,9 @@ def build_main_window_menu(main_window):
     actions_menu.addAction(main_window.describe_object_action)
     actions_menu.addAction(main_window.quick_describe_action)
     actions_menu.addAction(main_window.describe_query_action)
+    actions_menu.addSeparator()
+    actions_menu.addAction(main_window.change_password_action)
+    actions_menu.addSeparator()
     actions_menu.addAction(main_window.cancel_action)
 
     tools_menu = menubar.addMenu("Tools")

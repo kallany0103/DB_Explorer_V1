@@ -10,7 +10,13 @@ import cdata.servicenow as sn_driver
 import cdata.csv as csv_driver
 import urllib.parse
 import logging
-from db.connection_pool import get_or_create_pool, get_or_create_oracle_pool, close_all_pools
+from db.connection_pool import (
+    get_or_create_pool,
+    get_or_create_oracle_pool,
+    close_all_pools,
+    invalidate_pool,
+    invalidate_oracle_pool,
+)
 
 def resource_path(relative_path: str) -> str:
     """Get absolute path to a bundled read-only resource (assets, ui, etc.)."""
@@ -103,6 +109,19 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
                             q['application_name'] = [final_app_name]
                             if is_cloud:
                                 q['sslmode'] = ['require']
+
+                            # If a standalone password was saved separately (e.g. from Edit Connection),
+                            # inject it into the DSN URL so the stored password always wins
+                            standalone_pwd = conn_data.get("password")
+                            if standalone_pwd is not None and str(standalone_pwd).strip():
+                                netloc = u.netloc
+                                # Replace or insert the password in user:pass@host
+                                if '@' in netloc:
+                                    userinfo, hostpart = netloc.rsplit('@', 1)
+                                    username_part = userinfo.split(':')[0]
+                                    netloc = f"{username_part}:{urllib.parse.quote(str(standalone_pwd), safe='')}@{hostpart}"
+                                u = u._replace(netloc=netloc)
+
                             u = u._replace(query=urllib.parse.urlencode(q, doseq=True))
                             dsn = urllib.parse.urlunparse(u)
                         else:
@@ -111,6 +130,13 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
                                 dsn += f" application_name='{final_app_name}'"
                             if is_cloud and "sslmode" not in dsn:
                                 dsn += " sslmode='require'"
+                            # Override password in keyword DSN if set separately
+                            standalone_pwd = conn_data.get("password")
+                            if standalone_pwd is not None and str(standalone_pwd).strip():
+                                import re as _re
+                                dsn = _re.sub(r"password='[^']*'", f"password='{standalone_pwd}'", dsn)
+                                if "password=" not in dsn:
+                                    dsn += f" password='{standalone_pwd}'"
                     except Exception:
                         pass # Fallback to original DSN if parsing fails
                         
