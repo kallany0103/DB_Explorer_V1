@@ -229,10 +229,32 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
         return None
 
 
+_oracle_thick_mode_initialized = False
+
+def _init_oracle_thick_mode():
+    global _oracle_thick_mode_initialized
+    if not _oracle_thick_mode_initialized:
+        try:
+            if getattr(sys, 'frozen', False):
+                # When frozen, it lives in {app}/resources/oracle/instantclient
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.abspath(".")
+                
+            instant_client_dir = os.path.join(base_dir, "resources", "oracle", "instantclient")
+            
+            oracledb.init_oracle_client(lib_dir=instant_client_dir)
+            _oracle_thick_mode_initialized = True
+        except Exception as e:
+            logging.warning(f"Failed to initialize Oracle thick mode with bundled client: {e}")
+            _oracle_thick_mode_initialized = True
+
 def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=None, password=None, conn_data=None, use_pool=True):
     """
     Get a pooled Oracle connection. Can accept either kwargs or a conn_data dictionary.
     """
+    _init_oracle_thick_mode()
+    
     if conn_data is None:
         conn_data = {
             "host": host,
