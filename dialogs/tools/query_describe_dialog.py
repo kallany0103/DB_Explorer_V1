@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QComboBox,
     QToolButton,
     QFileDialog,
     QApplication,
@@ -293,22 +292,6 @@ class QueryDescribeDialog(QDialog):
         self.grid_view_btn.clicked.connect(lambda: self._set_view_mode(1))
         toolbar.addWidget(self.grid_view_btn)
 
-        # Separator
-        toolbar.addWidget(self._create_v_separator())
-
-        # Format Style Dropdown
-        self.format_combo = QComboBox()
-        self.format_combo.addItems([
-            "Toad Format",
-            "DDL Format",
-            "Comma Separated Names",
-            "Select List",
-            "Markdown Table",
-        ])
-        self.format_combo.setToolTip("Choose output formatting style")
-        self.format_combo.currentIndexChanged.connect(self._on_format_changed)
-        toolbar.addWidget(self.format_combo)
-
         # Spacer
         toolbar.addStretch()
 
@@ -485,18 +468,9 @@ class QueryDescribeDialog(QDialog):
             ]
         self._update_display()
 
-    def _on_format_changed(self):
-        self._update_display()
-
-    def _get_current_style_code(self) -> str:
-        idx = self.format_combo.currentIndex()
-        styles = ["toad", "ddl", "names", "select_list", "markdown"]
-        return styles[idx] if 0 <= idx < len(styles) else "toad"
-
     def _update_display(self):
-        # 1. Update text editor
-        style_code = self._get_current_style_code()
-        text = format_describe_text(self._filtered_columns, style=style_code)
+        # 1. Update text editor in Toad format
+        text = format_describe_text(self._filtered_columns, style="toad")
         self.editor.setPlainText(text)
 
         # 2. Update table

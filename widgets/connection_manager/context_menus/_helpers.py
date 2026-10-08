@@ -39,6 +39,12 @@ def add_properties_statistics_actions(menu, manager, item_data, obj_name):
     )
     menu.addAction(desc_act)
 
+    quick_desc_act = action(manager, "Quick Describe...", "fa5s.search-plus", shortcut="Ctrl+D")
+    quick_desc_act.triggered.connect(
+        lambda _checked=False, data=item_data, name=obj_name: manager.quick_describe_object(data, name)
+    )
+    menu.addAction(quick_desc_act)
+
     act = action(manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
     act.triggered.connect(
         lambda _checked=False, data=item_data, name=obj_name: manager.open_properties_workbench(data, name)

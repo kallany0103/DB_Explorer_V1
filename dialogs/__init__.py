@@ -6,6 +6,7 @@ from dialogs.tools import (
     PreferencesDialog,
     QueryDescribeDialog,
     ObjectDescribeDialog,
+    QuickDescribeDialog,
 )
 
 
@@ -63,6 +64,7 @@ __all__ = [
     "PreferencesDialog",
     "QueryDescribeDialog",
     "ObjectDescribeDialog",
+    "QuickDescribeDialog",
 
 
     # Connections

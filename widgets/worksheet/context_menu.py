@@ -78,6 +78,12 @@ def show_editor_context_menu(manager, pos, editor):
     describe_obj_action.triggered.connect(manager.describe_object)
     menu.addAction(describe_obj_action)
 
+    quick_describe_action = QAction(qta.icon("fa5s.search-plus", color="#555555"), "Quick Describe", manager)
+    quick_describe_action.setIconVisibleInMenu(True)
+    quick_describe_action.setShortcut("Ctrl+D")
+    quick_describe_action.triggered.connect(manager.quick_describe)
+    menu.addAction(quick_describe_action)
+
     describe_action = QAction(qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager)
     describe_action.setIconVisibleInMenu(True)
     describe_action.setShortcut("Shift+F4")

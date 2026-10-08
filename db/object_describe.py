@@ -13,11 +13,13 @@ from db.result_metadata import _description_value
 def parse_object_identifier(raw: str) -> tuple[str | None, str]:
     """
     Parses a raw object identifier string into (schema_name, object_name).
-    Handles unquoted, double-quoted, bracketed, and backticked identifiers.
+    Handles unquoted, double-quoted, bracketed, and backticked identifiers,
+    as well as partially-selected or unbalanced quoted tokens (e.g. Emam"."credential).
     E.g.:
       'employees' -> (None, 'employees')
       'hr.employees' -> ('hr', 'employees')
       '"Emam"."credential"' -> ('Emam', 'credential')
+      'Emam"."credential' -> ('Emam', 'credential')
       '[dbo].[Orders]' -> ('dbo', 'Orders')
     """
     raw = raw.strip().rstrip(";")
@@ -48,14 +50,13 @@ def parse_object_identifier(raw: str) -> tuple[str | None, str]:
     if current:
         tokens.append("".join(current).strip())
 
+    # Fallback if quotes were unbalanced or tokens length <= 1 and raw contains dot
+    if in_quote is not None or (len(tokens) <= 1 and "." in raw):
+        tokens = [p.strip() for p in raw.split(".") if p.strip()]
+
     cleaned = []
     for t in tokens:
-        clean_t = t.strip()
-        if (clean_t.startswith('"') and clean_t.endswith('"')) or \
-           (clean_t.startswith('`') and clean_t.endswith('`')):
-            clean_t = clean_t[1:-1]
-        elif clean_t.startswith('[') and clean_t.endswith(']'):
-            clean_t = clean_t[1:-1]
+        clean_t = t.strip(' "`[]\'')
         if clean_t:
             cleaned.append(clean_t)
 
@@ -79,6 +80,405 @@ def _detect_db_code(conn_data: dict) -> str:
         elif conn_data.get("db_path"):
             code = "SQLITE"
     return code
+
+
+def generate_object_scripts(meta: dict) -> dict[str, str]:
+    """
+    Generates a full suite of Toad for Oracle-style scripts for the described object:
+    - 'Full DDL': Complete production DDL (Table, PK, FK, Checks, Indexes, Triggers, Comments, Grants)
+    - 'Drop & Recreate': Drop statement followed by Full DDL
+    - 'SELECT Query': Formatted SELECT statement listing all columns
+    - 'INSERT Statement': Parameterized INSERT template
+    - 'UPDATE Statement': Parameterized UPDATE template keyed by Primary Key
+    - 'DELETE Statement': Parameterized DELETE template keyed by Primary Key
+    - 'MERGE / Upsert Statement': Engine-specific MERGE or ON CONFLICT template
+    - 'TRUNCATE Statement': TRUNCATE TABLE statement
+    - 'Record Count & Stats': Query for total rows and key distinct counts
+    - 'All Scripts Combined': Master script containing all DDL and DML scripts with banners
+    """
+    target_type = meta.get("target_type", "table")
+    obj_type = meta.get("object_type", "Table")
+    obj_name = meta.get("name", "")
+    schema_name = meta.get("schema", "")
+    db_code = (meta.get("db_code") or "").upper()
+    full_quoted = f'"{schema_name}"."{obj_name}"' if schema_name else f'"{obj_name}"'
+
+    columns = meta.get("columns", [])
+    constraints = meta.get("constraints", [])
+    indexes = meta.get("indexes", [])
+    triggers = meta.get("triggers", [])
+    tbl_comment = meta.get("details", {}).get("Comment", "")
+
+    scripts = {}
+
+    if target_type == "schema":
+        schema_ddl = meta.get("ddl", f'CREATE SCHEMA "{obj_name}";')
+        if db_code in ("ORACLE", "ORACLE_DB"):
+            drop_ddl = f'DROP USER "{obj_name}" CASCADE;'
+            stats_query = (
+                f"SELECT OBJECT_TYPE, COUNT(*) AS OBJECT_COUNT\n"
+                f"FROM ALL_OBJECTS\n"
+                f"WHERE OWNER = '{obj_name}'\n"
+                f"GROUP BY OBJECT_TYPE\n"
+                f"ORDER BY 1;"
+            )
+        elif db_code == "SQLITE":
+            drop_ddl = f"-- SQLite database file: {obj_name}"
+            stats_query = (
+                f"SELECT type AS object_type, COUNT(*) AS object_count\n"
+                f"FROM sqlite_master\n"
+                f"WHERE name NOT LIKE 'sqlite_%'\n"
+                f"GROUP BY type\n"
+                f"ORDER BY 1;"
+            )
+        else:
+            drop_ddl = f'DROP SCHEMA IF EXISTS "{obj_name}" CASCADE;'
+            stats_query = (
+                f"SELECT table_type, COUNT(*) AS object_count\n"
+                f"FROM information_schema.tables\n"
+                f"WHERE table_schema = '{obj_name}'\n"
+                f"GROUP BY table_type\n"
+                f"ORDER BY 1;"
+            )
+
+        scripts["Full DDL"] = schema_ddl
+        scripts["Drop & Recreate"] = f"{drop_ddl}\n\n{schema_ddl}"
+        scripts["Schema Objects Query"] = stats_query
+        scripts["All Scripts Combined"] = (
+            f"-- =========================================================================\n"
+            f"-- 1. FULL SCHEMA DDL\n"
+            f"-- =========================================================================\n"
+            f"{schema_ddl}\n\n"
+            f"-- =========================================================================\n"
+            f"-- 2. DROP SCHEMA STATEMENT\n"
+            f"-- =========================================================================\n"
+            f"{drop_ddl}\n\n"
+            f"-- =========================================================================\n"
+            f"-- 3. SCHEMA OBJECTS & STATISTICS QUERY\n"
+            f"-- =========================================================================\n"
+            f"{stats_query}\n"
+        )
+        return scripts
+
+    if target_type == "view":
+        view_ddl = meta.get("ddl", f'CREATE VIEW {full_quoted} AS SELECT 1;')
+        if db_code in ("ORACLE", "ORACLE_DB"):
+            drop_ddl = f'DROP VIEW {full_quoted};'
+        else:
+            drop_ddl = f'DROP VIEW IF EXISTS {full_quoted} CASCADE;'
+
+        col_names = [f'    "{c["name"]}"' for c in columns]
+        select_sql = f'SELECT\n' + ",\n".join(col_names) + f'\nFROM {full_quoted};' if col_names else f'SELECT * FROM {full_quoted};'
+        count_sql = f'SELECT COUNT(*) AS total_rows FROM {full_quoted};'
+
+        scripts["Full DDL"] = view_ddl
+        scripts["Drop & Recreate"] = f"{drop_ddl}\n\n{view_ddl}"
+        scripts["SELECT Query"] = select_sql
+        scripts["Record Count Query"] = count_sql
+        scripts["All Scripts Combined"] = (
+            f"-- =========================================================================\n"
+            f"-- 1. VIEW DDL\n"
+            f"-- =========================================================================\n"
+            f"{view_ddl}\n\n"
+            f"-- =========================================================================\n"
+            f"-- 2. SELECT QUERY\n"
+            f"-- =========================================================================\n"
+            f"{select_sql}\n\n"
+            f"-- =========================================================================\n"
+            f"-- 3. RECORD COUNT QUERY\n"
+            f"-- =========================================================================\n"
+            f"{count_sql}\n"
+        )
+        return scripts
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # TABLE SCRIPTS (Toad for Oracle Style Suite)
+    # ─────────────────────────────────────────────────────────────────────────
+    # 1. Full DDL
+    ddl_sections = [
+        f"-- -----------------------------------------------------------------------------",
+        f"-- Object:    {full_quoted}",
+        f"-- Type:      {obj_type}",
+        f"-- Database:  {db_code or 'RELATIONAL'}",
+        f"-- Generated: Toad for Oracle-style Object Describe",
+        f"-- -----------------------------------------------------------------------------",
+        f"",
+    ]
+
+    if db_code in ("ORACLE", "ORACLE_DB"):
+        drop_table_syntax = f"DROP TABLE {full_quoted} CASCADE CONSTRAINTS PURGE;"
+    elif db_code == "SQLITE":
+        drop_table_syntax = f"DROP TABLE IF EXISTS {full_quoted};"
+    else:
+        drop_table_syntax = f"DROP TABLE IF EXISTS {full_quoted} CASCADE;"
+
+    ddl_sections.append(f"-- Drop statement:")
+    ddl_sections.append(f"-- {drop_table_syntax}")
+    ddl_sections.append("")
+    ddl_sections.append(f"CREATE TABLE {full_quoted} (")
+
+    col_lines = []
+    max_name_len = max([len(c["name"]) for c in columns]) if columns else 10
+    padding = max(max_name_len + 4, 16)
+
+    for c in columns:
+        col_name_str = f'"{c["name"]}"'.ljust(padding)
+        type_str = c.get("data_type", "TEXT")
+        def_str = f" DEFAULT {c['default']}" if c.get("default") else ""
+        null_str = "" if c.get("nullable", True) else " NOT NULL"
+        col_lines.append(f"    {col_name_str} {type_str}{def_str}{null_str}")
+
+    # Primary key constraint inside CREATE TABLE
+    pk_cst = next((cst for cst in constraints if cst.get("type") == "Primary Key"), None)
+    pk_cols = [c["name"] for c in columns if c.get("is_pk")]
+    if not pk_cols and pk_cst:
+        import re
+        m = re.search(r'\((.+?)\)', pk_cst.get("definition", ""))
+        if m:
+            pk_cols = [x.strip().strip('"\'`') for x in m.group(1).split(",") if x.strip()]
+
+    if pk_cst:
+        pk_name = pk_cst.get("name", f"PK_{obj_name}")
+        pk_def = pk_cst.get("definition", "")
+        if not pk_def.upper().startswith("PRIMARY"):
+            pk_def = f"PRIMARY KEY ({pk_def})"
+        col_lines.append(f'    CONSTRAINT "{pk_name}" {pk_def}')
+    elif pk_cols:
+        pk_cols_str = ", ".join([f'"{p}"' for p in pk_cols])
+        col_lines.append(f'    CONSTRAINT "PK_{obj_name}" PRIMARY KEY ({pk_cols_str})')
+
+    ddl_sections.append(",\n".join(col_lines))
+    ddl_sections.append(");")
+
+    # Table & Column Comments
+    comment_lines = []
+    if tbl_comment:
+        comment_lines.append(f"COMMENT ON TABLE {full_quoted} IS '{tbl_comment}';")
+    for c in columns:
+        if c.get("comment"):
+            comment_lines.append(f'COMMENT ON COLUMN {full_quoted}."{c["name"]}" IS \'{c["comment"]}\';')
+    if comment_lines:
+        ddl_sections.append("\n-- Comments:")
+        ddl_sections.extend(comment_lines)
+
+    # Unique, Check & Foreign Key Constraints
+    other_csts = [cst for cst in constraints if cst.get("type") != "Primary Key"]
+    if other_csts:
+        ddl_sections.append("\n-- Constraints:")
+        for cst in other_csts:
+            cst_name = cst.get("name", "CST")
+            cst_def = cst.get("definition", "")
+            ddl_sections.append(f'ALTER TABLE {full_quoted}\n    ADD CONSTRAINT "{cst_name}" {cst_def};')
+
+    # Indexes
+    idx_lines = []
+    for idx in indexes:
+        idx_def = idx.get("definition", "")
+        if idx_def and idx_def.strip():
+            stmt = idx_def.strip()
+            if not stmt.endswith(";"):
+                stmt += ";"
+            idx_lines.append(stmt)
+        elif idx.get("name"):
+            uniq_str = "UNIQUE " if idx.get("unique") else ""
+            idx_lines.append(f'CREATE {uniq_str}INDEX "{idx.get("name")}" ON {full_quoted};')
+    if idx_lines:
+        ddl_sections.append("\n-- Indexes:")
+        ddl_sections.extend(idx_lines)
+
+    # Triggers
+    trg_lines = []
+    for trg in triggers:
+        t_def = trg.get("definition", "")
+        if t_def:
+            stmt = t_def.strip()
+            if not stmt.endswith(";"):
+                stmt += ";"
+            trg_lines.append(stmt)
+    if trg_lines:
+        ddl_sections.append("\n-- Triggers:")
+        ddl_sections.extend(trg_lines)
+
+    # Grants
+    ddl_sections.append("\n-- Grants:")
+    ddl_sections.append(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {full_quoted} TO PUBLIC;")
+
+    full_ddl = "\n".join(ddl_sections)
+
+    # 2. Drop & Recreate
+    recreate_ddl = f"{drop_table_syntax}\n\n{full_ddl}"
+
+    # 3. SELECT Query
+    if columns:
+        sel_cols = [f'    "{c["name"]}"' for c in columns]
+        select_sql = f"SELECT\n" + ",\n".join(sel_cols) + f"\nFROM {full_quoted};"
+    else:
+        select_sql = f"SELECT * FROM {full_quoted};"
+
+    # 4. INSERT Statement
+    if columns:
+        ins_cols = [f'    "{c["name"]}"' for c in columns]
+        ins_vals = [f'    :{c["name"]}' for c in columns]
+        insert_sql = (
+            f"INSERT INTO {full_quoted} (\n"
+            + ",\n".join(ins_cols)
+            + f"\n) VALUES (\n"
+            + ",\n".join(ins_vals)
+            + f"\n);"
+        )
+    else:
+        insert_sql = f"INSERT INTO {full_quoted} DEFAULT VALUES;"
+
+    # 5. UPDATE Statement
+    non_pk_cols = [c["name"] for c in columns if c["name"] not in pk_cols]
+    if not non_pk_cols:
+        non_pk_cols = [c["name"] for c in columns]
+
+    upd_sets = [f'    "{c}" = :{c}' for c in non_pk_cols]
+    where_clauses = [f'    "{c}" = :{c}' for c in pk_cols] if pk_cols else ["    /* <specify condition> */ 1 = 1"]
+    update_sql = (
+        f"UPDATE {full_quoted}\nSET\n"
+        + ",\n".join(upd_sets)
+        + f"\nWHERE\n"
+        + " AND\n".join(where_clauses)
+        + ";"
+    )
+
+    # 6. DELETE Statement
+    del_wheres = [f'    "{c}" = :{c}' for c in pk_cols] if pk_cols else ["    /* <specify condition> */ 1 = 1"]
+    delete_sql = (
+        f"DELETE FROM {full_quoted}\nWHERE\n"
+        + " AND\n".join(del_wheres)
+        + ";"
+    )
+
+    # 7. MERGE / Upsert Statement (Toad for Oracle Style)
+    if db_code in ("ORACLE", "ORACLE_DB"):
+        if pk_cols:
+            source_cols = [f'        :{c["name"]} AS "{c["name"]}"' for c in columns]
+            join_conds = [f'target."{c}" = source."{c}"' for c in pk_cols]
+            m_upd_sets = [f'        target."{c}" = source."{c}"' for c in non_pk_cols]
+            m_ins_cols = [f'        "{c["name"]}"' for c in columns]
+            m_ins_vals = [f'        source."{c["name"]}"' for c in columns]
+            merge_sql = (
+                f"MERGE INTO {full_quoted} target\n"
+                f"USING (\n"
+                f"    SELECT\n"
+                + ",\n".join(source_cols)
+                + f"\n    FROM DUAL\n"
+                f") source\n"
+                f"ON (" + " AND ".join(join_conds) + ")\n"
+                f"WHEN MATCHED THEN\n"
+                f"    UPDATE SET\n"
+                + ",\n".join(m_upd_sets)
+                + f"\nWHEN NOT MATCHED THEN\n"
+                f"    INSERT (\n"
+                + ",\n".join(m_ins_cols)
+                + f"\n    ) VALUES (\n"
+                + ",\n".join(m_ins_vals)
+                + f"\n    );"
+            )
+        else:
+            merge_sql = f"-- MERGE requires a Primary Key or Unique constraint on {full_quoted};\n"
+    elif db_code in ("POSTGRES", "POSTGRESQL"):
+        if pk_cols and columns:
+            p_ins_cols = [f'    "{c["name"]}"' for c in columns]
+            p_ins_vals = [f'    :{c["name"]}' for c in columns]
+            p_pk_conflict = ", ".join([f'"{p}"' for p in pk_cols])
+            p_upd_sets = [f'    "{c}" = EXCLUDED."{c}"' for c in non_pk_cols]
+            merge_sql = (
+                f"INSERT INTO {full_quoted} (\n"
+                + ",\n".join(p_ins_cols)
+                + f"\n) VALUES (\n"
+                + ",\n".join(p_ins_vals)
+                + f"\n)\n"
+                f"ON CONFLICT ({p_pk_conflict})\n"
+                f"DO UPDATE SET\n"
+                + ",\n".join(p_upd_sets)
+                + f";"
+            )
+        else:
+            merge_sql = f"-- Upsert requires a Primary Key on {full_quoted};\n"
+    else:  # SQLite / Generic
+        if columns:
+            sq_ins_cols = [f'    "{c["name"]}"' for c in columns]
+            sq_ins_vals = [f'    :{c["name"]}' for c in columns]
+            merge_sql = (
+                f"INSERT OR REPLACE INTO {full_quoted} (\n"
+                + ",\n".join(sq_ins_cols)
+                + f"\n) VALUES (\n"
+                + ",\n".join(sq_ins_vals)
+                + f"\n);"
+            )
+        else:
+            merge_sql = f"INSERT OR REPLACE INTO {full_quoted} DEFAULT VALUES;"
+
+    # 8. TRUNCATE Statement
+    truncate_sql = f"TRUNCATE TABLE {full_quoted};"
+
+    # 9. Record Count & Stats Query
+    if pk_cols:
+        count_stats_sql = (
+            f"SELECT\n"
+            f"    COUNT(*) AS total_rows,\n"
+            f"    COUNT(DISTINCT \"{pk_cols[0]}\") AS distinct_primary_keys\n"
+            f"FROM {full_quoted};"
+        )
+    else:
+        count_stats_sql = f"SELECT COUNT(*) AS total_rows FROM {full_quoted};"
+
+    # 10. All Combined
+    combined_sql = (
+        f"-- =========================================================================\n"
+        f"-- 1. FULL DDL SCRIPT\n"
+        f"-- =========================================================================\n"
+        f"{full_ddl}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 2. DROP & RECREATE SCRIPT\n"
+        f"-- =========================================================================\n"
+        f"{recreate_ddl}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 3. SELECT STATEMENT\n"
+        f"-- =========================================================================\n"
+        f"{select_sql}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 4. INSERT STATEMENT\n"
+        f"-- =========================================================================\n"
+        f"{insert_sql}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 5. UPDATE STATEMENT\n"
+        f"-- =========================================================================\n"
+        f"{update_sql}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 6. DELETE STATEMENT\n"
+        f"-- =========================================================================\n"
+        f"{delete_sql}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 7. MERGE / UPSERT STATEMENT\n"
+        f"-- =========================================================================\n"
+        f"{merge_sql}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 8. TRUNCATE STATEMENT\n"
+        f"-- =========================================================================\n"
+        f"{truncate_sql}\n\n"
+        f"-- =========================================================================\n"
+        f"-- 9. RECORD COUNT & STATS QUERY\n"
+        f"-- =========================================================================\n"
+        f"{count_stats_sql}\n"
+    )
+
+    scripts["Full DDL"] = full_ddl
+    scripts["Drop & Recreate"] = recreate_ddl
+    scripts["SELECT Query"] = select_sql
+    scripts["INSERT Statement"] = insert_sql
+    scripts["UPDATE Statement"] = update_sql
+    scripts["DELETE Statement"] = delete_sql
+    scripts["MERGE / Upsert Statement"] = merge_sql
+    scripts["TRUNCATE Statement"] = truncate_sql
+    scripts["Record Count & Stats"] = count_stats_sql
+    scripts["All Scripts Combined"] = combined_sql
+
+    return scripts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -106,42 +506,56 @@ def _describe_postgres(conn_data: dict, schema_hint: str | None, object_name: st
         # Otherwise target is treated as a table or view
         effective_schema = schema_hint or "public"
 
-        # Check table / view existence in pg_class
+        # Check table / view existence in pg_class (exact match or case-insensitive match)
         cursor.execute("""
             SELECT c.oid, c.relkind, pg_get_userbyid(c.relowner), n.nspname,
                    c.reltuples::bigint, pg_size_pretty(pg_total_relation_size(c.oid)),
-                   obj_description(c.oid, 'pg_class')
+                   obj_description(c.oid, 'pg_class'), c.relname
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = %s AND c.relname = %s;
-        """, (effective_schema, object_name))
+            WHERE (n.nspname = %s OR lower(n.nspname) = lower(%s))
+              AND (c.relname = %s OR lower(c.relname) = lower(%s))
+            ORDER BY (n.nspname = %s AND c.relname = %s) DESC,
+                     (lower(n.nspname) = lower(%s) AND lower(c.relname) = lower(%s)) DESC
+            LIMIT 1;
+        """, (effective_schema, effective_schema, object_name, object_name,
+              effective_schema, object_name, effective_schema, object_name))
         tbl_row = cursor.fetchone()
 
-        if not tbl_row and not schema_hint:
-            # Try finding table in any non-system schema
+        if not tbl_row:
+            # Try finding table in any non-system schema (case-insensitive)
             cursor.execute("""
                 SELECT c.oid, c.relkind, pg_get_userbyid(c.relowner), n.nspname,
                        c.reltuples::bigint, pg_size_pretty(pg_total_relation_size(c.oid)),
-                       obj_description(c.oid, 'pg_class')
+                       obj_description(c.oid, 'pg_class'), c.relname
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relname = %s AND n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema'
-                ORDER BY (n.nspname = 'public') DESC
+                WHERE (c.relname = %s OR lower(c.relname) = lower(%s))
+                  AND n.nspname NOT LIKE 'pg_%%' AND n.nspname != 'information_schema'
+                ORDER BY (c.relname = %s) DESC, (n.nspname = 'public') DESC
                 LIMIT 1;
-            """, (object_name,))
+            """, (object_name, object_name, object_name))
             tbl_row = cursor.fetchone()
-            if tbl_row:
-                effective_schema = tbl_row[3]
 
         if not tbl_row:
-            # Check if it was meant to be a schema
-            cursor.execute("SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = %s", (object_name,))
-            schema_row = cursor.fetchone()
-            if schema_row:
-                return _describe_postgres_schema(cursor, object_name, schema_row[1])
-            raise ValueError(f"Table or Schema '{object_name}' not found in database.")
+            # Check if either candidate is a schema
+            for candidate in (object_name, schema_hint):
+                if candidate:
+                    cursor.execute("""
+                        SELECT nspname, pg_get_userbyid(nspowner)
+                        FROM pg_namespace
+                        WHERE nspname = %s OR lower(nspname) = lower(%s)
+                        ORDER BY (nspname = %s) DESC
+                        LIMIT 1;
+                    """, (candidate, candidate, candidate))
+                    schema_row = cursor.fetchone()
+                    if schema_row:
+                        return _describe_postgres_schema(cursor, schema_row[0], schema_row[1])
 
-        oid, relkind, owner, schema_name, row_est, total_size, comment = tbl_row
+            target_display = f'"{schema_hint}"."{object_name}"' if schema_hint else f'"{object_name}"'
+            raise ValueError(f"Table or Schema '{target_display}' not found in database.")
+
+        oid, relkind, owner, schema_name, row_est, total_size, comment, actual_relname = tbl_row
         relkind_map = {
             'r': 'Table',
             'p': 'Partitioned table',
@@ -233,18 +647,35 @@ def _describe_postgres(conn_data: dict, schema_hint: str | None, object_name: st
                 "definition": r[2] or ""
             })
 
+        # 3b. Fetch Triggers
+        triggers = []
+        try:
+            cursor.execute("""
+                SELECT tgname, pg_get_triggerdef(oid, true)
+                FROM pg_trigger
+                WHERE tgrelid = %s AND NOT tgisinternal
+                ORDER BY tgname;
+            """, (oid,))
+            for r in cursor.fetchall():
+                triggers.append({
+                    "name": r[0],
+                    "definition": r[1] or ""
+                })
+        except Exception:
+            triggers = []
+
         # 4. Fetch Sample Data (up to 50 rows)
         sample_headers = [c["name"] for c in columns]
         sample_rows = []
         try:
-            full_quoted_name = f'"{schema_name}"."{object_name}"'
+            full_quoted_name = f'"{schema_name}"."{actual_relname}"'
             cursor.execute(f"SELECT * FROM {full_quoted_name} LIMIT 50")
             sample_rows = cursor.fetchall()
         except Exception:
             sample_rows = []
 
         # 5. Build DDL Script
-        ddl_lines = [f"CREATE {obj_type.upper()} \"{schema_name}\".\"{object_name}\" ("]
+        ddl_lines = [f"CREATE {obj_type.upper()} \"{schema_name}\".\"{actual_relname}\" ("]
         col_defs = []
         for c in columns:
             null_str = "" if c["nullable"] else " NOT NULL"
@@ -257,11 +688,18 @@ def _describe_postgres(conn_data: dict, schema_hint: str | None, object_name: st
         ddl_lines.append(");")
         ddl_script = "\n".join(ddl_lines)
 
+        # 6. Fetch Parent Schema Details (so both table & schema are described together)
+        schema_info = None
+        try:
+            schema_info = _describe_postgres_schema(cursor, schema_name, owner)
+        except Exception:
+            schema_info = None
+
         return {
             "target_type": "table" if "Table" in obj_type else "view",
-            "name": object_name,
+            "name": actual_relname,
             "schema": schema_name,
-            "title": f'"{schema_name}"."{object_name}"',
+            "title": f'"{schema_name}"."{actual_relname}"',
             "object_type": obj_type,
             "details": {
                 "Schema": schema_name,
@@ -275,11 +713,13 @@ def _describe_postgres(conn_data: dict, schema_hint: str | None, object_name: st
             "columns": columns,
             "indexes": indexes,
             "constraints": constraints,
+            "triggers": triggers,
             "sample_data": {
                 "headers": sample_headers,
                 "rows": sample_rows
             },
-            "ddl": ddl_script
+            "ddl": ddl_script,
+            "schema_info": schema_info
         }
     finally:
         cursor.close()
@@ -459,6 +899,18 @@ def _describe_sqlite(conn_data: dict, schema_hint: str | None, object_name: str)
                 "type": "index"
             })
 
+        # 3b. Fetch Triggers
+        triggers = []
+        try:
+            cursor.execute("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?", (tbl_name,))
+            for r in cursor.fetchall():
+                triggers.append({
+                    "name": r[0],
+                    "definition": r[1] or ""
+                })
+        except Exception:
+            triggers = []
+
         # 4. Fetch Sample Data
         sample_headers = [c["name"] for c in columns]
         sample_rows = []
@@ -468,14 +920,21 @@ def _describe_sqlite(conn_data: dict, schema_hint: str | None, object_name: str)
         except Exception:
             sample_rows = []
 
+        schema_info = None
+        try:
+            schema_info = _describe_sqlite_schema(cursor, schema_hint or "main", db_path)
+        except Exception:
+            schema_info = None
+
         return {
             "target_type": "table" if obj_type == "Table" else "view",
             "name": tbl_name,
-            "schema": "main",
+            "schema": schema_hint or "main",
             "title": f'"{tbl_name}"',
             "object_type": obj_type,
             "details": {
                 "Database File": db_path,
+                "Schema": schema_hint or "main",
                 "Object Type": obj_type,
                 "Columns Count": len(columns),
                 "Indexes Count": len(indexes)
@@ -483,11 +942,13 @@ def _describe_sqlite(conn_data: dict, schema_hint: str | None, object_name: str)
             "columns": columns,
             "indexes": indexes,
             "constraints": constraints,
+            "triggers": triggers,
             "sample_data": {
                 "headers": sample_headers,
                 "rows": sample_rows
             },
-            "ddl": raw_sql or f"CREATE {obj_type.upper()} {tbl_name};"
+            "ddl": raw_sql or f"CREATE {obj_type.upper()} {tbl_name};",
+            "schema_info": schema_info
         }
     finally:
         cursor.close()
@@ -566,12 +1027,28 @@ def _describe_oracle(conn_data: dict, schema_hint: str | None, object_name: str)
         tbl_row = cursor.fetchone()
 
         if not tbl_row:
+            # Check table across all accessible schemas
+            cursor.execute("""
+                SELECT OWNER, TABLE_NAME, 'TABLE' AS OBJ_TYPE, NUM_ROWS
+                FROM ALL_TABLES
+                WHERE UPPER(TABLE_NAME) = :obj
+                UNION ALL
+                SELECT OWNER, VIEW_NAME, 'VIEW' AS OBJ_TYPE, NULL
+                FROM ALL_VIEWS
+                WHERE UPPER(VIEW_NAME) = :obj
+            """, obj=eff_obj)
+            tbl_row = cursor.fetchone()
+
+        if not tbl_row:
             # Check if user meant schema
-            cursor.execute("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = :usr", usr=eff_obj)
-            usr_row = cursor.fetchone()
-            if usr_row:
-                return _describe_oracle_schema(cursor, eff_obj)
-            raise ValueError(f"Table or Schema '{object_name}' not found in Oracle database.")
+            for cand in (eff_obj, eff_owner):
+                if cand:
+                    cursor.execute("SELECT USERNAME FROM ALL_USERS WHERE UPPER(USERNAME) = :usr", usr=cand)
+                    usr_row = cursor.fetchone()
+                    if usr_row:
+                        return _describe_oracle_schema(cursor, usr_row[0])
+            target_display = f"{schema_hint}.{object_name}" if schema_hint else object_name
+            raise ValueError(f"Table or Schema '{target_display}' not found in Oracle database.")
 
         owner, tbl_name, obj_type, num_rows = tbl_row
 
@@ -669,6 +1146,43 @@ def _describe_oracle(conn_data: dict, schema_hint: str | None, object_name: str)
                 "type": r[2] or "NORMAL"
             })
 
+        # 3b. Fetch Comments & Triggers
+        tbl_comment = ""
+        try:
+            cursor.execute("SELECT COMMENTS FROM ALL_TAB_COMMENTS WHERE OWNER = :own AND TABLE_NAME = :obj", own=owner, obj=tbl_name)
+            comm_row = cursor.fetchone()
+            if comm_row and comm_row[0]:
+                tbl_comment = comm_row[0]
+        except Exception:
+            tbl_comment = ""
+
+        try:
+            cursor.execute("SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS WHERE OWNER = :own AND TABLE_NAME = :obj", own=owner, obj=tbl_name)
+            for c_name, c_comm in cursor.fetchall():
+                if c_comm:
+                    for c in columns:
+                        if c["name"] == c_name:
+                            c["comment"] = c_comm
+                            break
+        except Exception:
+            pass
+
+        triggers = []
+        try:
+            cursor.execute("""
+                SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, STATUS
+                FROM ALL_TRIGGERS
+                WHERE TABLE_OWNER = :own AND TABLE_NAME = :obj
+                ORDER BY TRIGGER_NAME
+            """, own=owner, obj=tbl_name)
+            for r in cursor.fetchall():
+                triggers.append({
+                    "name": r[0],
+                    "definition": f"-- Trigger: {r[0]} ({r[1]} {r[2]} - Status: {r[3]})"
+                })
+        except Exception:
+            triggers = []
+
         # 4. Fetch Sample Data
         sample_headers = [c["name"] for c in columns]
         sample_rows = []
@@ -698,16 +1212,19 @@ def _describe_oracle(conn_data: dict, schema_hint: str | None, object_name: str)
                 "Object Type": obj_type.title(),
                 "Estimated Rows": num_rows if num_rows is not None else "N/A",
                 "Columns Count": len(columns),
-                "Indexes Count": len(indexes)
+                "Indexes Count": len(indexes),
+                "Comment": tbl_comment
             },
             "columns": columns,
             "indexes": indexes,
             "constraints": constraints,
+            "triggers": triggers,
             "sample_data": {
                 "headers": sample_headers,
                 "rows": sample_rows
             },
-            "ddl": ddl_script
+            "ddl": ddl_script,
+            "schema_info": _describe_oracle_schema(cursor, owner) if owner else None
         }
     finally:
         cursor.close()
@@ -781,14 +1298,28 @@ def describe_database_object(conn_data: dict, raw_target: str) -> dict:
     code = _detect_db_code(conn_data)
 
     if code in ("ORACLE", "ORACLE_DB"):
-        return _describe_oracle(conn_data, schema_hint, object_name)
+        meta = _describe_oracle(conn_data, schema_hint, object_name)
     elif code in ("POSTGRES", "POSTGRESQL"):
-        return _describe_postgres(conn_data, schema_hint, object_name)
+        meta = _describe_postgres(conn_data, schema_hint, object_name)
     elif code == "SQLITE":
-        return _describe_sqlite(conn_data, schema_hint, object_name)
+        meta = _describe_sqlite(conn_data, schema_hint, object_name)
     else:
         # Fallback using postgres-compatible queries or zero-row describe
         try:
-            return _describe_postgres(conn_data, schema_hint, object_name)
+            meta = _describe_postgres(conn_data, schema_hint, object_name)
         except Exception:
             raise ValueError(f"Describe object is not supported for database engine: {code}")
+
+    if meta:
+        meta["db_code"] = code
+        meta["scripts"] = generate_object_scripts(meta)
+        if "Full DDL" in meta["scripts"]:
+            meta["ddl"] = meta["scripts"]["Full DDL"]
+
+        if meta.get("schema_info"):
+            meta["schema_info"]["db_code"] = code
+            meta["schema_info"]["scripts"] = generate_object_scripts(meta["schema_info"])
+            if "Full DDL" in meta["schema_info"]["scripts"]:
+                meta["schema_info"]["ddl"] = meta["schema_info"]["scripts"]["Full DDL"]
+
+    return meta
