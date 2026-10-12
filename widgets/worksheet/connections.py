@@ -46,6 +46,14 @@ def load_joined_connections(manager, combo_box):
                 if item_data and item_data.get("id") == current_data.get("id"):
                     combo_box.setCurrentIndex(i)
                     break
+        else:
+            default_conn_id = getattr(getattr(manager, "main_window", None), "default_connection_id", None)
+            if default_conn_id is not None:
+                for i in range(combo_box.count()):
+                    item_data = combo_box.itemData(i)
+                    if item_data and item_data.get("id") == default_conn_id:
+                        combo_box.setCurrentIndex(i)
+                        break
     except Exception as error:
         print(f"Error refreshing combobox: {error}")
 

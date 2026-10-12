@@ -2,7 +2,7 @@
 
 from .export_dialog import ExportDialog
 from .search_objects_dialog import SearchObjectsDialog
-from .preferences_dialog import PreferencesDialog
+from dialogs.preferences import PreferencesDialog
 from .query_describe_dialog import QueryDescribeDialog
 from .object_describe_dialog import ObjectDescribeDialog
 from .quick_describe_dialog import QuickDescribeDialog

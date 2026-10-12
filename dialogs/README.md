@@ -44,10 +44,15 @@ Database performance, object statistics, and inspector tab views:
 - `stats_tab.py` — per-table statistics tab rendering
 
 ### 5. Tools Sub-package (`dialogs/tools/`)
-Application tools and settings:
+Application tools and dialogs:
 - `export_dialog.py` — CSV/XLSX export configuration
 - `search_objects_dialog.py` — cross-schema object search
-- `preferences_dialog.py` — application preferences
+- `query_describe_dialog.py` — query explain & execution plan
+- `quick_describe_dialog.py` — fast object lookup & describe form
+
+### 6. Preferences Sub-package (`dialogs/preferences/`)
+Full-featured IDE-style multi-category preferences system:
+- `dialog.py` — Preferences window with sidebar navigation (General, Text Editor, Database Tools)
 
 ## Usage Guidelines
 
@@ -105,9 +110,14 @@ dialogs/
 │   ├── database_statistics_dialog.py
 │   ├── stats_dialog.py
 │   └── stats_tab.py
-└── tools/
+├── tools/
+│   ├── __init__.py
+│   ├── export_dialog.py
+│   ├── search_objects_dialog.py
+│   ├── query_describe_dialog.py
+│   ├── object_describe_dialog.py
+│   └── quick_describe_dialog.py
+└── preferences/
     ├── __init__.py
-    ├── export_dialog.py
-    ├── search_objects_dialog.py
-    └── preferences_dialog.py
+    └── dialog.py
 ```

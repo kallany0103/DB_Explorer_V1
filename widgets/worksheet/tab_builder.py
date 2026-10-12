@@ -202,6 +202,19 @@ def add_tab(manager):
     text_edit.setObjectName("query_editor")
     text_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     text_edit.customContextMenuRequested.connect(lambda pos, editor=text_edit: manager.show_editor_context_menu(pos, editor))
+    
+    # Apply editor preferences from main window if configured
+    if hasattr(manager, "main_window") and manager.main_window:
+        mw = manager.main_window
+        text_edit.apply_preferences({
+            "editor_font_family": getattr(mw, "editor_font_family", "Consolas"),
+            "editor_font_size": getattr(mw, "editor_font_size", 10),
+            "editor_tab_size": getattr(mw, "editor_tab_size", 4),
+            "editor_word_wrap": getattr(mw, "editor_word_wrap", False),
+            "editor_line_numbers": getattr(mw, "editor_line_numbers", True),
+            "editor_auto_uppercase": getattr(mw, "editor_auto_uppercase", True),
+        })
+
     editor_stack.addWidget(text_edit)
 
     _sql_engine = CompletionEngine()

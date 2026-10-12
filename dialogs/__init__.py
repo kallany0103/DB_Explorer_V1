@@ -1,9 +1,9 @@
 # dialogs/__init__.py
 
+from dialogs.preferences import PreferencesDialog
 from dialogs.tools import (
     ExportDialog,
     SearchObjectsDialog,
-    PreferencesDialog,
     QueryDescribeDialog,
     ObjectDescribeDialog,
     QuickDescribeDialog,

@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QSyntaxHighlighter,
     QTextCharFormat,
     QPen,
+    QWheelEvent,
 )
 from PySide6.QtCore import QRect, QSize, Qt, QPoint, QEvent
 
@@ -92,6 +93,7 @@ class CodeEditor(QPlainTextEdit):
         self._ghost_full_match = ""
         self._ghost_accepting = False
         self.folding_gutter_width = 18
+        self.auto_uppercase = True
 
         self._sync_document_font_from_widget()
 
@@ -736,6 +738,8 @@ class CodeEditor(QPlainTextEdit):
 
     def _try_uppercase_word_before_cursor(self):
         """If the word immediately left of the cursor is a SQL keyword, uppercase it in place."""
+        if not getattr(self, "auto_uppercase", True):
+            return
         engine = self._engine
         if not engine:
             return
@@ -899,3 +903,68 @@ class CodeEditor(QPlainTextEdit):
 
         # 7. Compute and display ghost suggestion
         self._compute_ghost()
+
+    def wheelEvent(self, event: QWheelEvent):
+        """Ctrl+Scroll dynamically zooms font size (clamped 8-32 pt)."""
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            current_font = self.font()
+            current_size = current_font.pointSize()
+            if current_size <= 0:
+                current_size = 10
+            new_size = max(8, min(32, current_size + (1 if delta > 0 else -1)))
+            if new_size != current_size:
+                current_font.setPointSize(new_size)
+                self.setFont(current_font)
+                self._sync_document_font_from_widget()
+                self.updateLineNumberAreaWidth(0)
+                if self.lineNumberArea:
+                    self.lineNumberArea.update()
+                self.viewport().update()
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+    def apply_preferences(self, prefs: dict):
+        """Applies editor font, tab stop, word wrap, and line number preferences."""
+        if not prefs:
+            return
+
+        family = prefs.get("editor_font_family")
+        size = prefs.get("editor_font_size")
+
+        current_font = self.font()
+        changed_font = False
+        if family and current_font.family() != family:
+            current_font.setFamily(family)
+            changed_font = True
+        if size and current_font.pointSize() != int(size):
+            current_font.setPointSize(int(size))
+            changed_font = True
+
+        if changed_font:
+            self.setFont(current_font)
+            self._sync_document_font_from_widget()
+
+        tab_size = prefs.get("editor_tab_size")
+        if tab_size:
+            fm = QFontMetrics(self.font())
+            self.setTabStopDistance(fm.horizontalAdvance(' ') * int(tab_size))
+
+        if "editor_word_wrap" in prefs:
+            if prefs["editor_word_wrap"]:
+                self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+            else:
+                self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+
+        if "editor_line_numbers" in prefs:
+            show_ln = bool(prefs["editor_line_numbers"])
+            if hasattr(self, "lineNumberArea") and self.lineNumberArea:
+                self.lineNumberArea.setVisible(show_ln)
+                if show_ln:
+                    self.updateLineNumberAreaWidth(0)
+                else:
+                    self.setViewportMargins(0, 0, 0, 0)
+
+        if "editor_auto_uppercase" in prefs:
+            self.auto_uppercase = bool(prefs["editor_auto_uppercase"])
