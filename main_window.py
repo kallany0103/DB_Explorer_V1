@@ -63,6 +63,13 @@ class MainWindow(QMainWindow):
         self._saved_tree_paths = []
         self.pg_bin_path = ""
         self.use_wsl = False
+        self.default_connection_id = None
+        self.editor_font_family = "Consolas"
+        self.editor_font_size = 10
+        self.editor_tab_size = 4
+        self.editor_word_wrap = False
+        self.editor_line_numbers = True
+        self.editor_auto_uppercase = True
 
         self.auth_session = AuthSession(self)
         self.auth_session.state_changed.connect(self._on_auth_state_changed)
@@ -828,7 +835,19 @@ class MainWindow(QMainWindow):
             settings = dialog.get_settings()
             self.pg_bin_path = settings.get("pg_bin_path", "")
             self.use_wsl = settings.get("use_wsl", False)
+            self.default_connection_id = settings.get("default_connection_id", None)
             
+            # Editor settings
+            self.editor_font_family = settings.get("editor_font_family", "Consolas")
+            self.editor_font_size = settings.get("editor_font_size", 10)
+            self.editor_tab_size = settings.get("editor_tab_size", 4)
+            self.editor_word_wrap = settings.get("editor_word_wrap", False)
+            self.editor_line_numbers = settings.get("editor_line_numbers", True)
+            self.editor_auto_uppercase = settings.get("editor_auto_uppercase", True)
+
+            # Apply editor preferences to all open worksheet tabs
+            self._apply_editor_preferences_to_all_tabs()
+
             new_theme = settings.get("theme", "Light")
             if getattr(self, "theme", "Light") != new_theme:
                 self.theme = new_theme
@@ -836,6 +855,23 @@ class MainWindow(QMainWindow):
                 
             # Save session immediately to persist settings
             save_main_window_session(self, self.SESSION_FILE)
+
+    def _apply_editor_preferences_to_all_tabs(self):
+        """Broadcasts current editor preferences to all open worksheet CodeEditors."""
+        from widgets.worksheet.code_editor import CodeEditor
+        prefs = {
+            "editor_font_family": self.editor_font_family,
+            "editor_font_size": self.editor_font_size,
+            "editor_tab_size": self.editor_tab_size,
+            "editor_word_wrap": self.editor_word_wrap,
+            "editor_line_numbers": self.editor_line_numbers,
+            "editor_auto_uppercase": self.editor_auto_uppercase,
+        }
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            editor = tab.findChild(CodeEditor, "query_editor")
+            if editor:
+                editor.apply_preferences(prefs)
 
     def show_login(self):
         dialog = LoginDialog(self)

@@ -25,6 +25,13 @@ def save_main_window_session(main_window, session_file):
         "oracle_bin_path": getattr(main_window, "oracle_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
         "theme": getattr(main_window, "theme", "Grey (Default)"),
+        "default_connection_id": getattr(main_window, "default_connection_id", None),
+        "editor_font_family": getattr(main_window, "editor_font_family", "Consolas"),
+        "editor_font_size": getattr(main_window, "editor_font_size", 10),
+        "editor_tab_size": getattr(main_window, "editor_tab_size", 4),
+        "editor_word_wrap": getattr(main_window, "editor_word_wrap", False),
+        "editor_line_numbers": getattr(main_window, "editor_line_numbers", True),
+        "editor_auto_uppercase": getattr(main_window, "editor_auto_uppercase", True),
         "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])),
         "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
         "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
@@ -148,6 +155,13 @@ def restore_main_window_session(main_window, session_file):
         main_window.oracle_bin_path = session_data.get("oracle_bin_path", "")
         main_window.use_wsl = session_data.get("use_wsl", False)
         main_window.theme = session_data.get("theme", "Grey (Default)")
+        main_window.default_connection_id = session_data.get("default_connection_id", None)
+        main_window.editor_font_family = session_data.get("editor_font_family", "Consolas")
+        main_window.editor_font_size = session_data.get("editor_font_size", 10)
+        main_window.editor_tab_size = session_data.get("editor_tab_size", 4)
+        main_window.editor_word_wrap = session_data.get("editor_word_wrap", False)
+        main_window.editor_line_numbers = session_data.get("editor_line_numbers", True)
+        main_window.editor_auto_uppercase = session_data.get("editor_auto_uppercase", True)
 
         main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
         main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)
@@ -239,7 +253,9 @@ def restore_main_window_session(main_window, session_file):
                     else:
                         rows_info_label.setText("No Limit")
 
-        # Removed redundant session sanitization loop from the end of restore
+        # Apply restored editor preferences to all restored worksheet tabs
+        if hasattr(main_window, "_apply_editor_preferences_to_all_tabs"):
+            main_window._apply_editor_preferences_to_all_tabs()
 
 
     except Exception as e:
