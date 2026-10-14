@@ -264,6 +264,40 @@ class WorksheetManager(QWidget):
     def explain_query(self):
         explain_query_action(self)
 
+    def explain_code_using_ai(self):
+        current_tab = self.tab_widget.currentWidget()
+        if not current_tab:
+            return
+
+        query_editor = get_query_editor(current_tab)
+        if not query_editor:
+            return
+
+        query = extract_query_under_cursor(query_editor)
+        if not query:
+            # Fall back to full text if nothing under cursor
+            query = query_editor.toPlainText().strip()
+
+        if not query:
+            self.show_info("Please select or enter a SQL query to explain.")
+            return
+
+        conn_data = get_tab_connection_data(current_tab)
+        db_type = (conn_data.get("db_type") or conn_data.get("code") or "GENERIC").upper() if conn_data else "GENERIC"
+
+        ai_panel = getattr(current_tab, "ai_chat_panel", None)
+        if not ai_panel:
+            ai_panel = current_tab.findChild(QWidget, "ai_chat_panel")
+
+        if ai_panel:
+            ai_panel.show()
+            # Ensure splitter gives space to AI chat panel
+            editor_splitter = current_tab.findChild(QSplitter, "editor_horizontal_splitter")
+            if editor_splitter:
+                total_w = editor_splitter.width() or 800
+                editor_splitter.setSizes([int(total_w * 0.6), int(total_w * 0.4)])
+            ai_panel.explain_sql(query, db_type=db_type)
+
     def describe_query(self):
         describe_query_action(self)
 

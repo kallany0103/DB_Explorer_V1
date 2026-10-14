@@ -32,6 +32,10 @@ def save_main_window_session(main_window, session_file):
         "editor_word_wrap": getattr(main_window, "editor_word_wrap", False),
         "editor_line_numbers": getattr(main_window, "editor_line_numbers", True),
         "editor_auto_uppercase": getattr(main_window, "editor_auto_uppercase", True),
+        "ai_provider": getattr(main_window, "ai_provider", "OpenAI"),
+        "ai_model": getattr(main_window, "ai_model", ""),
+        "ai_api_key": getattr(main_window, "ai_api_key", ""),
+        "ai_base_url": getattr(main_window, "ai_base_url", ""),
         "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])),
         "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
         "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
@@ -162,6 +166,10 @@ def restore_main_window_session(main_window, session_file):
         main_window.editor_word_wrap = session_data.get("editor_word_wrap", False)
         main_window.editor_line_numbers = session_data.get("editor_line_numbers", True)
         main_window.editor_auto_uppercase = session_data.get("editor_auto_uppercase", True)
+        main_window.ai_provider = session_data.get("ai_provider", "OpenAI")
+        main_window.ai_model = session_data.get("ai_model", "")
+        main_window.ai_api_key = session_data.get("ai_api_key", "")
+        main_window.ai_base_url = session_data.get("ai_base_url", "")
 
         main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
         main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)

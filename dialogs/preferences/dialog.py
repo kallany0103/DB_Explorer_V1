@@ -88,6 +88,7 @@ class PreferencesDialog(QDialog):
         self._build_general_page()
         self._build_editor_page()
         self._build_database_tools_page()
+        self._build_ai_assistant_page()
 
         # Connect category list selection
         self.category_list.currentRowChanged.connect(self.pages_stack.setCurrentIndex)
@@ -333,6 +334,91 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         self.pages_stack.addWidget(scroll)
 
+    def _build_ai_assistant_page(self):
+        item = QListWidgetItem(qta.icon("fa5s.robot", color="#4b5563"), "AI Assistant")
+        self.category_list.addItem(item)
+
+        scroll, layout = self._create_page_scroll_area()
+        layout.addWidget(self._create_section_header("AI Assistant", "Configure AI models for query explanations, performance tuning, and SQL chat."))
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        form.setSpacing(12)
+
+        # 1. AI Provider
+        self.ai_provider_combo = QComboBox()
+        self.ai_provider_combo.addItems([
+            "OpenAI",
+            "Google Gemini",
+            "Anthropic Claude",
+            "Ollama (Local)",
+            "Custom (OpenAI-compatible)"
+        ])
+        saved_provider = getattr(self.main_window, "ai_provider", "OpenAI")
+        idx = self.ai_provider_combo.findText(saved_provider)
+        if idx >= 0:
+            self.ai_provider_combo.setCurrentIndex(idx)
+        form.addRow("AI Provider:", self.ai_provider_combo)
+
+        provider_help = QLabel("Select your preferred AI provider or local offline runner.")
+        provider_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        form.addRow("", provider_help)
+
+        # 2. Model Name
+        self.ai_model_edit = QLineEdit()
+        self.ai_model_edit.setText(getattr(self.main_window, "ai_model", ""))
+        self.ai_model_edit.setPlaceholderText("e.g. gpt-4o-mini, gemini-1.5-flash, llama3")
+        form.addRow("Model Name:", self.ai_model_edit)
+
+        model_help = QLabel("Leave empty to use recommended default for the selected provider.")
+        model_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        form.addRow("", model_help)
+
+        # 3. API Key
+        self.ai_api_key_edit = QLineEdit()
+        self.ai_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.ai_api_key_edit.setText(getattr(self.main_window, "ai_api_key", ""))
+        self.ai_api_key_edit.setPlaceholderText("sk-... or API key (leave blank for local Ollama / offline)")
+        form.addRow("API Key:", self.ai_api_key_edit)
+
+        key_help = QLabel("Securely stored locally. If left blank, intelligent offline SQL analysis is used.")
+        key_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        form.addRow("", key_help)
+
+        # 4. Custom Base URL
+        self.ai_base_url_edit = QLineEdit()
+        self.ai_base_url_edit.setText(getattr(self.main_window, "ai_base_url", ""))
+        self.ai_base_url_edit.setPlaceholderText("e.g. http://localhost:11434/v1 or custom proxy")
+        form.addRow("Base URL (Optional):", self.ai_base_url_edit)
+
+        url_help = QLabel("Custom endpoint. Defaults to provider official URL or http://localhost:11434/v1 for Ollama.")
+        url_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        form.addRow("", url_help)
+
+        # Provider change handler to adjust placeholders
+        def on_provider_changed(text):
+            if "Ollama" in text:
+                if not self.ai_base_url_edit.text():
+                    self.ai_base_url_edit.setPlaceholderText("http://localhost:11434/v1")
+                if not self.ai_model_edit.text():
+                    self.ai_model_edit.setPlaceholderText("llama3")
+            elif "Gemini" in text:
+                if not self.ai_model_edit.text():
+                    self.ai_model_edit.setPlaceholderText("gemini-1.5-flash")
+            elif "Claude" in text:
+                if not self.ai_model_edit.text():
+                    self.ai_model_edit.setPlaceholderText("claude-3-5-sonnet-20241022")
+            else:
+                if not self.ai_model_edit.text():
+                    self.ai_model_edit.setPlaceholderText("gpt-4o-mini")
+
+        self.ai_provider_combo.currentTextChanged.connect(on_provider_changed)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        self.pages_stack.addWidget(scroll)
+
     # ── Browse Handlers ─────────────────────────────────────────────────
 
     def browse_pg_bin(self):
@@ -358,6 +444,10 @@ class PreferencesDialog(QDialog):
         self.editor_line_numbers_check.setChecked(True)
         self.editor_auto_uppercase_check.setChecked(True)
         self.use_wsl_check.setChecked(False)
+        self.ai_provider_combo.setCurrentText("OpenAI")
+        self.ai_model_edit.setText("")
+        self.ai_api_key_edit.setText("")
+        self.ai_base_url_edit.setText("")
 
     def get_settings(self):
         """Returns collected dictionary of preference settings."""
@@ -378,4 +468,11 @@ class PreferencesDialog(QDialog):
             "pg_bin_path": self.pg_bin_edit.text().strip(),
             "oracle_bin_path": self.oracle_bin_edit.text().strip(),
             "use_wsl": self.use_wsl_check.isChecked(),
+
+            # AI Assistant
+            "ai_provider": self.ai_provider_combo.currentText(),
+            "ai_model": self.ai_model_edit.text().strip(),
+            "ai_api_key": self.ai_api_key_edit.text().strip(),
+            "ai_base_url": self.ai_base_url_edit.text().strip(),
         }
+

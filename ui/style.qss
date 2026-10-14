@@ -732,3 +732,34 @@ QPushButton#loginSkipBtn {
 QPushButton#loginSkipBtn:hover {
     text-decoration: underline;
 }
+
+/* ── Toad AI Chat Panel ───────────────────────────── */
+QWidget#aiChatPanel {
+    background-color: #ffffff;
+    border-left: 1px solid #D1D6DD;
+}
+QWidget#aiChatHeader {
+    background-color: #ECEFF3;
+    border-bottom: 1px solid #D1D6DD;
+}
+QFrame#aiChatChipFrame {
+    background-color: #F8FAFC;
+    border-bottom: 1px solid #E2E8F0;
+}
+QTextBrowser#aiChatBrowser {
+    border: none;
+    background-color: #ffffff;
+}
+QWidget#aiChatBottomContainer {
+    background-color: #F8FAFC;
+    border-top: 1px solid #D1D6DD;
+}
+QFrame#aiChatInputBorder {
+    border: 1px solid #B8BEC6;
+    border-radius: 4px;
+    background-color: #ffffff;
+}
+QFrame#aiChatInputBorder:focus-within {
+    border: 1px solid #0066CC;
+}
+

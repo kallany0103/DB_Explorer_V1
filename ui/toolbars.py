@@ -145,6 +145,15 @@ class WorksheetToolbar(QWidget):
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
         layout.addWidget(self.explain_combo)
 
+        # Explain code using AI button (Toad style)
+        if hasattr(manager, 'ws_explain_ai_action'):
+            self.explain_ai_btn = ToolbarActionButton(icon=manager.ws_explain_ai_action.icon())
+            self.explain_ai_btn.setDefaultAction(manager.ws_explain_ai_action)
+            self.explain_ai_btn.setIconSize(QSize(16, 16))
+            self.explain_ai_btn.setMinimumWidth(26)
+            self.explain_ai_btn.setToolTip("Explain code using AI (Ctrl+Alt+E)")
+            layout.addWidget(self.explain_ai_btn)
+
         # Describe (F4) - table and schema
         if hasattr(manager, 'ws_describe_object_action'):
             self.describe_obj_btn = ToolbarActionButton(icon=manager.ws_describe_object_action.icon())

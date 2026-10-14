@@ -66,6 +66,13 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_describe_action.setShortcut("Shift+F4")
     manager.ws_describe_action.triggered.connect(main_window.describe_query)
 
+    manager.ws_explain_ai_action = QAction(
+        qta.icon("fa5s.robot", color="#2563eb"), "Explain code using AI", manager
+    )
+    manager.ws_explain_ai_action.setToolTip("Explain code using AI (Ctrl+Alt+E)")
+    manager.ws_explain_ai_action.setShortcut("Ctrl+Alt+E")
+    manager.ws_explain_ai_action.triggered.connect(main_window.explain_code_using_ai)
+
 
     manager.ws_undo_action = QAction(
         qta.icon("fa5s.undo", color="#555555"), "Undo", manager

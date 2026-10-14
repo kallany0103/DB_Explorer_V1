@@ -845,6 +845,12 @@ class MainWindow(QMainWindow):
             self.editor_line_numbers = settings.get("editor_line_numbers", True)
             self.editor_auto_uppercase = settings.get("editor_auto_uppercase", True)
 
+            # AI settings
+            self.ai_provider = settings.get("ai_provider", "OpenAI")
+            self.ai_model = settings.get("ai_model", "")
+            self.ai_api_key = settings.get("ai_api_key", "")
+            self.ai_base_url = settings.get("ai_base_url", "")
+
             # Apply editor preferences to all open worksheet tabs
             self._apply_editor_preferences_to_all_tabs()
 
@@ -1182,3 +1188,7 @@ class MainWindow(QMainWindow):
 
     def save_query_to_history(self, conn_data, query, status, rows, duration):
         self.worksheet_manager.save_query_to_history(conn_data, query, status, rows, duration)
+
+    def explain_code_using_ai(self):
+        self.worksheet_manager.explain_code_using_ai()
+
