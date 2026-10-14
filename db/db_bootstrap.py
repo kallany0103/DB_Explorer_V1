@@ -45,6 +45,7 @@ SCHEMA_STATEMENTS = (
         db_path TEXT,
         instance_url TEXT,
         usage_count INTEGER NOT NULL DEFAULT 0,
+        role TEXT DEFAULT 'Normal',
         FOREIGN KEY (connection_group_id) REFERENCES usf_connection_groups(id) ON DELETE CASCADE
     )
     """,
@@ -170,6 +171,16 @@ def ensure_hierarchy_db():
                     conn.execute("ALTER TABLE usf_processes ADD COLUMN details TEXT")
             except Exception as e:
                 print(f"Migration check error for usf_processes: {e}")
+
+            # Ensure missing columns in usf_connections are added
+            try:
+                cur = conn.cursor()
+                cur.execute("PRAGMA table_info(usf_connections)")
+                conn_cols = {row[1] for row in cur.fetchall()}
+                if "role" not in conn_cols:
+                    conn.execute("ALTER TABLE usf_connections ADD COLUMN role TEXT DEFAULT 'Normal'")
+            except Exception as e:
+                print(f"Migration check error for usf_connections: {e}")
 
             conn.commit()
     except sqlite.OperationalError as e:

@@ -13,14 +13,15 @@ import threading
 import time
 
 import qtawesome as qta
-from PySide6.QtCore import QTimer, Signal
-from PySide6.QtGui import QFontMetrics, QTextCursor
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QFrame,QApplication
+    QFrame,
+    QApplication,
 )
 
 # from widgets.usql_tool.constants import _BANNER
@@ -29,7 +30,7 @@ from widgets.psql_tool.constants import _APP_DATA_DIR
 from widgets.psql_tool.constants import _PTY_DRAIN_TIMEOUT_S
 from widgets.psql_tool.constants import _PTY_DRAIN_SLEEP_S
 from widgets.psql_tool.constants import _STYLE
-from ui.components import SecondaryButton
+from ui.components import CompactButton, ToastNotification
 from widgets.psql_tool.editor import _TerminalEdit
 from widgets.psql_tool.discovery import find_psql
 from widgets.worksheet.autocomplete import CompletionEngine
@@ -199,7 +200,8 @@ class USQLToolWidget(QWidget):
             ("fa5s.trash-alt", "Clear", self._clear),
             ("fa5s.redo-alt", "Reconnect", self._reconnect),
         ):
-            btn = SecondaryButton(qta.icon(icon_key, color="#a6adc8"), label)
+            btn = CompactButton(qta.icon(icon_key, color="#4b5563"), label)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
 
@@ -408,12 +410,25 @@ class USQLToolWidget(QWidget):
         """Terminate cleanly. Must be called before closing the tab."""
         self._save_history()
         self._running = False
-        if self._pty is not None:
+        pty = self._pty
+        self._pty = None
+        if pty is not None:
             try:
-                del self._pty
+                pty.write("\\q\r\n")
             except Exception:
                 pass
-            self._pty = None
+            try:
+                pty.cancel_io()
+            except Exception:
+                pass
+            try:
+                del pty
+            except Exception:
+                pass
+        if hasattr(self, "_reader_thread") and self._reader_thread and self._reader_thread.is_alive():
+            if threading.current_thread() != self._reader_thread:
+                self._reader_thread.join(timeout=0.3)
+            self._reader_thread = None
 
 
     def _on_command_entered(self, cmd: str) -> None:
@@ -571,26 +586,18 @@ class USQLToolWidget(QWidget):
 
 
     def _copy_output(self) -> None:
-        """Copy terminal output to the clipboard.
-
-        If the user has a selection, copies that selection only.
-        Otherwise copies from the first psql prompt onward (skipping the
-        banner and connection preamble) up to but not including the
-        in-progress input line.
-        """
+        """Copy terminal output or selection to the clipboard."""
         cursor = self._term.textCursor()
         if cursor.hasSelection():
-            QApplication.clipboard().setText(cursor.selectedText().replace("\u2029", "\n"))
+            text = cursor.selectedText().replace("\u2029", "\n")
         else:
-            start = self._first_prompt_pos
-            end = self._term._input_start
-            if start >= end:
-                return
-            doc_cursor = QTextCursor(self._term.document())
-            doc_cursor.setPosition(start)
-            doc_cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-            output_text = doc_cursor.selectedText().replace("\u2029", "\n").rstrip()
-            QApplication.clipboard().setText(output_text)
+            text = self._term.toPlainText().rstrip()
+        if text:
+            QApplication.clipboard().setText(text)
+            ToastNotification.show_toast(self, "Output copied to clipboard", kind="success")
+        else:
+            ToastNotification.show_toast(self, "No output to copy", kind="info")
+        self._term.setFocus()
 
     def _clear(self) -> None:
         """Wipe all terminal output, preserving any in-progress typed input."""
@@ -606,13 +613,17 @@ class USQLToolWidget(QWidget):
                 self._pty.write("\r\n")
             except Exception:
                 pass
+        self._term.setFocus()
 
     def _reconnect(self) -> None:
         self.close_process()
         self._hide_error()
         self._load_history()
-        self._term.append_output("\n")
-        self._start_session(reset_ui=False)
+        self._term.clear()
+        self._term.reset_input_start()
+        self._first_prompt_pos = 0
+        self._start_session(reset_ui=True)
+        self._term.setFocus()
 
 
     def _show_error(self, message: str) -> None:

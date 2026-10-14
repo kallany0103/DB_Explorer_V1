@@ -2,7 +2,6 @@
 import sqlite3 as sqlite
 import psycopg2
 from psycopg2 import OperationalError
-import oracledb
 import sys
 import os
 import time
@@ -10,6 +9,7 @@ import cdata.servicenow as sn_driver
 import cdata.csv as csv_driver
 import urllib.parse
 import logging
+from typing import Any
 from db.connection_pool import (
     get_or_create_pool,
     get_or_create_oracle_pool,
@@ -17,6 +17,22 @@ from db.connection_pool import (
     invalidate_pool,
     invalidate_oracle_pool,
 )
+
+__all__ = [
+    "create_sqlite_connection",
+    "create_postgres_connection",
+    "get_pooled_oracle_connection",
+    "create_servicenow_connection",
+    "create_csv_connection",
+    "get_pooled_postgres_connection",
+    "return_pooled_postgres_connection",
+    "PooledPostgresConnection",
+    "close_all_postgres_pools",
+    "invalidate_pool",
+    "invalidate_oracle_pool",
+    "resource_path",
+    "DB_FILE",
+]
 
 def resource_path(relative_path: str) -> str:
     """Get absolute path to a bundled read-only resource (assets, ui, etc.)."""
@@ -231,29 +247,30 @@ def create_postgres_connection(host, port=None, database=None, user=None, passwo
 
 _oracle_thick_mode_initialized = False
 
-def _init_oracle_thick_mode():
+def _init_oracle_thick_mode(lib_dir: str | None = None) -> bool:
     global _oracle_thick_mode_initialized
-    if not _oracle_thick_mode_initialized:
-        try:
-            if getattr(sys, 'frozen', False):
-                # When frozen, it lives in {app}/resources/oracle/instantclient
-                base_dir = os.path.dirname(sys.executable)
-            else:
-                base_dir = os.path.abspath(".")
-                
-            instant_client_dir = os.path.join(base_dir, "resources", "oracle", "instantclient")
-            
-            oracledb.init_oracle_client(lib_dir=instant_client_dir)
-            _oracle_thick_mode_initialized = True
-        except Exception as e:
-            logging.warning(f"Failed to initialize Oracle thick mode with bundled client: {e}")
-            _oracle_thick_mode_initialized = True
+    from db.oracle_utils import init_oracle_thick_mode
+    success = init_oracle_thick_mode(lib_dir=lib_dir)
+    if success:
+        _oracle_thick_mode_initialized = True
+    return success
 
 def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=None, password=None, conn_data=None, use_pool=True):
     """
     Get a pooled Oracle connection. Can accept either kwargs or a conn_data dictionary.
+    Defaults to pure Python Thin mode (no client library required) unless Thick mode is requested.
     """
-    _init_oracle_thick_mode()
+    if conn_data:
+        driver_mode = str(conn_data.get("driver_mode", "")).lower()
+        client_dir = conn_data.get("oracle_client_dir")
+        if driver_mode == "thick" or client_dir:
+            if not _init_oracle_thick_mode(client_dir):
+                from db.oracle_utils import get_last_thick_mode_error
+                err = get_last_thick_mode_error() or "Failed to load Oracle Instant Client"
+                target = client_dir or "system default"
+                raise ConnectionError(
+                    f"Oracle Thick Mode (Instant Client) failed to initialize with client directory '{target}':\n\n{err}"
+                )
     
     if conn_data is None:
         conn_data = {
@@ -265,6 +282,7 @@ def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=N
         }
         
     try:
+        import oracledb as _oracledb  # noqa: PLC0415  lazy — must not move to top-level
         if not use_pool:
             # Fallback to direct connection if pooling is disabled
             user = conn_data.get("user")
@@ -273,16 +291,39 @@ def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=N
             if not dsn:
                 host = conn_data.get("host")
                 port = conn_data.get("port") or 1521
-                service_name = conn_data.get("service_name")
-                dsn = f"{host}:{port}/{service_name}"
-            return oracledb.connect(user=user, password=password, dsn=dsn)
-            
+                service_name = conn_data.get("service_name") or conn_data.get("database")
+                db_type = conn_data.get("oracle_db_type") or "service_name"
+                from db.oracle_utils import build_oracle_dsn
+                dsn = build_oracle_dsn(host, port, service_name, db_type=db_type)
+
+            from db.oracle_utils import get_oracle_auth_mode
+            mode = get_oracle_auth_mode(conn_data.get("role"))
+
+            connect_kwargs: dict[str, Any] = {
+                "user": user,
+                "password": password,
+                "dsn": dsn,
+            }
+            if mode != _oracledb.AUTH_MODE_DEFAULT:
+                connect_kwargs["mode"] = mode
+            if conn_data.get("config_dir"):
+                connect_kwargs["config_dir"] = conn_data.get("config_dir")
+
+            return _oracledb.connect(**connect_kwargs)
+
         pool = get_or_create_oracle_pool(conn_data)
         return pool.acquire()
-    except oracledb.DatabaseError as e:
-        logging.error(f"Oracle connection error: {e}")
-        raise ConnectionError(f"Oracle connection error: {e}") from e
-    
+    except Exception as e:
+        import oracledb as _oracledb  # noqa: PLC0415
+        if isinstance(e, _oracledb.DatabaseError):
+            from db.oracle_utils import diagnose_oracle_error
+            advice = diagnose_oracle_error(e)
+            err_msg = f"Oracle connection error: {e}"
+            if advice:
+                err_msg += f"\n\nDiagnostic advice:\n{advice}"
+            logging.error(err_msg)
+            raise ConnectionError(err_msg) from e
+        raise
 def create_servicenow_connection(conn_data):
     try:
         if not conn_data.get("instance_url"):

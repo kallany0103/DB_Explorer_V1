@@ -276,17 +276,19 @@ def _launch_sqlplus(
     """
     user = conn_data.get("user") or conn_data.get("username") or ""
     password = conn_data.get("password") or ""
+    role = (conn_data.get("role") or "").strip().upper()
+    role_suffix = f" AS {role}" if role in ("SYSDBA", "SYSOPER", "SYSASM") else ""
     
     # If the user specified a custom DSN string in connection settings, use it directly.
     # Otherwise, build the Easy Connect string.
     dsn = conn_data.get("dsn")
     if dsn:
-        easy_connect = f"{user}/{password}@{dsn}"
+        easy_connect = f"{user}/{password}@{dsn}{role_suffix}"
     else:
         host = conn_data.get("host") or "localhost"
         port = conn_data.get("port") or "1521"
         sid = conn_data.get("service_name") or conn_data.get("database") or conn_data.get("db") or ""
-        easy_connect = f"{user}/{password}@//{host}:{port}/{sid}"
+        easy_connect = f"{user}/{password}@//{host}:{port}/{sid}{role_suffix}"
 
     # Login script: CONNECT → set formatting → run query → stay at SQL>.
     # Wide text columns are narrowed inside the session itself (SPOOL a

@@ -25,7 +25,6 @@ from widgets.worksheet.autocomplete import CompletionEngine
 from widgets.test_cases.test_cases_widget import TestCasesWidget
 from widgets.ai_assistant import AIChatPanel
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QFrame
 
 def add_tab(manager):
     tab_content = QWidget(manager.tab_widget)
@@ -316,9 +315,9 @@ def add_tab(manager):
         data = db_combo_box.currentData()
         text_edit._conn_data = data
         code = (data.get("code") or data.get("db_type") or "").upper() if data else ""
-        # ServiceNow connections are slow to connect — skip autocomplete pre-fetch
-        # during the startup timer so we don't auto-connect before the user acts.
-        if not skip_slow or code not in ("SERVICENOW",):
+        # Remote connections — skip autocomplete pre-fetch during the startup timer
+        # so we don't auto-connect over the network or lock driver modes before the user acts.
+        if not skip_slow or code in ("SQLITE", "CSV"):
             tab_content._sql_engine.refresh(data)
         if limit_combo := tab_content.findChild(QComboBox, "rows_limit_combo"):
             if code == "SERVICENOW":

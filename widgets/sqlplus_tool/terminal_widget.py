@@ -13,7 +13,7 @@ import threading
 import time
 
 import qtawesome as qta
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ui.components import SecondaryButton
+from ui.components import CompactButton
 from widgets.psql_tool.constants import (
     _PTY_DRAIN_SLEEP_S,
     _PTY_DRAIN_TIMEOUT_S,
@@ -174,7 +174,8 @@ class SQLPlusToolWidget(QWidget):
             ("fa5s.trash-alt", "Clear", self._clear),
             ("fa5s.redo-alt", "Reconnect", self._reconnect),
         ):
-            btn = SecondaryButton(qta.icon(icon_key, color="#a6adc8"), label)
+            btn = CompactButton(qta.icon(icon_key, color="#4b5563"), label)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
 
@@ -205,10 +206,15 @@ class SQLPlusToolWidget(QWidget):
         c = self._conn
         user = c.get("user") or c.get("username") or ""
         password = c.get("password") or ""
+        role = (c.get("role") or "").strip().upper()
+        role_suffix = f" AS {role}" if role in ("SYSDBA", "SYSOPER", "SYSASM") else ""
+        dsn = c.get("dsn")
+        if dsn:
+            return f"{user}/{password}@{dsn}{role_suffix}"
         host = c.get("host") or "localhost"
         port = c.get("port") or 1521
         service = c.get("service_name") or c.get("database") or "ORCL"
-        return f"{user}/{password}@//{host}:{port}/{service}"
+        return f"{user}/{password}@//{host}:{port}/{service}{role_suffix}"
 
     # ---------------------------------------------------------------- Session --
 

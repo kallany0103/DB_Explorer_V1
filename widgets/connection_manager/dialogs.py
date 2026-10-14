@@ -26,6 +26,7 @@ from dialogs.connections import (
     SQLiteConnectionDialog,
     ServiceNowConnectionDialog,
     UDSConnectionDialog,
+    UnifiedConnectionDialog,
     PostgresDataSourceDialog,
 	SQLiteDataSourceDialog,
 	OracleDataSourceDialog,
@@ -33,8 +34,6 @@ from dialogs.connections import (
 	ServiceNowDataSourceDialog,
 )
 from db.db_retrieval import get_connection_types
-import psycopg2
-from psycopg2 import sql as pgsql
 
 class ConnectionTypeSelectorDialog(QDialog):
     def __init__(self, parent=None):
@@ -390,7 +389,6 @@ class ConnectionDialogs:
         elif code == "SERVICENOW":
             dialog = ServiceNowDataSourceDialog(self.manager)
         elif code in ("CSV", "FILE"):
-            from dialogs.connections.csv_ds_dialog import CSVDataSourceDialog
             dialog = CSVDataSourceDialog(self.manager)
         else:
             QMessageBox.warning(
@@ -883,46 +881,24 @@ class ConnectionDialogs:
             QMessageBox.critical(self.manager, "Error", f"Failed to delete group:\n{e}")
 
     def add_new_connection_flow(self):
-        selector = ConnectionTypeSelectorDialog(self.manager)
-        if selector.exec() == QDialog.DialogCode.Accepted:
-            type_info = selector.selected_type
-            if not type_info:
-                return
-            
-            code = type_info["code"].upper()
-            type_id = type_info["id"]
-
-            if code == "POSTGRES":
-                dialog = PostgresConnectionDialog(self.manager, type_id=type_id)
-            elif code == "SQLITE":
-                dialog = SQLiteConnectionDialog(self.manager, type_id=type_id)
-            elif code == "CSV":
-                dialog = CSVConnectionDialog(self.manager, type_id=type_id)
-            elif code == "SERVICENOW":
-                dialog = ServiceNowConnectionDialog(self.manager, type_id=type_id)
-            elif code in ("ORACLE", "ORACLE_DB", "ORACLE_FA") or code.startswith("ORACLE"):
-                dialog = OracleConnectionDialog(self.manager, type_id=type_id)
-            else:
-                QMessageBox.warning(self.manager, "Not Supported", f"Connection type {code} is not yet supported.")
-                return
-
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                data = dialog.getData()
-                group_id = data.get("connection_group_id")
-                try:
-                    conn_name = data.get("name", "Connection")
-                    db.add_connection(data, group_id)
-                    self.manager._save_tree_expansion_state()
-                    self.manager.load_data()
-                    self.manager._restore_tree_expansion_state()
-                    self.manager.refresh_all_comboboxes()
-                    ToastNotification.show_toast(
-                        self.manager,
-                        f"'{conn_name}' created successfully!",
-                        kind="success",
-                    )
-                except Exception as e:
-                    QMessageBox.critical(self.manager, "Error", f"Failed to save connection:\n{e}")
+        dialog = UnifiedConnectionDialog(self.manager)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.getData()
+            group_id = data.get("connection_group_id")
+            try:
+                conn_name = data.get("name", "Connection")
+                db.add_connection(data, group_id)
+                self.manager._save_tree_expansion_state()
+                self.manager.load_data()
+                self.manager._restore_tree_expansion_state()
+                self.manager.refresh_all_comboboxes()
+                ToastNotification.show_toast(
+                    self.manager,
+                    f"'{conn_name}' created successfully!",
+                    kind="success",
+                )
+            except Exception as e:
+                QMessageBox.critical(self.manager, "Error", f"Failed to save connection:\n{e}")
 
 
     def edit_connection_type(self, item):
@@ -1335,10 +1311,7 @@ class ConnectionDialogs:
         type_id = type_item.data(Qt.ItemDataRole.UserRole + 1) if type_item else None
 
         dialog = OracleConnectionDialog(self.manager, is_editing=True, type_id=type_id, group_id=group_id)
-        dialog.name_input.setText(conn_data.get("name", ""))
-        dialog.user_input.setText(conn_data.get("user", ""))
-        dialog.password_input.setText(str(conn_data.get("password", "") or ""))
-        dialog.dsn_input.setText(conn_data.get("dsn", "") or "")
+        dialog.populate_from_conn_data(conn_data)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")

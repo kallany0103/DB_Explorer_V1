@@ -237,7 +237,9 @@ def restore_main_window_session(main_window, session_file):
 
                 db_combo = current_tab.findChild(QComboBox, "db_combo_box")
                 if db_combo:
+                    db_combo.blockSignals(True)
                     db_combo.setCurrentIndex(tab_data.get("selected_connection_index", 0))
+                    db_combo.blockSignals(False)
 
                 current_tab.current_limit = int(tab_data.get("current_limit", 0) or 0)
                 current_tab.current_offset = tab_data.get("current_offset", 0)

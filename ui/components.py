@@ -3,12 +3,23 @@ from PySide6.QtWidgets import (
     QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
     QDialog, QVBoxLayout, QProgressBar
 )
-from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont, QConicalGradient
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QThread, QRectF, QSize, QEvent
+from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont, QPixmap
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QSize, QEvent
 from typing import Optional
 import qtawesome as qta
-from workers.workers import WorkerThread
-from PySide6.QtGui import QPen
+import qtawesome.iconic_font
+
+# Guard against Qt console spam when qtawesome is queried with uninitialized/zero size
+_orig_char_icon_pixmap = qtawesome.iconic_font.CharIconEngine.pixmap
+
+
+def _safe_char_icon_pixmap(self, size, mode, state):
+    if size.width() <= 0 or size.height() <= 0:
+        return QPixmap()
+    return _orig_char_icon_pixmap(self, size, mode, state)
+
+
+qtawesome.iconic_font.CharIconEngine.pixmap = _safe_char_icon_pixmap
 
 
 class LoadingOverlay(QWidget):
@@ -77,37 +88,49 @@ class LoadingOverlay(QWidget):
 class LoadingButton:
 
     def start_loading(self, text="Testing"):
-        
         self._original_text = self.text()
         self._original_icon = self.icon()
+
+        # Lock width during loading so button never jumps or shifts position in layout
+        self._had_fixed_width = (self.minimumWidth() == self.maximumWidth() and self.minimumWidth() > 0)
+        self._orig_min_width = self.minimumWidth()
+        self._orig_max_width = self.maximumWidth()
+        if not self._had_fixed_width:
+            current_w = max(self.width(), self.sizeHint().width())
+            self.setFixedWidth(current_w)
+
         self._loading_base_text = text
-        
+        self.setText(text)
+        self.setProperty("loading", True)
         self._progress_value = 0.0
+        self._dot_tick = 0
         self.setEnabled(False)
         self.setIcon(QIcon())
+        self.style().unpolish(self)
+        self.style().polish(self)
 
         # ── Progress bar overlay ──────────────────────────────────────
-        bar_h = 4
+        bar_h = 3
         self._progress_bar = QProgressBar(self)
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
         self._progress_bar.setTextVisible(False)
         self._progress_bar.setFixedHeight(bar_h)
-        self._progress_bar.setGeometry(0, self.height() - bar_h, self.width(), bar_h)
+        self._progress_bar.setGeometry(2, max(0, self.height() - bar_h - 2), max(1, self.width() - 4), bar_h)
         self._progress_bar.setStyleSheet("""
             QProgressBar {
                 border: none;
                 background: transparent;
-                border-radius: 2px;
+                border-radius: 1px;
             }
             QProgressBar::chunk {
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #0078d4,
+                    stop:0 #0284c7,
                     stop:0.5 #38bdf8,
-                    stop:1 #0078d4
+                    stop:1 #0284c7
                 );
-                border-radius: 2px;
+                border-radius: 1px;
             }
         """)
         self._progress_bar.show()
@@ -118,7 +141,6 @@ class LoadingButton:
         self._progress_timer.setInterval(30)
         self._progress_timer.timeout.connect(self._tick_progress)
         self._progress_timer.start()
-
 
     # ── Progress animation ────────────────────────────────────────────
     def _tick_progress(self):
@@ -134,14 +156,24 @@ class LoadingButton:
         self._progress_value = min(v, 99.0)
         pb = getattr(self, '_progress_bar', None)
         if pb:
+            bar_h = 3
+            pb.setGeometry(2, max(0, self.height() - bar_h - 2), max(1, self.width() - 4), bar_h)
             pb.setValue(int(self._progress_value))
+
+        self._dot_tick = getattr(self, '_dot_tick', 0) + 1
+        dots = "." * ((self._dot_tick // 10) % 4)
+        base = getattr(self, '_loading_base_text', '').rstrip('.')
+        if base:
+            self.setText(f"{base}{dots}")
 
     # ── Stop ──────────────────────────────────────────────────────────
     def stop_loading(self):
         # Stop progress timer
         t = getattr(self, '_progress_timer', None)
         if t:
-            t.stop(); t.deleteLater(); self._progress_timer = None
+            t.stop()
+            t.deleteLater()
+            self._progress_timer = None
 
         # Flash bar to 100%, then remove after brief pause
         pb = getattr(self, '_progress_bar', None)
@@ -149,9 +181,17 @@ class LoadingButton:
             pb.setValue(100)
             QTimer.singleShot(220, self._remove_progress_bar)
 
+        self.setProperty("loading", False)
         self.setEnabled(True)
         self.setText(getattr(self, '_original_text', self.text()))
         self.setIcon(getattr(self, '_original_icon', QIcon()))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        # Restore original width constraint if button wasn't explicitly fixed-width
+        if not getattr(self, '_had_fixed_width', False):
+            self.setMinimumWidth(getattr(self, '_orig_min_width', 0))
+            self.setMaximumWidth(getattr(self, '_orig_max_width', 16777215))
 
     def _remove_progress_bar(self):
         pb = getattr(self, '_progress_bar', None)
@@ -193,6 +233,51 @@ class SecondaryButton(QPushButton, LoadingButton):
                 background-color: #f3f4f6;
                 color: #9ca3af;
                 border-color: #e5e7eb;
+            }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #f0f7ff;
+                color: #0284c7;
+                border-color: #93c5fd;
+            }
+        """)
+
+
+class CompactButton(SecondaryButton):
+    """
+    A compact secondary button suited for header bars and toolbars (26-28px height).
+    Features smaller padding and font size to fit neatly within 32-36px headers without clipping.
+    """
+    def __init__(self, text_or_icon, text: Optional[str] = None, parent=None):
+        super().__init__(text_or_icon, text, parent)
+        self.setStyleSheet("""
+            QPushButton {
+                min-height: 20px;
+                max-height: 24px;
+                padding: 2px 8px;
+                border: 1px solid #c4c9d4;
+                border-radius: 4px;
+                background-color: #ffffff;
+                color: #1f2937;
+                font-size: 8.5pt;
+            }
+            QPushButton:hover {
+                background-color: #f4f7fb;
+                border-color: #b8c2cf;
+            }
+            QPushButton:pressed {
+                background-color: #e9eef5;
+            }
+            QPushButton:disabled {
+                background-color: #f3f4f6;
+                color: #9ca3af;
+                border-color: #e5e7eb;
+            }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #f0f7ff;
+                color: #0284c7;
+                border-color: #93c5fd;
             }
         """)
 
@@ -328,38 +413,52 @@ class ActionToolButton(QToolButton):
 
     def __init__(self, text, icon=None, parent=None):
         super().__init__(parent)
-        self.setText(text)
+        self._menu = QMenu(self)
+        self.setMenu(self._menu)
+        self.setFixedHeight(30)
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        if text:
+            super().setText(text)
         if icon:
             self.setIcon(icon)
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.setFixedHeight(30)
-        self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        
-        self._menu = QMenu(self)
-        self.setMenu(self._menu)
-        
-        self.setStyleSheet("""
-            QToolButton {
+        self._update_style()
+
+    def _update_style(self):
+        is_icon_only = self.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly or not self.text()
+        pad_left = 6 if is_icon_only else 12
+        pad_right = 18 if is_icon_only else 28
+        self.setStyleSheet(f"""
+            QToolButton {{
                 border: 1px solid #b9b9b9;
                 border-radius: 4px;
                 background-color: #ffffff;
                 color: #333333;
-                padding: 4px 28px 4px 12px;
+                padding: 4px {pad_right}px 4px {pad_left}px;
                 font-size: 9pt;
-            }
-            QToolButton:hover {
+            }}
+            QToolButton:hover {{
                 background-color: #e8e8e8;
                 border-color: #9c9c9c;
-            }
-            QToolButton:pressed {
+            }}
+            QToolButton:pressed {{
                 background-color: #dcdcdc;
-            }
-            QToolButton::menu-indicator {
+            }}
+            QToolButton::menu-indicator {{
                 subcontrol-position: right center;
                 subcontrol-origin: padding;
-                left: -4px;
-            }
+                right: 4px;
+                border: none;
+            }}
         """)
+
+    def setToolButtonStyle(self, style):
+        super().setToolButtonStyle(style)
+        self._update_style()
+
+    def setText(self, text):
+        super().setText(text)
+        self._update_style()
         
     def addItems(self, items):
         for item in items:
@@ -423,6 +522,7 @@ class NavigationTabButton(QPushButton):
                 padding: 5px 15px;
                 min-width: 80px;
                 font-size: 9pt;
+                font-weight: 500;
             }
             QPushButton:hover {
                 background-color: #ECEFF3;
@@ -430,8 +530,10 @@ class NavigationTabButton(QPushButton):
             QPushButton:checked {
                 background-color: #E2E8F0;
                 color: #1F2937;
-                border-bottom: 1px solid #60A5FA;
-                font-weight: 600;
+                border: 1px solid #B8BEC6;
+                border-bottom: 2px solid #60A5FA;
+                padding: 5px 15px 4px 15px;
+                font-weight: 500;
             }
         """)
 
@@ -465,6 +567,14 @@ class ToolbarActionButton(QToolButton):
             }
             QToolButton:pressed {
                 background-color: #dcdcdc;
+            }
+            QToolButton::menu-button {
+                border: none;
+                border-left: none;
+            }
+            QToolButton::menu-indicator {
+                border: none;
+                border-left: none;
             }
         """)
 
@@ -809,4 +919,3 @@ class ConfirmDialog(QDialog):
             parent=parent,
         )
         return dlg.exec() == QDialog.DialogCode.Accepted
-

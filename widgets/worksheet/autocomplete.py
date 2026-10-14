@@ -10,10 +10,7 @@ try:
 except ImportError:
     psycopg2 = None
 
-try:
-    import oracledb
-except ImportError:
-    oracledb = None
+
 
 
 SQL_KEYWORDS = [
@@ -216,9 +213,10 @@ def _fetch_db_words(conn_data):
                 print(f"ServiceNow autocomplete fetch error: {e}")
 
         elif code in ("ORACLE", "ORACLE_DB"):
-            if oracledb is None:
+            try:
+                conn = get_pooled_oracle_connection(conn_data=conn_data)
+            except Exception:
                 return [], [], {}, {}
-            conn = get_pooled_oracle_connection(conn_data=conn_data)
             if not conn:
                 return [], [], {}, {}
             try:
@@ -370,9 +368,10 @@ def fetch_columns(conn_data, table_name):
                 pass
 
         elif code in ("ORACLE", "ORACLE_DB"):
-            if oracledb is None:
+            try:
+                conn = get_pooled_oracle_connection(conn_data=conn_data)
+            except Exception:
                 return []
-            conn = get_pooled_oracle_connection(conn_data=conn_data)
             if not conn:
                 return []
             try:

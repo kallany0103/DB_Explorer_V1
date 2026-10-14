@@ -3,11 +3,11 @@ from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QButtonGroup, 
-    QToolButton, QMenu, QLabel
+    QToolButton, QMenu, QLabel, QPushButton
 )
 from ui.components import (
     IconButton, SearchBox, ActionToolButton, DropdownToolButton,
-    NavigationTabButton, ToolbarActionButton, SecondaryButton
+    NavigationTabButton, ToolbarActionButton, CompactButton
 )
 
 
@@ -27,8 +27,9 @@ class NavigationHeader(QWidget):
         """
         super().__init__(parent)
         self.setObjectName(object_name)
+        self.setFixedHeight(34)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 3, 6, 1)
+        layout.setContentsMargins(6, 3, 6, 2)
         layout.setSpacing(4)
 
         self.button_group = QButtonGroup(self)
@@ -99,8 +100,7 @@ class WorksheetToolbar(QWidget):
         exec_menu = QMenu(self.exec_btn)
         exec_menu.addAction(manager.ws_execute_new_tab_action)
         self.exec_btn.setMenu(exec_menu)
-        self.exec_btn.setFixedWidth(55)
-        self.exec_btn.setStyleSheet("padding-right: 12px;")
+        self.exec_btn.setFixedWidth(46)
         layout.addWidget(self.exec_btn)
 
         # Cancel
@@ -138,7 +138,7 @@ class WorksheetToolbar(QWidget):
 
         self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.explain_combo.setFixedWidth(55)
+        self.explain_combo.setFixedWidth(46)
         self.explain_combo.setToolTip("Explain Query")
         self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
@@ -188,8 +188,7 @@ class WorksheetToolbar(QWidget):
         self.edit_btn.setIcon(qta.icon("fa5s.edit"))
         self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.edit_btn.setFixedHeight(30)
-        self.edit_btn.setFixedWidth(55)
-        self.edit_btn.setStyleSheet("padding-right: 12px;")
+        self.edit_btn.setFixedWidth(46)
         self.edit_btn.setToolTip("Edit Operations")
         self.edit_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         
@@ -204,8 +203,7 @@ class WorksheetToolbar(QWidget):
         self.rows_limit_combo = DropdownToolButton("", qta.icon("fa5s.list-ol"))
         self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(55)
-        self.rows_limit_combo.setStyleSheet("padding-right: 12px;")
+        self.rows_limit_combo.setFixedWidth(46)
         self.rows_limit_combo.setToolTip("Row Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
         self.rows_limit_combo.itemTriggered.connect(
@@ -408,10 +406,12 @@ class ProcessFilterBar(QWidget):
         self.manager = manager
         self.tab_content = tab_content
         self.setObjectName("processFilterBar")
+        self.setFixedHeight(34)
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 3, 6, 3)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.button_group = QButtonGroup(self)
         self.button_group.setExclusive(True)
@@ -426,10 +426,11 @@ class ProcessFilterBar(QWidget):
 
         self.filter_buttons = {}
         for label, filter_id in filters:
-            btn = NavigationTabButton(label)
+            btn = QPushButton(label)
             btn.setCheckable(True)
-            btn.setFixedHeight(28)
-            btn.setMinimumWidth(84)
+            btn.setFixedHeight(26)
+            btn.setMinimumWidth(50)
+            btn.setMaximumWidth(100)
             layout.addWidget(btn)
             self.button_group.addButton(btn)
             self.filter_buttons[filter_id] = btn
@@ -443,19 +444,22 @@ class ProcessFilterBar(QWidget):
         
         # Search Field
         self.search_edit = SearchBox("Search processes...")
-        self.search_edit.setFixedWidth(150)
+        self.search_edit.setFixedHeight(26)
+        self.search_edit.setMinimumWidth(70)
+        self.search_edit.setMaximumWidth(130)
         self.search_edit.textChanged.connect(lambda text: self.manager._filter_processes_table(self.tab_content, text))
         layout.addWidget(self.search_edit)
         
         # Action buttons
-        self.view_log_btn = SecondaryButton(qta.icon("fa5s.file-alt"), "View Log")
+        self.view_log_btn = CompactButton(qta.icon("fa5s.file-alt", color="#374151"), "View Log")
+        self.view_log_btn.setObjectName("process_view_log_btn")
+        self.view_log_btn.setFixedHeight(26)
         self.view_log_btn.clicked.connect(lambda: self.manager._handle_view_log(self.tab_content))
         layout.addWidget(self.view_log_btn)
 
-        self.refresh_now_btn = SecondaryButton("Refresh")
+        self.refresh_now_btn = CompactButton("Refresh")
         self.refresh_now_btn.setObjectName("process_refresh_now_btn")
-        self.refresh_now_btn.setFixedHeight(28)
-        self.refresh_now_btn.setMinimumWidth(76)
+        self.refresh_now_btn.setFixedHeight(26)
         self.refresh_now_btn.clicked.connect(self.manager.refresh_processes_view)
         layout.addWidget(self.refresh_now_btn)
 
