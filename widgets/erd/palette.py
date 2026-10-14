@@ -154,6 +154,7 @@ class ERDPalette(QFrame):
         self.header_btn.setIcon(qta.icon("fa5s.chevron-right", color="#374151"))
         self.header_btn.setIconSize(QSize(12, 12))
         self.header_btn.setFixedHeight(36)
+        self.header_btn.setToolTip("Expand Elements")
         self.header_btn.clicked.connect(self.toggle_collapse)
 
         outer.addWidget(self.header_btn)
@@ -180,9 +181,11 @@ class ERDPalette(QFrame):
             self.setFixedWidth(COLLAPSED_W)
             self.header_btn.setText("")
             self.header_btn.setIcon(qta.icon("fa5s.chevron-right", color="#374151"))
+            self.header_btn.setToolTip("Expand Elements")
         else:
             self._grid_container.show()
             self.setFixedWidth(EXPANDED_W)
             self.header_btn.setText("  Elements")
             self.header_btn.setIcon(qta.icon("fa5s.chevron-down", color="#374151"))
+            self.header_btn.setToolTip("Collapse Elements")
 

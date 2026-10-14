@@ -7,6 +7,7 @@ from .oracle_dialog import OracleConnectionDialog
 from .csv_dialog import CSVConnectionDialog
 from .servicenow_dialog import ServiceNowConnectionDialog
 from .uds_dialog import UDSConnectionDialog
+from .unified_connection_dialog import UnifiedConnectionDialog
 
 from .postgres_ds_dialog import PostgresDataSourceDialog
 from .sqlite_ds_dialog import SQLiteDataSourceDialog
@@ -22,6 +23,7 @@ __all__ = [
     "CSVConnectionDialog",
     "ServiceNowConnectionDialog",
     "UDSConnectionDialog",
+    "UnifiedConnectionDialog",
     "PostgresDataSourceDialog",
     "SQLiteDataSourceDialog",
     "OracleDataSourceDialog",

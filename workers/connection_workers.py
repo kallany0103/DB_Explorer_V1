@@ -641,10 +641,11 @@ class ImportConnectionsWorker(QRunnable):
             )
         else:
             c.execute(
-                'INSERT INTO usf_connections (name, short_name, connection_group_id, host, "database", "user", password, port, dsn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO usf_connections (name, short_name, connection_group_id, host, "database", "user", password, port, dsn, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (conn_data.get("name"), conn_data.get("short_name"), group_id,
                  conn_data.get("host"), conn_data.get("database"), conn_data.get("user"),
-                 conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn")),
+                 conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn"),
+                 conn_data.get("role", "Normal")),
             )
 
     def _update_connection(self, c, conn_id, conn_data):
@@ -655,9 +656,10 @@ class ImportConnectionsWorker(QRunnable):
             c.execute('UPDATE usf_connections SET short_name=?, instance_url=?, "user"=?, password=? WHERE id=?',
                       (conn_data.get("short_name"), conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password"), conn_id))
         else:
-            c.execute('UPDATE usf_connections SET short_name=?, host=?, "database"=?, "user"=?, password=?, port=?, dsn=? WHERE id=?',
+            c.execute('UPDATE usf_connections SET short_name=?, host=?, "database"=?, "user"=?, password=?, port=?, dsn=?, role=? WHERE id=?',
                       (conn_data.get("short_name"), conn_data.get("host"), conn_data.get("database"), conn_data.get("user"),
-                       conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn"), conn_id))
+                       conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn"),
+                       conn_data.get("role", "Normal"), conn_id))
 
     def run(self):
        
@@ -745,19 +747,20 @@ class ImportConnectionsWorker(QRunnable):
 
         c.execute(
             'SELECT id, name, short_name, host, "database", "user", password, port, dsn, '
-            '       db_path, instance_url, connection_group_id '
+            '       db_path, instance_url, connection_group_id, role '
             'FROM usf_connections'
         )
         conn_rows = c.fetchall()
         conns_by_id = {}
         for row in conn_rows:
-            conn_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url, g_id = row
+            conn_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url, g_id, role = row
             code = type_code_by_group_id.get(g_id, '')
             conn_entry = {
                 "id": conn_id, "name": name, "short_name": short_name,
                 "host": host, "database": db, "user": user, "password": pwd,
                 "port": port, "dsn": dsn, "db_path": db_path,
                 "instance_url": instance_url, "db_type": code.lower(),
+                "role": role or "Normal",
                 "usf_data_sources": [],
             }
             conns_by_id[conn_id] = conn_entry

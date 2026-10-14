@@ -105,7 +105,7 @@ class ConnectionUI:
         self.manager.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.manager.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.manager.tree.setHeaderHidden(True)
-        self.manager.tree.setIndentation(15)
+        self.manager.tree.setIndentation(16)
         self.manager.tree.setUniformRowHeights(True)
 
         self.manager.model = QStandardItemModel()
@@ -130,7 +130,7 @@ class ConnectionUI:
         self.manager.schema_tree.setDragEnabled(True)
         self.manager.schema_tree.customContextMenuRequested.connect(self.manager.show_schema_context_menu)
         self.manager.schema_tree.doubleClicked.connect(self.manager.schema_item_double_clicked)
-        self.manager.schema_tree.setIndentation(15)
+        self.manager.schema_tree.setIndentation(16)
 
         self.manager.schema_tree.header().resizeSection(0, 160)
 

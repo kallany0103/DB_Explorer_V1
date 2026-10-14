@@ -11,11 +11,10 @@ from __future__ import annotations
 import os
 import threading
 import time
-from pathlib import Path
 
 import qtawesome as qta
-from PySide6.QtCore import QTimer, Signal
-from PySide6.QtGui import QFontMetrics, QTextCursor
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -25,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ui.components import SecondaryButton
+from ui.components import CompactButton, ToastNotification
 from widgets.psql_tool.constants import (
     _APP_DATA_DIR,
     _PTY_DRAIN_SLEEP_S,
@@ -174,7 +173,8 @@ class PSQLToolWidget(QWidget):
             ("fa5s.trash-alt", "Clear", self._clear),
             ("fa5s.redo-alt", "Reconnect", self._reconnect),
         ):
-            btn = SecondaryButton(qta.icon(icon_key, color="#a6adc8"), label)
+            btn = CompactButton(qta.icon(icon_key, color="#4b5563"), label)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
 
@@ -204,18 +204,21 @@ class PSQLToolWidget(QWidget):
     def _start_session(self, reset_ui: bool = True) -> None:
         self._first_prompt_pos = 0
         if reset_ui:
+            self._term.clear()
             self._term.reset_input_start()
         self._hide_error()
         self._show_spinner()
 
         psql_path = self._pg_bin_path or find_psql()
         if not psql_path:
+            self._hide_spinner()
             self._show_error("Could not locate psql executable.")
             self._term.append_output("\nERROR: Could not locate psql executable.\n")
             return
         self._psql_exe_path = psql_path
 
         if PTY is None:
+            self._hide_spinner()
             self._show_error("winpty module is not installed.")
             self._term.append_output(
                 "\nERROR: winpty module is not installed. PTY support unavailable.\n"
@@ -251,23 +254,24 @@ class PSQLToolWidget(QWidget):
             self._reader_thread = threading.Thread(target=self._pty_reader, daemon=True)
             self._reader_thread.start()
         except Exception as e:
+            self._hide_spinner()
             self._show_error(f"Failed to start psql: {e}")
             self._term.append_output(f"\nERROR: Failed to start psql: {e}\n")
         finally:
             os.environ.pop("PGPASSWORD", None)
 
     def _pty_reader(self) -> None:
-        exit_reason = "clean"
-        while self._running and self._pty is not None:
+        pty = self._pty
+        while self._running and self._pty is not None and self._pty is pty:
             try:
-                data = self._pty.read(blocking=True)
+                data = pty.read(blocking=True)
                 if not data:
                     break
                 buffer = [data]
                 idle_start = time.time()
                 while time.time() - idle_start < _PTY_DRAIN_TIMEOUT_S:
                     try:
-                        more = self._pty.read(blocking=False)
+                        more = pty.read(blocking=False)
                         if more:
                             buffer.append(more)
                             idle_start = time.time()
@@ -277,16 +281,19 @@ class PSQLToolWidget(QWidget):
                         break
                 text = "".join(buffer).replace("\r\n", "\n")
                 self._output_received.emit(text)
-            except Exception as exc:
-                exit_reason = "clean" if type(exc).__name__ == "WinptyError" else str(exc)
+            except Exception:
                 break
-        self._running = False
+        if self._running:
+            self._running = False
+            self._output_received.emit("\n[Process exited]\n")
 
     # ---------------------------------------------------------- Qt slots --
 
     def _on_output_received(self, text: str) -> None:
         self._hide_spinner()
         self._term.append_output(text)
+        if self._first_prompt_pos == 0 and ("=#" in text or "=>" in text):
+            self._first_prompt_pos = self._term._input_start
 
     def _on_command_entered(self, cmd: str) -> None:
         if self._pty and self._running:
@@ -298,15 +305,15 @@ class PSQLToolWidget(QWidget):
     def _on_history_up(self) -> None:
         if self._history and self._history_index > 0:
             self._history_index -= 1
-            self._term.set_input(self._history[self._history_index])
+            self._term.set_input_text(self._history[self._history_index])
 
     def _on_history_down(self) -> None:
         if self._history_index < len(self._history) - 1:
             self._history_index += 1
-            self._term.set_input(self._history[self._history_index])
+            self._term.set_input_text(self._history[self._history_index])
         else:
             self._history_index = len(self._history)
-            self._term.set_input("")
+            self._term.set_input_text("")
 
     def _on_interrupt(self) -> None:
         if self._pty and self._running:
@@ -316,15 +323,36 @@ class PSQLToolWidget(QWidget):
                 pass
 
     def _copy_output(self) -> None:
-        QApplication.clipboard().setText(self._term.toPlainText())
+        cursor = self._term.textCursor()
+        if cursor.hasSelection():
+            text = cursor.selectedText().replace("\u2029", "\n")
+        else:
+            text = self._term.toPlainText().rstrip()
+        if text:
+            QApplication.clipboard().setText(text)
+            ToastNotification.show_toast(self, "Output copied to clipboard", kind="success")
+        else:
+            ToastNotification.show_toast(self, "No output to copy", kind="info")
+        self._term.setFocus()
 
     def _clear(self) -> None:
+        pending = self._term.current_input()
         self._term.clear()
         self._term.reset_input_start()
+        self._first_prompt_pos = 0
+        if pending:
+            self._term.set_input_text(pending)
+        if self._running and self._pty is not None:
+            try:
+                self._pty.write("\r\n")
+            except Exception:
+                pass
+        self._term.setFocus()
 
     def _reconnect(self) -> None:
         self.close_process()
         self._start_session(reset_ui=True)
+        self._term.setFocus()
 
     def _show_error(self, msg: str) -> None:
         self._err_lbl.setText(msg)
@@ -356,14 +384,25 @@ class PSQLToolWidget(QWidget):
 
     def close_process(self) -> None:
         self._running = False
-        if self._pty:
+        pty = self._pty
+        self._pty = None
+        if pty is not None:
             try:
-                self._pty.write("\\q\n")
-                time.sleep(0.1)
-                self._pty.close()
+                pty.write("\\q\r\n")
             except Exception:
                 pass
-            self._pty = None
+            try:
+                pty.cancel_io()
+            except Exception:
+                pass
+            try:
+                del pty
+            except Exception:
+                pass
+        if self._reader_thread and self._reader_thread.is_alive():
+            if threading.current_thread() != self._reader_thread:
+                self._reader_thread.join(timeout=0.3)
+            self._reader_thread = None
 
     def closeEvent(self, event) -> None:
         self._resize_timer.stop()

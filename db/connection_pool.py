@@ -16,8 +16,7 @@ import threading
 import time
 import psycopg2
 from psycopg2 import OperationalError
-import oracledb
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -310,7 +309,7 @@ class PostgresConnectionPool:
 _connection_pools: Dict[Tuple, PostgresConnectionPool] = {}
 _pools_lock = threading.Lock()
 
-_oracle_connection_pools: Dict[Tuple, "oracledb.ConnectionPool"] = {}
+_oracle_connection_pools: Dict[Tuple, Any] = {}  # values are oracledb.ConnectionPool
 _oracle_pools_lock = threading.Lock()
 
 
@@ -424,65 +423,115 @@ def invalidate_pool(conn_params: Dict) -> bool:
     return False
 
 
+def _make_oracle_pool_key(conn_params: Dict) -> tuple:
+    host = conn_params.get("host") or ""
+    port = int(conn_params.get("port") or 1521) if str(conn_params.get("port") or "").isdigit() else 1521
+    service_name = conn_params.get("service_name") or conn_params.get("database") or ""
+    dsn = conn_params.get("dsn") or ""
+    user = conn_params.get("user") or ""
+    role = conn_params.get("role") or "Normal"
+    return (host, port, service_name, dsn, user, role)
+
+
 def invalidate_oracle_pool(conn_params: Dict) -> bool:
     """
     Close and evict the cached Oracle pool for the given connection parameters.
 
     Args:
-        conn_params: Connection parameters dict (host, port, service_name, user).
+        conn_params: Connection parameters dict.
 
     Returns:
         True if a pool was found and evicted, False otherwise.
     """
-    pool_key = (
-        conn_params.get('host', ''),
-        int(conn_params.get('port') or 1521),
-        conn_params.get('service_name', ''),
-        conn_params.get('user', '')
-    )
+    target_key = _make_oracle_pool_key(conn_params)
+    target_user = conn_params.get("user") or ""
+    target_dsn = conn_params.get("dsn") or ""
+    target_host = conn_params.get("host") or ""
 
+    evicted = False
     with _oracle_pools_lock:
-        pool = _oracle_connection_pools.pop(pool_key, None)
+        if target_key in _oracle_connection_pools:
+            pool = _oracle_connection_pools.pop(target_key, None)
+            if pool is not None:
+                try:
+                    pool.close()
+                except Exception:
+                    pass
+                evicted = True
 
-    if pool is not None:
-        try:
-            pool.close()
-        except Exception:
-            pass
-        logger.debug(f"Invalidated Oracle connection pool for key {pool_key}")
-        return True
+        # Evict any matching legacy 4-tuple keys or matching user/dsn keys
+        keys_to_remove = []
+        for k in list(_oracle_connection_pools.keys()):
+            if len(k) == 4 and k[3] == target_user and (k[0] == target_host or not target_host):
+                keys_to_remove.append(k)
+            elif len(k) >= 6 and k[4] == target_user and (k[3] == target_dsn or (k[0] == target_host and target_host)):
+                keys_to_remove.append(k)
+        for k in keys_to_remove:
+            p = _oracle_connection_pools.pop(k, None)
+            if p is not None:
+                try:
+                    p.close()
+                except Exception:
+                    pass
+                evicted = True
 
-    return False
+    if evicted:
+        logger.debug(f"Invalidated Oracle connection pool for key {target_key}")
+    return evicted
 
 
-def get_or_create_oracle_pool(conn_params: Dict, 
+def get_or_create_oracle_pool(conn_params: Dict,
                               min_connections: int = 2,
-                              max_connections: int = 5) -> "oracledb.ConnectionPool":
+                              max_connections: int = 5) -> Any:  # returns oracledb.ConnectionPool
     """
     Get or create a native connection pool for Oracle.
     """
-    pool_key = (
-        conn_params.get('host', ''),
-        int(conn_params.get('port') or 1521),
-        conn_params.get('service_name', ''),
-        conn_params.get('user', '')
-    )
-    
+    pool_key = _make_oracle_pool_key(conn_params)
+
     with _oracle_pools_lock:
         if pool_key not in _oracle_connection_pools:
+            import oracledb as _oracledb  # noqa: PLC0415  lazy — must not move to top-level
+
+            driver_mode = str(conn_params.get("driver_mode", "")).lower()
+            client_dir = conn_params.get("oracle_client_dir")
+            if driver_mode == "thick" or client_dir:
+                from db.oracle_utils import get_last_thick_mode_error, init_oracle_thick_mode
+                if not init_oracle_thick_mode(client_dir):
+                    err = get_last_thick_mode_error() or "Failed to load Oracle Instant Client"
+                    target = client_dir or "system default"
+                    raise ConnectionError(
+                        f"Oracle Thick Mode (Instant Client) failed to initialize with client directory '{target}':\n\n{err}"
+                    )
+
             user = conn_params.get("user")
             password = conn_params.get("password")
             dsn = conn_params.get("dsn")
-            
+
             if not dsn:
                 host = conn_params.get("host")
                 port = conn_params.get("port") or 1521
-                service_name = conn_params.get("service_name")
-                dsn = f"{host}:{port}/{service_name}"
-                
-            pool = oracledb.create_pool(user=user, password=password, dsn=dsn,
-                                        min=min_connections, max=max_connections,
-                                        increment=1)
+                service_name = conn_params.get("service_name") or conn_params.get("database")
+                db_type = conn_params.get("oracle_db_type") or "service_name"
+                from db.oracle_utils import build_oracle_dsn
+                dsn = build_oracle_dsn(host, port, service_name, db_type=db_type)
+
+            from db.oracle_utils import get_oracle_auth_mode
+            mode = get_oracle_auth_mode(conn_params.get("role"))
+
+            pool_kwargs: Dict[str, Any] = {
+                "user": user,
+                "password": password,
+                "dsn": dsn,
+                "min": min_connections,
+                "max": max_connections,
+                "increment": 1,
+            }
+            if mode != _oracledb.AUTH_MODE_DEFAULT:
+                pool_kwargs["mode"] = mode
+            if conn_params.get("config_dir"):
+                pool_kwargs["config_dir"] = conn_params.get("config_dir")
+
+            pool = _oracledb.create_pool(**pool_kwargs)
             _oracle_connection_pools[pool_key] = pool
-            
+
         return _oracle_connection_pools[pool_key]

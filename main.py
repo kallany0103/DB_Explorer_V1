@@ -46,7 +46,6 @@ class _StartupWorker(QThread):
 
             self.progress.emit("Bootstrapping database...", 10)
             ensure_hierarchy_db()
-
         except Exception:
             self.failed.emit(traceback.format_exc())
         else:
