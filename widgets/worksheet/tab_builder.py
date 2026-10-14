@@ -23,6 +23,7 @@ from ui.components import SecondaryButton
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.autocomplete import CompletionEngine
 from widgets.test_cases.test_cases_widget import TestCasesWidget
+from widgets.ai_assistant import AIChatPanel
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFrame
 
@@ -276,7 +277,24 @@ def add_tab(manager):
 
     editor_layout.addWidget(editor_stack)
     editor_layout.setStretchFactor(editor_stack, 1)
-    main_vertical_splitter.addWidget(editor_container)
+
+    # Horizontal Splitter between SQL Editor and Toad-style AI Chat Side Panel
+    editor_horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
+    editor_horizontal_splitter.setObjectName("editor_horizontal_splitter")
+    editor_horizontal_splitter.setHandleWidth(2)
+    editor_horizontal_splitter.addWidget(editor_container)
+
+    ai_chat_panel = AIChatPanel(manager.main_window if hasattr(manager, 'main_window') else None)
+    ai_chat_panel.setObjectName("ai_chat_panel")
+    ai_chat_panel.hide()  # Hidden by default until "Explain code using AI" is clicked
+    ai_chat_panel.close_requested.connect(ai_chat_panel.hide)
+
+    editor_horizontal_splitter.addWidget(ai_chat_panel)
+    editor_horizontal_splitter.setStretchFactor(0, 1)
+    editor_horizontal_splitter.setStretchFactor(1, 0)
+    tab_content.ai_chat_panel = ai_chat_panel
+
+    main_vertical_splitter.addWidget(editor_horizontal_splitter)
 
     def switch_editor_view(index):
         editor_stack.setCurrentIndex(index)

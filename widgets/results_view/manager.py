@@ -390,6 +390,8 @@ class ResultsManager(QObject):
                     buttons[1].setChecked(target_index == 1) 
                     buttons[2].setChecked(target_index == 2)
                     buttons[3].setChecked(target_index == 3)
+                    if len(buttons) > 4:
+                        buttons[4].setChecked(target_index == 5)
                 if results_info_bar and process_filter_bar:
                     if target_index == 0:
                         if stacked_widget.widget(0).findChild(QTableView, "results_table"):
