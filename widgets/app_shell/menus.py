@@ -97,4 +97,7 @@ def build_main_window_menu(main_window):
     help_menu.addAction(main_window.postgres_help_action)
     help_menu.addAction(main_window.oracle_help_action)
     help_menu.addSeparator()
+    help_menu.addAction(main_window.release_notes_action)
+    help_menu.addAction(main_window.technical_docs_action)
+    help_menu.addSeparator()
     help_menu.addAction(main_window.about_action)

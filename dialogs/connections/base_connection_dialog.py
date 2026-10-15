@@ -59,6 +59,9 @@ class BaseConnectionDialog(QDialog):
         self._fixed_size_requested = fixed_size
 
         self.is_editing = is_editing or (conn_data is not None)
+        self.original_password = str(conn_data.get("password", "") or "") if (conn_data and conn_data.get("password") is not None) else None
+        self._showing_pwd_warning = False
+        self._pwd_editing_connected = False
 
         clean_title = title if "Connection" in title else f"{title} Connection"
         self.setWindowTitle(f"Edit {clean_title}" if self.is_editing else f"New {clean_title}")
@@ -149,6 +152,9 @@ class BaseConnectionDialog(QDialog):
             self.setup_inputs()
             self.scroll_area.setWidget(self.form_widget)
             self.main_layout.addWidget(self.scroll_area, 1)
+
+        if self.original_password is not None:
+            self.set_original_password(self.original_password)
 
         # 3. Action Buttons
         self.test_btn = SecondaryButton("Test Connection")
@@ -276,23 +282,48 @@ class BaseConnectionDialog(QDialog):
     def setup_inputs(self):
         pass
 
+    def set_original_password(self, pwd):
+        self.original_password = str(pwd or "")
+        if hasattr(self, 'password_input') and not self._pwd_editing_connected:
+            self.password_input.editingFinished.connect(self._on_password_editing_finished)
+            self._pwd_editing_connected = True
+
+    def _on_password_editing_finished(self):
+        if self._showing_pwd_warning:
+            return
+        if self.is_editing and self.original_password is not None and hasattr(self, 'password_input'):
+            if self.password_input.text() != self.original_password:
+                self._showing_pwd_warning = True
+                QMessageBox.warning(
+                    self,
+                    "Reset Password",
+                    "Password cannot be changed directly from Edit Connection.\n"
+                    "Please use 'Change Password' to reset or change your password."
+                )
+                self.password_input.setText(self.original_password)
+                self._showing_pwd_warning = False
+
+    def check_password_modification(self):
+        if self._showing_pwd_warning:
+            return False
+        if self.is_editing and self.original_password is not None and hasattr(self, 'password_input'):
+            if self.password_input.text() != self.original_password:
+                self._showing_pwd_warning = True
+                QMessageBox.warning(
+                    self,
+                    "Reset Password",
+                    "Password cannot be changed directly from Edit Connection.\n"
+                    "Please use 'Change Password' to reset or change your password."
+                )
+                self.password_input.setText(self.original_password)
+                self._showing_pwd_warning = False
+                return False
+        return True
+
     def testConnection(self):
-        if self.form_cls and hasattr(self, "engine_form"):
-            valid, msg = self.engine_form.validate_inputs()
-            if not valid:
-                QMessageBox.warning(self, "Validation", msg)
-                return
-
-            self.test_btn.start_loading("Testing")
-
-            def _do_test():
-                return self.engine_form.test_connection()
-
-            self._test_worker = WorkerThread(_do_test)
-            self._test_worker.finished_signal.connect(self._on_engine_test_finished)
-            self._test_worker.start()
-        else:
-            self.test_connection_impl()
+        if not self.check_password_modification():
+            return
+        self.test_connection_impl()
 
     def _on_engine_test_finished(self, result: Any, error: Exception | str | None) -> None:
         self.test_btn.stop_loading()
@@ -306,17 +337,12 @@ class BaseConnectionDialog(QDialog):
             QMessageBox.critical(self, "Connection Test Failed", msg or "Failed to connect.")
 
     def saveConnection(self):
-        if self.form_cls and hasattr(self, "engine_form"):
-            valid, msg = self.engine_form.validate_inputs()
-            if not valid:
-                QMessageBox.warning(self, "Validation", msg)
-                return
-            self.accept()
-        else:
-            if self.group_combo.currentIndex() == -1:
-                QMessageBox.warning(self, "Missing Info", "Please select or create a group.")
-                return
-            self.save_connection_impl()
+        if self.group_combo.currentIndex() == -1:
+            QMessageBox.warning(self, "Missing Info", "Please select or create a group.")
+            return
+        if not self.check_password_modification():
+            return
+        self.save_connection_impl()
 
     def populate_from_conn_data(self, conn_data: dict[str, Any]) -> None:
         self.conn_data = conn_data

@@ -2,7 +2,8 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QMessageBox, QLabel, QMenu, QProgressDialog
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint, QEvent
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QIcon, QAction
+from PySide6.QtGui import QIcon, QAction, QDesktopServices
+from PySide6.QtCore import QUrl
 import qtawesome as qta
 from ui.components import SecondaryButton
 from ui.title_bar import TitleBarWidget
@@ -46,6 +47,11 @@ from widgets.app_shell import (
 from ui.account_menu import AccountMenu
 from auth.session import AuthSession
 from workers.google_login_worker import GoogleSignInWorker
+import os
+import subprocess
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import QMessageBox
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -519,6 +525,40 @@ class MainWindow(QMainWindow):
 
     def show_about_dialog(self):
         QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.1</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+
+    def show_release_notes_dialog(self):
+        """Open RELEASE_NOTES.md in Notepad or standard text/document reader."""
+    
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RELEASE_NOTES.md")
+        if not os.path.isfile(path):
+            QMessageBox.warning(self, "Release Notes", f"RELEASE_NOTES.md not found:\n{path}")
+            return
+        
+        # Explicitly launch in Notepad (guaranteed text/doc viewer without launching VS Code)
+        try:
+            subprocess.Popen(["notepad.exe", path])
+        except Exception:
+            # Fallback for non-Windows or if notepad is unavailable
+            try:
+                os.startfile(path)
+            except Exception:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+
+    def show_technical_docs(self):
+        """Open TECHNICAL_DOCUMENTATION.md in Notepad or standard document reader."""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TECHNICAL_DOCUMENTATION.md")
+        if not os.path.isfile(path):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Technical Documentation", f"TECHNICAL_DOCUMENTATION.md not found:\n{path}")
+            return
+
+        try:
+            subprocess.Popen(["notepad.exe", path])
+        except Exception:
+            try:
+                os.startfile(path)
+            except Exception:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _get_current_editor(self):
         return self.worksheet_manager._get_current_editor()
