@@ -1269,17 +1269,28 @@ class ConnectionDialogs:
         type_item = group_item.parent() if group_item else None
         type_id = type_item.data(Qt.ItemDataRole.UserRole + 1) if type_item else None
             
-        dialog = PostgresConnectionDialog(self.manager, is_editing=True, type_id=type_id, group_id=group_id)
+        dialog = PostgresConnectionDialog(self.manager, conn_data=conn_data, is_editing=True, type_id=type_id, group_id=group_id)
         dialog.name_input.setText(conn_data.get("name", ""))
         dialog.short_name_input.setText(conn_data.get("short_name", ""))
         dialog.host_input.setText(conn_data.get("host", ""))
         dialog.port_input.setText(str(conn_data.get("port", "")))
         dialog.db_input.setText(conn_data.get("database", ""))
         dialog.user_input.setText(conn_data.get("user", ""))
-        dialog.password_input.setText(str(conn_data.get("password", "") or ""))
+        orig_pwd = str(conn_data.get("password", "") or "")
+        dialog.password_input.setText(orig_pwd)
+        dialog.set_original_password(orig_pwd)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")
+            if str(new_data.get("password", "") or "") != orig_pwd:
+                QMessageBox.warning(
+                    self.manager,
+                    "Reset Password",
+                    "Password cannot be changed directly from Edit Connection.\n"
+                    "Please use 'Change Password' to reset or change your password."
+                )
+                return
+            new_data["password"] = orig_pwd
             try:
                 conn_name = new_data.get("name", "Connection")
                 db.update_connection(new_data)
@@ -1315,6 +1326,15 @@ class ConnectionDialogs:
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")
+            if str(new_data.get("password", "") or "") != orig_pwd:
+                QMessageBox.warning(
+                    self.manager,
+                    "Reset Password",
+                    "Password cannot be changed directly from Edit Connection.\n"
+                    "Please use 'Change Password' to reset or change your password."
+                )
+                return
+            new_data["password"] = orig_pwd
             try:
                 conn_name = new_data.get("name", "Connection")
                 db.update_connection(new_data)
@@ -1368,6 +1388,7 @@ class ConnectionDialogs:
 
         dialog = UDSConnectionDialog(
             self.manager,
+            conn_data=conn_data,
             is_editing=True,
             type_id=type_id,
             group_id=group_id
@@ -1379,12 +1400,23 @@ class ConnectionDialogs:
         dialog.port_input.setText(str(conn_data.get("port", "")))
         dialog.db_input.setText(conn_data.get("database", ""))
         dialog.user_input.setText(conn_data.get("user", ""))
-        dialog.password_input.setText(str(conn_data.get("password", "") or ""))
+        orig_pwd = str(conn_data.get("password", "") or "")
+        dialog.password_input.setText(orig_pwd)
+        dialog.set_original_password(orig_pwd)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
 
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")
+            if str(new_data.get("password", "") or "") != orig_pwd:
+                QMessageBox.warning(
+                    self.manager,
+                    "Reset Password",
+                    "Password cannot be changed directly from Edit Connection.\n"
+                    "Please use 'Change Password' to reset or change your password."
+                )
+                return
+            new_data["password"] = orig_pwd
 
             try:
                 conn_name = new_data.get("name", "Connection")
@@ -1422,8 +1454,19 @@ class ConnectionDialogs:
         type_id = type_item.data(Qt.ItemDataRole.UserRole + 1) if type_item else None
 
         dialog = ServiceNowConnectionDialog(self.manager, conn_data=conn_data, type_id=type_id, group_id=group_id)
+        orig_pwd = str(conn_data.get("password", "") or "")
+        dialog.set_original_password(orig_pwd)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.getData()
+            if str(new_data.get("password", "") or "") != orig_pwd:
+                QMessageBox.warning(
+                    self.manager,
+                    "Reset Password",
+                    "Password cannot be changed directly from Edit Connection.\n"
+                    "Please use 'Change Password' to reset or change your password."
+                )
+                return
+            new_data["password"] = orig_pwd
             try:
                 conn_name = new_data.get("name", "Connection")
                 db.update_connection(new_data)

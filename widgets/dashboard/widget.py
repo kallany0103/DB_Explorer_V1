@@ -555,66 +555,86 @@ class DashboardWidget(QWidget):
             print(f"Error updating dashboard UI: {e}")
 
 class ChartTooltip(QFrame):
+    """
+    Stable tooltip rendered as a child widget of the chart.
+    Rows are pre-built and labels updated in-place to avoid flicker.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.hide()
-        
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 8, 10, 8)
-        self.layout.setSpacing(4)
-        
+        # No ToolTip window flag — stays as a child widget inside the chart
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        self.setObjectName("ChartTooltip")
         self.setStyleSheet("""
-            QFrame {
-                background-color: #ffffff !important;
-                border: 1px solid #d1d5db !important;
-                border-radius: 4px !important;
+            QFrame#ChartTooltip {
+                background-color: rgba(255,255,255,245);
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
             }
             QLabel {
-                color: #111827 !important;
-                 font-family: "Segoe UI Variable", "Segoe UI", sans-serif !important;
-                border: none !important;
-                background: transparent !important;
+                color: #111827;
+                font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+                background: transparent;
+                border: none;
             }
         """)
-        
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(12, 8, 12, 8)
+        main_layout.setSpacing(4)
+
         self.time_label = QLabel()
-        self.time_label.setStyleSheet("font-size: 11px !important; color: #6b7280 !important; font-weight: bold !important;")
-        self.layout.addWidget(self.time_label)
-        
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_label.setStyleSheet("font-size: 11px; color: #6b7280; font-weight: bold;")
+        main_layout.addWidget(self.time_label)
+
         self.items_layout = QVBoxLayout()
         self.items_layout.setSpacing(3)
-        self.layout.addLayout(self.items_layout)
+        main_layout.addLayout(self.items_layout)
+
+        # Cache row widgets so we don't recreate them every frame
+        self._row_widgets: list = []
+        self.hide()
 
     def update_content(self, time_text, data_items):
         self.time_label.setText(time_text)
-        
-        # Clear existing rows
-        while self.items_layout.count():
-            item = self.items_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            
-        for name, value, color in data_items:
+
+        # Ensure we have the right number of rows (add or remove as needed)
+        while len(self._row_widgets) > len(data_items):
+            dot, lbl, row = self._row_widgets.pop()
+            self.items_layout.removeWidget(row)
+            row.deleteLater()
+
+        while len(self._row_widgets) < len(data_items):
             row = QWidget()
+            row.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             h = QHBoxLayout(row)
             h.setContentsMargins(0, 0, 0, 0)
             h.setSpacing(8)
-            
+            h.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
             dot = QLabel()
             dot.setFixedSize(10, 10)
-            dot.setStyleSheet(f"background-color: {color}; border-radius: 2px;")
-            
-            lbl = QLabel(f"<b>{name}:</b> <span style='font-size: 13px; font-weight: bold;'>{value}</span>")
-            lbl.setStyleSheet("font-size: 12px !important; color: #111827 !important;")
-            
+
+            lbl = QLabel()
+            lbl.setStyleSheet("font-size: 12px; color: #111827;")
+
+            h.addStretch()
             h.addWidget(dot)
             h.addWidget(lbl)
             h.addStretch()
+
             self.items_layout.addWidget(row)
-        
+            self._row_widgets.append((dot, lbl, row))
+
+        # Update text/color in-place — no widget creation, no flicker
+        for i, (name, value, color) in enumerate(data_items):
+            dot, lbl, _ = self._row_widgets[i]
+            dot.setStyleSheet(f"background-color: {color}; border-radius: 2px; border: none;")
+            lbl.setText(f"<b>{name}:</b> <span style='font-size: 13px; font-weight: bold;'>{value}</span>")
+
         self.adjustSize()
 
 class DashboardWorkerSignals(QObject):
@@ -874,10 +894,27 @@ class LiveChartView(QChartView):
             diff = int(self.x_counter - x_val)
             time_text = f"{diff} seconds ago" if diff > 0 else "Just now"
             self.floating_tooltip.update_content(time_text, data_items)
-            
-            # Position tooltip near cursor
-            t_pos = event.globalPosition().toPoint()
-            self.floating_tooltip.move(t_pos.x() + 15, t_pos.y() + 15)
+
+            # Position tooltip in local coords (child widget of chart)
+            # Left side of cursor, vertically centered — clamped within chart widget bounds
+            local_pos = event.position().toPoint()
+            tip_w = self.floating_tooltip.sizeHint().width()
+            tip_h = self.floating_tooltip.sizeHint().height()
+            gap = 14
+
+            x = local_pos.x() - tip_w - gap
+            y = local_pos.y() - (tip_h // 2)
+
+            # If no room on the left, flip to the right side of cursor
+            if x < 4:
+                x = local_pos.x() + gap
+
+            # Clamp strictly inside chart widget bounds so it never goes outside
+            x = max(4, min(x, self.width() - tip_w - 4))
+            y = max(4, min(y, self.height() - tip_h - 4))
+
+            self.floating_tooltip.move(x, y)
+            self.floating_tooltip.raise_()
             self.floating_tooltip.show()
             
             # 2. Update Vertical Line
@@ -965,4 +1002,3 @@ class LiveChartWidget(QFrame):
         
         layout.addWidget(header)
         layout.addWidget(self.chart_view)
-

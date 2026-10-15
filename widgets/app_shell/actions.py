@@ -213,6 +213,20 @@ def build_main_window_actions(main_window):
     main_window.about_action = QAction("About", main_window)
     main_window.about_action.triggered.connect(main_window.show_about_dialog)
 
+    main_window.release_notes_action = QAction(
+        qta.icon("mdi.note-text-outline", color="#555555"),
+        "Release Notes",
+        main_window,
+    )
+    main_window.release_notes_action.triggered.connect(main_window.show_release_notes_dialog)
+
+    main_window.technical_docs_action = QAction(
+        qta.icon("mdi.file-document-outline", color="#555555"),
+        "Technical Documentation",
+        main_window,
+    )
+    main_window.technical_docs_action.triggered.connect(main_window.show_technical_docs)
+
     main_window.format_sql_action = QAction(
         qta.icon("mdi.auto-fix", color="#555555"), "Format SQL", main_window
     )
