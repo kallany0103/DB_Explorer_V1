@@ -1,15 +1,18 @@
 import json
 import os
 
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsLineItem, QToolBar, QFrame,
-    QVBoxLayout, QHBoxLayout, QWidget, QLabel, QSplitter, QTabWidget,
-    QTableWidget, QTableWidgetItem, QHeaderView, QStyledItemDelegate, QStyle, 
-    QStyleOptionProgressBar, QApplication, QTreeWidget, QTreeWidgetItem
+    QApplication, QFrame, QGraphicsItem, QGraphicsLineItem, QGraphicsScene,
+    QGraphicsView, QHBoxLayout, QHeaderView, QLabel, QPushButton, QSplitter,
+    QStyle, QStyledItemDelegate, QStyleOptionProgressBar, QTabWidget,
+    QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+    QWidget
 )
-from ui.components import SecondaryButton
-from PySide6.QtCore import Qt, QRectF, Signal
-from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter, QPixmap
+import qtawesome as qta
+
+from ui.components import IconButton, SecondaryButton
 
 
 class AnalysisItemDelegate(QStyledItemDelegate):
@@ -80,24 +83,37 @@ class ExplainVisualizer(QWidget):
         graphics_layout.setSpacing(0)
         
         # Graphical Toolbar
-        self.graph_toolbar = QToolBar()
-        self.graph_toolbar.setMovable(False)
-        self.graph_toolbar.setStyleSheet("background-color: #f8f9fa; border-bottom: 1px solid #dee2e6;")
+        self.graph_toolbar = QWidget()
+        self.graph_toolbar.setObjectName("explainToolbar")
+        self.graph_toolbar.setFixedHeight(32)
+        toolbar_layout = QHBoxLayout(self.graph_toolbar)
+        toolbar_layout.setContentsMargins(6, 3, 6, 3)
+        toolbar_layout.setSpacing(6)
+        toolbar_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
-        self.btn_zoom_in = SecondaryButton("+")
+        self.btn_zoom_in = IconButton(qta.icon("fa5s.search-plus", color="#555555"), "Zoom In")
         self.btn_zoom_in.setFixedSize(24, 24)
+        self.btn_zoom_in.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_zoom_in.clicked.connect(lambda: self.graph_view.scale(1.2, 1.2))
         
-        self.btn_zoom_out = SecondaryButton("-")
+        self.btn_zoom_out = IconButton(qta.icon("fa5s.search-minus", color="#555555"), "Zoom Out")
         self.btn_zoom_out.setFixedSize(24, 24)
+        self.btn_zoom_out.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_zoom_out.clicked.connect(lambda: self.graph_view.scale(0.8, 0.8))
         
-        self.btn_reset = SecondaryButton("Reset")
+        self.btn_reset = QPushButton("Reset")
+        self.btn_reset.setObjectName("explainResetBtn")
+        self.btn_reset.setIcon(qta.icon("fa5s.expand-arrows-alt", color="#555555"))
+        self.btn_reset.setIconSize(QSize(12, 12))
+        self.btn_reset.setToolTip("Reset view zoom and position")
+        self.btn_reset.setFixedHeight(24)
+        self.btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_reset.clicked.connect(lambda: self.graph_view.reset_view())
         
-        self.graph_toolbar.addWidget(self.btn_zoom_in)
-        self.graph_toolbar.addWidget(self.btn_zoom_out)
-        self.graph_toolbar.addWidget(self.btn_reset)
+        toolbar_layout.addWidget(self.btn_zoom_in)
+        toolbar_layout.addWidget(self.btn_zoom_out)
+        toolbar_layout.addWidget(self.btn_reset)
+        toolbar_layout.addStretch()
         graphics_layout.addWidget(self.graph_toolbar)
         
         # Splitter for Graph | Details
@@ -147,7 +163,7 @@ class ExplainVisualizer(QWidget):
         self.graph_splitter.addWidget(self.details_container)
         self.details_container.hide() # Hidden by default
         
-        graphics_layout.addWidget(self.graph_splitter)
+        graphics_layout.addWidget(self.graph_splitter, 1)
         self.tabs.addTab(graphics_tab, "Graphical")
         
         # 2. Analysis Tab

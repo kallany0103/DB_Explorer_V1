@@ -350,6 +350,31 @@ QTableView QTableCornerButton::section { background-color: #9FA6AF; border: 1px 
     border: none;
 }
 
+#explainToolbar {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    max-height: 32px;
+}
+
+QPushButton#explainResetBtn {
+    height: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    padding: 2px 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    background-color: #f9fafb;
+    color: #1f2937;
+    font-size: 8.5pt;
+}
+QPushButton#explainResetBtn:hover {
+    background-color: #f3f4f6;
+    border: 1px solid #d1d5db;
+}
+QPushButton#explainResetBtn:pressed {
+    background-color: #e5e7eb;
+}
+
 QGroupBox { font-size: 9pt; font-weight: bold; color: #1f2937; }
 QTabWidget::pane { 
     border: none;
@@ -1002,9 +1027,16 @@ CSVEngineForm {
     color: #1E293B;
 }
 
-/* Unified Connection Dialog input & label polish */
+/* Unified & Standalone Connection Dialog input & label polish */
+QDialog#unifiedConnDialog,
+QDialog#standaloneConnDialog {
+    background-color: #FFFFFF;
+}
+
 QDialog#unifiedConnDialog QLineEdit,
-QDialog#unifiedConnDialog QComboBox {
+QDialog#unifiedConnDialog QComboBox,
+QDialog#standaloneConnDialog QLineEdit,
+QDialog#standaloneConnDialog QComboBox {
     min-height: 28px;
     max-height: 28px;
     border: 1px solid #CBD5E1;
@@ -1015,17 +1047,22 @@ QDialog#unifiedConnDialog QComboBox {
     color: #1E293B;
 }
 QDialog#unifiedConnDialog QLineEdit:hover,
-QDialog#unifiedConnDialog QComboBox:hover {
+QDialog#unifiedConnDialog QComboBox:hover,
+QDialog#standaloneConnDialog QLineEdit:hover,
+QDialog#standaloneConnDialog QComboBox:hover {
     border: 1px solid #94A3B8;
 }
 QDialog#unifiedConnDialog QLineEdit:focus,
-QDialog#unifiedConnDialog QComboBox:focus {
+QDialog#unifiedConnDialog QComboBox:focus,
+QDialog#standaloneConnDialog QLineEdit:focus,
+QDialog#standaloneConnDialog QComboBox:focus {
     border: 1px solid #64748B;
     background-color: #FFFFFF;
     outline: none;
 }
 
-QDialog#unifiedConnDialog QComboBox QAbstractItemView {
+QDialog#unifiedConnDialog QComboBox QAbstractItemView,
+QDialog#standaloneConnDialog QComboBox QAbstractItemView {
     background-color: #FFFFFF;
     color: #111827;
     selection-background-color: #EFF6FF;
@@ -1035,45 +1072,54 @@ QDialog#unifiedConnDialog QComboBox QAbstractItemView {
     padding: 2px;
     outline: none;
 }
-QDialog#unifiedConnDialog QComboBox QAbstractItemView::item {
+QDialog#unifiedConnDialog QComboBox QAbstractItemView::item,
+QDialog#standaloneConnDialog QComboBox QAbstractItemView::item {
     min-height: 24px;
     padding: 4px 8px;
     color: #111827;
     background-color: #FFFFFF;
     border-radius: 4px;
 }
-QDialog#unifiedConnDialog QComboBox QAbstractItemView::item:hover {
+QDialog#unifiedConnDialog QComboBox QAbstractItemView::item:hover,
+QDialog#standaloneConnDialog QComboBox QAbstractItemView::item:hover {
     background-color: #F3F4F6;
     color: #111827;
 }
-QDialog#unifiedConnDialog QComboBox QAbstractItemView::item:selected {
+QDialog#unifiedConnDialog QComboBox QAbstractItemView::item:selected,
+QDialog#standaloneConnDialog QComboBox QAbstractItemView::item:selected {
     background-color: #EFF6FF;
     color: #1D4ED8;
 }
 
-QDialog#unifiedConnDialog QLabel {
+QDialog#unifiedConnDialog QLabel,
+QDialog#standaloneConnDialog QLabel {
     font-size: 12px;
     color: #374151;
 }
 
-QDialog#unifiedConnDialog QRadioButton {
+QDialog#unifiedConnDialog QRadioButton,
+QDialog#standaloneConnDialog QRadioButton {
     spacing: 7px;
     font-size: 12px;
     color: #1F2937;
 }
-QDialog#unifiedConnDialog QRadioButton::indicator {
+QDialog#unifiedConnDialog QRadioButton::indicator,
+QDialog#standaloneConnDialog QRadioButton::indicator {
     width: 16px;
     height: 16px;
     image: url(assets/radio-unchecked.svg);
 }
-QDialog#unifiedConnDialog QRadioButton::indicator:hover {
+QDialog#unifiedConnDialog QRadioButton::indicator:hover,
+QDialog#standaloneConnDialog QRadioButton::indicator:hover {
     image: url(assets/radio-unchecked-hover.svg);
 }
-QDialog#unifiedConnDialog QRadioButton::indicator:checked {
+QDialog#unifiedConnDialog QRadioButton::indicator:checked,
+QDialog#standaloneConnDialog QRadioButton::indicator:checked {
     image: url(assets/radio-checked.svg);
 }
 
 QDialog#unifiedConnDialog QScrollBar:vertical,
+QDialog#standaloneConnDialog QScrollBar:vertical,
 QDialog#baseConnectionDialog QScrollBar:vertical {
     border: none;
     background: transparent;
@@ -1081,17 +1127,21 @@ QDialog#baseConnectionDialog QScrollBar:vertical {
     margin: 0px;
 }
 QDialog#unifiedConnDialog QScrollBar::handle:vertical,
+QDialog#standaloneConnDialog QScrollBar::handle:vertical,
 QDialog#baseConnectionDialog QScrollBar::handle:vertical {
     background: #CBD5E1;
     min-height: 24px;
     border-radius: 3px;
 }
 QDialog#unifiedConnDialog QScrollBar::handle:vertical:hover,
+QDialog#standaloneConnDialog QScrollBar::handle:vertical:hover,
 QDialog#baseConnectionDialog QScrollBar::handle:vertical:hover {
     background: #94A3B8;
 }
 QDialog#unifiedConnDialog QScrollBar::add-line:vertical,
 QDialog#unifiedConnDialog QScrollBar::sub-line:vertical,
+QDialog#standaloneConnDialog QScrollBar::add-line:vertical,
+QDialog#standaloneConnDialog QScrollBar::sub-line:vertical,
 QDialog#baseConnectionDialog QScrollBar::add-line:vertical,
 QDialog#baseConnectionDialog QScrollBar::sub-line:vertical {
     height: 0px;
@@ -1099,6 +1149,8 @@ QDialog#baseConnectionDialog QScrollBar::sub-line:vertical {
 }
 QDialog#unifiedConnDialog QScrollBar::add-page:vertical,
 QDialog#unifiedConnDialog QScrollBar::sub-page:vertical,
+QDialog#standaloneConnDialog QScrollBar::add-page:vertical,
+QDialog#standaloneConnDialog QScrollBar::sub-page:vertical,
 QDialog#baseConnectionDialog QScrollBar::add-page:vertical,
 QDialog#baseConnectionDialog QScrollBar::sub-page:vertical {
     background: transparent;

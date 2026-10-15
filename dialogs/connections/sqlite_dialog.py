@@ -1,98 +1,32 @@
 # dialogs/connections/sqlite_dialog.py
+"""SQLite connection dialog hosting SQLiteEngineForm."""
 
-import sqlite3 as sqlite
-from PySide6.QtWidgets import QLineEdit, QHBoxLayout, QFileDialog, QMessageBox
-from ui.components import SecondaryButton
-from workers.workers import WorkerThread
+from __future__ import annotations
+
+from typing import Any
 from .base_connection_dialog import BaseConnectionDialog
-
-
+from .engine_forms import SQLiteEngineForm
 
 
 class SQLiteConnectionDialog(BaseConnectionDialog):
-    def __init__(self, parent=None, conn_data=None, type_id=None, group_id=None):
+    """Modern standalone SQLite connection dialog hosting SQLiteEngineForm."""
+
+    def __init__(
+        self,
+        parent=None,
+        conn_data: dict[str, Any] | None = None,
+        is_editing: bool = False,
+        type_id: int | None = None,
+        group_id: int | None = None,
+    ) -> None:
         super().__init__(
-            parent=parent, 
+            parent=parent,
             conn_data=conn_data,
-            type_id=type_id, 
-            group_id=group_id, 
-            title="SQLite", 
-            subtitle="Configure connection details for your local database.",
-            fixed_size=(560, 420)
+            is_editing=is_editing,
+            type_id=type_id,
+            group_id=group_id,
+            title="SQLite",
+            subtitle="Configure connection details for your local database file.",
+            min_size=(600, 420),
+            form_cls=SQLiteEngineForm,
         )
-
-    def setup_inputs(self):
-
-        self.name_input = QLineEdit()
-        self.short_name_input = QLineEdit()
-        self.path_input = QLineEdit()
-        self.browse_btn = SecondaryButton("Browse")
-        self.browse_btn.setFixedWidth(80)
-        self.browse_btn.clicked.connect(self.browse_file)
-
-        path_layout = QHBoxLayout()
-        path_layout.setSpacing(10)
-        path_layout.addWidget(self.path_input)
-        path_layout.addWidget(self.browse_btn)
-
-        self.form.addRow("Connection Name:", self.name_input)
-        self.form.addRow("Short Name:", self.short_name_input)
-        self.form.addRow("Database Path:", path_layout)
-        
-        if not (self.is_editing or not self.group_id):
-            self.setFixedSize(560, 360)
-
-        if self.is_editing:
-            self.name_input.setText(self.conn_data.get("name", ""))
-            self.short_name_input.setText(self.conn_data.get("short_name", ""))
-            self.path_input.setText(self.conn_data.get("db_path", ""))
-
-
-
-
-    def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select SQLite Database", "", "SQLite Databases (*.db *.sqlite *.sqlite3);;All Files (*)")
-        if file_path:
-            self.path_input.setText(file_path)
-
-    def test_connection_impl(self):
-        path = self.path_input.text()
-        if not path:
-            QMessageBox.warning(self, "Test", "Please provide a database path.")
-            return
-
-        self.test_btn.start_loading("Testing")
-
-        def _do_test():
-            conn = sqlite.connect(path)
-            conn.close()
-            return True
-
-        self._test_worker = WorkerThread(_do_test)
-        self._test_worker.finished_signal.connect(self._on_test_finished)
-        self._test_worker.start()
-
-    def _on_test_finished(self, result, error):
-        self.test_btn.stop_loading()
-        if error:
-            QMessageBox.critical(self, "Error", f"Failed to connect:\n{error}")
-        else:
-            QMessageBox.information(self, "Success", "Connection successful!")
-
-    def save_connection_impl(self):
-        if not self.name_input.text().strip():
-            QMessageBox.warning(self, "Missing Info", "Connection name is required.")
-            return
-        if not self.path_input.text().strip():
-            QMessageBox.warning(self, "Missing Info", "Database path is required.")
-            return
-        self.accept()
-
-    def getData(self):
-        return {
-            "name": self.name_input.text(),
-            "short_name": self.short_name_input.text(),
-            "db_path": self.path_input.text(),
-            "connection_group_id": self.group_combo.currentData(),
-            "id": self.conn_data.get("id") if self.conn_data else None
-        }
