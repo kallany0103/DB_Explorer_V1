@@ -169,6 +169,14 @@ class BaseEngineForm(QWidget):
         self.type_id = type_id
         if group_id is not None:
             self.group_id = group_id
+        if not self.type_id and self.code:
+            from db.db_retrieval import get_connection_types
+            for t in get_connection_types():
+                t_code = str(t.get("code", "")).upper()
+                c_code = str(self.code).upper()
+                if t_code == c_code or (c_code.startswith("ORACLE") and t_code.startswith("ORACLE")):
+                    self.type_id = t.get("id")
+                    break
         self.populate_groups()
 
     def populate_groups(self) -> None:
@@ -202,14 +210,18 @@ class BaseEngineForm(QWidget):
         pass
 
     def get_data(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "name": self.name_input.text().strip(),
             "short_name": self.short_name_input.text().strip(),
             "connection_group_id": self.group_combo.currentData(),
             "code": self.code,
         }
+        if hasattr(self, "_conn_id") and self._conn_id is not None:
+            data["id"] = self._conn_id
+        return data
 
     def load_data(self, data: dict[str, Any]) -> None:
+        self._conn_id = data.get("id")
         self.name_input.setText(data.get("name", ""))
         self.short_name_input.setText(data.get("short_name", ""))
         gid = data.get("connection_group_id")
@@ -622,7 +634,7 @@ class OracleEngineForm(BaseEngineForm):
         self.user_input.setText(data.get("user", ""))
         self.password_input.setText(data.get("password", ""))
 
-        if data.get("database_type") == "sid":
+        if data.get("database_type") == "sid" or data.get("oracle_db_type") == "sid":
             self.radio_sid.setChecked(True)
         else:
             self.radio_service.setChecked(True)
@@ -645,17 +657,48 @@ class OracleEngineForm(BaseEngineForm):
         if ridx >= 0:
             self.role_combo.setCurrentIndex(ridx)
 
-        mode = data.get("connection_mode", "basic")
+        mode = data.get("connection_mode")
+        dsn = data.get("dsn", "")
+        if not mode and dsn:
+            from db.oracle_utils import parse_oracle_dsn
+            parsed = parse_oracle_dsn(dsn)
+            parsed_mode = parsed.get("mode", "basic")
+            if parsed_mode == "basic" and parsed.get("host"):
+                mode = "basic"
+                self.host_input.setText(parsed["host"])
+                self.port_input.setText(str(parsed.get("port") or 1521))
+                self.db_input.setText(parsed.get("database") or "")
+                if parsed.get("db_type") == "sid":
+                    self.radio_sid.setChecked(True)
+                else:
+                    self.radio_service.setChecked(True)
+            elif parsed_mode == "tns":
+                mode = "tns"
+                self.tns_alias_combo.setEditText(parsed.get("database") or dsn)
+            else:
+                mode = "custom"
+                self.dsn_input.setText(dsn)
+
+        if not mode:
+            mode = "basic"
+
         if mode == "tns":
             self.conn_type_combo.setCurrentIndex(1)
-            self.tns_dir_input.setText(data.get("tns_admin", ""))
-            self.tns_alias_combo.setEditText(data.get("tns_alias", ""))
+            tns_dir = data.get("tns_admin") or data.get("config_dir") or ""
+            if tns_dir:
+                self.tns_dir_input.setText(tns_dir)
+            tns_alias = data.get("tns_alias") or (data.get("database") if data.get("connection_mode") == "tns" else "")
+            if tns_alias:
+                self.tns_alias_combo.setEditText(tns_alias)
         elif mode == "custom":
             self.conn_type_combo.setCurrentIndex(2)
             self.dsn_input.setText(data.get("dsn", ""))
         else:
             self.conn_type_combo.setCurrentIndex(0)
         self._update_preview()
+
+    def get_effective_dsn(self) -> str:
+        return self.preview_lbl.text().strip()
 
     def validate_inputs(self) -> tuple[bool, str]:
         ok, msg = super().validate_inputs()

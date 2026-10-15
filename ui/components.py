@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import (
+    QApplication, QAbstractScrollArea, QComboBox,
     QPushButton, QLineEdit, QToolButton, QMenu,
     QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
     QDialog, QVBoxLayout, QProgressBar
@@ -20,6 +21,22 @@ def _safe_char_icon_pixmap(self, size, mode, state):
 
 
 qtawesome.iconic_font.CharIconEngine.pixmap = _safe_char_icon_pixmap
+
+# Prevent QComboBox from cycling options on mouse wheel scroll when scrolling forms
+_orig_qcombobox_wheel_event = QComboBox.wheelEvent
+
+
+def _safe_combobox_wheel_event(self, event):
+    event.ignore()
+    parent = self.parentWidget()
+    while parent:
+        if isinstance(parent, QAbstractScrollArea):
+            QApplication.sendEvent(parent.viewport(), event)
+            break
+        parent = parent.parentWidget()
+
+
+QComboBox.wheelEvent = _safe_combobox_wheel_event
 
 
 class LoadingOverlay(QWidget):

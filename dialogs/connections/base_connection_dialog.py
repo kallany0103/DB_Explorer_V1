@@ -1,3 +1,4 @@
+from typing import Any, Type
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRect
 from ui.components import PrimaryButton, SecondaryButton
+from workers.workers import WorkerThread
 import db
 from db.db_retrieval import get_groups_by_type
 
@@ -30,9 +32,8 @@ class FitScrollArea(QScrollArea):
 
 class BaseConnectionDialog(QDialog):
     """
-    Base class for all connection dialogs. Provides the standard window layout,
-    header, scrollable form container, button layout, and connection group selection logic.
-    Ensures dialogs are centered over the parent application and never clip off-screen.
+    Base class for all connection dialogs. Can host a modern EngineForm standalone
+    or render legacy inputs with standard window layout, centering, and screen safety.
     """
     def __init__(
         self,
@@ -45,22 +46,23 @@ class BaseConnectionDialog(QDialog):
         subtitle="",
         fixed_size=None,
         min_size=None,
+        form_cls: Type[Any] | None = None,
     ):
-        # Resolve top-level parent window so the dialog centers and clamps to the application
         top_window = parent.window() if parent else None
         super().__init__(top_window or parent)
 
         self.conn_data = conn_data
         self.type_id = type_id
         self.group_id = group_id
+        self.form_cls = form_cls
         self._min_size_requested = min_size
         self._fixed_size_requested = fixed_size
 
-        # Determine if we are editing based on conn_data or the explicit flag
         self.is_editing = is_editing or (conn_data is not None)
 
-        self.setWindowTitle(f"Edit {title}" if self.is_editing else f"New {title}")
-        self.setObjectName("baseConnectionDialog")
+        clean_title = title if "Connection" in title else f"{title} Connection"
+        self.setWindowTitle(f"Edit {clean_title}" if self.is_editing else f"New {clean_title}")
+        self.setObjectName("standaloneConnDialog")
 
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
@@ -70,79 +72,86 @@ class BaseConnectionDialog(QDialog):
         )
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
-        # Main Layout (pins Header at top, Form in scroll area in middle, Buttons at bottom)
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(22, 18, 22, 16)
-        self.main_layout.setSpacing(10)
+        self.main_layout.setContentsMargins(20, 16, 20, 16)
+        self.main_layout.setSpacing(12)
 
-        # 1. Header (Fixed at top)
+        # 1. Header (used for legacy dialogs; modern EngineForms provide their own header)
         self.header_title = QLabel(f"{title} Connection" if "Connection" not in title else title)
         self.header_title.setObjectName("dialogTitle")
         self.header_subtitle = QLabel(subtitle)
         self.header_subtitle.setObjectName("dialogSubtitle")
-        self.main_layout.addWidget(self.header_title)
-        self.main_layout.addWidget(self.header_subtitle)
 
-        # 2. Scroll Area containing Form Layout (Flexible middle)
+        # 2. Scroll Area
         self.scroll_area = FitScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setObjectName("dialogScrollArea")
 
-        self.form_widget = QWidget()
-        self.form_widget.setObjectName("dialogFormWidget")
-        self.form = QFormLayout(self.form_widget)
-        self.form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
-        self.form.setHorizontalSpacing(18)
-        self.form.setVerticalSpacing(10)
-        self.form.setContentsMargins(0, 4, 12, 4)
+        if self.form_cls:
+            self.engine_form = self.form_cls(
+                type_id=self.type_id,
+                group_id=self.group_id,
+                parent=self,
+            )
+            self.engine_form.set_type_context(self.type_id, self.group_id)
+            if self.conn_data:
+                self.engine_form.load_data(self.conn_data)
+            self.scroll_area.setWidget(self.engine_form)
+            self.main_layout.addWidget(self.scroll_area, 1)
+        else:
+            self.main_layout.addWidget(self.header_title)
+            self.main_layout.addWidget(self.header_subtitle)
+            self.form_widget = QWidget()
+            self.form_widget.setObjectName("dialogFormWidget")
+            self.form = QFormLayout(self.form_widget)
+            self.form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self.form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+            self.form.setHorizontalSpacing(18)
+            self.form.setVerticalSpacing(10)
+            self.form.setContentsMargins(0, 4, 12, 4)
 
-        # Group Selection (added as first row of self.form)
-        self.group_combo = QComboBox()
-        self.new_group_btn = SecondaryButton("New Group")
-        self.new_group_btn.setFixedWidth(110)
-        self.new_group_btn.clicked.connect(self._create_new_group)
-        
-        self.group_layout = QHBoxLayout()
-        self.group_layout.setSpacing(10)
-        self.group_layout.setContentsMargins(0, 0, 0, 0)
-        self.group_layout.addWidget(self.group_combo)
-        self.group_layout.addWidget(self.new_group_btn)
-
-        if self.type_id:
-            self._populate_groups()
+            self.group_combo = QComboBox()
+            self.new_group_btn = SecondaryButton("New Group")
+            self.new_group_btn.setFixedWidth(110)
+            self.new_group_btn.clicked.connect(self._create_new_group)
             
-        if self.group_id:
-            index = self.group_combo.findData(self.group_id)
-            if index >= 0:
-                self.group_combo.setCurrentIndex(index)
+            self.group_layout = QHBoxLayout()
+            self.group_layout.setSpacing(10)
+            self.group_layout.setContentsMargins(0, 0, 0, 0)
+            self.group_layout.addWidget(self.group_combo)
+            self.group_layout.addWidget(self.new_group_btn)
 
-        self.group_row_widget = QWidget()
-        self.group_row_widget.setMinimumHeight(36)
-        self.group_row_layout = QHBoxLayout(self.group_row_widget)
-        self.group_row_layout.setContentsMargins(0, 2, 0, 2)
-        self.group_row_layout.addLayout(self.group_layout)
-        
-        self.form.addRow("Group:", self.group_row_widget)
-        
-        should_show_group = self.is_editing or not self.group_id
-        if not should_show_group:
-            self.group_row_widget.hide()
-            label = self.form.labelForField(self.group_row_widget)
-            if label:
-                label.hide()
+            if self.type_id:
+                self._populate_groups()
+                
+            if self.group_id:
+                index = self.group_combo.findData(self.group_id)
+                if index >= 0:
+                    self.group_combo.setCurrentIndex(index)
 
-        # Let subclasses add their specific inputs to self.form
-        self.setup_inputs()
+            self.group_row_widget = QWidget()
+            self.group_row_widget.setMinimumHeight(36)
+            self.group_row_layout = QHBoxLayout(self.group_row_widget)
+            self.group_row_layout.setContentsMargins(0, 2, 0, 2)
+            self.group_row_layout.addLayout(self.group_layout)
+            
+            self.form.addRow("Group:", self.group_row_widget)
+            
+            should_show_group = self.is_editing or not self.group_id
+            if not should_show_group:
+                self.group_row_widget.hide()
+                label = self.form.labelForField(self.group_row_widget)
+                if label:
+                    label.hide()
 
-        self.scroll_area.setWidget(self.form_widget)
-        self.main_layout.addWidget(self.scroll_area, 1)
+            self.setup_inputs()
+            self.scroll_area.setWidget(self.form_widget)
+            self.main_layout.addWidget(self.scroll_area, 1)
 
-        # 3. Action Buttons (Fixed at bottom)
+        # 3. Action Buttons
         self.test_btn = SecondaryButton("Test Connection")
-        self.test_btn.setFixedWidth(130)
         self.test_btn.clicked.connect(self.testConnection)
 
         self.cancel_btn = SecondaryButton("Cancel")
@@ -209,14 +218,17 @@ class BaseConnectionDialog(QDialog):
             self.setMaximumSize(max_allowed_w, max_allowed_h)
 
             # Compute ideal content height
-            content_h = (
-                self.header_title.sizeHint().height()
-                + self.header_subtitle.sizeHint().height()
-                + self.form_widget.sizeHint().height()
-                + self.button_layout.sizeHint().height()
-                + 50
-            )
-            ideal_w = min(max(self.width(), 620), max_allowed_w)
+            if self.form_cls and hasattr(self, "engine_form"):
+                form_h = self.engine_form.sizeHint().height()
+                content_h = form_h + self.button_layout.sizeHint().height() + 60
+            else:
+                header_h = (
+                    self.header_title.sizeHint().height()
+                    + self.header_subtitle.sizeHint().height()
+                )
+                form_h = self.form_widget.sizeHint().height() if hasattr(self, "form_widget") else 300
+                content_h = header_h + form_h + self.button_layout.sizeHint().height() + 50
+            ideal_w = min(max(self.width(), 640), max_allowed_w)
             ideal_h = min(max(content_h, min_h), max_allowed_h)
             self.resize(ideal_w, ideal_h)
 
@@ -265,13 +277,66 @@ class BaseConnectionDialog(QDialog):
         pass
 
     def testConnection(self):
-        self.test_connection_impl()
+        if self.form_cls and hasattr(self, "engine_form"):
+            valid, msg = self.engine_form.validate_inputs()
+            if not valid:
+                QMessageBox.warning(self, "Validation", msg)
+                return
+
+            self.test_btn.start_loading("Testing")
+
+            def _do_test():
+                return self.engine_form.test_connection()
+
+            self._test_worker = WorkerThread(_do_test)
+            self._test_worker.finished_signal.connect(self._on_engine_test_finished)
+            self._test_worker.start()
+        else:
+            self.test_connection_impl()
+
+    def _on_engine_test_finished(self, result: Any, error: Exception | str | None) -> None:
+        self.test_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Connection Error", f"Failed to connect:\n{error}")
+            return
+        success, msg = result if isinstance(result, tuple) else (False, str(result))
+        if success:
+            QMessageBox.information(self, "Connection Test", msg or "Connection successful!")
+        else:
+            QMessageBox.critical(self, "Connection Test Failed", msg or "Failed to connect.")
 
     def saveConnection(self):
-        if self.group_combo.currentIndex() == -1:
-            QMessageBox.warning(self, "Missing Info", "Please select or create a group.")
-            return
-        self.save_connection_impl()
+        if self.form_cls and hasattr(self, "engine_form"):
+            valid, msg = self.engine_form.validate_inputs()
+            if not valid:
+                QMessageBox.warning(self, "Validation", msg)
+                return
+            self.accept()
+        else:
+            if self.group_combo.currentIndex() == -1:
+                QMessageBox.warning(self, "Missing Info", "Please select or create a group.")
+                return
+            self.save_connection_impl()
+
+    def populate_from_conn_data(self, conn_data: dict[str, Any]) -> None:
+        self.conn_data = conn_data
+        if hasattr(self, "engine_form"):
+            self.engine_form.load_data(conn_data)
+
+    def __getattr__(self, name: str) -> Any:
+        if "engine_form" in self.__dict__:
+            engine_form = self.__dict__["engine_form"]
+            if hasattr(engine_form, name):
+                return getattr(engine_form, name)
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def getData(self) -> dict[str, Any]:
+        if self.form_cls and hasattr(self, "engine_form"):
+            data = self.engine_form.get_data()
+            if self.conn_data and "id" in self.conn_data and "id" not in data:
+                data["id"] = self.conn_data["id"]
+            return data
+        return {}
 
     def test_connection_impl(self):
         pass
