@@ -467,6 +467,9 @@ class MainWindow(QMainWindow):
     def toggle_autocommit(self, checked: bool):
         return self.worksheet_manager.toggle_autocommit(checked)
 
+    def toggle_dbms_output(self, checked: bool):
+        return self.worksheet_manager.toggle_dbms_output(checked)
+
     def refresh_all_comboboxes(self):
         self.worksheet_manager.refresh_all_comboboxes()
 

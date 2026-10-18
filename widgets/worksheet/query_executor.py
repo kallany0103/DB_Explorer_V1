@@ -356,6 +356,9 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
         return
 
     conn_data, query = resolve_query_context(current_tab, conn_data, query)
+    if isinstance(conn_data, dict):
+        conn_data = dict(conn_data)
+        conn_data["enable_dbms_output"] = manager.tab_dbms_output.get(current_tab, True)
 
     if not query or not query.strip():
         manager.show_info("Please enter a valid query.")
@@ -414,7 +417,11 @@ def handle_query_error(manager, current_tab, output_tab_index, conn_data, query,
         pass
 
     set_tab_status(current_tab, "")
-    append_error_message(current_tab, error_message)
+    dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
+    display_error = error_message
+    if dbms_output:
+        display_error = f"--- DBMS_OUTPUT (before error) ---\n{dbms_output}\n\n-------------------\n{error_message}"
+    append_error_message(current_tab, display_error)
 
     show_error_view(current_tab)
 

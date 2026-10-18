@@ -28,6 +28,8 @@ from PySide6.QtCore import QTimer
 
 def add_tab(manager):
     tab_content = QWidget(manager.tab_widget)
+    tab_content.setObjectName("worksheetTabContent")
+    tab_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     tab_content.is_worksheet = True
     tab_content.current_limit = 0
     tab_content.current_offset = 0
@@ -135,10 +137,13 @@ def add_tab(manager):
     db_combo_box.currentIndexChanged.connect(update_conn_status_icon)
     db_combo_box.currentIndexChanged.connect(lambda: manager.results_manager.refresh_processes_view())
     db_combo_box.currentIndexChanged.connect(lambda: manager.main_window._update_cli_action_states())
+    db_combo_box.currentIndexChanged.connect(lambda: manager._update_transaction_button_states())
     
     QTimer.singleShot(100, update_conn_status_icon)
+    QTimer.singleShot(100, manager._update_transaction_button_states)
 
     toolbar_widget = WorksheetToolbar(manager)
+    tab_content.toolbar_widget = toolbar_widget
     
     def on_limit_change(text):
         if text.lower() == "no limit":

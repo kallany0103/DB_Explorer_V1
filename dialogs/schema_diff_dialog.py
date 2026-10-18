@@ -1,10 +1,9 @@
-import json
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QFont, QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QTabWidget, QWidget, QTreeWidget, QTreeWidgetItem,
-    QTableWidget, QTableWidgetItem, QTextEdit, QFrame, QMessageBox,
+    QTableWidget, QTableWidgetItem, QTextEdit, QPlainTextEdit, QFrame, QMessageBox,
     QHeaderView, QApplication
 )
 import qtawesome as qta

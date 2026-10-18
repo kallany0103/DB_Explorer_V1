@@ -15,6 +15,7 @@ from widgets.test_cases.data.function import FUNCTION_COMMANDS
 from widgets.test_cases.data.rls import RLS_COMMANDS
 
 class TestCasesWidget(QWidget):
+    __test__ = False
     copy_to_editor_requested = Signal(str)
 
     def __init__(self, parent=None):

@@ -38,7 +38,6 @@ def create_results_ui(manager, tab_content):
     results_layout.addWidget(results_header)
 
     results_info_bar = ResultsInfoToolbar(manager, tab_content)
-    results_layout.addWidget(results_info_bar)
 
     process_filter_bar = ProcessFilterBar(manager, tab_content)
     results_layout.addWidget(process_filter_bar)
@@ -69,6 +68,7 @@ def create_results_ui(manager, tab_content):
     results_stack.setStyleSheet("background-color: #FFFFFF;")
 
     output_tabs = create_output_tabs_view(manager, tab_content)
+    output_tabs.setCornerWidget(results_info_bar, Qt.Corner.TopRightCorner)
     results_stack.addWidget(output_tabs)
 
     results_stack.addWidget(create_message_view(manager, tab_content))

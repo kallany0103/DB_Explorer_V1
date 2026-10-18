@@ -46,6 +46,9 @@ SCHEMA_STATEMENTS = (
         instance_url TEXT,
         usage_count INTEGER NOT NULL DEFAULT 0,
         role TEXT DEFAULT 'Normal',
+        config_json TEXT DEFAULT '{}',
+        auth_type TEXT DEFAULT 'PASSWORD',
+        ssl_mode TEXT DEFAULT 'PREFER',
         FOREIGN KEY (connection_group_id) REFERENCES usf_connection_groups(id) ON DELETE CASCADE
     )
     """,
@@ -179,6 +182,12 @@ def ensure_hierarchy_db():
                 conn_cols = {row[1] for row in cur.fetchall()}
                 if "role" not in conn_cols:
                     conn.execute("ALTER TABLE usf_connections ADD COLUMN role TEXT DEFAULT 'Normal'")
+                if "config_json" not in conn_cols:
+                    conn.execute("ALTER TABLE usf_connections ADD COLUMN config_json TEXT DEFAULT '{}'")
+                if "auth_type" not in conn_cols:
+                    conn.execute("ALTER TABLE usf_connections ADD COLUMN auth_type TEXT DEFAULT 'PASSWORD'")
+                if "ssl_mode" not in conn_cols:
+                    conn.execute("ALTER TABLE usf_connections ADD COLUMN ssl_mode TEXT DEFAULT 'PREFER'")
             except Exception as e:
                 print(f"Migration check error for usf_connections: {e}")
 

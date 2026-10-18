@@ -19,13 +19,13 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_save_as_action.triggered.connect(main_window.save_sql_file_as)
 
     manager.ws_execute_action = QAction(
-        QIcon("assets/execute_icon.png"), "Execute", manager
+        qta.icon("fa5s.play", color="#555555"), "Execute", manager
     )
     manager.ws_execute_action.setToolTip("Execute Query (Ctrl+Enter)")
     manager.ws_execute_action.triggered.connect(main_window.execute_query)
 
     manager.ws_execute_new_tab_action = QAction(
-        QIcon("assets/execute_icon.png"), "Execute in New Output Tab", manager
+        qta.icon("mdi6.play-box-multiple", color="#555555"), "Execute in New Output Tab", manager
     )
     manager.ws_execute_new_tab_action.setToolTip("Execute in New Output Tab (Ctrl+Shift+Enter)")
     manager.ws_execute_new_tab_action.triggered.connect(
@@ -207,3 +207,12 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_autocommit_action.setCheckable(True)
     manager.ws_autocommit_action.setChecked(True)
     manager.ws_autocommit_action.toggled.connect(manager.toggle_autocommit)
+
+    manager.ws_dbms_output_action = QAction(
+        qta.icon("fa5s.terminal", color="#28a745"), "DBMS Output", manager
+    )
+    manager.ws_dbms_output_action.setToolTip("Enable DBMS Output (Oracle SERVEROUTPUT)")
+    manager.ws_dbms_output_action.setCheckable(True)
+    manager.ws_dbms_output_action.setChecked(True)
+    manager.ws_dbms_output_action.setVisible(False)
+    manager.ws_dbms_output_action.toggled.connect(manager.toggle_dbms_output)

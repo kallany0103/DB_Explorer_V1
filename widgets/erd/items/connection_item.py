@@ -271,7 +271,7 @@ class ERDConnectionItem(ERDConnectionAnimMixin, QObject, QGraphicsPathItem):
             self._drag_side = None
 
             widget = self.scene().parent()
-            while widget and not isinstance(widget, ERDWidget):
+            while widget and not isinstance(widget, widgets.erd.widget.ERDWidget):
                 widget = widget.parent()
 
             floating = ERDFloatingConnectionItem(self.relation_type)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import string
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,16 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+
+DEFAULT_ORACLE_PORT: int = 1521
+
+_SKIP_DIR_NAMES: set[str] = {
+    "windows", "$recycle.bin", "system volume information", "node_modules",
+    ".git", ".gemini", ".vscode", "winsxs", "microsoft", "recovery", "msocache"
+}
+_ORACLE_DIR_KEYWORDS: tuple[str, ...] = (
+    "oracle", "instant", "client", "db", "tool", "app", "software", "programs"
+)
 
 _oracle_thick_mode_attempted = False
 _active_oracle_client_dir: str | None = None
@@ -109,6 +120,102 @@ def normalize_client_path(path: str | Path | None) -> str:
         return os.path.normpath(str(path))
 
 
+def _find_env_candidates() -> list[Path]:
+    """Find candidate directories specified in environment variables."""
+    candidates: list[Path] = []
+    for env_var in ("ORACLE_CLIENT_LIB_DIR", "ORACLE_HOME", "TNS_ADMIN"):
+        val = os.environ.get(env_var)
+        if val and Path(val).is_dir():
+            p = Path(val)
+            candidates.append(p)
+            if (p / "bin").is_dir():
+                candidates.append(p / "bin")
+    return candidates
+
+
+def _find_path_candidates() -> list[Path]:
+    """Find candidate directories on the system PATH."""
+    candidates: list[Path] = []
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        entry_s = entry.strip().strip('"')
+        if entry_s:
+            p = Path(entry_s)
+            if p.is_dir() and any(k in entry_s.lower() for k in ("oracle", "instant", "client")):
+                candidates.append(p)
+    return candidates
+
+
+def _find_user_dir_candidates() -> list[Path]:
+    """Find candidate directories in standard user profile folders."""
+    candidates: list[Path] = []
+    try:
+        user_home = Path.home()
+        if not user_home.is_dir():
+            return candidates
+        for sub_name in ("Downloads", "Documents", "Desktop", "tools", "oracle"):
+            user_sub = user_home / sub_name
+            if not user_sub.is_dir():
+                continue
+            candidates.append(user_sub)
+            try:
+                for child in user_sub.iterdir():
+                    if child.is_dir() and any(k in child.name.lower() for k in ("oracle", "instant", "client")):
+                        candidates.append(child)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return candidates
+
+
+def _scan_dir_tree(root: Path, max_depth: int = 2) -> list[Path]:
+    """Recursively search for Oracle client candidate directories up to max_depth."""
+    candidates: list[Path] = []
+    queue: list[tuple[Path, int]] = [(root, 0)]
+
+    while queue:
+        current, depth = queue.pop(0)
+        try:
+            for child in current.iterdir():
+                if not child.is_dir():
+                    continue
+                name_lower = child.name.lower()
+                if name_lower in _SKIP_DIR_NAMES or name_lower.startswith("$"):
+                    continue
+                if any(k in name_lower for k in ("oracle", "instant", "client")):
+                    candidates.append(child)
+                if depth < max_depth and any(k in name_lower for k in _ORACLE_DIR_KEYWORDS):
+                    queue.append((child, depth + 1))
+        except Exception:
+            continue
+
+    return candidates
+
+
+def _find_drive_candidates() -> list[Path]:
+    """Scan root directories of available drives for Oracle client candidates."""
+    if sys.platform == "win32":
+        drives = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+    else:
+        drives = ["/opt", "/usr/lib", "/usr/local/lib"]
+
+    candidates: list[Path] = []
+    for drive_str in drives:
+        try:
+            drive_path = Path(drive_str)
+            for item in drive_path.iterdir():
+                if not item.is_dir():
+                    continue
+                name_lower = item.name.lower()
+                if name_lower in _SKIP_DIR_NAMES or name_lower.startswith("$"):
+                    continue
+                if any(k in name_lower for k in _ORACLE_DIR_KEYWORDS):
+                    candidates.extend(_scan_dir_tree(item, max_depth=2))
+        except Exception:
+            continue
+    return candidates
+
+
 def scan_oracle_client_dirs() -> list[dict[str, Any]]:
     """Scan the system for installed Oracle Instant Client directories.
 
@@ -118,85 +225,15 @@ def scan_oracle_client_dirs() -> list[dict[str, Any]]:
 
     Returns a list of dicts with client metadata (path, version, label, supports_10g).
     """
-    candidates: list[Path] = []
+    candidates = (
+        _find_env_candidates()
+        + _find_path_candidates()
+        + _find_user_dir_candidates()
+        + _find_drive_candidates()
+    )
     seen: set[str] = set()
-
-    # 1. Environment variables
-    for env_var in ("ORACLE_CLIENT_LIB_DIR", "ORACLE_HOME", "TNS_ADMIN"):
-        val = os.environ.get(env_var)
-        if val and Path(val).is_dir():
-            p = Path(val)
-            candidates.append(p)
-            if (p / "bin").is_dir():
-                candidates.append(p / "bin")
-
-    # 2. System PATH entries
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
-        entry_s = entry.strip().strip('"')
-        if entry_s:
-            p = Path(entry_s)
-            if p.is_dir() and any(k in entry_s.lower() for k in ("oracle", "instant", "client")):
-                candidates.append(p)
-
-    # 3. User profile directories (Downloads, Documents, Desktop, tools, oracle)
-    try:
-        user_home = Path.home()
-        if user_home.is_dir():
-            for sub_name in ("Downloads", "Documents", "Desktop", "tools", "oracle"):
-                user_sub = user_home / sub_name
-                if user_sub.is_dir():
-                    candidates.append(user_sub)
-                    try:
-                        for child in user_sub.iterdir():
-                            if child.is_dir() and any(k in child.name.lower() for k in ("oracle", "instant", "client")):
-                                candidates.append(child)
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-    # 4. Search all available drives on Windows or system roots on Unix
-    if sys.platform == "win32":
-        import string
-        drives = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
-    else:
-        drives = ["/opt", "/usr/lib", "/usr/local/lib"]
-
-    skip_names = {
-        "windows", "$recycle.bin", "system volume information", "node_modules",
-        ".git", ".gemini", ".vscode", "winsxs", "microsoft", "recovery", "msocache"
-    }
-
-    for drive_str in drives:
-        drive_path = Path(drive_str)
-        try:
-            for item in drive_path.iterdir():
-                if not item.is_dir():
-                    continue
-                name_lower = item.name.lower()
-                if name_lower in skip_names or name_lower.startswith("$"):
-                    continue
-                candidates.append(item)
-
-                # If directory name suggests oracle, client, tools, db, app, scan down up to depth 3
-                if any(k in name_lower for k in ("oracle", "instant", "client", "db", "tool", "app", "software", "programs")):
-                    try:
-                        for sub in item.iterdir():
-                            if sub.is_dir() and sub.name.lower() not in skip_names:
-                                candidates.append(sub)
-                                if any(k in sub.name.lower() for k in ("oracle", "instant", "client", "bin", "x64")):
-                                    try:
-                                        for sub2 in sub.iterdir():
-                                            if sub2.is_dir() and sub2.name.lower() not in skip_names:
-                                                candidates.append(sub2)
-                                    except Exception:
-                                        pass
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
     results: list[dict[str, Any]] = []
+
     for cand in candidates:
         try:
             resolved = normalize_client_path(cand)
@@ -420,7 +457,7 @@ def build_oracle_dsn(
     The Easy Connect format accepted by oracledb is identical to what makedsn produced.
     """
     clean_host = (host or "").strip()
-    clean_port = int(port) if str(port).strip().isdigit() else 1521
+    clean_port = int(port) if str(port).strip().isdigit() else DEFAULT_ORACLE_PORT
     clean_db = (database or "").strip()
 
     if not clean_host or not clean_db:
@@ -442,7 +479,7 @@ def parse_oracle_dsn(dsn_str: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "mode": "basic",
         "host": "",
-        "port": 1521,
+        "port": DEFAULT_ORACLE_PORT,
         "database": "",
         "db_type": "service_name",
         "dsn": raw,
@@ -477,7 +514,7 @@ def parse_oracle_dsn(dsn_str: str) -> dict[str, Any]:
     if m_svc:
         host, port_str, svc = m_svc.groups()
         result["host"] = host
-        result["port"] = int(port_str) if port_str else 1521
+        result["port"] = int(port_str) if port_str else DEFAULT_ORACLE_PORT
         result["database"] = svc.strip()
         result["db_type"] = "service_name"
         result["mode"] = "basic"
@@ -520,52 +557,11 @@ def test_oracle_connection_isolated(conn_data: dict[str, Any]) -> tuple[bool, st
     import subprocess
     import sys
 
-    runner_script = (
-        "import sys, json\n"
-        "data = json.loads(sys.argv[1])\n"
-        "driver_mode = str(data.get('driver_mode', '')).lower()\n"
-        "client_dir = data.get('oracle_client_dir')\n\n"
-        "if driver_mode == 'thick' or client_dir:\n"
-        "    from db.oracle_utils import init_oracle_thick_mode, get_last_thick_mode_error\n"
-        "    if not init_oracle_thick_mode(client_dir):\n"
-        "        err = get_last_thick_mode_error() or 'Unknown error initializing Oracle Instant Client'\n"
-        "        target = client_dir or 'system default'\n"
-        "        print(f'Oracle Thick Mode (Instant Client) failed to initialize with client directory \"{target}\":\\n\\n{err}')\n"
-        "        sys.exit(2)\n\n"
-        "import oracledb\n"
-        "from db.oracle_utils import build_oracle_dsn, get_oracle_auth_mode, diagnose_oracle_error\n\n"
-        "dsn = data.get('dsn')\n"
-        "if not dsn:\n"
-        "    host = data.get('host', 'localhost')\n"
-        "    port = data.get('port') or 1521\n"
-        "    db_name = data.get('database') or data.get('service_name', '')\n"
-        "    db_type = data.get('oracle_db_type') or data.get('database_type', 'service_name')\n"
-        "    dsn = build_oracle_dsn(host, port, db_name, db_type=db_type)\n\n"
-        "kwargs = {'user': data.get('user', ''), 'password': data.get('password', ''), 'dsn': dsn}\n"
-        "mode = get_oracle_auth_mode(data.get('role'))\n"
-        "if mode != oracledb.AUTH_MODE_DEFAULT:\n"
-        "    kwargs['mode'] = mode\n"
-        "if data.get('config_dir') or data.get('tns_admin'):\n"
-        "    kwargs['config_dir'] = data.get('config_dir') or data.get('tns_admin')\n\n"
-        "try:\n"
-        "    conn = oracledb.connect(**kwargs)\n"
-        "    is_thin = oracledb.is_thin_mode()\n"
-        "    conn.close()\n"
-        "    mode_str = 'Thin Mode' if is_thin else 'Thick Mode (Instant Client)'\n"
-        "    print(f'Connected successfully to Oracle database using {mode_str}!')\n"
-        "    sys.exit(0)\n"
-        "except Exception as e:\n"
-        "    advice = diagnose_oracle_error(e)\n"
-        "    msg = f'Oracle connection error: {e}'\n"
-        "    if advice:\n"
-        "        msg += f'\\n\\nDiagnostic advice:\\n{advice}'\n"
-        "    print(msg)\n"
-        "    sys.exit(1)\n"
-    )
+    tester_script = Path(__file__).resolve().parent.parent / "utils" / "oracle_connection_tester.py"
 
     try:
         proc = subprocess.run(
-            [sys.executable, "-c", runner_script, json.dumps(conn_data)],
+            [sys.executable, str(tester_script), json.dumps(conn_data)],
             capture_output=True,
             text=True,
             timeout=30,
@@ -580,3 +576,59 @@ def test_oracle_connection_isolated(conn_data: dict[str, Any]) -> tuple[bool, st
         return False, "Connection test timed out after 30 seconds."
     except Exception as exc:
         return False, f"Failed to run connection test process:\n{exc}"
+
+
+def enable_dbms_output(cursor: Any, buffer_size: int | None = None) -> None:
+    """Enable Oracle DBMS_OUTPUT message buffer on the given cursor.
+
+    buffer_size: None sets unlimited buffer (Oracle 10g+).
+    """
+    try:
+        if buffer_size is not None:
+            cursor.callproc("dbms_output.enable", (buffer_size,))
+        else:
+            cursor.callproc("dbms_output.enable")
+    except Exception as e:
+        logger.debug(f"Failed to enable DBMS_OUTPUT: {e}")
+
+
+def fetch_dbms_output(cursor: Any, chunk_size: int = 100) -> str | None:
+    """Fetch all pending DBMS_OUTPUT lines from the Oracle session buffer.
+
+    Returns the concatenated string of lines or None if buffer was empty.
+    """
+    lines: list[str] = []
+    try:
+        import oracledb
+
+        lines_var = cursor.arrayvar(oracledb.STRING, chunk_size)
+        num_lines_var = cursor.var(int)
+        while True:
+            num_lines_var.setvalue(0, chunk_size)
+            cursor.callproc("dbms_output.get_lines", (lines_var, num_lines_var))
+            num_lines = num_lines_var.getvalue()
+            if not num_lines:
+                break
+            chunk = lines_var.getvalue()[:num_lines]
+            lines.extend(chunk)
+            if num_lines < chunk_size:
+                break
+    except Exception as e:
+        logger.debug(f"Failed to fetch DBMS_OUTPUT: {e}")
+
+    return "\n".join(lines) if lines else None
+
+
+def is_oracle_plsql(query: str) -> bool:
+    """Return True if the query string is a PL/SQL block or procedure call."""
+    if not query:
+        return False
+    # Strip single line comments -- ...
+    q = re.sub(r"--[^\n]*", "", query)
+    # Strip block comments /* ... */
+    q = re.sub(r"/\*.*?\*/", "", q, flags=re.DOTALL).strip()
+    if not q:
+        return False
+    first_token = q.split()[0].upper()
+    return first_token in ("BEGIN", "DECLARE", "CALL")
+

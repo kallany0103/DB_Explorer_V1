@@ -166,8 +166,6 @@ widgets/
 │   ├── backup/
 │   ├── restore/
 │   └── core/
-├── encryption/
-│   └── secure_sqlite.py
 ├── test_cases/
 │   └── test_cases_widget.py
 └── usql_tool/

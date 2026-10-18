@@ -1321,9 +1321,11 @@ class ConnectionDialogs:
         type_item = group_item.parent() if group_item else None
         type_id = type_item.data(Qt.ItemDataRole.UserRole + 1) if type_item else None
 
+        orig_pwd = str(conn_data.get("password", "") or "")
         dialog = OracleConnectionDialog(self.manager, is_editing=True, type_id=type_id, group_id=group_id)
         dialog.populate_from_conn_data(conn_data)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        dialog.set_original_password(orig_pwd)
+        if dialog.exec() == QDialog.DialogCode.Accepted and not getattr(dialog, "_was_updated", False):
             new_data = dialog.getData()
             new_data["id"] = conn_data.get("id")
             if str(new_data.get("password", "") or "") != orig_pwd:

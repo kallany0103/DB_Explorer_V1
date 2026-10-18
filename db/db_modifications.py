@@ -45,6 +45,30 @@ def add_connection_group(name, parent_id):
 
 
 
+def _extract_config_json(data: dict) -> str:
+    """Extracts and merges driver/engine-specific configuration into a JSON string."""
+    raw_cfg = data.get("config_json")
+    if isinstance(raw_cfg, str) and raw_cfg.strip():
+        try:
+            cfg = json.loads(raw_cfg)
+        except Exception:
+            cfg = {}
+    elif isinstance(raw_cfg, dict):
+        cfg = dict(raw_cfg)
+    else:
+        cfg = {}
+
+    for key in (
+        "driver_mode", "oracle_client_dir", "database_type",
+        "tns_admin", "tns_alias", "connection_mode",
+        "service_name", "oracle_db_type",
+    ):
+        if key in data and data[key] is not None:
+            cfg[key] = data[key]
+
+    return json.dumps(cfg)
+
+
 def add_connection(data, connection_group_id):
     with sqlite.connect(DB_FILE) as conn:
         c = conn.cursor()
@@ -54,14 +78,17 @@ def add_connection(data, connection_group_id):
             c.execute(
                 """
                 INSERT INTO usf_connections
-                (name, short_name, connection_group_id, db_path)
-                VALUES (?, ?, ?, ?)
+                (name, short_name, connection_group_id, db_path, config_json, auth_type, ssl_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get("name"),
                     data.get("short_name"),
                     connection_group_id,
                     data.get("db_path"),
+                    _extract_config_json(data),
+                    data.get("auth_type"),
+                    data.get("ssl_mode"),
                 )
             )
 
@@ -70,8 +97,8 @@ def add_connection(data, connection_group_id):
             c.execute(
                 """
                 INSERT INTO usf_connections
-                (name, short_name, connection_group_id, instance_url, "user", password)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (name, short_name, connection_group_id, instance_url, "user", password, config_json, auth_type, ssl_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get("name"),
@@ -80,6 +107,9 @@ def add_connection(data, connection_group_id):
                     data.get("instance_url"),
                     data.get("user"),
                     None,
+                    _extract_config_json(data),
+                    data.get("auth_type"),
+                    data.get("ssl_mode"),
                 )
             )
             connection_id = c.lastrowid
@@ -90,8 +120,8 @@ def add_connection(data, connection_group_id):
             c.execute(
                 """
                 INSERT INTO usf_connections
-                (name, short_name, connection_group_id, host, "database", "user", password, port, dsn, role)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (name, short_name, connection_group_id, host, "database", "user", password, port, dsn, role, config_json, auth_type, ssl_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get("name"),
@@ -104,6 +134,9 @@ def add_connection(data, connection_group_id):
                     data.get("port"),
                     data.get("dsn"),
                     data.get("role", "Normal"),
+                    _extract_config_json(data),
+                    data.get("auth_type"),
+                    data.get("ssl_mode"),
                 )
             )
 
@@ -123,7 +156,8 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, connection_group_id = ?, db_path = ?, password = NULL
+                SET name = ?, short_name = ?, connection_group_id = ?, db_path = ?, password = NULL,
+                    config_json = ?, auth_type = ?, ssl_mode = ?
                 WHERE id = ?
                 """,
                 (
@@ -131,6 +165,9 @@ def update_connection(data):
                     data.get("short_name"),
                     data.get("connection_group_id"),
                     data.get("db_path"),
+                    _extract_config_json(data),
+                    data.get("auth_type"),
+                    data.get("ssl_mode"),
                     data.get("id")
                 )
             )
@@ -140,7 +177,8 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, connection_group_id = ?, instance_url = ?, "user" = ?, password = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, instance_url = ?, "user" = ?, password = ?,
+                    config_json = ?, auth_type = ?, ssl_mode = ?
                 WHERE id = ?
                 """,
                 (
@@ -150,6 +188,9 @@ def update_connection(data):
                     data.get("instance_url"),
                     data.get("user"),
                     data.get("password"),
+                    _extract_config_json(data),
+                    data.get("auth_type"),
+                    data.get("ssl_mode"),
                     data.get("id")
                 )
             )
@@ -159,7 +200,8 @@ def update_connection(data):
             c.execute(
                 """
                 UPDATE usf_connections
-                SET name = ?, short_name = ?, connection_group_id = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?, dsn = ?, role = ?
+                SET name = ?, short_name = ?, connection_group_id = ?, host = ?, "database" = ?, "user" = ?, password = ?, port = ?, dsn = ?, role = ?,
+                    config_json = ?, auth_type = ?, ssl_mode = ?
                 WHERE id = ?
                 """,
                 (
@@ -173,6 +215,9 @@ def update_connection(data):
                     data.get("port"),
                     data.get("dsn"),
                     data.get("role", "Normal"),
+                    _extract_config_json(data),
+                    data.get("auth_type"),
+                    data.get("ssl_mode"),
                     data.get("id")
                 )
             )
