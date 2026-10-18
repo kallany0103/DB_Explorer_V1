@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 from typing import Any
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QRadioButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -427,6 +429,7 @@ class OracleEngineForm(BaseEngineForm):
         self.role_combo.currentIndexChanged.connect(self._update_preview)
         self._on_mode_changed(self.conn_type_combo.currentIndex())
         self._update_preview()
+        self._initialized = True
 
     def _on_mode_changed(self, index: int) -> None:
         is_basic = (index == 0)
@@ -451,6 +454,41 @@ class OracleEngineForm(BaseEngineForm):
         is_thick = self.radio_thick.isChecked()
         self.client_widget.setVisible(is_thick)
         self.client_row_label.setVisible(is_thick)
+        if is_thick and getattr(self, "_initialized", False) and not getattr(self, "_suppress_scroll", False):
+            QTimer.singleShot(60, self._scroll_to_client_widget)
+
+    def _get_scroll_area(self) -> QScrollArea | None:
+        p = self.parentWidget()
+        while p:
+            if isinstance(p, QScrollArea):
+                return p
+            p = p.parentWidget()
+        return None
+
+    def _scroll_to_client_widget(self) -> None:
+        sa = self._get_scroll_area()
+        if not sa:
+            return
+        vbar = sa.verticalScrollBar()
+        if not vbar:
+            return
+
+        if (
+            hasattr(self, "_scroll_anim")
+            and self._scroll_anim
+            and self._scroll_anim.state() == QPropertyAnimation.State.Running
+        ):
+            self._scroll_anim.stop()
+
+        start_val = vbar.value()
+        target_val = vbar.maximum()
+        if target_val > start_val:
+            self._scroll_anim = QPropertyAnimation(vbar, b"value", self)
+            self._scroll_anim.setDuration(280)
+            self._scroll_anim.setStartValue(start_val)
+            self._scroll_anim.setEndValue(target_val)
+            self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._scroll_anim.start()
 
     def _browse_tns_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select TNS Admin Directory", self.tns_dir_input.text())
@@ -609,6 +647,15 @@ class OracleEngineForm(BaseEngineForm):
         is_thick = self.radio_thick.isChecked()
         client_dir = self.client_dir_combo.currentData() if is_thick else ""
 
+        config_dict = {
+            "driver_mode": "thick" if is_thick else "thin",
+            "oracle_client_dir": client_dir,
+            "database_type": "service_name" if self.radio_service.isChecked() else "sid",
+            "tns_admin": self.tns_dir_input.text().strip(),
+            "tns_alias": self.tns_alias_combo.currentText().strip(),
+            "connection_mode": ["basic", "tns", "custom"][mode_idx],
+        }
+
         data.update({
             "connection_mode": ["basic", "tns", "custom"][mode_idx],
             "host": self.host_input.text().strip(),
@@ -623,79 +670,93 @@ class OracleEngineForm(BaseEngineForm):
             "role": self.role_combo.currentText(),
             "driver_mode": "thick" if is_thick else "thin",
             "oracle_client_dir": client_dir,
+            "config_json": json.dumps(config_dict),
         })
         return data
 
     def load_data(self, data: dict[str, Any]) -> None:
-        super().load_data(data)
-        self.host_input.setText(data.get("host", "localhost"))
-        self.port_input.setText(str(data.get("port") or 1521))
-        self.db_input.setText(data.get("database", ""))
-        self.user_input.setText(data.get("user", ""))
-        self.password_input.setText(data.get("password", ""))
+        self._suppress_scroll = True
+        try:
+            super().load_data(data)
+            if "config_json" in data and isinstance(data["config_json"], str) and data["config_json"].strip():
+                try:
+                    cfg = json.loads(data["config_json"])
+                    if isinstance(cfg, dict):
+                        merged = dict(cfg)
+                        merged.update(data)
+                        data = merged
+                except Exception:
+                    pass
+            self.host_input.setText(data.get("host", "localhost"))
+            self.port_input.setText(str(data.get("port") or 1521))
+            self.db_input.setText(data.get("database", ""))
+            self.user_input.setText(data.get("user", ""))
+            self.password_input.setText(data.get("password", ""))
 
-        if data.get("database_type") == "sid" or data.get("oracle_db_type") == "sid":
-            self.radio_sid.setChecked(True)
-        else:
-            self.radio_service.setChecked(True)
-
-        if data.get("driver_mode") == "thick" or data.get("oracle_client_dir"):
-            self.radio_thick.setChecked(True)
-            cd = data.get("oracle_client_dir", "")
-            if cd:
-                idx = self.client_dir_combo.findData(cd)
-                if idx >= 0:
-                    self.client_dir_combo.setCurrentIndex(idx)
-                else:
-                    self.client_dir_combo.insertItem(0, cd, cd)
-                    self.client_dir_combo.setCurrentIndex(0)
-        else:
-            self.radio_thin.setChecked(True)
-
-        role = data.get("role", "Normal")
-        ridx = self.role_combo.findText(role)
-        if ridx >= 0:
-            self.role_combo.setCurrentIndex(ridx)
-
-        mode = data.get("connection_mode")
-        dsn = data.get("dsn", "")
-        if not mode and dsn:
-            from db.oracle_utils import parse_oracle_dsn
-            parsed = parse_oracle_dsn(dsn)
-            parsed_mode = parsed.get("mode", "basic")
-            if parsed_mode == "basic" and parsed.get("host"):
-                mode = "basic"
-                self.host_input.setText(parsed["host"])
-                self.port_input.setText(str(parsed.get("port") or 1521))
-                self.db_input.setText(parsed.get("database") or "")
-                if parsed.get("db_type") == "sid":
-                    self.radio_sid.setChecked(True)
-                else:
-                    self.radio_service.setChecked(True)
-            elif parsed_mode == "tns":
-                mode = "tns"
-                self.tns_alias_combo.setEditText(parsed.get("database") or dsn)
+            if data.get("database_type") == "sid" or data.get("oracle_db_type") == "sid":
+                self.radio_sid.setChecked(True)
             else:
-                mode = "custom"
-                self.dsn_input.setText(dsn)
+                self.radio_service.setChecked(True)
 
-        if not mode:
-            mode = "basic"
+            if data.get("driver_mode") == "thick" or data.get("oracle_client_dir"):
+                self.radio_thick.setChecked(True)
+                cd = data.get("oracle_client_dir", "")
+                if cd:
+                    idx = self.client_dir_combo.findData(cd)
+                    if idx >= 0:
+                        self.client_dir_combo.setCurrentIndex(idx)
+                    else:
+                        self.client_dir_combo.insertItem(0, cd, cd)
+                        self.client_dir_combo.setCurrentIndex(0)
+            else:
+                self.radio_thin.setChecked(True)
 
-        if mode == "tns":
-            self.conn_type_combo.setCurrentIndex(1)
-            tns_dir = data.get("tns_admin") or data.get("config_dir") or ""
-            if tns_dir:
-                self.tns_dir_input.setText(tns_dir)
-            tns_alias = data.get("tns_alias") or (data.get("database") if data.get("connection_mode") == "tns" else "")
-            if tns_alias:
-                self.tns_alias_combo.setEditText(tns_alias)
-        elif mode == "custom":
-            self.conn_type_combo.setCurrentIndex(2)
-            self.dsn_input.setText(data.get("dsn", ""))
-        else:
-            self.conn_type_combo.setCurrentIndex(0)
-        self._update_preview()
+            role = data.get("role", "Normal")
+            ridx = self.role_combo.findText(role)
+            if ridx >= 0:
+                self.role_combo.setCurrentIndex(ridx)
+
+            mode = data.get("connection_mode")
+            dsn = data.get("dsn", "")
+            if not mode and dsn:
+                from db.oracle_utils import parse_oracle_dsn
+                parsed = parse_oracle_dsn(dsn)
+                parsed_mode = parsed.get("mode", "basic")
+                if parsed_mode == "basic" and parsed.get("host"):
+                    mode = "basic"
+                    self.host_input.setText(parsed["host"])
+                    self.port_input.setText(str(parsed.get("port") or 1521))
+                    self.db_input.setText(parsed.get("database") or "")
+                    if parsed.get("db_type") == "sid":
+                        self.radio_sid.setChecked(True)
+                    else:
+                        self.radio_service.setChecked(True)
+                elif parsed_mode == "tns":
+                    mode = "tns"
+                    self.tns_alias_combo.setEditText(parsed.get("database") or dsn)
+                else:
+                    mode = "custom"
+                    self.dsn_input.setText(dsn)
+
+            if not mode:
+                mode = "basic"
+
+            if mode == "tns":
+                self.conn_type_combo.setCurrentIndex(1)
+                tns_dir = data.get("tns_admin") or data.get("config_dir") or ""
+                if tns_dir:
+                    self.tns_dir_input.setText(tns_dir)
+                tns_alias = data.get("tns_alias") or (data.get("database") if data.get("connection_mode") == "tns" else "")
+                if tns_alias:
+                    self.tns_alias_combo.setEditText(tns_alias)
+            elif mode == "custom":
+                self.conn_type_combo.setCurrentIndex(2)
+                self.dsn_input.setText(data.get("dsn", ""))
+            else:
+                self.conn_type_combo.setCurrentIndex(0)
+            self._update_preview()
+        finally:
+            self._suppress_scroll = False
 
     def get_effective_dsn(self) -> str:
         return self.preview_lbl.text().strip()

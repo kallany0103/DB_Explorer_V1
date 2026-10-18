@@ -5,7 +5,7 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QTextEdit,
     QFrame, QComboBox, QLabel,
-    QMenu,
+    QMenu, QSplitter,
 )
 
 from PySide6.QtCore import (
@@ -102,6 +102,8 @@ class WorksheetManager(QWidget):
         self.tab_transactions: dict[QWidget, TransactionSession] = {}
         # Maps tab widget → bool (True = auto-commit ON, default)
         self.tab_autocommit: dict[QWidget, bool] = {}
+        # Maps tab widget → bool (True = DBMS_OUTPUT ON, default)
+        self.tab_dbms_output: dict[QWidget, bool] = {}
 
         build_worksheet_toolbar_actions(self)
 
@@ -350,6 +352,10 @@ class WorksheetManager(QWidget):
             self.show_info("No connection selected.")
             return
 
+        if isinstance(resolved_conn_data, dict):
+            resolved_conn_data = dict(resolved_conn_data)
+            resolved_conn_data["enable_dbms_output"] = self.tab_dbms_output.get(tab, True)
+
         if query is None:
             editor = get_query_editor(tab)
             query = extract_query_under_cursor(editor) if editor else ""
@@ -391,6 +397,15 @@ class WorksheetManager(QWidget):
         if checked and tab in self.tab_transactions:
             # Auto-commit re-enabled — flush the pending transaction
             self.commit_transaction()
+        self._update_transaction_button_states()
+
+    def toggle_dbms_output(self, checked: bool) -> None:
+        """Switch DBMS_OUTPUT on or off for the current tab."""
+        tab = self.tab_widget.currentWidget()
+        if not tab:
+            return
+
+        self.tab_dbms_output[tab] = checked
         self._update_transaction_button_states()
 
     def commit_transaction(self) -> None:
@@ -442,6 +457,29 @@ class WorksheetManager(QWidget):
             else:
                 self.ws_autocommit_action.setIcon(qta.icon("fa5s.lock", color="#dc3545"))
             self.ws_autocommit_action.blockSignals(False)
+
+        conn_data = get_tab_connection_data(tab) if tab else None
+        conn_code = (
+            (conn_data.get("code") or conn_data.get("db_type") or conn_data.get("type") or "")
+            if isinstance(conn_data, dict)
+            else ""
+        ).upper()
+        is_oracle = "ORACLE" in conn_code
+
+        if hasattr(self, "ws_dbms_output_action"):
+            self.ws_dbms_output_action.setVisible(is_oracle)
+            self.ws_dbms_output_action.blockSignals(True)
+            is_dbms = self.tab_dbms_output.get(tab, True)
+            self.ws_dbms_output_action.setChecked(is_dbms)
+            if is_dbms:
+                self.ws_dbms_output_action.setIcon(qta.icon("fa5s.terminal", color="#28a745"))
+            else:
+                self.ws_dbms_output_action.setIcon(qta.icon("fa5s.terminal", color="#888888"))
+            self.ws_dbms_output_action.blockSignals(False)
+
+        toolbar = getattr(tab, "toolbar_widget", None) if tab else None
+        if toolbar and hasattr(toolbar, "dbms_output_btn"):
+            toolbar.dbms_output_btn.setVisible(is_oracle)
 
     def update_timer_label(self, label, tab):
         update_timer_label_action(self, label, tab)

@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import sqlite3 as sqlite
 from concurrent.futures import ProcessPoolExecutor
 
@@ -628,38 +629,56 @@ class ImportConnectionsWorker(QRunnable):
         self.signals = ImportWorkerSignals()
 
     def _insert_connection(self, c, conn_data, group_id):
+        cfg_json = conn_data.get("config_json")
+        if isinstance(cfg_json, dict):
+            cfg_json = json.dumps(cfg_json)
+        elif not cfg_json:
+            cfg_json = "{}"
+        auth_type = conn_data.get("auth_type")
+        ssl_mode = conn_data.get("ssl_mode")
+
         if conn_data.get("db_path"):
             c.execute(
-                "INSERT INTO usf_connections (name, short_name, connection_group_id, db_path) VALUES (?, ?, ?, ?)",
-                (conn_data.get("name"), conn_data.get("short_name"), group_id, conn_data.get("db_path")),
+                "INSERT INTO usf_connections (name, short_name, connection_group_id, db_path, config_json, auth_type, ssl_mode) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (conn_data.get("name"), conn_data.get("short_name"), group_id, conn_data.get("db_path"), cfg_json, auth_type, ssl_mode),
             )
         elif conn_data.get("instance_url"):
             c.execute(
-                'INSERT INTO usf_connections (name, short_name, connection_group_id, instance_url, "user", password) VALUES (?, ?, ?, ?, ?, ?)',
+                'INSERT INTO usf_connections (name, short_name, connection_group_id, instance_url, "user", password, config_json, auth_type, ssl_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (conn_data.get("name"), conn_data.get("short_name"), group_id,
-                 conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password")),
+                 conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password"),
+                 cfg_json, auth_type, ssl_mode),
             )
         else:
             c.execute(
-                'INSERT INTO usf_connections (name, short_name, connection_group_id, host, "database", "user", password, port, dsn, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO usf_connections (name, short_name, connection_group_id, host, "database", "user", password, port, dsn, role, config_json, auth_type, ssl_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (conn_data.get("name"), conn_data.get("short_name"), group_id,
                  conn_data.get("host"), conn_data.get("database"), conn_data.get("user"),
                  conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn"),
-                 conn_data.get("role", "Normal")),
+                 conn_data.get("role", "Normal"), cfg_json, auth_type, ssl_mode),
             )
 
     def _update_connection(self, c, conn_id, conn_data):
+        cfg_json = conn_data.get("config_json")
+        if isinstance(cfg_json, dict):
+            cfg_json = json.dumps(cfg_json)
+        elif not cfg_json:
+            cfg_json = "{}"
+        auth_type = conn_data.get("auth_type")
+        ssl_mode = conn_data.get("ssl_mode")
+
         if conn_data.get("db_path"):
-            c.execute("UPDATE usf_connections SET short_name=?, db_path=? WHERE id=?",
-                      (conn_data.get("short_name"), conn_data.get("db_path"), conn_id))
+            c.execute("UPDATE usf_connections SET short_name=?, db_path=?, config_json=?, auth_type=?, ssl_mode=? WHERE id=?",
+                      (conn_data.get("short_name"), conn_data.get("db_path"), cfg_json, auth_type, ssl_mode, conn_id))
         elif conn_data.get("instance_url"):
-            c.execute('UPDATE usf_connections SET short_name=?, instance_url=?, "user"=?, password=? WHERE id=?',
-                      (conn_data.get("short_name"), conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password"), conn_id))
+            c.execute('UPDATE usf_connections SET short_name=?, instance_url=?, "user"=?, password=?, config_json=?, auth_type=?, ssl_mode=? WHERE id=?',
+                      (conn_data.get("short_name"), conn_data.get("instance_url"), conn_data.get("user"), conn_data.get("password"),
+                       cfg_json, auth_type, ssl_mode, conn_id))
         else:
-            c.execute('UPDATE usf_connections SET short_name=?, host=?, "database"=?, "user"=?, password=?, port=?, dsn=?, role=? WHERE id=?',
+            c.execute('UPDATE usf_connections SET short_name=?, host=?, "database"=?, "user"=?, password=?, port=?, dsn=?, role=?, config_json=?, auth_type=?, ssl_mode=? WHERE id=?',
                       (conn_data.get("short_name"), conn_data.get("host"), conn_data.get("database"), conn_data.get("user"),
                        conn_data.get("password"), conn_data.get("port"), conn_data.get("dsn"),
-                       conn_data.get("role", "Normal"), conn_id))
+                       conn_data.get("role", "Normal"), cfg_json, auth_type, ssl_mode, conn_id))
 
     def run(self):
        
@@ -747,13 +766,13 @@ class ImportConnectionsWorker(QRunnable):
 
         c.execute(
             'SELECT id, name, short_name, host, "database", "user", password, port, dsn, '
-            '       db_path, instance_url, connection_group_id, role '
+            '       db_path, instance_url, connection_group_id, role, config_json, auth_type, ssl_mode '
             'FROM usf_connections'
         )
         conn_rows = c.fetchall()
         conns_by_id = {}
         for row in conn_rows:
-            conn_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url, g_id, role = row
+            conn_id, name, short_name, host, db, user, pwd, port, dsn, db_path, instance_url, g_id, role, cfg_json, a_type, s_mode = row
             code = type_code_by_group_id.get(g_id, '')
             conn_entry = {
                 "id": conn_id, "name": name, "short_name": short_name,
@@ -761,6 +780,9 @@ class ImportConnectionsWorker(QRunnable):
                 "port": port, "dsn": dsn, "db_path": db_path,
                 "instance_url": instance_url, "db_type": code.lower(),
                 "role": role or "Normal",
+                "config_json": cfg_json or "{}",
+                "auth_type": a_type or "PASSWORD",
+                "ssl_mode": s_mode or "PREFER",
                 "usf_data_sources": [],
             }
             conns_by_id[conn_id] = conn_entry

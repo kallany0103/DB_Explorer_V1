@@ -382,16 +382,21 @@ class ResultsManager(QObject):
             if spinner_label and spinner_label.movie():
                 spinner_label.movie().stop()
             header = target_tab.findChild(QWidget, "resultsHeader")
-            buttons = header.findChildren(QPushButton)
             if success:
                 stacked_widget.setCurrentIndex(target_index)
-                if buttons: 
-                    buttons[0].setChecked(target_index == 0) 
-                    buttons[1].setChecked(target_index == 1) 
-                    buttons[2].setChecked(target_index == 2)
-                    buttons[3].setChecked(target_index == 3)
-                    if len(buttons) > 4:
-                        buttons[4].setChecked(target_index == 5)
+                if hasattr(header, "button_group") and header.button_group:
+                    btn = header.button_group.button(target_index)
+                    if btn:
+                        btn.setChecked(True)
+                elif header:
+                    buttons = header.findChildren(QPushButton)
+                    if buttons:
+                        buttons[0].setChecked(target_index == 0)
+                        buttons[1].setChecked(target_index == 1)
+                        buttons[2].setChecked(target_index == 2)
+                        buttons[3].setChecked(target_index == 3)
+                        if len(buttons) > 4:
+                            buttons[4].setChecked(target_index == 5)
                 if results_info_bar and process_filter_bar:
                     if target_index == 0:
                         if stacked_widget.widget(0).findChild(QTableView, "results_table"):
@@ -409,11 +414,17 @@ class ResultsManager(QObject):
                         process_filter_bar.hide()
             else:
                 stacked_widget.setCurrentIndex(1)
-                if buttons: 
-                    buttons[0].setChecked(False) 
-                    buttons[1].setChecked(True)
-                    buttons[2].setChecked(False)
-                    buttons[3].setChecked(False)
+                if hasattr(header, "button_group") and header.button_group:
+                    btn = header.button_group.button(1)
+                    if btn:
+                        btn.setChecked(True)
+                elif header:
+                    buttons = header.findChildren(QPushButton)
+                    if buttons:
+                        buttons[0].setChecked(False)
+                        buttons[1].setChecked(True)
+                        buttons[2].setChecked(False)
+                        buttons[3].setChecked(False)
                 if results_info_bar:
                     results_info_bar.hide()
                 if process_filter_bar:
@@ -649,15 +660,26 @@ class ResultsManager(QObject):
             self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
     def eventFilter(self, watched, event):
-        if watched.objectName() == "table_search_box" and event.type() == QEvent.Type.FocusOut:
-            watched.hide()
-            parent = watched.parent()
-            if parent:
-                btn = parent.findChild(QPushButton, "table_search_btn")
-                if btn:
-                    btn.show()
-            return False
-            
+        if watched.objectName() == "table_search_box":
+            if event.type() == QEvent.Type.FocusOut:
+                if not watched.text().strip():
+                    watched.hide()
+                    parent = watched.parent()
+                    if parent:
+                        btn = parent.findChild(QPushButton, "table_search_btn")
+                        if btn:
+                            btn.show()
+                return False
+            if event.type() == QEvent.Type.KeyPress and hasattr(event, "key") and event.key() == Qt.Key.Key_Escape:
+                watched.clear()
+                watched.hide()
+                parent = watched.parent()
+                if parent:
+                    btn = parent.findChild(QPushButton, "table_search_btn")
+                    if btn:
+                        btn.show()
+                return True
+
         return super().eventFilter(watched, event)
 
     def create_results_ui(self, tab_content):

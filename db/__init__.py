@@ -40,6 +40,12 @@ from db.schema_retrieval import (
     get_oracle_available_schemas,
 )
 
+from db.oracle_utils import (
+    enable_dbms_output,
+    fetch_dbms_output,
+    is_oracle_plsql,
+)
+
 from db.db_modifications import (
     add_connection_group,
     add_connection,
@@ -132,4 +138,7 @@ __all__ = [
     "terminate_postgres_backend",
     "cancel_postgres_backend",
     "get_postgres_server_logs",
+    "enable_dbms_output",
+    "fetch_dbms_output",
+    "is_oracle_plsql",
 ]

@@ -203,10 +203,18 @@ def toggle_table_search(manager):
     search_box = tab.findChild(QLineEdit, "table_search_box")
     search_btn = tab.findChild(QPushButton, "table_search_btn")
 
-    if search_box and search_btn:
-        search_btn.hide()
-        search_box.show()
-        search_box.setFocus()
+    if search_box:
+        if search_box.isVisible():
+            search_box.clear()
+            search_box.hide()
+            if search_btn:
+                search_btn.show()
+                search_btn.setFocus()
+        else:
+            if search_btn:
+                search_btn.hide()
+            search_box.show()
+            search_box.setFocus()
 
 
 def handle_query_result(
@@ -239,28 +247,24 @@ def handle_query_result(
     except Exception:
         pass
 
-    manager._ensure_at_least_one_output_tab(target_tab)
-    if output_mode == "new" and output_tab_index is None:
-        output_tab_index = manager.add_output_tab_with_table_name(target_tab, query=query, activate=True)
+    match_query = re.sub(r"--.*?\n|/\*.*?\*/", "", query, flags=re.DOTALL).strip().upper()
+    first_word = match_query.split()[0] if match_query.split() else ""
 
-    if output_tab_index is not None:
-        output_tabs = manager._get_output_tabs_widget(target_tab)
-        if output_tabs and 0 <= output_tab_index < output_tabs.count():
-            output_tabs.setCurrentIndex(output_tab_index)
+    q_type_parsed = ""
+    parsed = sqlparse.parse(query)
+    if parsed:
+        for statement in parsed:
+            statement_type = statement.get_type().upper()
+            if statement_type != "UNKNOWN":
+                q_type_parsed = statement_type
+                break
 
-    table_view, resolved_output_index = manager._ensure_result_table_for_tab(target_tab, output_tab_index)
-    if not table_view:
-        message_view = target_tab.findChild(QTextEdit, "message_view")
-        if message_view:
-            message_view.append("Error rendering query result:\n\nOutput table container is unavailable.")
-        tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
-        if tab_status_label:
-            tab_status_label.setText("Error rendering query result")
-        manager.stop_spinner(target_tab, success=False)
-        return
+    q_type = q_type_parsed if q_type_parsed and q_type_parsed != "UNKNOWN" else first_word
 
-    output_state = table_view.property("output_state") or {}
-    _stop_chunk_loader(output_state)
+    is_structural = q_type in ["CREATE", "DROP", "ALTER", "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "RENAME"]
+    is_select = q_type == "SELECT" or first_word == "SELECT"
+    has_tabular_results = not is_structural and (is_select or (columns and len(columns) > 0))
+
     message_view = target_tab.findChild(QTextEdit, "message_view")
     tab_status_label = target_tab.findChild(QLabel, "tab_status_label")
     rows_info_label = target_tab.findChild(QLabel, "rows_info_label")
@@ -280,8 +284,7 @@ def handle_query_result(
             try:
                 if results and len(results) > 0 and len(results[0]) > 0:
                     json_data = results[0][0]
-                    results_stack = target_tab.findChild(QStackedWidget, "results_stacked_widget")
-                    explain_visualizer = results_stack.findChild(ExplainVisualizer)
+                    explain_visualizer = results_stack.findChild(ExplainVisualizer) if results_stack else None
                     if explain_visualizer:
                         explain_visualizer.load_plan(json_data)
 
@@ -308,27 +311,28 @@ def handle_query_result(
             except Exception as e:
                 print(f"Error parsing explain result: {e}")
 
-    match_query = re.sub(r"--.*?\n|/\*.*?\*/", "", query, flags=re.DOTALL).strip().upper()
-    first_word = match_query.split()[0] if match_query.split() else ""
-
-    q_type_parsed = ""
-    parsed = sqlparse.parse(query)
-    if parsed:
-        for statement in parsed:
-            statement_type = statement.get_type().upper()
-            if statement_type != "UNKNOWN":
-                q_type_parsed = statement_type
-                break
-
-    q_type = q_type_parsed if q_type_parsed and q_type_parsed != "UNKNOWN" else first_word
-
-    is_structural = q_type in ["CREATE", "DROP", "ALTER", "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "RENAME"]
-    is_select = q_type == "SELECT" or first_word == "SELECT"
-
-    final_tab_index = 0
-
-    if not is_structural and (is_select or (columns and len(columns) > 0)):
+    if has_tabular_results:
         final_tab_index = 0
+        manager._ensure_at_least_one_output_tab(target_tab)
+        if output_mode == "new" and output_tab_index is None:
+            output_tab_index = manager.add_output_tab_with_table_name(target_tab, query=query, activate=True)
+
+        if output_tab_index is not None:
+            output_tabs = manager._get_output_tabs_widget(target_tab)
+            if output_tabs and 0 <= output_tab_index < output_tabs.count():
+                output_tabs.setCurrentIndex(output_tab_index)
+
+        table_view, resolved_output_index = manager._ensure_result_table_for_tab(target_tab, output_tab_index)
+        if not table_view:
+            if message_view:
+                message_view.append("Error rendering query result:\n\nOutput table container is unavailable.")
+            if tab_status_label:
+                tab_status_label.setText("Error rendering query result")
+            manager.stop_spinner(target_tab, success=False)
+            return
+
+        output_state = table_view.property("output_state") or {}
+        _stop_chunk_loader(output_state)
         output_state["column_names"] = list(columns)
         output_state["column_specs"] = list(column_specs)
         output_state["modified_coords"] = set()
@@ -478,16 +482,6 @@ def handle_query_result(
             results_info_bar.show()
     else:
         final_tab_index = 1
-
-        table_view.setModel(QStandardItemModel(table_view))
-        table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        output_state["table_name"] = None
-        output_state["qualified_table_name"] = None
-        output_state["real_table_name"] = None
-        output_state["schema_name"] = None
-        output_state["is_editable"] = False
-        table_view.setProperty("output_state", output_state)
-        _set_row_action_state(target_tab, False)
         should_refresh_tree = False
 
         def format_time_pgadmin(s):
@@ -531,9 +525,18 @@ def handle_query_result(
             status_text = f"TRUNCATED {obj_type.upper()}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
+        elif first_word in ("BEGIN", "DECLARE", "CALL") or q_type in ("BEGIN", "DECLARE", "CALL"):
+            status_text = "PL/SQL BLOCK COMPLETED"
+            msg = f"PL/SQL block completed successfully in {time_str}."
+            tab_status = f"{status_text} | Time: {time_str}"
         else:
             msg = f"{q_type}\n\nQuery returned successfully in {time_str}."
             tab_status = f"Rows affected: {row_count} | Time: {time_str}"
+
+        dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
+        if dbms_output:
+            msg = f"--- DBMS_OUTPUT ---\n{dbms_output}\n\n-------------------\n{msg}"
+            tab_status = f"PL/SQL executed | Time: {time_str}"
 
         if should_refresh_tree:
             manager.main_window.refresh_object_explorer()
@@ -541,8 +544,12 @@ def handle_query_result(
         if results_info_bar:
             results_info_bar.hide()
 
+    dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
     if message_view:
-        message_view.setPlainText(msg)
+        if is_select_query and dbms_output:
+            message_view.setPlainText(f"--- DBMS_OUTPUT ---\n{dbms_output}\n\n-------------------\nQuery returned {row_count} rows in {time_str if 'time_str' in locals() else f'{elapsed_time:.2f}s'}.")
+        elif not is_select_query:
+            message_view.setPlainText(msg)
         sb = message_view.verticalScrollBar()
         sb.setValue(sb.maximum())
 

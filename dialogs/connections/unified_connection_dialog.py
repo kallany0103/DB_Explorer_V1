@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from typing import Any
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -56,7 +57,9 @@ class UnifiedConnectionDialog(QDialog):
         type_id: int | None = None,
         group_id: int | None = None,
     ) -> None:
-        super().__init__(parent)
+        top_window = parent.window() if parent else None
+        super().__init__(top_window or parent)
+        self.manager = parent
         self.is_editing = is_editing or (conn_data is not None)
         self.conn_data = conn_data
         self.group_id = group_id
@@ -66,14 +69,13 @@ class UnifiedConnectionDialog(QDialog):
 
         self.setObjectName("unifiedConnDialog")
         self.setWindowTitle("Edit Connection" if self.is_editing else "New connection")
-        self.resize(850, 560)
-        self.setMinimumSize(800, 500)
         self.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
             | Qt.WindowType.CustomizeWindowHint
         )
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         self.type_map: dict[str, int] = self._load_type_map()
 
@@ -82,6 +84,73 @@ class UnifiedConnectionDialog(QDialog):
 
         if self.is_editing and self.conn_data:
             self._load_existing_connection()
+
+    def showEvent(self, event: Any) -> None:
+        super().showEvent(event)
+        self._ensure_inside_parent_and_screen()
+
+    def _ensure_inside_parent_and_screen(self) -> None:
+        # 1. Determine screen available geometry
+        top_win = self.parentWidget().window() if self.parentWidget() else None
+        screen = None
+        if top_win and top_win.screen():
+            screen = top_win.screen()
+        elif self.screen():
+            screen = self.screen()
+        else:
+            screen = QApplication.primaryScreen()
+
+        screen_rect = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+
+        # 2. Determine target boundary (parent application window if valid, else screen)
+        if (
+            top_win
+            and top_win.isVisible()
+            and not top_win.isMinimized()
+            and top_win.width() > 300
+            and top_win.height() > 300
+        ):
+            target_rect = top_win.geometry()
+        else:
+            target_rect = screen_rect
+
+        # 3. Calculate max allowed dimensions to never exceed parent or screen (cap width at 880px, height at 660px)
+        MAX_DIALOG_WIDTH = 880
+        MAX_DIALOG_HEIGHT = 660
+        max_allowed_w = max(500, min(MAX_DIALOG_WIDTH, target_rect.width() - 24, screen_rect.width() - 24))
+        max_allowed_h = max(400, min(MAX_DIALOG_HEIGHT, target_rect.height() - 36, screen_rect.height() - 36))
+
+        min_w = min(800, max_allowed_w)
+        min_h = min(500, max_allowed_h)
+
+        self.setMinimumSize(min_w, min_h)
+        self.setMaximumSize(max_allowed_w, max_allowed_h)
+
+        ideal_w = min(max(850, min_w), max_allowed_w)
+        ideal_h = min(max(560, min_h), max_allowed_h)
+        self.resize(ideal_w, ideal_h)
+
+        # 4. Calculate centered position relative to target_rect
+        center_x = target_rect.x() + (target_rect.width() - self.width()) // 2
+        center_y = target_rect.y() + (target_rect.height() - self.height()) // 2
+
+        # 5. Strictly clamp within BOTH target_rect and screen_rect
+        clamp_left = max(screen_rect.left() + 8, target_rect.left() + 8)
+        clamp_right = min(screen_rect.right() - self.width() - 8, target_rect.right() - self.width() - 8)
+        clamp_top = max(screen_rect.top() + 8, target_rect.top() + 8)
+        clamp_bottom = min(screen_rect.bottom() - self.height() - 8, target_rect.bottom() - self.height() - 8)
+
+        if clamp_right < clamp_left:
+            final_x = clamp_left
+        else:
+            final_x = max(clamp_left, min(center_x, clamp_right))
+
+        if clamp_bottom < clamp_top:
+            final_y = clamp_top
+        else:
+            final_y = max(clamp_top, min(center_y, clamp_bottom))
+
+        self.move(final_x, final_y)
 
     def _load_stylesheet(self) -> None:
         qss_path = os.path.join(os.path.dirname(__file__), "..", "..", "ui", "style.qss")

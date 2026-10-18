@@ -7,7 +7,7 @@ import re
 import shutil
 import sqlparse
 # import cdata.csv as mod # Removed direct import, use db.create_csv_connection instead
-from PySide6.QtCore import QRunnable, Qt
+from PySide6.QtCore import QRunnable, QThread, Qt, Signal
 import db
 from db.result_metadata import resolve_column_specs
 from workers.signals import (
@@ -413,6 +413,11 @@ class RunnableQuery(QRunnable):
                 elif "db_path" in self.conn_data:
                     code = "SQLITE"
 
+            is_oracle = code in ("ORACLE", "ORACLE_DB")
+            is_plsql = db.is_oracle_plsql(self.query) if is_oracle else False
+            enable_dbms = bool(self.conn_data.get("enable_dbms_output", True)) if isinstance(self.conn_data, dict) else True
+            should_handle_dbms = is_oracle and is_plsql and enable_dbms
+
             # DB Execution
             if code in ("SERVICENOW", "CSV"):
                 ctx = mp.get_context("spawn")
@@ -467,15 +472,17 @@ class RunnableQuery(QRunnable):
                     raise ConnectionError("Failed to connect to PostgreSQL database")
                 cursor = self._conn.cursor()
                 cursor.execute(self.query)
-            elif code in ("ORACLE", "ORACLE_DB"):
+            elif is_oracle:
                 self._conn = db.get_pooled_oracle_connection(conn_data=self.conn_data)
                 if not self._conn:
                     raise ConnectionError("Failed to connect to Oracle database")
                 cursor = self._conn.cursor()
+                if should_handle_dbms:
+                    db.enable_dbms_output(cursor)
                 
                 oracle_query = self.query.strip()
                 # oracledb does not allow trailing semicolons for SQL, but requires them for PL/SQL blocks.
-                if oracle_query.endswith(';') and not oracle_query.upper().startswith(("BEGIN", "DECLARE")):
+                if oracle_query.endswith(';') and not is_plsql:
                     oracle_query = oracle_query[:-1]
                 
                 cursor.execute(oracle_query)
@@ -492,7 +499,7 @@ class RunnableQuery(QRunnable):
             if self._is_cancelled:
                 return
 
-            # Handle Results
+            # Handle Results FIRST so the active cursor result set is read before any other call
             if code not in ("SERVICENOW", "CSV"):
                 results = cursor.fetchall() if cursor.description else []
                 columns = []
@@ -507,13 +514,19 @@ class RunnableQuery(QRunnable):
                     )
                 row_count = len(results) if cursor.description else (cursor.rowcount if hasattr(cursor, 'rowcount') else 0)
                 is_returning_results = bool(columns)
-            
+
+            dbms_output = None
+            if should_handle_dbms and cursor:
+                dbms_output = db.fetch_dbms_output(cursor)
+
             elapsed_time = time.time() - start_time
             
             if self._conn and code in ("POSTGRES", "ORACLE", "ORACLE_DB"):
                 self._conn.commit()
 
-            conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
+            conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
+            if dbms_output:
+                conn_payload["dbms_output"] = dbms_output
             emit_query_finished(
                 self.signals,
                 conn_payload,
@@ -529,13 +542,18 @@ class RunnableQuery(QRunnable):
 
         except Exception as e:
             if not self._is_cancelled:
+                dbms_output = None
+                if 'should_handle_dbms' in locals() and should_handle_dbms and cursor:
+                    dbms_output = db.fetch_dbms_output(cursor)
                 if self._conn:
                     try:
                         self._conn.rollback()
                     except Exception:
                         pass
                 elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
-                conn_payload = self.conn_data if isinstance(self.conn_data, dict) else {}
+                conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
+                if dbms_output:
+                    conn_payload["dbms_output"] = dbms_output
                 emit_query_error(self.signals, conn_payload, self.query, 0, elapsed_time, str(e))
 
         finally:
@@ -598,11 +616,16 @@ class RunnableTransactionQuery(QRunnable):
 
             cursor = self._conn.cursor()
 
-            if code in ("ORACLE", "ORACLE_DB"):
+            is_oracle = code in ("ORACLE", "ORACLE_DB")
+            is_plsql = db.is_oracle_plsql(self._query) if is_oracle else False
+            enable_dbms = bool(self._conn_data.get("enable_dbms_output", True)) if isinstance(self._conn_data, dict) else True
+            should_handle_dbms = is_oracle and is_plsql and enable_dbms
+
+            if is_oracle:
+                if should_handle_dbms:
+                    db.enable_dbms_output(cursor)
                 oracle_query = self._query.strip()
-                if oracle_query.endswith(";") and not oracle_query.upper().startswith(
-                    ("BEGIN", "DECLARE")
-                ):
+                if oracle_query.endswith(";") and not is_plsql:
                     oracle_query = oracle_query[:-1]
                 cursor.execute(oracle_query)
             else:
@@ -629,14 +652,21 @@ class RunnableTransactionQuery(QRunnable):
             )
             is_returning_results = bool(columns)
             elapsed_time = time.time() - start_time
+
+            dbms_output = None
+            if should_handle_dbms and cursor:
+                dbms_output = db.fetch_dbms_output(cursor)
             
             if not is_returning_results:
                 if hasattr(self._session, "has_pending_changes"):
                     self._session.has_pending_changes = True
 
+            conn_payload = dict(self._conn_data) if isinstance(self._conn_data, dict) else {}
+            if dbms_output:
+                conn_payload["dbms_output"] = dbms_output
             emit_query_finished(
                 self.signals,
-                self._conn_data,
+                conn_payload,
                 self._query,
                 results,
                 columns,
@@ -650,10 +680,16 @@ class RunnableTransactionQuery(QRunnable):
             if hasattr(self._session, "has_pending_changes"):
                 self._session.has_pending_changes = True
             if not self._is_cancelled:
+                dbms_output = None
+                if 'should_handle_dbms' in locals() and should_handle_dbms and cursor:
+                    dbms_output = db.fetch_dbms_output(cursor)
                 elapsed_time = time.time() - start_time
+                conn_payload = dict(self._conn_data) if isinstance(self._conn_data, dict) else {}
+                if dbms_output:
+                    conn_payload["dbms_output"] = dbms_output
                 emit_query_error(
                     self.signals,
-                    self._conn_data,
+                    conn_payload,
                     self._query,
                     0,
                     elapsed_time,
@@ -665,8 +701,6 @@ class RunnableTransactionQuery(QRunnable):
                     cursor.close()
                 except Exception:
                     pass
-
-from PySide6.QtCore import QThread, Signal
 
 class WorkerThread(QThread):
     """

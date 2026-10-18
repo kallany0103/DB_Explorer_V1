@@ -432,8 +432,9 @@ class ActionToolButton(QToolButton):
         super().__init__(parent)
         self._menu = QMenu(self)
         self.setMenu(self._menu)
-        self.setFixedHeight(30)
-        self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.setFixedHeight(28)
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.clicked.connect(self.showMenu)
         if text:
             super().setText(text)
         if icon:
@@ -443,15 +444,15 @@ class ActionToolButton(QToolButton):
 
     def _update_style(self):
         is_icon_only = self.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly or not self.text()
-        pad_left = 6 if is_icon_only else 12
-        pad_right = 18 if is_icon_only else 28
+        pad_left = 0 if is_icon_only else 8
+        pad_right = 16 if is_icon_only else 24
         self.setStyleSheet(f"""
             QToolButton {{
                 border: 1px solid #b9b9b9;
                 border-radius: 4px;
                 background-color: #ffffff;
                 color: #333333;
-                padding: 4px {pad_right}px 4px {pad_left}px;
+                padding: 0px {pad_right}px 0px {pad_left}px;
                 font-size: 9pt;
             }}
             QToolButton:hover {{
@@ -461,11 +462,21 @@ class ActionToolButton(QToolButton):
             QToolButton:pressed {{
                 background-color: #dcdcdc;
             }}
-            QToolButton::menu-indicator {{
-                subcontrol-position: right center;
+            QToolButton::menu-button {{
                 subcontrol-origin: padding;
-                right: 4px;
+                subcontrol-position: right center;
+                width: 16px;
                 border: none;
+            }}
+            QToolButton::menu-button:hover, QToolButton::menu-button:open {{
+                background-color: #dcdcdc;
+                border-radius: 3px;
+            }}
+            QToolButton::menu-arrow {{
+                image: url(assets/toolbar-chevron-down.svg);
+                width: 10px;
+                height: 10px;
+                subcontrol-position: center center;
             }}
         """)
 
@@ -567,32 +578,48 @@ class ToolbarActionButton(QToolButton):
         if icon:
             self.setIcon(icon)
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.setFixedHeight(30)
+        self.setFixedSize(32, 28)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self.setStyleSheet("""
-            QToolButton {
+        self._update_style()
+
+    def setPopupMode(self, mode):
+        super().setPopupMode(mode)
+        self._update_style()
+
+    def _update_style(self):
+        pad_right = 16 if self.popupMode() == QToolButton.ToolButtonPopupMode.MenuButtonPopup else 0
+        self.setStyleSheet(f"""
+            QToolButton {{
                 border: 1px solid #b9b9b9;
                 border-radius: 4px;
                 background-color: #ffffff;
                 color: #333333;
-                padding: 4px 8px;
+                padding: 0px {pad_right}px 0px 0px;
                 font-size: 9pt;
-            }
-            QToolButton:hover, QToolButton[hovered="true"] {
+            }}
+            QToolButton:hover, QToolButton[hovered="true"] {{
                 background-color: #e8e8e8;
                 border-color: #9c9c9c;
-            }
-            QToolButton:pressed {
+            }}
+            QToolButton:pressed {{
                 background-color: #dcdcdc;
-            }
-            QToolButton::menu-button {
+            }}
+            QToolButton::menu-button {{
+                subcontrol-origin: padding;
+                subcontrol-position: right center;
+                width: 16px;
                 border: none;
-                border-left: none;
-            }
-            QToolButton::menu-indicator {
-                border: none;
-                border-left: none;
-            }
+            }}
+            QToolButton::menu-button:hover, QToolButton::menu-button:open {{
+                background-color: #dcdcdc;
+                border-radius: 3px;
+            }}
+            QToolButton::menu-arrow {{
+                image: url(assets/toolbar-chevron-down.svg);
+                width: 10px;
+                height: 10px;
+                subcontrol-position: center center;
+            }}
         """)
 
     def enterEvent(self, event):

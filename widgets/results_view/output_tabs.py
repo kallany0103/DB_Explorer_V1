@@ -142,6 +142,10 @@ def ensure_output_tabs_widget(manager, tab_content):
     output_tabs.tabCloseRequested.connect(lambda index: manager._handle_output_tab_close(tab_content, index))
     output_tabs.currentChanged.connect(lambda _index: manager.sync_row_action_state(tab_content))
 
+    results_info_bar = tab_content.findChild(QWidget, "resultsInfoBar")
+    if results_info_bar:
+        output_tabs.setCornerWidget(results_info_bar, Qt.Corner.TopRightCorner)
+
     output_container = QWidget()
     output_layout = QVBoxLayout(output_container)
     output_layout.setContentsMargins(0, 0, 0, 0)

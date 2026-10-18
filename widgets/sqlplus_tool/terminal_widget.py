@@ -302,7 +302,6 @@ class SQLPlusToolWidget(QWidget):
             self._term.append_output(f"\nERROR: Failed to start SQL*Plus: {e}\n")
 
     def _pty_reader(self) -> None:
-        exit_reason = "clean"
         while self._running and self._pty is not None:
             try:
                 data = self._pty.read(blocking=True)
@@ -322,8 +321,7 @@ class SQLPlusToolWidget(QWidget):
                         break
                 text = "".join(buffer).replace("\r\n", "\n")
                 self._output_received.emit(text)
-            except Exception as exc:
-                exit_reason = "clean" if type(exc).__name__ == "WinptyError" else str(exc)
+            except Exception:
                 break
         self._running = False
 

@@ -33,12 +33,12 @@ def build_main_window_actions(main_window):
     main_window.close_all_tabs_action.setShortcut("Ctrl+Shift+W")
     main_window.close_all_tabs_action.triggered.connect(main_window.close_all_tabs)
 
-    main_window.execute_action = QAction(QIcon("assets/execute_icon.png"), "Execute", main_window)
+    main_window.execute_action = QAction(qta.icon("fa5s.play", color="#555555"), "Execute", main_window)
     main_window.execute_action.setShortcuts(["Ctrl+Enter", "Ctrl+RETURN"])
     main_window.execute_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.execute_action.triggered.connect(main_window.execute_query)
 
-    main_window.execute_new_tab_action = QAction(QIcon("assets/execute_icon.png"), "Execute in New Output Tab", main_window)
+    main_window.execute_new_tab_action = QAction(qta.icon("mdi6.play-box-multiple", color="#555555"), "Execute in New Output Tab", main_window)
     main_window.execute_new_tab_action.setShortcuts(["Ctrl+Shift+Enter", "Ctrl+Shift+RETURN"])
     main_window.execute_new_tab_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     main_window.execute_new_tab_action.triggered.connect(main_window.execute_query_in_new_output_tab)

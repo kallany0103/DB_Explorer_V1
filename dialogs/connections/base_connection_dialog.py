@@ -1,3 +1,4 @@
+import time
 from typing import Any, Type
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from PySide6.QtCore import Qt, QRect
-from ui.components import PrimaryButton, SecondaryButton
+from ui.components import PrimaryButton, SecondaryButton, ToastNotification
 from workers.workers import WorkerThread
 import db
 from db.db_retrieval import get_groups_by_type
@@ -51,6 +52,8 @@ class BaseConnectionDialog(QDialog):
         top_window = parent.window() if parent else None
         super().__init__(top_window or parent)
 
+        self.manager = parent
+        self._was_updated = False
         self.conn_data = conn_data
         self.type_id = type_id
         self.group_id = group_id
@@ -205,9 +208,11 @@ class BaseConnectionDialog(QDialog):
         else:
             target_rect = screen_rect
 
-        # 3. Calculate max allowed dimensions to never exceed parent or screen
-        max_allowed_w = max(360, min(target_rect.width() - 24, screen_rect.width() - 24))
-        max_allowed_h = max(300, min(target_rect.height() - 36, screen_rect.height() - 36))
+        # 3. Calculate max allowed dimensions to never exceed parent or screen (cap width at 700px, height at 680px)
+        MAX_DIALOG_WIDTH = 700
+        MAX_DIALOG_HEIGHT = 680
+        max_allowed_w = max(360, min(MAX_DIALOG_WIDTH, target_rect.width() - 24, screen_rect.width() - 24))
+        max_allowed_h = max(300, min(MAX_DIALOG_HEIGHT, target_rect.height() - 36, screen_rect.height() - 36))
 
         # 4. Handle fixed or min size requests within safe bounds
         if self._fixed_size_requested:
@@ -323,7 +328,13 @@ class BaseConnectionDialog(QDialog):
     def testConnection(self):
         if not self.check_password_modification():
             return
-        self.test_connection_impl()
+        if hasattr(self, "engine_form") and hasattr(self.engine_form, "test_connection"):
+            self.test_btn.start_loading("Testing")
+            self._test_worker = WorkerThread(self.engine_form.test_connection)
+            self._test_worker.finished_signal.connect(self._on_engine_test_finished)
+            self._test_worker.start()
+        else:
+            self.test_connection_impl()
 
     def _on_engine_test_finished(self, result: Any, error: Exception | str | None) -> None:
         self.test_btn.stop_loading()
@@ -337,12 +348,91 @@ class BaseConnectionDialog(QDialog):
             QMessageBox.critical(self, "Connection Test Failed", msg or "Failed to connect.")
 
     def saveConnection(self):
-        if self.group_combo.currentIndex() == -1:
+        if hasattr(self, "group_combo") and self.group_combo.currentIndex() == -1:
             QMessageBox.warning(self, "Missing Info", "Please select or create a group.")
             return
         if not self.check_password_modification():
             return
-        self.save_connection_impl()
+        if hasattr(self, "engine_form") and hasattr(self.engine_form, "validate_inputs"):
+            valid, msg = self.engine_form.validate_inputs()
+            if not valid:
+                QMessageBox.warning(self, "Validation", msg)
+                return
+
+        if self.is_editing:
+            self._do_in_place_update()
+        else:
+            self.save_connection_impl()
+            self.accept()
+
+    def _do_in_place_update(self):
+        new_data = self.getData()
+        if not new_data.get("id") and self.conn_data and "id" in self.conn_data:
+            new_data["id"] = self.conn_data["id"]
+
+        orig_pwd = str(self.original_password or "")
+        if str(new_data.get("password", "") or "") != orig_pwd:
+            QMessageBox.warning(
+                self,
+                "Reset Password",
+                "Password cannot be changed directly from Edit Connection.\n"
+                "Please use 'Change Password' to reset or change your password."
+            )
+            return
+        new_data["password"] = orig_pwd
+
+        self.save_btn.start_loading("Updating")
+
+        def _worker_update():
+            t0 = time.time()
+            db.update_connection(new_data)
+            code = str(new_data.get("code") or new_data.get("db_type") or "").upper()
+            if "ORACLE" in code:
+                db.invalidate_oracle_pool(new_data)
+            elif "POSTGRES" in code:
+                db.invalidate_pool(new_data)
+            elapsed = time.time() - t0
+            if elapsed < 0.4:
+                time.sleep(0.4 - elapsed)
+            return new_data
+
+        self._update_worker = WorkerThread(_worker_update)
+        self._update_worker.finished_signal.connect(self._on_in_place_update_finished)
+        self._update_worker.start()
+
+    def _on_in_place_update_finished(self, result: Any, error: Exception | str | None) -> None:
+        self.save_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Update Error", f"Failed to update connection:\n{error}")
+            return
+
+        self._was_updated = True
+        conn_name = result.get("name", "Connection")
+        if self.conn_data:
+            self.conn_data.update(result)
+
+        if hasattr(self, "cancel_btn"):
+            self.cancel_btn.setText("Close")
+
+        # Refresh manager tree in the background on the Qt main thread
+        mgr = getattr(self, "manager", None)
+        if not mgr and self.parent():
+            mgr = self.parent()
+        if mgr and hasattr(mgr, "load_data"):
+            try:
+                if hasattr(mgr, "active_postgres_conn") and mgr.active_postgres_conn and mgr.active_postgres_conn.get("id") == result.get("id"):
+                    mgr.active_postgres_conn = result
+                if hasattr(mgr, "_save_tree_expansion_state"):
+                    mgr._save_tree_expansion_state()
+                mgr.load_data()
+                if hasattr(mgr, "_restore_tree_expansion_state"):
+                    mgr._restore_tree_expansion_state()
+                if hasattr(mgr, "refresh_all_comboboxes"):
+                    mgr.refresh_all_comboboxes()
+            except Exception:
+                pass
+
+        ToastNotification.show_toast(self, f"'{conn_name}' updated successfully!", kind="success")
 
     def populate_from_conn_data(self, conn_data: dict[str, Any]) -> None:
         self.conn_data = conn_data

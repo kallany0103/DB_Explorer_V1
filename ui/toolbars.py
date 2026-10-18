@@ -1,9 +1,10 @@
 import qtawesome as qta
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QButtonGroup, 
-    QToolButton, QMenu, QLabel, QPushButton
+    QToolButton, QMenu, QLabel, QPushButton, QFrame,
+    QStyleOption, QStyle
 )
 from ui.components import (
     IconButton, SearchBox, ActionToolButton, DropdownToolButton,
@@ -27,6 +28,7 @@ class NavigationHeader(QWidget):
         """
         super().__init__(parent)
         self.setObjectName(object_name)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedHeight(34)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 3, 6, 2)
@@ -58,6 +60,13 @@ class NavigationHeader(QWidget):
     def get_button(self, idx):
         return self.buttons.get(idx)
 
+    def paintEvent(self, event):
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
+        super().paintEvent(event)
+
 
 class WorksheetToolbar(QWidget):
     """
@@ -69,6 +78,7 @@ class WorksheetToolbar(QWidget):
         super().__init__(parent)
         self.manager = manager
         self.setObjectName("tab_toolbar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 3, 6, 3)
@@ -78,7 +88,7 @@ class WorksheetToolbar(QWidget):
         self.open_btn = ToolbarActionButton(icon=manager.ws_open_file_action.icon())
         self.open_btn.setDefaultAction(manager.ws_open_file_action)
         self.open_btn.setIconSize(QSize(16, 16))
-        self.open_btn.setMinimumWidth(26)
+        self.open_btn.setMinimumWidth(32)
         self.open_btn.setToolTip("Open SQL File")
         layout.addWidget(self.open_btn)
 
@@ -86,7 +96,7 @@ class WorksheetToolbar(QWidget):
         self.save_btn = ToolbarActionButton(icon=manager.ws_save_as_action.icon())
         self.save_btn.setDefaultAction(manager.ws_save_as_action)
         self.save_btn.setIconSize(QSize(16, 16))
-        self.save_btn.setMinimumWidth(26)
+        self.save_btn.setMinimumWidth(32)
         self.save_btn.setToolTip("Save SQL File")
         layout.addWidget(self.save_btn)
 
@@ -100,13 +110,14 @@ class WorksheetToolbar(QWidget):
         exec_menu = QMenu(self.exec_btn)
         exec_menu.addAction(manager.ws_execute_new_tab_action)
         self.exec_btn.setMenu(exec_menu)
-        self.exec_btn.setFixedWidth(46)
+        self.exec_btn.setFixedWidth(48)
         layout.addWidget(self.exec_btn)
 
         # Cancel
         self.cancel_btn = ToolbarActionButton(icon=manager.ws_cancel_action.icon())
         self.cancel_btn.setDefaultAction(manager.ws_cancel_action)
         self.cancel_btn.setIconSize(QSize(16, 16))
+        self.cancel_btn.setMinimumWidth(32)
         layout.addWidget(self.cancel_btn)
         layout.addWidget(manager.create_vertical_separator())
 
@@ -114,7 +125,7 @@ class WorksheetToolbar(QWidget):
         self.auto_commit_btn = ToolbarActionButton(icon=manager.ws_autocommit_action.icon())
         self.auto_commit_btn.setDefaultAction(manager.ws_autocommit_action)
         self.auto_commit_btn.setIconSize(QSize(16, 16))
-        self.auto_commit_btn.setMinimumWidth(26)
+        self.auto_commit_btn.setMinimumWidth(32)
         self.auto_commit_btn.setToolTip("Auto-Commit")
         layout.addWidget(self.auto_commit_btn)
 
@@ -122,7 +133,7 @@ class WorksheetToolbar(QWidget):
         self.commit_btn = ToolbarActionButton(icon=manager.ws_commit_action.icon())
         self.commit_btn.setDefaultAction(manager.ws_commit_action)
         self.commit_btn.setIconSize(QSize(16, 16))
-        self.commit_btn.setMinimumWidth(26)
+        self.commit_btn.setMinimumWidth(32)
         self.commit_btn.setToolTip("Commit Transaction")
         layout.addWidget(self.commit_btn)
 
@@ -130,15 +141,25 @@ class WorksheetToolbar(QWidget):
         self.rollback_btn = ToolbarActionButton(icon=manager.ws_rollback_action.icon())
         self.rollback_btn.setDefaultAction(manager.ws_rollback_action)
         self.rollback_btn.setIconSize(QSize(16, 16))
-        self.rollback_btn.setMinimumWidth(26)
+        self.rollback_btn.setMinimumWidth(32)
         self.rollback_btn.setToolTip("Rollback Transaction")
         layout.addWidget(self.rollback_btn)
+
+        # DBMS Output (Oracle SERVEROUTPUT)
+        if hasattr(manager, "ws_dbms_output_action"):
+            self.dbms_output_btn = ToolbarActionButton(icon=manager.ws_dbms_output_action.icon())
+            self.dbms_output_btn.setDefaultAction(manager.ws_dbms_output_action)
+            self.dbms_output_btn.setIconSize(QSize(16, 16))
+            self.dbms_output_btn.setMinimumWidth(32)
+            self.dbms_output_btn.setToolTip("Enable DBMS Output (Oracle SERVEROUTPUT)")
+            self.dbms_output_btn.setVisible(False)
+            layout.addWidget(self.dbms_output_btn)
 
         layout.addWidget(manager.create_vertical_separator())
 
         self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.explain_combo.setFixedWidth(46)
+        self.explain_combo.setFixedWidth(48)
         self.explain_combo.setToolTip("Explain Query")
         self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
         self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
@@ -150,7 +171,7 @@ class WorksheetToolbar(QWidget):
             self.explain_ai_btn = ToolbarActionButton(icon=manager.ws_explain_ai_action.icon())
             self.explain_ai_btn.setDefaultAction(manager.ws_explain_ai_action)
             self.explain_ai_btn.setIconSize(QSize(16, 16))
-            self.explain_ai_btn.setMinimumWidth(26)
+            self.explain_ai_btn.setMinimumWidth(32)
             self.explain_ai_btn.setToolTip("Explain code using AI (Ctrl+Alt+E)")
             layout.addWidget(self.explain_ai_btn)
 
@@ -159,7 +180,7 @@ class WorksheetToolbar(QWidget):
             self.describe_obj_btn = ToolbarActionButton(icon=manager.ws_describe_object_action.icon())
             self.describe_obj_btn.setDefaultAction(manager.ws_describe_object_action)
             self.describe_obj_btn.setIconSize(QSize(16, 16))
-            self.describe_obj_btn.setMinimumWidth(26)
+            self.describe_obj_btn.setMinimumWidth(32)
             self.describe_obj_btn.setToolTip("Describe (F4)")
             layout.addWidget(self.describe_obj_btn)
 
@@ -168,7 +189,7 @@ class WorksheetToolbar(QWidget):
             self.quick_describe_btn = ToolbarActionButton(icon=manager.ws_quick_describe_action.icon())
             self.quick_describe_btn.setDefaultAction(manager.ws_quick_describe_action)
             self.quick_describe_btn.setIconSize(QSize(16, 16))
-            self.quick_describe_btn.setMinimumWidth(26)
+            self.quick_describe_btn.setMinimumWidth(32)
             self.quick_describe_btn.setToolTip("Quick Describe (Ctrl+D)")
             layout.addWidget(self.quick_describe_btn)
 
@@ -177,20 +198,16 @@ class WorksheetToolbar(QWidget):
             self.describe_btn = ToolbarActionButton(icon=manager.ws_describe_action.icon())
             self.describe_btn.setDefaultAction(manager.ws_describe_action)
             self.describe_btn.setIconSize(QSize(16, 16))
-            self.describe_btn.setMinimumWidth(26)
+            self.describe_btn.setMinimumWidth(32)
             self.describe_btn.setToolTip("Describe (parse) select query (Shift+F4)")
             layout.addWidget(self.describe_btn)
 
 
         # Edit Menu
-        self.edit_btn = QToolButton()
-        # self.edit_btn.setText("Edit")
-        self.edit_btn.setIcon(qta.icon("fa5s.edit"))
+        self.edit_btn = ActionToolButton("", qta.icon("fa5s.edit", color="#555555"))
         self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.edit_btn.setFixedHeight(30)
-        self.edit_btn.setFixedWidth(46)
+        self.edit_btn.setFixedWidth(48)
         self.edit_btn.setToolTip("Edit Operations")
-        self.edit_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         
         edit_menu = QMenu(self)
         self._populate_edit_menu(edit_menu)
@@ -203,7 +220,7 @@ class WorksheetToolbar(QWidget):
         self.rows_limit_combo = DropdownToolButton("", qta.icon("fa5s.list-ol"))
         self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(46)
+        self.rows_limit_combo.setFixedWidth(48)
         self.rows_limit_combo.setToolTip("Row Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
         self.rows_limit_combo.itemTriggered.connect(
@@ -213,6 +230,13 @@ class WorksheetToolbar(QWidget):
 
         layout.addWidget(manager.create_vertical_separator())
         layout.addStretch()
+
+    def paintEvent(self, event):
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
+        super().paintEvent(event)
 
     def _on_explain_triggered(self, text):
         if text == "Explain Analyze":
@@ -254,44 +278,41 @@ class ResultsInfoToolbar(QWidget):
         self.tab_content = tab_content
         self.setObjectName("resultsInfoBar")
         
+        self.setFixedHeight(26)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 2, 6, 2)
-        layout.setSpacing(6)
+        layout.setContentsMargins(4, 0, 6, 0)
+        layout.setSpacing(3)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        # Row Actions
-        self.add_row_btn = IconButton(qta.icon("ri.play-list-add-fill", color="#555555"), "Add new row")
-        self.add_row_btn.setObjectName("add_row_btn")
-        self.add_row_btn.clicked.connect(manager.add_empty_row)
-        layout.addWidget(self.add_row_btn)
+        def _create_sep():
+            sep = QFrame(self)
+            sep.setFrameShape(QFrame.Shape.VLine)
+            sep.setFrameShadow(QFrame.Shadow.Plain)
+            sep.setFixedWidth(1)
+            sep.setFixedHeight(14)
+            sep.setStyleSheet("background-color: #CBD5E1; border: none; margin: 0 3px;")
+            return sep
 
-        self.save_row_btn = IconButton(qta.icon("fa5s.save", color="#555555"), "Save new row")
-        self.save_row_btn.setObjectName("save_row_btn")
-        self.save_row_btn.clicked.connect(manager.save_new_row)
-        layout.addWidget(self.save_row_btn)
-
-        self.delete_row_btn = IconButton(qta.icon("fa5s.trash-alt", color="#dc3545"), "Delete selected row(s)")
-        self.delete_row_btn.setObjectName("delete_row_btn")
-        self.delete_row_btn.clicked.connect(manager.delete_selected_row)
-        layout.addWidget(self.delete_row_btn)
-
-        self.copy_btn = IconButton(qta.icon("fa5s.copy", color="#555555"), "Copy selected cells (Ctrl+C)")
-        self.copy_btn.clicked.connect(manager.copy_current_result_table)
-        layout.addWidget(self.copy_btn)
-
-        self.download_btn = IconButton(qta.icon("fa5s.file-download", color="#555555"), "Download query result")
-        self.download_btn.clicked.connect(lambda: manager.download_result(self.tab_content))
-        layout.addWidget(self.download_btn)
-
-        # Table Search
+        # 1. Search Group at Far Left (button expands into search box)
         self.search_box = SearchBox()
-        self.search_box.setFixedHeight(24)
-        self.search_box.setFixedWidth(180)
+        self.search_box.setFixedSize(105, 22)
+        self.search_box.setStyleSheet("")
         self.search_box.setObjectName("table_search_box")
+        self.search_box.setClearButtonEnabled(True)
         self.search_box.hide()
         self.search_box.installEventFilter(manager)
 
-        self.table_search_btn = IconButton(qta.icon("fa5s.search", color="#555555"), "Search in Results")
+        actions = self.search_box.actions()
+        if actions:
+            actions[0].triggered.connect(manager.toggle_table_search)
+
+        self.table_search_btn = IconButton(
+            qta.icon("fa5s.search", color="#475569", color_disabled="#CBD5E1"),
+            "Search in Results",
+        )
         self.table_search_btn.setObjectName("table_search_btn")
+        self.table_search_btn.setFixedSize(22, 22)
+        self.table_search_btn.setIconSize(QSize(12, 12))
         self.table_search_btn.clicked.connect(manager.toggle_table_search)
 
         self.search_debounce_timer = QTimer(self)
@@ -302,49 +323,128 @@ class ResultsInfoToolbar(QWidget):
 
         layout.addWidget(self.search_box)
         layout.addWidget(self.table_search_btn)
-        
-        layout.addStretch()
+        layout.addWidget(_create_sep())
 
-        # Pagination and Limit Info
-        self.rows_info_label = QLabel("Showing Rows")
-        self.rows_info_label.setObjectName("rows_info_label")
-        font = QFont()
-        font.setBold(True)
-        self.rows_info_label.setFont(font)
-        layout.addWidget(self.rows_info_label)
+        # 2. Row Actions Group
+        self.add_row_btn = IconButton(
+            qta.icon("ri.play-list-add-fill", color="#475569", color_disabled="#CBD5E1"),
+            "Add new row",
+        )
+        self.add_row_btn.setObjectName("add_row_btn")
+        self.add_row_btn.setFixedSize(22, 22)
+        self.add_row_btn.setIconSize(QSize(12, 12))
+        self.add_row_btn.clicked.connect(manager.add_empty_row)
+        layout.addWidget(self.add_row_btn)
 
-        self.rows_setting_btn = IconButton(qta.icon("fa5s.list-ul", color="#555555"), "Edit Limit/Offset")
+        self.save_row_btn = IconButton(
+            qta.icon("fa5s.save", color="#475569", color_disabled="#CBD5E1"),
+            "Save new row",
+        )
+        self.save_row_btn.setObjectName("save_row_btn")
+        self.save_row_btn.setFixedSize(22, 22)
+        self.save_row_btn.setIconSize(QSize(12, 12))
+        self.save_row_btn.clicked.connect(manager.save_new_row)
+        layout.addWidget(self.save_row_btn)
+
+        self.delete_row_btn = IconButton(
+            qta.icon("fa5s.trash-alt", color="#DC2626", color_disabled="#CBD5E1"),
+            "Delete selected row(s)",
+        )
+        self.delete_row_btn.setObjectName("delete_row_btn")
+        self.delete_row_btn.setFixedSize(22, 22)
+        self.delete_row_btn.setIconSize(QSize(12, 12))
+        self.delete_row_btn.clicked.connect(manager.delete_selected_row)
+        layout.addWidget(self.delete_row_btn)
+
+        # Separator between row actions and tools
+        layout.addWidget(_create_sep())
+
+        # 3. Export Group
+        self.copy_btn = IconButton(
+            qta.icon("fa5s.copy", color="#475569", color_disabled="#CBD5E1"),
+            "Copy selected cells (Ctrl+C)",
+        )
+        self.copy_btn.setObjectName("copy_btn")
+        self.copy_btn.setFixedSize(22, 22)
+        self.copy_btn.setIconSize(QSize(12, 12))
+        self.copy_btn.clicked.connect(manager.copy_current_result_table)
+        layout.addWidget(self.copy_btn)
+
+        self.download_btn = IconButton(
+            qta.icon("fa5s.file-download", color="#475569", color_disabled="#CBD5E1"),
+            "Download query result",
+        )
+        self.download_btn.setObjectName("download_btn")
+        self.download_btn.setFixedSize(22, 22)
+        self.download_btn.setIconSize(QSize(12, 12))
+        self.download_btn.clicked.connect(lambda: manager.download_result(self.tab_content))
+        layout.addWidget(self.download_btn)
+
+        # Separator between tools and pagination
+        layout.addWidget(_create_sep())
+
+        # 3. Pagination and Limit Controls (icons only, zero clutter)
+        self.rows_setting_btn = IconButton(
+            qta.icon("fa5s.list-ul", color="#475569", color_disabled="#CBD5E1"),
+            "Row limit & offset — Click to configure",
+        )
+        self.rows_setting_btn.setObjectName("rows_setting_btn")
+        self.rows_setting_btn.setFixedSize(22, 22)
+        self.rows_setting_btn.setIconSize(QSize(12, 12))
         self.rows_setting_btn.clicked.connect(lambda: manager.open_limit_offset_dialog(self.tab_content))
         layout.addWidget(self.rows_setting_btn)
 
-        # Navigation Buttons Container
-        nav_container = QWidget()
-        nav_container.setObjectName("navContainer")
-        nav_layout = QHBoxLayout(nav_container)
-        nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(6)
-
-        self.prev_btn = IconButton(qta.icon("fa5s.chevron-left", color="#555555"), "Previous page")
+        self.prev_btn = IconButton(
+            qta.icon("fa5s.chevron-left", color="#475569", color_disabled="#CBD5E1"),
+            "Previous page (Already at page 1)",
+        )
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prev_btn.setObjectName("prev_btn")
+        self.prev_btn.setFixedSize(22, 22)
+        self.prev_btn.setIconSize(QSize(11, 11))
         self.prev_btn.clicked.connect(self._go_prev)
-        
-        self.page_label = QLabel("Page 1")
-        self.page_label.setMinimumWidth(60)
-        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.page_label.setFont(QFont("Segoe UI Variable", 9))
-        self.page_label.setObjectName("page_label")
+        layout.addWidget(self.prev_btn)
 
-        self.next_btn = IconButton(qta.icon("fa5s.chevron-right", color="#555555"), "Next page")
+        self.next_btn = IconButton(
+            qta.icon("fa5s.chevron-right", color="#475569", color_disabled="#CBD5E1"),
+            "Next page",
+        )
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_btn.setObjectName("next_btn")
+        self.next_btn.setFixedSize(22, 22)
+        self.next_btn.setIconSize(QSize(11, 11))
         self.next_btn.clicked.connect(self._go_next)
+        layout.addWidget(self.next_btn)
 
-        nav_layout.addWidget(self.prev_btn)
-        nav_layout.addWidget(self.page_label)
-        nav_layout.addWidget(self.next_btn)
-        
-        layout.addWidget(nav_container)
+        # Clear inline styles so style.qss controls all buttons uniformly at exactly 22x22
+        for btn in (
+            self.add_row_btn,
+            self.save_row_btn,
+            self.delete_row_btn,
+            self.copy_btn,
+            self.download_btn,
+            self.table_search_btn,
+            self.rows_setting_btn,
+            self.prev_btn,
+            self.next_btn,
+        ):
+            btn.setStyleSheet("")
+            btn.setFixedSize(22, 22)
+
+        # Compatibility hidden widgets (kept so existing findChild calls work without errors)
+        self.rows_info_label = QLabel("Showing Rows", self)
+        self.rows_info_label.setObjectName("rows_info_label")
+        self.rows_info_label.hide()
+
+        self.page_label = QLabel("Page 1", self)
+        self.page_label.setObjectName("page_label")
+        self.page_label.hide()
+
+        self.nav_container = QWidget(self)
+        self.nav_container.setObjectName("navContainer")
+        self.nav_container.hide()
+
+        self.update_page_ui(self.tab_content)
         self.hide() # Hidden by default
 
     def _trigger_filter(self):
@@ -381,6 +481,7 @@ class ResultsInfoToolbar(QWidget):
         current_page = getattr(tab, 'current_page', 1)
         self.page_label.setText(f"Page {current_page}")
         self.prev_btn.setEnabled(current_page > 1)
+        self.prev_btn.setToolTip(f"Previous page (Page {current_page - 1})" if current_page > 1 else "Previous page")
 
         limit = getattr(tab, "current_limit", 0)
         offset = getattr(tab, "current_offset", 0)
@@ -388,13 +489,22 @@ class ResultsInfoToolbar(QWidget):
         
         if limit == 0:
             self.next_btn.setEnabled(False)
+            self.next_btn.setToolTip("Next page (No limit set)")
+            self.rows_setting_btn.setToolTip("Row Limit: No Limit (click to configure)")
         else:
             self.next_btn.setEnabled(has_more_pages)
+            self.next_btn.setToolTip(f"Next page (Page {current_page + 1})" if has_more_pages else "Next page (End of results)")
+            self.rows_setting_btn.setToolTip(f"Row Limit: {limit} | Offset: {offset} (click to configure)")
 
         if limit and limit > 0:
             self.rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
         else:
             self.rows_info_label.setText("No Limit")
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        if self.y() != 0:
+            self.move(self.x(), 0)
 
 
 class ProcessFilterBar(QWidget):
