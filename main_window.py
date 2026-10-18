@@ -877,8 +877,11 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             settings = dialog.get_settings()
             self.pg_bin_path = settings.get("pg_bin_path", "")
+            self.oracle_bin_path = settings.get("oracle_bin_path", "")
             self.use_wsl = settings.get("use_wsl", False)
             self.default_connection_id = settings.get("default_connection_id", None)
+            self.confirm_tab_close = settings.get("confirm_tab_close", True)
+            self.restore_session_on_startup = settings.get("restore_session_on_startup", True)
             
             # Editor settings
             self.editor_font_family = settings.get("editor_font_family", "Consolas")
@@ -887,6 +890,24 @@ class MainWindow(QMainWindow):
             self.editor_word_wrap = settings.get("editor_word_wrap", False)
             self.editor_line_numbers = settings.get("editor_line_numbers", True)
             self.editor_auto_uppercase = settings.get("editor_auto_uppercase", True)
+            self.editor_autocomplete = settings.get("editor_autocomplete", True)
+            self.editor_highlight_line = settings.get("editor_highlight_line", True)
+
+            # Execution settings
+            self.query_timeout_sec = settings.get("query_timeout_sec", 300)
+            if hasattr(self, "worksheet_manager") and hasattr(self.worksheet_manager, "QUERY_TIMEOUT"):
+                self.worksheet_manager.QUERY_TIMEOUT = self.query_timeout_sec * 1000
+            self.default_row_limit = settings.get("default_row_limit", "No Limit")
+
+            # Results & Grid settings
+            self.grid_null_text = settings.get("grid_null_text", "NULL")
+            self.grid_datetime_format = settings.get("grid_datetime_format", "YYYY-MM-DD HH:mm:ss")
+            self.grid_page_size = settings.get("grid_page_size", "100")
+            self.grid_show_row_numbers = settings.get("grid_show_row_numbers", True)
+            self.grid_copy_headers = settings.get("grid_copy_headers", True)
+
+            # Apply grid preferences live to open result tables
+            self._apply_grid_preferences_to_all_tabs()
 
             # AI settings
             self.ai_provider = settings.get("ai_provider", "OpenAI")
@@ -915,12 +936,23 @@ class MainWindow(QMainWindow):
             "editor_word_wrap": self.editor_word_wrap,
             "editor_line_numbers": self.editor_line_numbers,
             "editor_auto_uppercase": self.editor_auto_uppercase,
+            "editor_autocomplete": self.editor_autocomplete,
+            "editor_highlight_line": self.editor_highlight_line,
         }
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             editor = tab.findChild(CodeEditor, "query_editor")
             if editor:
                 editor.apply_preferences(prefs)
+
+    def _apply_grid_preferences_to_all_tabs(self):
+        """Updates row numbers visibility and table settings across open results tables."""
+        from PySide6.QtWidgets import QTableView
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            tables = tab.findChildren(QTableView, "results_table")
+            for table in tables:
+                table.verticalHeader().setVisible(getattr(self, "grid_show_row_numbers", True))
 
     def show_login(self):
         dialog = LoginDialog(self)

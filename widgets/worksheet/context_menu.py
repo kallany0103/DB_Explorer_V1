@@ -72,7 +72,7 @@ def show_editor_context_menu(manager, pos, editor):
     explain_plan_action.triggered.connect(manager.explain_plan_query)
     menu.addAction(explain_plan_action)
 
-    explain_ai_action = QAction(qta.icon("fa5s.robot", color="#2563eb"), "Explain with AI", manager)
+    explain_ai_action = QAction(qta.icon("fa5s.magic", color="#3b82f6"), "Explain with AI", manager)
     explain_ai_action.setIconVisibleInMenu(True)
     explain_ai_action.setShortcut("Ctrl+Alt+E")
     explain_ai_action.triggered.connect(manager.main_window.explain_code_using_ai)

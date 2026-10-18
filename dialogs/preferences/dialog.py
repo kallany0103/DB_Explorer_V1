@@ -10,7 +10,8 @@ Provides categorized settings:
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget, QListWidgetItem,
     QStackedWidget, QWidget, QFormLayout, QLineEdit, QFileDialog, QLabel,
-    QCheckBox, QComboBox, QSpinBox, QFontComboBox, QScrollArea, QFrame
+    QCheckBox, QComboBox, QSpinBox, QFontComboBox, QScrollArea, QFrame,
+    QListView, QStyledItemDelegate
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont
@@ -18,15 +19,32 @@ import qtawesome as qta
 from ui.components import PrimaryButton, SecondaryButton
 
 
+class FontPreviewDelegate(QStyledItemDelegate):
+    """Renders each font name in its own typeface so the user can preview the font directly."""
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        font_name = index.data()
+        if font_name:
+            font = QFont(font_name)
+            font.setPointSize(10)
+            option.font = font
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), max(size.height(), 26))
+
+
 class PreferencesDialog(QDialog):
     """IDE-style preferences window with sidebar categories."""
 
     def __init__(self, main_window):
         super().__init__(main_window)
+        self.setObjectName("preferencesDialog")
         self.main_window = main_window
         self.setWindowTitle("Preferences")
-        self.resize(760, 560)
-        self.setMinimumSize(640, 460)
+        self.resize(880, 660)
+        self.setMinimumSize(780, 560)
 
         self.setup_ui()
 
@@ -87,6 +105,7 @@ class PreferencesDialog(QDialog):
         # Build Pages
         self._build_general_page()
         self._build_editor_page()
+        self._build_results_view_page()
         self._build_database_tools_page()
         self._build_ai_assistant_page()
 
@@ -130,14 +149,24 @@ class PreferencesDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background-color: transparent; }")
-        
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: #ffffff;
+                border: none;
+            }
+        """)
+
         container = QWidget()
-        container.setStyleSheet("background-color: transparent;")
+        container.setStyleSheet("""
+            QWidget {
+                background-color: #ffffff;
+            }
+        """)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(16)
-        
+
         scroll.setWidget(container)
         return scroll, layout
 
@@ -159,6 +188,16 @@ class PreferencesDialog(QDialog):
 
         return header
 
+    def _create_combo(self, min_contents_len: int = 16) -> QComboBox:
+        """Helper to create dropdowns matching the UDS Virtual View dialog style."""
+        combo = QComboBox(self)
+        combo.setStyleSheet("combobox-popup: 0;")
+        combo.setView(QListView())
+        combo.setMaxVisibleItems(15)
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(min_contents_len)
+        return combo
+
     def _build_general_page(self):
         item = QListWidgetItem(qta.icon("fa5s.sliders-h", color="#4b5563"), "General")
         self.category_list.addItem(item)
@@ -172,7 +211,7 @@ class PreferencesDialog(QDialog):
         form.setSpacing(12)
 
         # 1. Theme
-        self.theme_combo = QComboBox()
+        self.theme_combo = self._create_combo(16)
         self.theme_combo.addItems(["Grey (Default)", "Light Blue", "Light Green"])
         current_theme = getattr(self.main_window, "theme", "Grey (Default)")
         if current_theme in ("Light", "Dark"):
@@ -182,10 +221,11 @@ class PreferencesDialog(QDialog):
 
         theme_help = QLabel("Application visual color theme.")
         theme_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        theme_help.setWordWrap(True)
         form.addRow("", theme_help)
 
         # 2. Default Connection
-        self.default_conn_combo = QComboBox()
+        self.default_conn_combo = self._create_combo(20)
         self.default_conn_combo.addItem("None (First Available)", None)
         try:
             import db
@@ -205,7 +245,18 @@ class PreferencesDialog(QDialog):
 
         default_conn_help = QLabel("Default active connection pre-selected when opening a new worksheet.")
         default_conn_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        default_conn_help.setWordWrap(True)
         form.addRow("", default_conn_help)
+
+        # 3. Confirm Tab Close
+        self.confirm_tab_close_check = QCheckBox("Confirm before closing unsaved worksheet tabs")
+        self.confirm_tab_close_check.setChecked(getattr(self.main_window, "confirm_tab_close", True))
+        form.addRow("", self.confirm_tab_close_check)
+
+        # 4. Restore Session on Startup
+        self.restore_session_check = QCheckBox("Restore open tabs and window layout on startup")
+        self.restore_session_check.setChecked(getattr(self.main_window, "restore_session_on_startup", True))
+        form.addRow("", self.restore_session_check)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -224,7 +275,13 @@ class PreferencesDialog(QDialog):
         form.setSpacing(12)
 
         # 1. Font Family
-        self.editor_font_combo = QFontComboBox()
+        self.editor_font_combo = QFontComboBox(self)
+        self.editor_font_combo.setStyleSheet("combobox-popup: 0;")
+        self.editor_font_combo.setView(QListView())
+        self.editor_font_combo.setItemDelegate(FontPreviewDelegate(self.editor_font_combo))
+        self.editor_font_combo.setMaxVisibleItems(15)
+        self.editor_font_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.editor_font_combo.setMinimumContentsLength(16)
         self.editor_font_combo.setFontFilters(QFontComboBox.FontFilter.MonospacedFonts)
         saved_font = getattr(self.main_window, "editor_font_family", "Consolas")
         self.editor_font_combo.setCurrentFont(QFont(saved_font))
@@ -232,6 +289,7 @@ class PreferencesDialog(QDialog):
 
         font_family_help = QLabel("Monospaced font family used across SQL query editors.")
         font_family_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        font_family_help.setWordWrap(True)
         form.addRow("", font_family_help)
 
         # 2. Font Size
@@ -243,6 +301,7 @@ class PreferencesDialog(QDialog):
 
         font_size_help = QLabel("Editor font size in points (Ctrl+Scroll in editor to zoom dynamically).")
         font_size_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        font_size_help.setWordWrap(True)
         form.addRow("", font_size_help)
 
         # 3. Tab Size
@@ -266,6 +325,93 @@ class PreferencesDialog(QDialog):
         self.editor_auto_uppercase_check = QCheckBox("Automatically uppercase SQL keywords")
         self.editor_auto_uppercase_check.setChecked(getattr(self.main_window, "editor_auto_uppercase", True))
         form.addRow("", self.editor_auto_uppercase_check)
+
+        # 7. Auto Completion / IntelliSense
+        self.editor_autocomplete_check = QCheckBox("Enable SQL Auto-completion (IntelliSense popup)")
+        self.editor_autocomplete_check.setChecked(getattr(self.main_window, "editor_autocomplete", True))
+        form.addRow("", self.editor_autocomplete_check)
+
+        # 8. Highlight Current Line
+        self.editor_highlight_line_check = QCheckBox("Highlight current cursor line")
+        self.editor_highlight_line_check.setChecked(getattr(self.main_window, "editor_highlight_line", True))
+        form.addRow("", self.editor_highlight_line_check)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        self.pages_stack.addWidget(scroll)
+
+    def _build_results_view_page(self):
+        item = QListWidgetItem(qta.icon("fa5s.table", color="#4b5563"), "Results & Grid")
+        self.category_list.addItem(item)
+
+        scroll, layout = self._create_page_scroll_area()
+        layout.addWidget(self._create_section_header("Results & Data Grid", "Configure query output tables, cell presentation, and clipboard behaviors."))
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        form.setSpacing(12)
+
+        # 1. NULL Value Representation
+        self.grid_null_text_edit = QLineEdit()
+        self.grid_null_text_edit.setPlaceholderText("NULL")
+        saved_null = getattr(self.main_window, "grid_null_text", "NULL")
+        self.grid_null_text_edit.setText(saved_null)
+        form.addRow("NULL Value Display:", self.grid_null_text_edit)
+
+        null_help = QLabel("Text displayed in cells representing SQL NULL values (e.g. NULL, (null), or empty).")
+        null_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        null_help.setWordWrap(True)
+        form.addRow("", null_help)
+
+        # 2. DateTime Display Format
+        self.grid_date_format_combo = self._create_combo(20)
+        self.grid_date_format_combo.addItems([
+            "YYYY-MM-DD HH:mm:ss",
+            "ISO-8601 (YYYY-MM-DDTHH:mm:ss)",
+            "MM/DD/YYYY HH:mm:ss",
+            "DD/MM/YYYY HH:mm:ss",
+            "Locale Default"
+        ])
+        saved_date_fmt = getattr(self.main_window, "grid_datetime_format", "YYYY-MM-DD HH:mm:ss")
+        idx = self.grid_date_format_combo.findText(saved_date_fmt)
+        if idx >= 0:
+            self.grid_date_format_combo.setCurrentIndex(idx)
+        form.addRow("Timestamp Format:", self.grid_date_format_combo)
+
+        date_help = QLabel("Default formatting applied to date and timestamp values in results tables.")
+        date_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        date_help.setWordWrap(True)
+        form.addRow("", date_help)
+
+        # 3. Default Page Size
+        self.grid_page_size_combo = self._create_combo(16)
+        self.grid_page_size_combo.addItems(["50", "100", "200", "500", "1000", "All (No Pagination)"])
+        saved_page_size = getattr(self.main_window, "grid_page_size", "100")
+        idx = self.grid_page_size_combo.findText(str(saved_page_size))
+        if idx >= 0:
+            self.grid_page_size_combo.setCurrentIndex(idx)
+        form.addRow("Rows Per Page:", self.grid_page_size_combo)
+
+        page_help = QLabel("Default number of rows displayed per page in query output views.")
+        page_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        page_help.setWordWrap(True)
+        form.addRow("", page_help)
+
+        # 4. Show Vertical Header Row Numbers
+        self.grid_show_row_numbers_check = QCheckBox("Show row numbers header (1, 2, 3...)")
+        self.grid_show_row_numbers_check.setChecked(getattr(self.main_window, "grid_show_row_numbers", True))
+        form.addRow("", self.grid_show_row_numbers_check)
+
+        # 5. Copy Headers by Default
+        self.grid_copy_headers_check = QCheckBox("Include column headers when copying selected cells")
+        self.grid_copy_headers_check.setChecked(getattr(self.main_window, "grid_copy_headers", True))
+        form.addRow("", self.grid_copy_headers_check)
+
+        copy_help = QLabel("When enabled, copying cells (Ctrl+C) automatically prepends the header row.")
+        copy_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        copy_help.setWordWrap(True)
+        form.addRow("", copy_help)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -300,6 +446,7 @@ class PreferencesDialog(QDialog):
 
         pg_help = QLabel("Directory containing pg_dump, pg_restore, and psql.")
         pg_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        pg_help.setWordWrap(True)
         form.addRow("", pg_help)
 
         # Oracle Bin Path
@@ -319,6 +466,7 @@ class PreferencesDialog(QDialog):
 
         oracle_help = QLabel("Directory containing sqlplus and Oracle client utilities.")
         oracle_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        oracle_help.setWordWrap(True)
         form.addRow("", oracle_help)
 
         # Use WSL
@@ -328,7 +476,41 @@ class PreferencesDialog(QDialog):
 
         wsl_help = QLabel("Check this if your PostgreSQL tools are installed inside Linux (WSL).")
         wsl_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        wsl_help.setWordWrap(True)
         form.addRow("", wsl_help)
+
+        # ── Query Execution & Results Sub-section ──
+        form.addRow("", QLabel(""))  # spacer
+        exec_subheading = QLabel("Query Execution & Results")
+        exec_subheading.setStyleSheet("font-size: 11pt; font-weight: 700; color: #111827; margin-top: 4px;")
+        form.addRow(exec_subheading)
+
+        # Query Timeout
+        self.query_timeout_spin = QSpinBox()
+        self.query_timeout_spin.setRange(5, 3600)
+        saved_timeout = getattr(self.main_window, "query_timeout_sec", 300)
+        self.query_timeout_spin.setValue(int(saved_timeout))
+        self.query_timeout_spin.setSuffix(" seconds")
+        form.addRow("Query Timeout:", self.query_timeout_spin)
+
+        timeout_help = QLabel("Maximum duration before an active worksheet query is automatically canceled (default: 300s).")
+        timeout_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        timeout_help.setWordWrap(True)
+        form.addRow("", timeout_help)
+
+        # Default Query Row Limit
+        self.default_row_limit_combo = self._create_combo(16)
+        self.default_row_limit_combo.addItems(["No Limit", "100", "500", "1000", "5000"])
+        saved_limit = getattr(self.main_window, "default_row_limit", "No Limit")
+        idx = self.default_row_limit_combo.findText(str(saved_limit))
+        if idx >= 0:
+            self.default_row_limit_combo.setCurrentIndex(idx)
+        form.addRow("Default Row Limit:", self.default_row_limit_combo)
+
+        limit_help = QLabel("Default LIMIT applied to new query worksheets to prevent high memory usage on large tables.")
+        limit_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        limit_help.setWordWrap(True)
+        form.addRow("", limit_help)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -347,7 +529,7 @@ class PreferencesDialog(QDialog):
         form.setSpacing(12)
 
         # 1. AI Provider
-        self.ai_provider_combo = QComboBox()
+        self.ai_provider_combo = self._create_combo(16)
         self.ai_provider_combo.addItems([
             "OpenAI",
             "Google Gemini",
@@ -363,6 +545,7 @@ class PreferencesDialog(QDialog):
 
         provider_help = QLabel("Select your preferred AI provider or local offline runner.")
         provider_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        provider_help.setWordWrap(True)
         form.addRow("", provider_help)
 
         # 2. Model Name
@@ -373,6 +556,7 @@ class PreferencesDialog(QDialog):
 
         model_help = QLabel("Leave empty to use recommended default for the selected provider.")
         model_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        model_help.setWordWrap(True)
         form.addRow("", model_help)
 
         # 3. API Key
@@ -384,6 +568,7 @@ class PreferencesDialog(QDialog):
 
         key_help = QLabel("Securely stored locally. If left blank, intelligent offline SQL analysis is used.")
         key_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        key_help.setWordWrap(True)
         form.addRow("", key_help)
 
         # 4. Custom Base URL
@@ -394,6 +579,7 @@ class PreferencesDialog(QDialog):
 
         url_help = QLabel("Custom endpoint. Defaults to provider official URL or http://localhost:11434/v1 for Ollama.")
         url_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        url_help.setWordWrap(True)
         form.addRow("", url_help)
 
         # Provider change handler to adjust placeholders
@@ -437,13 +623,30 @@ class PreferencesDialog(QDialog):
         """Restores setting values in UI to default states."""
         self.theme_combo.setCurrentText("Grey (Default)")
         self.default_conn_combo.setCurrentIndex(0)
+        self.confirm_tab_close_check.setChecked(True)
+        self.restore_session_check.setChecked(True)
+
         self.editor_font_combo.setCurrentFont(QFont("Consolas"))
         self.editor_font_size_spin.setValue(10)
         self.editor_tab_size_spin.setValue(4)
         self.editor_word_wrap_check.setChecked(False)
         self.editor_line_numbers_check.setChecked(True)
         self.editor_auto_uppercase_check.setChecked(True)
+        self.editor_autocomplete_check.setChecked(True)
+        self.editor_highlight_line_check.setChecked(True)
+
+        self.grid_null_text_edit.setText("NULL")
+        self.grid_date_format_combo.setCurrentText("YYYY-MM-DD HH:mm:ss")
+        self.grid_page_size_combo.setCurrentText("100")
+        self.grid_show_row_numbers_check.setChecked(True)
+        self.grid_copy_headers_check.setChecked(True)
+
+        self.pg_bin_edit.setText("")
+        self.oracle_bin_edit.setText("")
         self.use_wsl_check.setChecked(False)
+        self.query_timeout_spin.setValue(300)
+        self.default_row_limit_combo.setCurrentText("No Limit")
+
         self.ai_provider_combo.setCurrentText("OpenAI")
         self.ai_model_edit.setText("")
         self.ai_api_key_edit.setText("")
@@ -455,6 +658,8 @@ class PreferencesDialog(QDialog):
             # General
             "theme": self.theme_combo.currentText(),
             "default_connection_id": self.default_conn_combo.currentData(),
+            "confirm_tab_close": self.confirm_tab_close_check.isChecked(),
+            "restore_session_on_startup": self.restore_session_check.isChecked(),
 
             # Editor
             "editor_font_family": self.editor_font_combo.currentFont().family(),
@@ -463,11 +668,22 @@ class PreferencesDialog(QDialog):
             "editor_word_wrap": self.editor_word_wrap_check.isChecked(),
             "editor_line_numbers": self.editor_line_numbers_check.isChecked(),
             "editor_auto_uppercase": self.editor_auto_uppercase_check.isChecked(),
+            "editor_autocomplete": self.editor_autocomplete_check.isChecked(),
+            "editor_highlight_line": self.editor_highlight_line_check.isChecked(),
 
-            # Database Tools
+            # Results & Grid
+            "grid_null_text": self.grid_null_text_edit.text(),
+            "grid_datetime_format": self.grid_date_format_combo.currentText(),
+            "grid_page_size": self.grid_page_size_combo.currentText(),
+            "grid_show_row_numbers": self.grid_show_row_numbers_check.isChecked(),
+            "grid_copy_headers": self.grid_copy_headers_check.isChecked(),
+
+            # Database Tools & Execution
             "pg_bin_path": self.pg_bin_edit.text().strip(),
             "oracle_bin_path": self.oracle_bin_edit.text().strip(),
             "use_wsl": self.use_wsl_check.isChecked(),
+            "query_timeout_sec": self.query_timeout_spin.value(),
+            "default_row_limit": self.default_row_limit_combo.currentText(),
 
             # AI Assistant
             "ai_provider": self.ai_provider_combo.currentText(),

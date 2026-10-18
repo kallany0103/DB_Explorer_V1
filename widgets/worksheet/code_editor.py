@@ -968,3 +968,11 @@ class CodeEditor(QPlainTextEdit):
 
         if "editor_auto_uppercase" in prefs:
             self.auto_uppercase = bool(prefs["editor_auto_uppercase"])
+
+        if "editor_autocomplete" in prefs:
+            self.autocomplete_enabled = bool(prefs["editor_autocomplete"])
+
+        if "editor_highlight_line" in prefs:
+            self.highlight_line_enabled = bool(prefs["editor_highlight_line"])
+            if hasattr(self, "highlightCurrentLine"):
+                self.highlightCurrentLine()

@@ -26,12 +26,23 @@ def save_main_window_session(main_window, session_file):
         "use_wsl": getattr(main_window, "use_wsl", False),
         "theme": getattr(main_window, "theme", "Grey (Default)"),
         "default_connection_id": getattr(main_window, "default_connection_id", None),
+        "confirm_tab_close": getattr(main_window, "confirm_tab_close", True),
+        "restore_session_on_startup": getattr(main_window, "restore_session_on_startup", True),
         "editor_font_family": getattr(main_window, "editor_font_family", "Consolas"),
         "editor_font_size": getattr(main_window, "editor_font_size", 10),
         "editor_tab_size": getattr(main_window, "editor_tab_size", 4),
         "editor_word_wrap": getattr(main_window, "editor_word_wrap", False),
         "editor_line_numbers": getattr(main_window, "editor_line_numbers", True),
         "editor_auto_uppercase": getattr(main_window, "editor_auto_uppercase", True),
+        "editor_autocomplete": getattr(main_window, "editor_autocomplete", True),
+        "editor_highlight_line": getattr(main_window, "editor_highlight_line", True),
+        "query_timeout_sec": getattr(main_window, "query_timeout_sec", 300),
+        "default_row_limit": getattr(main_window, "default_row_limit", "No Limit"),
+        "grid_null_text": getattr(main_window, "grid_null_text", "NULL"),
+        "grid_datetime_format": getattr(main_window, "grid_datetime_format", "YYYY-MM-DD HH:mm:ss"),
+        "grid_page_size": getattr(main_window, "grid_page_size", "100"),
+        "grid_show_row_numbers": getattr(main_window, "grid_show_row_numbers", True),
+        "grid_copy_headers": getattr(main_window, "grid_copy_headers", True),
         "ai_provider": getattr(main_window, "ai_provider", "OpenAI"),
         "ai_model": getattr(main_window, "ai_model", ""),
         "ai_api_key": getattr(main_window, "ai_api_key", ""),
@@ -160,12 +171,23 @@ def restore_main_window_session(main_window, session_file):
         main_window.use_wsl = session_data.get("use_wsl", False)
         main_window.theme = session_data.get("theme", "Grey (Default)")
         main_window.default_connection_id = session_data.get("default_connection_id", None)
+        main_window.confirm_tab_close = session_data.get("confirm_tab_close", True)
+        main_window.restore_session_on_startup = session_data.get("restore_session_on_startup", True)
         main_window.editor_font_family = session_data.get("editor_font_family", "Consolas")
         main_window.editor_font_size = session_data.get("editor_font_size", 10)
         main_window.editor_tab_size = session_data.get("editor_tab_size", 4)
         main_window.editor_word_wrap = session_data.get("editor_word_wrap", False)
         main_window.editor_line_numbers = session_data.get("editor_line_numbers", True)
         main_window.editor_auto_uppercase = session_data.get("editor_auto_uppercase", True)
+        main_window.editor_autocomplete = session_data.get("editor_autocomplete", True)
+        main_window.editor_highlight_line = session_data.get("editor_highlight_line", True)
+        main_window.query_timeout_sec = session_data.get("query_timeout_sec", 300)
+        main_window.default_row_limit = session_data.get("default_row_limit", "No Limit")
+        main_window.grid_null_text = session_data.get("grid_null_text", "NULL")
+        main_window.grid_datetime_format = session_data.get("grid_datetime_format", "YYYY-MM-DD HH:mm:ss")
+        main_window.grid_page_size = session_data.get("grid_page_size", "100")
+        main_window.grid_show_row_numbers = session_data.get("grid_show_row_numbers", True)
+        main_window.grid_copy_headers = session_data.get("grid_copy_headers", True)
         main_window.ai_provider = session_data.get("ai_provider", "OpenAI")
         main_window.ai_model = session_data.get("ai_model", "")
         main_window.ai_api_key = session_data.get("ai_api_key", "")

@@ -10,12 +10,14 @@ Displays:
 
 import html
 import re
+from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser,
-    QPlainTextEdit, QLabel, QFrame, QApplication, QSplitter
+    QPlainTextEdit, QLabel, QFrame, QApplication, QSplitter,
+    QToolButton, QMenu
 )
-from PySide6.QtCore import Qt, Signal, QThread, QObject, QEvent
-from PySide6.QtGui import QFont, QColor, QTextCursor, QIcon, QKeySequence
+from PySide6.QtCore import Qt, Signal, QThread, QObject, QEvent, QSize
+from PySide6.QtGui import QFont, QColor, QTextCursor, QIcon, QKeySequence, QAction
 import qtawesome as qta
 
 from ui.components import SecondaryButton, PrimaryButton
@@ -29,16 +31,34 @@ def markdown_to_html(md_text: str) -> str:
     # Code blocks ```sql ... ```
     def replace_code_block(match):
         code = match.group(1).strip()
-        return f'<div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; margin: 8px 0; font-family: Consolas, monospace; font-size: 9pt; color: #0f172a; white-space: pre-wrap;">{code}</div>'
+        return (
+            f'<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; '
+            f'border-radius: 5px; padding: 8px 10px; margin: 8px 0; font-family: Consolas, monospace; '
+            f'font-size: 9pt; color: #0F172A; white-space: pre-wrap; line-height: 1.4;">{code}</div>'
+        )
 
     escaped = re.sub(r'```(?:sql|SQL)?(.*?)```', replace_code_block, escaped, flags=re.DOTALL)
 
     # Inline code `code`
-    escaped = re.sub(r'`([^`]+)`', r'<code style="background-color: #f1f5f9; color: #0969da; padding: 2px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 9pt;">\1</code>', escaped)
+    escaped = re.sub(
+        r'`([^`]+)`',
+        r'<code style="background-color: #F1F5F9; color: #0284C7; padding: 2px 5px; border-radius: 4px; font-family: Consolas, monospace; font-size: 8.5pt;">\1</code>',
+        escaped
+    )
 
-    # Headers (Toad style: simple bold section titles)
-    escaped = re.sub(r'^###\s*(.*?)$', r'<p style="margin: 10px 0 3px 0; color: #111827; font-weight: bold; font-size: 9.5pt;">\1</p>', escaped, flags=re.MULTILINE)
-    escaped = re.sub(r'^##\s*(.*?)$', r'<p style="margin: 12px 0 4px 0; color: #111827; font-weight: bold; font-size: 10.5pt;">\1</p>', escaped, flags=re.MULTILINE)
+    # Section Headers (Clean, Toad-style bold labels)
+    escaped = re.sub(
+        r'^###\s*(.*?)$',
+        r'<p style="margin: 12px 0 4px 0; color: #1E293B; font-weight: 700; font-size: 9.5pt; letter-spacing: -0.2px;">\1</p>',
+        escaped,
+        flags=re.MULTILINE
+    )
+    escaped = re.sub(
+        r'^##\s*(.*?)$',
+        r'<p style="margin: 14px 0 6px 0; color: #0F172A; font-weight: 700; font-size: 10.5pt;">\1</p>',
+        escaped,
+        flags=re.MULTILINE
+    )
 
     # Bold & Italic
     escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', escaped)
@@ -53,18 +73,18 @@ def markdown_to_html(md_text: str) -> str:
         stripped = line.strip()
         if stripped.startswith("- "):
             if not in_list:
-                formatted_lines.append('<ul style="margin: 4px 0; padding-left: 20px;">')
+                formatted_lines.append('<ul style="margin: 4px 0 8px 0; padding-left: 18px;">')
                 in_list = True
             content = stripped[2:]
-            formatted_lines.append(f'<li style="margin-bottom: 4px; color: #334155;">{content}</li>')
+            formatted_lines.append(f'<li style="margin-bottom: 5px; color: #334155; line-height: 1.45;">{content}</li>')
         else:
             if in_list:
                 formatted_lines.append('</ul>')
                 in_list = False
             if stripped:
-                formatted_lines.append(f'<p style="margin: 4px 0; line-height: 1.45; color: #1e293b;">{line}</p>')
+                formatted_lines.append(f'<p style="margin: 4px 0; line-height: 1.5; color: #334155;">{line}</p>')
             else:
-                formatted_lines.append('<div style="height: 4px;"></div>')
+                formatted_lines.append('<div style="height: 3px;"></div>')
 
     if in_list:
         formatted_lines.append('</ul>')
@@ -108,12 +128,12 @@ class ChatInputField(QPlainTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setPlaceholderText("Press Enter to send, or Shift+Enter to insert a new line.")
-        self.setFixedHeight(50)
+        self.setFixedHeight(48)
         self.setStyleSheet("""
             QPlainTextEdit {
                 border: none;
                 background-color: transparent;
-                font-size: 9.5pt;
+                font-size: 9pt;
                 color: #1f2937;
                 padding: 4px;
             }
@@ -131,7 +151,7 @@ class ChatInputField(QPlainTextEdit):
 
 
 class AIChatPanel(QWidget):
-    """Toad-style side panel for AI explanations and conversations."""
+    """Refined Toad-style side panel for AI explanations and conversations."""
     close_requested = Signal()
 
     def __init__(self, main_window, parent=None):
@@ -140,7 +160,9 @@ class AIChatPanel(QWidget):
         self.current_sql = ""
         self.db_type = "GENERIC"
         self.chat_history = []
+        self._last_raw_response = ""
         self._worker_thread = None
+        self.past_conversations = []  # List of saved conversation dicts: {"timestamp", "title", "messages", "sql", "preview"}
 
         self.setup_ui()
 
@@ -152,49 +174,126 @@ class AIChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ── 1. Header Toolbar ──────────────────────────────────────────
+        # ── 1. Top Header Bar ──────────────────────────────────────────
         header = QWidget()
         header.setObjectName("aiChatHeader")
         header.setFixedHeight(34)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(10, 2, 8, 2)
+        header_layout.setContentsMargins(8, 2, 6, 2)
         header_layout.setSpacing(4)
 
-        title_label = QLabel("Toad Chat")
+        # Sparkles/AI icon + Title
+        ai_icon = QLabel()
+        ai_icon.setPixmap(qta.icon("fa5s.magic", color="#2563EB").pixmap(13, 13))
+        ai_icon.setStyleSheet("background: transparent; border: none;")
+        header_layout.addWidget(ai_icon)
+
+        title_label = QLabel("USQL Chat")
         title_font = QFont()
         title_font.setBold(True)
         title_font.setPointSize(9)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #1f2937; border: none; background: transparent;")
+        title_label.setStyleSheet("color: #1F2937; border: none; background: transparent;")
         header_layout.addWidget(title_label)
 
-        self.btn_new_chat = SecondaryButton(qta.icon("fa5s.plus", color="#555555"))
+        # Action: New Chat (+)
+        self.btn_new_chat = QToolButton()
+        self.btn_new_chat.setIcon(qta.icon("fa5s.plus", color="#4B5563"))
+        self.btn_new_chat.setIconSize(QSize(12, 12))
+        self.btn_new_chat.setFixedSize(22, 22)
         self.btn_new_chat.setToolTip("New Chat")
-        self.btn_new_chat.setFixedSize(24, 24)
+        self.btn_new_chat.setStyleSheet("""
+            QToolButton {
+                border: 1px solid transparent;
+                border-radius: 3px;
+                background: transparent;
+            }
+            QToolButton:hover {
+                background: #E5E7EB;
+                border: 1px solid #D1D5DB;
+            }
+            QToolButton:pressed {
+                background: #D1D5DB;
+            }
+        """)
         self.btn_new_chat.clicked.connect(self.clear_chat)
         header_layout.addWidget(self.btn_new_chat)
 
-        self.btn_history = SecondaryButton(qta.icon("fa5s.history", color="#555555"))
-        self.btn_history.setToolTip("Clear & Reset History")
-        self.btn_history.setFixedSize(24, 24)
-        self.btn_history.clicked.connect(self.clear_chat)
+        # Action: Past Conversation
+        self.btn_history = QToolButton()
+        self.btn_history.setIcon(qta.icon("fa5s.history", color="#4B5563"))
+        self.btn_history.setIconSize(QSize(12, 12))
+        self.btn_history.setFixedSize(22, 22)
+        self.btn_history.setToolTip("Past Conversation")
+        self.btn_history.setStyleSheet("""
+            QToolButton {
+                border: 1px solid transparent;
+                border-radius: 3px;
+                background: transparent;
+            }
+            QToolButton:hover {
+                background: #E5E7EB;
+                border: 1px solid #D1D5DB;
+            }
+            QToolButton:pressed {
+                background: #D1D5DB;
+            }
+        """)
+        self.btn_history.clicked.connect(self.show_past_conversations)
         header_layout.addWidget(self.btn_history)
+
+        # Action: Copy last explanation to clipboard
+        self.btn_copy = QToolButton()
+        self.btn_copy.setIcon(qta.icon("fa5s.copy", color="#4B5563"))
+        self.btn_copy.setIconSize(QSize(12, 12))
+        self.btn_copy.setFixedSize(22, 22)
+        self.btn_copy.setToolTip("Copy Explanation")
+        self.btn_copy.setStyleSheet("""
+            QToolButton {
+                border: 1px solid transparent;
+                border-radius: 3px;
+                background: transparent;
+            }
+            QToolButton:hover {
+                background: #E5E7EB;
+                border: 1px solid #D1D5DB;
+            }
+            QToolButton:pressed {
+                background: #D1D5DB;
+            }
+        """)
+        self.btn_copy.clicked.connect(self._copy_explanation)
+        header_layout.addWidget(self.btn_copy)
 
         header_layout.addStretch()
 
-        disclaimer = QLabel("AI generated. Check for accuracy. <a href='#' style='color: #0066CC; text-decoration: none;'>Terms of use.</a>")
-        disclaimer.setStyleSheet("color: #6b7280; font-size: 8pt; border: none; background: transparent;")
+        disclaimer = QLabel("AI generated. Check for accuracy. <a href='#' style='color: #2563EB; text-decoration: none;'>Terms of use.</a>")
+        disclaimer.setStyleSheet("color: #6B7280; font-size: 8pt; border: none; background: transparent;")
         header_layout.addWidget(disclaimer)
 
-        self.btn_close = SecondaryButton("✕")
-        self.btn_close.setToolTip("Close Chat")
-        self.btn_close.setFixedSize(22, 22)
+        # Action: Close (✕)
+        self.btn_close = QToolButton()
+        self.btn_close.setIcon(qta.icon("fa5s.times", color="#4B5563"))
+        self.btn_close.setIconSize(QSize(11, 11))
+        self.btn_close.setFixedSize(20, 20)
+        self.btn_close.setToolTip("Close Panel")
+        self.btn_close.setStyleSheet("""
+            QToolButton {
+                border: 1px solid transparent;
+                border-radius: 3px;
+                background: transparent;
+            }
+            QToolButton:hover {
+                background: #FEE2E2;
+                border: 1px solid #FCA5A5;
+            }
+        """)
         self.btn_close.clicked.connect(self.close_requested.emit)
         header_layout.addWidget(self.btn_close)
 
         layout.addWidget(header)
 
-        # ── 2. Active Document / SQL Context Chip ───────────────────────
+        # ── 2. Active Document Context Chip ─────────────────────────────
         self.chip_frame = QFrame()
         self.chip_frame.setObjectName("aiChatChipFrame")
         self.chip_frame.setFixedHeight(28)
@@ -203,11 +302,12 @@ class AIChatPanel(QWidget):
         chip_layout.setSpacing(6)
 
         doc_icon = QLabel()
-        doc_icon.setPixmap(qta.icon("fa5s.times", color="#718096").pixmap(11, 11))
+        doc_icon.setPixmap(qta.icon("fa5s.file-code", color="#0284C7").pixmap(12, 12))
+        doc_icon.setStyleSheet("background: transparent; border: none;")
         chip_layout.addWidget(doc_icon)
 
         self.chip_label = QLabel("Active document")
-        self.chip_label.setStyleSheet("color: #4A5568; font-weight: 600; font-size: 8.5pt; border: none; background: transparent;")
+        self.chip_label.setStyleSheet("color: #334155; font-weight: 600; font-size: 8.5pt; border: none; background: transparent;")
         chip_layout.addWidget(self.chip_label)
         chip_layout.addStretch()
 
@@ -220,10 +320,10 @@ class AIChatPanel(QWidget):
         self.chat_view.setStyleSheet("""
             QTextBrowser {
                 border: none;
-                background-color: #ffffff;
-                padding: 14px;
-                color: #1f2937;
-                font-size: 9.5pt;
+                background-color: #FFFFFF;
+                padding: 14px 16px;
+                color: #1F2937;
+                font-size: 9pt;
             }
         """)
         layout.addWidget(self.chat_view, stretch=1)
@@ -240,7 +340,7 @@ class AIChatPanel(QWidget):
         bottom_layout.setContentsMargins(10, 8, 10, 10)
         bottom_layout.setSpacing(6)
 
-        # Input Frame
+        # Input Frame with modern border & focus state
         input_border_frame = QFrame()
         input_border_frame.setObjectName("aiChatInputBorder")
         input_frame_layout = QHBoxLayout(input_border_frame)
@@ -251,7 +351,9 @@ class AIChatPanel(QWidget):
         self.input_edit.submit_requested.connect(self.handle_send_message)
         input_frame_layout.addWidget(self.input_edit, stretch=1)
 
-        self.btn_send = PrimaryButton(qta.icon("fa5s.arrow-up", color="#ffffff"))
+        # Send Button with clean arrow-up
+        self.btn_send = PrimaryButton(qta.icon("fa5s.arrow-up", color="#FFFFFF"))
+        self.btn_send.setIconSize(QSize(13, 13))
         self.btn_send.setFixedSize(28, 28)
         self.btn_send.setToolTip("Send (Enter)")
         self.btn_send.clicked.connect(self.handle_send_message)
@@ -259,6 +361,12 @@ class AIChatPanel(QWidget):
 
         bottom_layout.addWidget(input_border_frame)
         layout.addWidget(bottom_container)
+
+    def _copy_explanation(self):
+        if self._last_raw_response:
+            QApplication.clipboard().setText(self._last_raw_response)
+        else:
+            QApplication.clipboard().setText(self.chat_view.toPlainText())
 
     def _append_system_message(self, md_text: str):
         html_content = markdown_to_html(md_text)
@@ -268,8 +376,9 @@ class AIChatPanel(QWidget):
     def _append_user_message(self, text: str):
         escaped = html.escape(text).replace("\n", "<br>")
         user_html = (
-            f"<div style='margin: 10px 0; text-align: right;'>"
-            f"<span style='background-color: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 12px; font-weight: 500; display: inline-block; font-size: 9pt;'>"
+            f"<div style='margin: 8px 0; text-align: right;'>"
+            f"<span style='background-color: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF; "
+            f"padding: 5px 12px; border-radius: 12px; font-weight: 500; display: inline-block; font-size: 8.5pt;'>"
             f"{escaped}"
             f"</span></div>"
         )
@@ -282,11 +391,11 @@ class AIChatPanel(QWidget):
         self.db_type = db_type
         
         preview = self.current_sql.splitlines()[0] if self.current_sql else ""
-        if len(preview) > 40:
-            preview = preview[:37] + "..."
-        self.chip_label.setText(f"Active Query: {preview or 'Empty'}")
+        if len(preview) > 36:
+            preview = preview[:33] + "..."
+        self.chip_label.setText(f"Active document: {preview or 'Empty'}")
 
-        self.clear_chat()
+        self.clear_chat(show_greeting=False)
         self._append_user_message("Explain this code using AI")
         self._trigger_ai_query(user_prompt=None)
 
@@ -310,7 +419,7 @@ class AIChatPanel(QWidget):
         self.input_edit.setEnabled(False)
 
         # Show typing indicator
-        self.chat_view.append("<p id='typing' style='color: #64748b; font-style: italic;'>Analyzing code with AI...</p>")
+        self.chat_view.append("<p id='typing' style='color: #64748B; font-style: italic; font-size: 8.5pt;'>Analyzing code with AI...</p>")
         self.chat_view.moveCursor(QTextCursor.MoveOperation.End)
 
         self._worker_thread = AIWorkerThread(
@@ -330,7 +439,7 @@ class AIChatPanel(QWidget):
         self.input_edit.setEnabled(True)
         self.input_edit.setFocus()
 
-        # Save to chat history
+        self._last_raw_response = response_text
         self.chat_history.append({"role": "assistant", "content": response_text})
 
         # Render HTML
@@ -343,7 +452,7 @@ class AIChatPanel(QWidget):
         self.btn_send.setEnabled(True)
         self.input_edit.setEnabled(True)
         self.chat_view.append(
-            f"<div style='color: #dc2626; background-color: #fef2f2; border: 1px solid #fecaca; padding: 8px; border-radius: 4px; margin: 8px 0;'>"
+            f"<div style='color: #DC2626; background-color: #FEF2F2; border: 1px solid #FECACA; padding: 8px 10px; border-radius: 4px; margin: 8px 0; font-size: 8.5pt;'>"
             f"<b>Error:</b> {html.escape(error_msg)}</div>"
         )
         self.chat_view.moveCursor(QTextCursor.MoveOperation.End)
@@ -352,13 +461,123 @@ class AIChatPanel(QWidget):
         doc = self.chat_view.document()
         cursor = QTextCursor(doc)
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        # Re-fetch without typing if needed or simple clear of last block
-        # In QTextBrowser, appending replacement is simplest:
         html_all = self.chat_view.toHtml()
-        cleaned_html = html_all.replace("<p id=\"typing\" style=\"color: #64748b; font-style: italic;\">Analyzing code with AI...</p>", "")
+        cleaned_html = html_all.replace("<p id=\"typing\" style=\"color: #64748B; font-style: italic; font-size: 8.5pt;\">Analyzing code with AI...</p>", "")
         self.chat_view.setHtml(cleaned_html)
         self.chat_view.moveCursor(QTextCursor.MoveOperation.End)
 
-    def clear_chat(self):
+    def _archive_current_conversation(self):
+        """Archives the current non-empty chat into past_conversations."""
+        if not self.chat_history:
+            return
+        preview = ""
+        for msg in self.chat_history:
+            if msg.get("role") == "user":
+                preview = msg.get("content", "").strip()
+                break
+        if not preview and self.current_sql:
+            preview = self.current_sql.splitlines()[0].strip()
+        if not preview:
+            preview = "Conversation"
+        if len(preview) > 35:
+            preview = preview[:32] + "..."
+
+        session_entry = {
+            "title": preview,
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "messages": list(self.chat_history),
+            "sql": self.current_sql,
+            "db_type": self.db_type,
+            "html": self.chat_view.toHtml(),
+            "last_raw_response": self._last_raw_response
+        }
+        self.past_conversations.insert(0, session_entry)
+        # Keep maximum 20 past conversations
+        if len(self.past_conversations) > 20:
+            self.past_conversations.pop()
+
+    def show_past_conversations(self):
+        """Displays a menu of past conversations to view or switch back to."""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #FFFFFF;
+                border: 1px solid #D1D5DB;
+                border-radius: 6px;
+                padding: 4px 0px;
+                font-size: 8.5pt;
+            }
+            QMenu::item {
+                padding: 6px 14px 6px 10px;
+                color: #1F2937;
+            }
+            QMenu::item:selected {
+                background-color: #EFF6FF;
+                color: #2563EB;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #E5E7EB;
+                margin: 4px 0px;
+            }
+        """)
+
+        if not self.past_conversations:
+            empty_action = menu.addAction("No past conversations yet")
+            empty_action.setEnabled(False)
+        else:
+            for idx, conv in enumerate(self.past_conversations):
+                title = conv.get("title", f"Chat #{idx + 1}")
+                time_str = conv.get("timestamp", "")
+                label = f"[{time_str}] {title}" if time_str else title
+                action = menu.addAction(qta.icon("fa5s.comment-dots", color="#6B7280"), label)
+                action.triggered.connect(lambda checked=False, c=conv: self._restore_conversation(c))
+
+            menu.addSeparator()
+            clear_all_action = menu.addAction(qta.icon("fa5s.trash-alt", color="#EF4444"), "Clear All History")
+            clear_all_action.triggered.connect(self._clear_past_conversations)
+
+        # Show menu aligned under btn_history
+        menu.exec(self.btn_history.mapToGlobal(self.btn_history.rect().bottomLeft()))
+
+    def _restore_conversation(self, conv: dict):
+        """Restores a past conversation into the chat view and state."""
+        # Archive current if active and distinct
+        if self.chat_history and self.chat_history != conv.get("messages", []):
+            self._archive_current_conversation()
+
+        self.chat_history = list(conv.get("messages", []))
+        self.current_sql = conv.get("sql", "")
+        self.db_type = conv.get("db_type", "GENERIC")
+        self._last_raw_response = conv.get("last_raw_response", "")
+
+        preview = self.current_sql.splitlines()[0] if self.current_sql else ""
+        if len(preview) > 36:
+            preview = preview[:33] + "..."
+        self.chip_label.setText(f"Active document: {preview or 'Empty'}")
+
+        if conv.get("html"):
+            self.chat_view.setHtml(conv.get("html"))
+            self.chat_view.moveCursor(QTextCursor.MoveOperation.End)
+        else:
+            self.chat_view.clear()
+            for msg in self.chat_history:
+                if msg.get("role") == "user":
+                    self._append_user_message(msg.get("content", ""))
+                else:
+                    html_content = markdown_to_html(msg.get("content", ""))
+                    self.chat_view.append(f"<div style='margin-bottom: 14px;'>{html_content}</div>")
+
+    def _clear_past_conversations(self):
+        """Clears stored past conversations."""
+        self.past_conversations.clear()
+
+    def clear_chat(self, show_greeting: bool = True):
+        """Starts a new clean chat, archiving the current one if not empty."""
+        self._archive_current_conversation()
         self.chat_history.clear()
+        self._last_raw_response = ""
         self.chat_view.clear()
+        if show_greeting:
+            self._append_system_message("Started a new chat session.")
+
