@@ -67,7 +67,7 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_describe_action.triggered.connect(main_window.describe_query)
 
     manager.ws_explain_ai_action = QAction(
-        qta.icon("fa5s.robot", color="#2563eb"), "Explain code using AI", manager
+        qta.icon("fa5s.magic", color="#3b82f6"), "Explain code using AI", manager
     )
     manager.ws_explain_ai_action.setToolTip("Explain code using AI (Ctrl+Alt+E)")
     manager.ws_explain_ai_action.setShortcut("Ctrl+Alt+E")

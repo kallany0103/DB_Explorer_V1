@@ -884,7 +884,7 @@ QPushButton#loginSkipBtn:hover {
 /* ── Toad AI Chat Panel ───────────────────────────── */
 QWidget#aiChatPanel {
     background-color: #ffffff;
-    border-left: 1px solid #D1D6DD;
+    border-left: 1px solid #C9CFD8;
 }
 QWidget#aiChatHeader {
     background-color: #ECEFF3;
@@ -897,18 +897,24 @@ QFrame#aiChatChipFrame {
 QTextBrowser#aiChatBrowser {
     border: none;
     background-color: #ffffff;
+    selection-background-color: #BFDBFE;
+    selection-color: #1E3A8A;
 }
 QWidget#aiChatBottomContainer {
     background-color: #F8FAFC;
-    border-top: 1px solid #D1D6DD;
+    border-top: 1px solid #E2E8F0;
 }
 QFrame#aiChatInputBorder {
-    border: 1px solid #B8BEC6;
-    border-radius: 4px;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
     background-color: #ffffff;
 }
+QFrame#aiChatInputBorder:hover {
+    border-color: #94A3B8;
+}
 QFrame#aiChatInputBorder:focus-within {
-    border: 1px solid #0066CC;
+    border: 1.5px solid #2563EB;
+    background-color: #ffffff;
 }
 
 
@@ -1127,16 +1133,19 @@ CSVEngineForm {
     color: #1E293B;
 }
 
-/* Unified & Standalone Connection Dialog input & label polish */
+/* Unified & Standalone Connection Dialog & Preferences Dialog input & label polish */
 QDialog#unifiedConnDialog,
-QDialog#standaloneConnDialog {
+QDialog#standaloneConnDialog,
+QDialog#preferencesDialog {
     background-color: #FFFFFF;
 }
 
 QDialog#unifiedConnDialog QLineEdit,
 QDialog#unifiedConnDialog QComboBox,
 QDialog#standaloneConnDialog QLineEdit,
-QDialog#standaloneConnDialog QComboBox {
+QDialog#standaloneConnDialog QComboBox,
+QDialog#preferencesDialog QLineEdit,
+QDialog#preferencesDialog QComboBox {
     min-height: 28px;
     max-height: 28px;
     border: 1px solid #CBD5E1;
@@ -1149,20 +1158,25 @@ QDialog#standaloneConnDialog QComboBox {
 QDialog#unifiedConnDialog QLineEdit:hover,
 QDialog#unifiedConnDialog QComboBox:hover,
 QDialog#standaloneConnDialog QLineEdit:hover,
-QDialog#standaloneConnDialog QComboBox:hover {
+QDialog#standaloneConnDialog QComboBox:hover,
+QDialog#preferencesDialog QLineEdit:hover,
+QDialog#preferencesDialog QComboBox:hover {
     border: 1px solid #94A3B8;
 }
 QDialog#unifiedConnDialog QLineEdit:focus,
 QDialog#unifiedConnDialog QComboBox:focus,
 QDialog#standaloneConnDialog QLineEdit:focus,
-QDialog#standaloneConnDialog QComboBox:focus {
+QDialog#standaloneConnDialog QComboBox:focus,
+QDialog#preferencesDialog QLineEdit:focus,
+QDialog#preferencesDialog QComboBox:focus {
     border: 1px solid #64748B;
     background-color: #FFFFFF;
     outline: none;
 }
 
 QDialog#unifiedConnDialog QComboBox QAbstractItemView,
-QDialog#standaloneConnDialog QComboBox QAbstractItemView {
+QDialog#standaloneConnDialog QComboBox QAbstractItemView,
+QDialog#preferencesDialog QComboBox QAbstractItemView {
     background-color: #FFFFFF;
     color: #111827;
     selection-background-color: #EFF6FF;
@@ -1173,7 +1187,8 @@ QDialog#standaloneConnDialog QComboBox QAbstractItemView {
     outline: none;
 }
 QDialog#unifiedConnDialog QComboBox QAbstractItemView::item,
-QDialog#standaloneConnDialog QComboBox QAbstractItemView::item {
+QDialog#standaloneConnDialog QComboBox QAbstractItemView::item,
+QDialog#preferencesDialog QComboBox QAbstractItemView::item {
     min-height: 24px;
     padding: 4px 8px;
     color: #111827;
@@ -1181,18 +1196,21 @@ QDialog#standaloneConnDialog QComboBox QAbstractItemView::item {
     border-radius: 4px;
 }
 QDialog#unifiedConnDialog QComboBox QAbstractItemView::item:hover,
-QDialog#standaloneConnDialog QComboBox QAbstractItemView::item:hover {
+QDialog#standaloneConnDialog QComboBox QAbstractItemView::item:hover,
+QDialog#preferencesDialog QComboBox QAbstractItemView::item:hover {
     background-color: #F3F4F6;
     color: #111827;
 }
 QDialog#unifiedConnDialog QComboBox QAbstractItemView::item:selected,
-QDialog#standaloneConnDialog QComboBox QAbstractItemView::item:selected {
+QDialog#standaloneConnDialog QComboBox QAbstractItemView::item:selected,
+QDialog#preferencesDialog QComboBox QAbstractItemView::item:selected {
     background-color: #EFF6FF;
     color: #1D4ED8;
 }
 
 QDialog#unifiedConnDialog QLabel,
-QDialog#standaloneConnDialog QLabel {
+QDialog#standaloneConnDialog QLabel,
+QDialog#preferencesDialog QLabel {
     font-size: 12px;
     color: #374151;
 }
