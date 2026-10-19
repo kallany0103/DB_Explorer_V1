@@ -388,6 +388,8 @@ class ResultsManager(QObject):
                     btn = header.button_group.button(target_index)
                     if btn:
                         btn.setChecked(True)
+                elif header and hasattr(header, "buttons") and target_index in header.buttons:
+                    header.buttons[target_index].setChecked(True)
                 elif header:
                     buttons = header.findChildren(QPushButton)
                     if buttons:

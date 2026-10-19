@@ -5,7 +5,7 @@ import qtawesome as qta
 from PySide6.QtWidgets import (
     QWidget, QTextEdit,
     QFrame, QComboBox, QLabel,
-    QMenu, QSplitter,
+    QMenu, QSplitter, QStackedWidget,
 )
 
 from PySide6.QtCore import (
@@ -466,20 +466,19 @@ class WorksheetManager(QWidget):
         ).upper()
         is_oracle = "ORACLE" in conn_code
 
-        if hasattr(self, "ws_dbms_output_action"):
-            self.ws_dbms_output_action.setVisible(is_oracle)
-            self.ws_dbms_output_action.blockSignals(True)
-            is_dbms = self.tab_dbms_output.get(tab, True)
-            self.ws_dbms_output_action.setChecked(is_dbms)
-            if is_dbms:
-                self.ws_dbms_output_action.setIcon(qta.icon("fa5s.terminal", color="#28a745"))
-            else:
-                self.ws_dbms_output_action.setIcon(qta.icon("fa5s.terminal", color="#888888"))
-            self.ws_dbms_output_action.blockSignals(False)
-
-        toolbar = getattr(tab, "toolbar_widget", None) if tab else None
-        if toolbar and hasattr(toolbar, "dbms_output_btn"):
-            toolbar.dbms_output_btn.setVisible(is_oracle)
+        if tab:
+            results_header = tab.findChild(QWidget, "resultsHeader")
+            if results_header and hasattr(results_header, "get_button"):
+                dbms_btn = results_header.get_button(7)
+                if dbms_btn:
+                    dbms_btn.setVisible(is_oracle)
+                    results_stack = tab.findChild(QStackedWidget, "results_stacked_widget")
+                    if not is_oracle and results_stack and results_stack.currentIndex() == 7:
+                        results_stack.setCurrentIndex(0)
+                        if hasattr(results_header, "button_group") and results_header.button_group:
+                            out_btn = results_header.button_group.button(0)
+                            if out_btn:
+                                out_btn.setChecked(True)
 
     def update_timer_label(self, label, tab):
         update_timer_label_action(self, label, tab)

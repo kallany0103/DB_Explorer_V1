@@ -1,25 +1,28 @@
 import json
-import os
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout,
-    QMessageBox, QLabel, QTabWidget, QWidget, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QAbstractItemView, QComboBox, QRadioButton, QButtonGroup,
-    QFileDialog
+    QAbstractItemView,
+    QButtonGroup,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from ui.components import PasswordBox, SearchBox, SecondaryButton, ToastNotification
-from workers.workers import WorkerThread
+from ui.components import PasswordBox, SearchBox
 from db.db_connections import get_pooled_oracle_connection
-from db.oracle_utils import (
-    build_oracle_dsn,
-    detect_oracle_client_version,
-    find_oracle_client_dir,
-    is_valid_oracle_client_dir,
-    normalize_client_path,
-    parse_oracle_dsn,
-    scan_oracle_client_dirs,
-)
+from db.oracle_utils import build_oracle_dsn, parse_oracle_dsn
 
 
 class OracleDataSourceDialog(QDialog):
@@ -110,58 +113,15 @@ class OracleDataSourceDialog(QDialog):
         self.role_combo = QComboBox()
         self.role_combo.addItems(["Normal", "SYSDBA", "SYSOPER", "SYSASM"])
 
+        form.addRow("Connection Name:", self.name_input)
+        form.addRow("Short Name:", self.short_name_input)
+        form.addRow("Host:", self.host_input)
+        form.addRow("Port:", self.port_input)
+        form.addRow("Database Type:", radio_layout)
+        form.addRow("Service / SID:", self.db_input)
+        form.addRow("Username:", self.user_input)
+        form.addRow("Password:", self.password_input)
         form.addRow("Role:", self.role_combo)
-
-        # Driver Engine: Thin vs Thick
-        self.driver_mode_group = QButtonGroup(self)
-        self.radio_thin = QRadioButton("Thin Mode (Pure Python - No Client Needed)")
-        self.radio_thick = QRadioButton("Thick Mode (Instant Client - Older DBs)")
-        self.radio_thin.setChecked(True)
-        self.driver_mode_group.addButton(self.radio_thin, 0)
-        self.driver_mode_group.addButton(self.radio_thick, 1)
-
-        driver_mode_layout = QHBoxLayout()
-        driver_mode_layout.setContentsMargins(0, 0, 0, 0)
-        driver_mode_layout.setSpacing(16)
-        driver_mode_layout.addWidget(self.radio_thin)
-        driver_mode_layout.addWidget(self.radio_thick)
-        driver_mode_layout.addStretch()
-
-        form.addRow("Driver Engine:", driver_mode_layout)
-
-        # Oracle Client / Driver selector widget
-        self.client_widget = QWidget()
-        client_layout = QHBoxLayout(self.client_widget)
-        client_layout.setContentsMargins(0, 0, 0, 0)
-        client_layout.setSpacing(8)
-
-        self.client_dir_combo = QComboBox()
-        self.client_dir_combo.setToolTip("Select or scan Oracle Instant Client library. Bundled client supports Oracle 11.2+.")
-
-        self.client_browse_btn = SecondaryButton("Browse...")
-        self.client_browse_btn.setFixedWidth(80)
-        self.client_browse_btn.clicked.connect(self._browse_custom_client_dir)
-
-        self.client_scan_btn = SecondaryButton("Scan")
-        self.client_scan_btn.setFixedWidth(80)
-        self.client_scan_btn.clicked.connect(self._scan_for_clients)
-
-        client_layout.addWidget(self.client_dir_combo)
-        client_layout.addWidget(self.client_browse_btn)
-        client_layout.addWidget(self.client_scan_btn)
-
-        self.client_row_label = QLabel("Oracle Client:")
-        form.addRow(self.client_row_label, self.client_widget)
-        self._populate_client_dirs()
-
-        self.radio_thin.toggled.connect(self._on_driver_mode_toggled)
-        self.radio_thick.toggled.connect(self._on_driver_mode_toggled)
-        self._on_driver_mode_toggled()
-
-        self.dsn_input = QLineEdit()
-        self.dsn_input.setPlaceholderText("Optional TNS Name / Easy Connect string")
-
-        form.addRow("DSN (Optional):", self.dsn_input)
 
         self.tabs.addTab(self.tab_general, "General")
 
@@ -248,7 +208,6 @@ class OracleDataSourceDialog(QDialog):
             self.db_input.setText(self.conn_data.get("database") or self.conn_data.get("database_name") or "")
             self.user_input.setText(self.conn_data.get("user") or self.conn_data.get("username") or "")
             self.password_input.setText(self.conn_data.get("password") or "")
-            self.dsn_input.setText(self.conn_data.get("dsn") or "")
 
             role = self.conn_data.get("role", "Normal") or "Normal"
             role_idx = self.role_combo.findText(role)
@@ -263,155 +222,8 @@ class OracleDataSourceDialog(QDialog):
                 else:
                     self.radio_service.setChecked(True)
 
-            driver_mode = str(self.conn_data.get("driver_mode", "")).lower()
-            if driver_mode == "thick" or self.conn_data.get("oracle_client_dir"):
-                self.radio_thick.setChecked(True)
-            else:
-                self.radio_thin.setChecked(True)
-
-            saved_client = self.conn_data.get("oracle_client_dir")
-            if saved_client:
-                idx = self.client_dir_combo.findData(saved_client)
-                if idx >= 0:
-                    self.client_dir_combo.setCurrentIndex(idx)
-                else:
-                    ver = detect_oracle_client_version(saved_client)
-                    self.client_dir_combo.addItem(f"[Custom] Instant Client {ver} - {saved_client}", saved_client)
-                    self.client_dir_combo.setCurrentIndex(self.client_dir_combo.count() - 1)
-
             if self._preselected_tables:
                 self.fetchRemoteTables(auto_check_preselected=True)
-
-    def _on_driver_mode_toggled(self) -> None:
-        is_thick = self.radio_thick.isChecked()
-        self.client_widget.setVisible(is_thick)
-        self.client_row_label.setVisible(is_thick)
-
-    def _browse_custom_client_dir(self) -> None:
-        current_path = self.client_dir_combo.currentData() or ""
-        directory = QFileDialog.getExistingDirectory(
-            self, "Select Oracle Instant Client Directory", current_path
-        )
-        if not directory:
-            return
-
-        is_valid, missing = is_valid_oracle_client_dir(directory)
-        if not is_valid:
-            QMessageBox.warning(
-                self,
-                "Incomplete Oracle Client",
-                "The selected directory is missing required Oracle Instant Client files:\n\n"
-                + "\n".join(f"• {m}" for m in missing)
-                + "\n\nPlease select an extracted Oracle Instant Client directory containing all required libraries (oci.dll, oraociei/oraociicus DLL, and orannzsbb DLL).",
-            )
-            return
-
-        norm_folder = normalize_client_path(directory)
-        ver = detect_oracle_client_version(norm_folder)
-        label = f"Oracle Instant Client {ver} - {norm_folder}"
-
-        target_norm = os.path.normcase(norm_folder)
-        existing_idx = -1
-        for i in range(self.client_dir_combo.count()):
-            item_data = self.client_dir_combo.itemData(i)
-            if item_data and os.path.normcase(normalize_client_path(str(item_data))) == target_norm:
-                existing_idx = i
-                break
-
-        if existing_idx >= 0:
-            self.client_dir_combo.setCurrentIndex(existing_idx)
-            ToastNotification.show_toast(self, "Client directory is already selected.", kind="info")
-        else:
-            if self.client_dir_combo.count() == 1 and not self.client_dir_combo.itemData(0):
-                self.client_dir_combo.clear()
-            self.client_dir_combo.insertItem(0, label, norm_folder)
-            self.client_dir_combo.setItemData(0, norm_folder, Qt.ItemDataRole.ToolTipRole)
-            self.client_dir_combo.setCurrentIndex(0)
-            ToastNotification.show_toast(self, f"Selected Oracle Instant Client {ver}.", kind="success")
-
-    def _scan_for_clients(self) -> None:
-        self.client_scan_btn.start_loading("Scanning")
-        current_data = self.client_dir_combo.currentData()
-
-        import time
-
-        def _do_scan():
-            t0 = time.time()
-            results = scan_oracle_client_dirs()
-            elapsed = time.time() - t0
-            if elapsed < 0.35:
-                time.sleep(0.35 - elapsed)
-            return results
-
-        self._scan_worker = WorkerThread(_do_scan)
-        self._scan_worker.finished_signal.connect(
-            lambda res, err: self._on_scan_finished(res, err, current_data)
-        )
-        self._scan_worker.start()
-
-    def _on_scan_finished(self, results, error, previous_selection) -> None:
-        self.client_scan_btn.stop_loading()
-        if error:
-            ToastNotification.show_toast(self, f"Scan failed: {error}", kind="error")
-            return
-
-        detected = results or []
-        self._apply_detected_clients(detected, previous_selection=previous_selection)
-        count = len(detected)
-        if count > 0:
-            ToastNotification.show_toast(self, f"Found {count} Oracle Instant Client(s).", kind="success")
-        else:
-            ToastNotification.show_toast(
-                self, "No Oracle Instant Client detected. Click Browse to select.", kind="warning"
-            )
-
-    def _apply_detected_clients(self, detected: list, previous_selection: str | None = None) -> None:
-        self.client_dir_combo.clear()
-        if not detected:
-            self.client_dir_combo.addItem("(No Oracle Instant Client detected - Click Browse to select)", "")
-            return
-
-        seen_norm = set()
-        for item in detected:
-            raw_path = item.get("path") or ""
-            path = normalize_client_path(raw_path)
-            if not path:
-                continue
-            norm_k = os.path.normcase(path)
-            if norm_k in seen_norm:
-                continue
-            seen_norm.add(norm_k)
-            label = item.get("label") or f"Oracle Instant Client - {path}"
-            self.client_dir_combo.addItem(label, path)
-            self.client_dir_combo.setItemData(self.client_dir_combo.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
-
-        selected_idx = -1
-        if previous_selection:
-            prev_norm = os.path.normcase(normalize_client_path(previous_selection))
-            for i in range(self.client_dir_combo.count()):
-                data = self.client_dir_combo.itemData(i)
-                if data and os.path.normcase(normalize_client_path(str(data))) == prev_norm:
-                    selected_idx = i
-                    break
-
-        if selected_idx >= 0:
-            self.client_dir_combo.setCurrentIndex(selected_idx)
-        else:
-            best = find_oracle_client_dir()
-            if best:
-                best_norm = os.path.normcase(normalize_client_path(best))
-                for i in range(self.client_dir_combo.count()):
-                    data = self.client_dir_combo.itemData(i)
-                    if data and os.path.normcase(normalize_client_path(str(data))) == best_norm:
-                        self.client_dir_combo.setCurrentIndex(i)
-                        break
-            if self.client_dir_combo.currentIndex() < 0 and self.client_dir_combo.count() > 0:
-                self.client_dir_combo.setCurrentIndex(0)
-
-    def _populate_client_dirs(self) -> None:
-        """Scan and populate available Oracle Client directories."""
-        detected = scan_oracle_client_dirs()
-        self._apply_detected_clients(detected)
 
     def _apply_styles(self):
         self.setStyleSheet("""
@@ -431,9 +243,6 @@ class OracleDataSourceDialog(QDialog):
         """)
 
     def _get_dsn(self):
-        dsn = self.dsn_input.text().strip()
-        if dsn:
-            return dsn
         host = self.host_input.text().strip() or "localhost"
         port = self.port_input.text().strip() or "1521"
         service_name = self.db_input.text().strip() or "ORCL"
@@ -597,8 +406,8 @@ class OracleDataSourceDialog(QDialog):
             "password": password,
             "role": self.role_combo.currentText(),
             "oracle_db_type": "service_name" if self.radio_service.isChecked() else "sid",
-            "driver_mode": "thick" if self.radio_thick.isChecked() else "thin",
-            "oracle_client_dir": (self.client_dir_combo.currentData() or None) if self.radio_thick.isChecked() else None,
+            "driver_mode": "thin",
+            "oracle_client_dir": None,
             "dsn": dsn,
             "schema_name": f"{short_name}_schema",
             "remote_schema": user.upper() if user else "SYSTEM",

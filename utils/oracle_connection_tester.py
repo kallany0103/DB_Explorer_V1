@@ -26,7 +26,7 @@ def main() -> None:
     driver_mode = str(data.get("driver_mode", "")).lower()
     client_dir = data.get("oracle_client_dir")
 
-    if driver_mode == "thick" or client_dir:
+    if "thick" in driver_mode or client_dir:
         from db.oracle_utils import get_last_thick_mode_error, init_oracle_thick_mode
 
         if not init_oracle_thick_mode(client_dir):
@@ -42,6 +42,7 @@ def main() -> None:
         DEFAULT_ORACLE_PORT,
         build_oracle_dsn,
         diagnose_oracle_error,
+        find_default_tns_admin_dir,
         get_oracle_auth_mode,
     )
 
@@ -61,8 +62,9 @@ def main() -> None:
     mode = get_oracle_auth_mode(data.get("role"))
     if mode != oracledb.AUTH_MODE_DEFAULT:
         kwargs["mode"] = mode
-    if data.get("config_dir") or data.get("tns_admin"):
-        kwargs["config_dir"] = data.get("config_dir") or data.get("tns_admin")
+    config_dir = data.get("config_dir") or data.get("tns_admin") or find_default_tns_admin_dir()
+    if config_dir and oracledb.is_thin_mode():
+        kwargs["config_dir"] = config_dir
 
     try:
         conn = oracledb.connect(**kwargs)

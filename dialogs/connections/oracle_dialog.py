@@ -26,7 +26,7 @@ class OracleConnectionDialog(BaseConnectionDialog):
             type_id=type_id,
             group_id=group_id,
             title="Oracle",
-            subtitle="Configure Oracle connection using Basic (Service/SID), TNS, or Custom DSN.",
+            subtitle="Configure Oracle connection using Direct (Service/SID) or TNS.",
             min_size=(640, 560),
             form_cls=OracleEngineForm,
         )

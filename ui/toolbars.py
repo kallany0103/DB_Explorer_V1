@@ -145,16 +145,6 @@ class WorksheetToolbar(QWidget):
         self.rollback_btn.setToolTip("Rollback Transaction")
         layout.addWidget(self.rollback_btn)
 
-        # DBMS Output (Oracle SERVEROUTPUT)
-        if hasattr(manager, "ws_dbms_output_action"):
-            self.dbms_output_btn = ToolbarActionButton(icon=manager.ws_dbms_output_action.icon())
-            self.dbms_output_btn.setDefaultAction(manager.ws_dbms_output_action)
-            self.dbms_output_btn.setIconSize(QSize(16, 16))
-            self.dbms_output_btn.setMinimumWidth(32)
-            self.dbms_output_btn.setToolTip("Enable DBMS Output (Oracle SERVEROUTPUT)")
-            self.dbms_output_btn.setVisible(False)
-            layout.addWidget(self.dbms_output_btn)
-
         layout.addWidget(manager.create_vertical_separator())
 
         self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))

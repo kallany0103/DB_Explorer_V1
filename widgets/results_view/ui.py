@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from widgets.results_view.dbms_output import create_dbms_output_view
 from widgets.results_view.explain import create_explain_view
 from widgets.results_view.messages import create_message_view
 from widgets.results_view.notifications import create_notification_view
@@ -30,6 +31,7 @@ def create_results_ui(manager, tab_content):
     results_tabs = [
         ("Output", 100, 0),
         ("Messages", 100, 1),
+        ("DBMS Output", 115, 7),
         ("Notifications", 120, 2),
         ("Processes", 100, 3),
         ("Explain", 100, 5)
@@ -131,6 +133,11 @@ def create_results_ui(manager, tab_content):
     
     placeholder_layout.addWidget(placeholder_content)
     results_stack.addWidget(placeholder_widget)
+    results_stack.addWidget(create_dbms_output_view(manager, tab_content))
+
+    dbms_btn = results_header.get_button(7)
+    if dbms_btn:
+        dbms_btn.setVisible(False)
 
     results_stack.setCurrentIndex(6)
 
