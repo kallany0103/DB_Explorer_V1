@@ -28,6 +28,7 @@ from widgets.worksheet.query.query_runtime import (
 )
 from widgets.worksheet.query.query_termination import finalize_terminated_query
 from widgets.worksheet.query.query_view_state import show_error_view
+from widgets.results_view.dbms_output import append_dbms_output
 from widgets.results_view.perf_metrics import perf_elapsed_ms, perf_mark, perf_now, perf_record
 from workers import RunnableQuery, QuerySignals
 
@@ -418,10 +419,9 @@ def handle_query_error(manager, current_tab, output_tab_index, conn_data, query,
 
     set_tab_status(current_tab, "")
     dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
-    display_error = error_message
     if dbms_output:
-        display_error = f"--- DBMS_OUTPUT (before error) ---\n{dbms_output}\n\n-------------------\n{error_message}"
-    append_error_message(current_tab, display_error)
+        append_dbms_output(current_tab, dbms_output)
+    append_error_message(current_tab, error_message)
 
     show_error_view(current_tab)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeoutError
 import logging
 import os
 import re
@@ -69,13 +70,17 @@ def detect_oracle_client_version(dir_path: Path | str) -> str:
 
 
 def is_valid_oracle_client_dir(dir_path: Path | str) -> tuple[bool, list[str]]:
-    """Verify that all required Oracle Instant Client files exist in the directory.
+    """Verify that all required Oracle Instant Client or local Oracle client files exist in the directory.
 
     Returns (is_valid, missing_files_list).
     """
     p = Path(dir_path)
     if not p.is_dir():
         return False, ["Directory does not exist"]
+
+    # If user selected an ORACLE_HOME root, resolve to its bin/ subfolder where oci.dll lives
+    if (p / "bin" / "oci.dll").is_file() and not (p / "oci.dll").is_file():
+        p = p / "bin"
 
     try:
         files = {f.name.lower() for f in p.iterdir() if f.is_file()}
@@ -86,22 +91,34 @@ def is_valid_oracle_client_dir(dir_path: Path | str) -> tuple[bool, list[str]]:
     if sys.platform == "win32":
         if "oci.dll" not in files:
             missing.append("oci.dll (Oracle Call Interface)")
+        # Supports Oracle Instant Client (oraociei/oraociicus) and Full DB/Client (orasql/oraclient/oracommon)
         has_engine = any(
-            f.startswith("oraociei") or f.startswith("oraociicus") or f.startswith("orasql")
+            f.startswith("oraociei")
+            or f.startswith("oraociicus")
+            or f.startswith("orasql")
+            or f.startswith("oraclient")
+            or f.startswith("oracommon")
             for f in files
         )
         if not has_engine:
-            missing.append("oraociei*.dll / oraociicus*.dll (OCI Data / Client Engine)")
+            missing.append("oraociei*.dll / oraociicus*.dll / oraclient*.dll (OCI Client Engine)")
+        # Supports Instant Client (orannzsbb*.dll) and Full Client/Home (orannz*.dll)
         has_security = any(f.startswith("orannz") for f in files)
         if not has_security:
-            missing.append("orannzsbb*.dll (Network Security Library)")
+            missing.append("orannz*.dll (Network Security Library)")
     else:
         has_oci = any(f.startswith("libclntsh") for f in files)
         if not has_oci:
             missing.append("libclntsh (Client Library)")
-        has_engine = any(f.startswith("libociei") or f.startswith("libociicus") for f in files)
+        has_engine = any(
+            f.startswith("libociei")
+            or f.startswith("libociicus")
+            or f.startswith("libsql")
+            or f.startswith("libclntshcore")
+            for f in files
+        )
         if not has_engine:
-            missing.append("libociei / libociicus (Client Engine)")
+            missing.append("libociei / libociicus / libclntshcore (Client Engine)")
         has_nnz = any(f.startswith("libnnz") for f in files)
         if not has_nnz:
             missing.append("libnnz (Security Library)")
@@ -115,6 +132,8 @@ def normalize_client_path(path: str | Path | None) -> str:
         return ""
     try:
         p = Path(path).resolve()
+        if (p / "bin" / "oci.dll").is_file() and not (p / "oci.dll").is_file():
+            p = p / "bin"
         return os.path.normpath(str(p))
     except Exception:
         return os.path.normpath(str(path))
@@ -152,15 +171,17 @@ def _find_user_dir_candidates() -> list[Path]:
         user_home = Path.home()
         if not user_home.is_dir():
             return candidates
-        for sub_name in ("Downloads", "Documents", "Desktop", "tools", "oracle"):
+        for sub_name in ("Downloads", "Documents", "Desktop", "tools", "oracle", "app"):
             user_sub = user_home / sub_name
             if not user_sub.is_dir():
                 continue
             candidates.append(user_sub)
             try:
                 for child in user_sub.iterdir():
-                    if child.is_dir() and any(k in child.name.lower() for k in ("oracle", "instant", "client")):
+                    if child.is_dir():
                         candidates.append(child)
+                        if any(k in child.name.lower() for k in _ORACLE_DIR_KEYWORDS):
+                            candidates.extend(_scan_dir_tree(child, max_depth=2))
             except Exception:
                 pass
     except Exception:
@@ -170,7 +191,7 @@ def _find_user_dir_candidates() -> list[Path]:
 
 def _scan_dir_tree(root: Path, max_depth: int = 2) -> list[Path]:
     """Recursively search for Oracle client candidate directories up to max_depth."""
-    candidates: list[Path] = []
+    candidates: list[Path] = [root]
     queue: list[tuple[Path, int]] = [(root, 0)]
 
     while queue:
@@ -210,6 +231,7 @@ def _find_drive_candidates() -> list[Path]:
                 if name_lower in _SKIP_DIR_NAMES or name_lower.startswith("$"):
                     continue
                 if any(k in name_lower for k in _ORACLE_DIR_KEYWORDS):
+                    candidates.append(item)
                     candidates.extend(_scan_dir_tree(item, max_depth=2))
         except Exception:
             continue
@@ -361,7 +383,8 @@ def diagnose_oracle_error(error: str | Exception) -> str:
     if "ORA-12514" in msg:
         diagnostics.append(
             "ORA-12514: TNS listener does not know of the requested SERVICE_NAME. "
-            "If this is an older Oracle version (such as 10g, 11g XE), try switching Database Type to 'SID'."
+            "If this is an older Oracle version (such as 10g, 11g XE), try switching Database Type to 'SID'. "
+            "For local instances, run 'lsnrctl status' to verify registered service names."
         )
 
     if "ORA-12505" in msg:
@@ -373,7 +396,8 @@ def diagnose_oracle_error(error: str | Exception) -> str:
     if "ORA-01017" in msg:
         diagnostics.append(
             "ORA-01017: Invalid username or password, or user is not authorized to log on. "
-            "Verify your username, password, and the selected Role (e.g. Normal vs SYSDBA)."
+            "Note for local Oracle XE/FREE (18c+): User schemas exist inside the Pluggable Database "
+            "(e.g. 'XEPDB1' or 'FREEPDB1'), not the root container ('XE' or 'FREE')."
         )
 
     if "DPY-2019" in msg:
@@ -405,6 +429,8 @@ def find_default_tns_admin_dir() -> str | None:
         admin_candidate = Path(client_dir) / "network" / "admin"
         if admin_candidate.is_dir():
             return str(admin_candidate)
+        if (Path(client_dir) / "tnsnames.ora").is_file():
+            return str(client_dir)
 
     return None
 
@@ -546,6 +572,54 @@ def get_oracle_auth_mode(role_name: str | None) -> int:
     return _oracledb.AUTH_MODE_DEFAULT
 
 
+def _isolated_oracle_test_worker(conn_data: dict[str, Any]) -> tuple[bool, str]:
+    """Worker function executed inside a separate child process for isolated connection testing."""
+    driver_mode = str(conn_data.get("driver_mode", "")).lower()
+    client_dir = conn_data.get("oracle_client_dir")
+
+    if "thick" in driver_mode or client_dir:
+        if not init_oracle_thick_mode(client_dir):
+            err = get_last_thick_mode_error() or "Unknown error initializing Oracle Instant Client"
+            target = client_dir or "system default"
+            return (
+                False,
+                f'Oracle Thick Mode (Instant Client) failed to initialize with client directory "{target}":\n\n{err}',
+            )
+
+    import oracledb
+
+    dsn = conn_data.get("dsn")
+    if not dsn:
+        host = conn_data.get("host", "localhost")
+        port = conn_data.get("port") or DEFAULT_ORACLE_PORT
+        db_name = conn_data.get("database") or conn_data.get("service_name", "")
+        db_type = conn_data.get("oracle_db_type") or conn_data.get("database_type", "service_name")
+        dsn = build_oracle_dsn(host, port, db_name, db_type=db_type)
+
+    kwargs: dict[str, Any] = {
+        "user": conn_data.get("user", ""),
+        "password": conn_data.get("password", ""),
+        "dsn": dsn,
+    }
+    mode = get_oracle_auth_mode(conn_data.get("role"))
+    if mode != oracledb.AUTH_MODE_DEFAULT:
+        kwargs["mode"] = mode
+    config_dir = conn_data.get("config_dir") or conn_data.get("tns_admin") or find_default_tns_admin_dir()
+    if config_dir and oracledb.is_thin_mode():
+        kwargs["config_dir"] = config_dir
+
+    try:
+        conn = oracledb.connect(**kwargs)
+        conn.close()
+        return True, "Connected successfully"
+    except Exception as e:
+        advice = diagnose_oracle_error(e)
+        msg = f"Oracle connection error: {e}"
+        if advice:
+            msg += f"\n\nDiagnostic advice:\n{advice}"
+        return False, msg
+
+
 def test_oracle_connection_isolated(conn_data: dict[str, Any]) -> tuple[bool, str]:
     """Test Oracle database connectivity inside an isolated subprocess.
 
@@ -553,29 +627,17 @@ def test_oracle_connection_isolated(conn_data: dict[str, Any]) -> tuple[bool, st
     or testing Thick mode never mutates or locks the main application process's
     python-oracledb C-driver state (preventing DPY-2019 errors).
     """
-    import json
-    import subprocess
-    import sys
-
-    tester_script = Path(__file__).resolve().parent.parent / "utils" / "oracle_connection_tester.py"
-
     try:
-        proc = subprocess.run(
-            [sys.executable, str(tester_script), json.dumps(conn_data)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        stdout = proc.stdout.strip()
-        stderr = proc.stderr.strip()
-        output = stdout or stderr
-        if proc.returncode == 0:
-            return True, output or "Connected successfully to Oracle database!"
-        return False, output or "Failed to connect to Oracle database."
-    except subprocess.TimeoutExpired:
+        with ProcessPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_isolated_oracle_test_worker, conn_data)
+            return future.result(timeout=30)
+    except FuturesTimeoutError:
         return False, "Connection test timed out after 30 seconds."
     except Exception as exc:
-        return False, f"Failed to run connection test process:\n{exc}"
+        logger.warning(
+            f"ProcessPoolExecutor failed for Oracle connection test ({exc}), falling back to direct test"
+        )
+        return _isolated_oracle_test_worker(conn_data)
 
 
 def enable_dbms_output(cursor: Any, buffer_size: int | None = None) -> None:

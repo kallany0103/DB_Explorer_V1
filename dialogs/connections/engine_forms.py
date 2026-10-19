@@ -4,7 +4,7 @@ import os
 import json
 import sqlite3
 from typing import Any
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QRadioButton,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -28,16 +27,10 @@ import db
 from db.db_retrieval import get_groups_by_type
 from db.oracle_utils import (
     build_oracle_dsn,
-    detect_oracle_client_version,
     find_default_tns_admin_dir,
-    find_oracle_client_dir,
     get_tns_names,
-    is_valid_oracle_client_dir,
-    normalize_client_path,
-    scan_oracle_client_dirs,
 )
-from ui.components import CompactButton, PasswordBox, ToastNotification
-from workers.workers import WorkerThread
+from ui.components import CompactButton, PasswordBox
 
 
 def create_static_header(title: str) -> QWidget:
@@ -244,11 +237,11 @@ class BaseEngineForm(QWidget):
 
 
 class OracleEngineForm(BaseEngineForm):
-    """Configuration form for Oracle (Basic, TNS, Custom + Thin/Thick Driver Engine)."""
+    """Configuration form for Oracle (Direct and TNS)."""
 
     code = "ORACLE_DB"
     title_text = "Oracle"
-    subtitle_text = "Service name, SID, TNS alias or descriptor"
+    subtitle_text = "Direct (Host, Port, Service/SID) or TNS"
     icon_path = "assets/oracle.svg"
 
     def setup_fields(self) -> None:
@@ -263,9 +256,8 @@ class OracleEngineForm(BaseEngineForm):
         # Connection Mode
         self.conn_type_combo = QComboBox()
         self.conn_type_combo.addItems([
-            "EZConnect (host, port and service name)",
-            "TNS alias",
-            "Custom Connection String / DSN",
+            "Direct",
+            "TNS",
         ])
         self.conn_type_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.server_form.addRow(make_field_label("Connect by"), self.conn_type_combo)
@@ -289,7 +281,7 @@ class OracleEngineForm(BaseEngineForm):
         self.db_type_group.addButton(self.radio_sid, 1)
 
         self.db_input = QLineEdit()
-        self.db_input.setPlaceholderText("e.g. ORCL, XEPDB1")
+        self.db_input.setPlaceholderText("e.g. XEPDB1, FREEPDB1, ORCL (use PDB for local XE/FREE)")
 
         db_type_layout.addWidget(self.radio_service)
         db_type_layout.addWidget(self.radio_sid)
@@ -327,18 +319,12 @@ class OracleEngineForm(BaseEngineForm):
         tns_alias_layout.addWidget(self.tns_refresh_btn)
 
         self.server_form.addRow(make_field_label("TNS Folder"), self.tns_dir_widget)
-        self.server_form.addRow(make_field_label("Network Alias"), self.tns_alias_widget)
+        self.server_form.addRow(make_field_label("TNS Name"), self.tns_alias_widget)
         self._populate_tns_aliases()
-
-        # Mode 2: Custom Mode
-        self.dsn_input = QLineEdit()
-        self.dsn_input.setPlaceholderText("e.g. host:1521/service_name or (DESCRIPTION=...)")
-        self.server_form.addRow(make_field_label("Connection String"), self.dsn_input)
 
         # Mode row grouping for visibility toggling
         self.basic_rows = [self.host_input, self.port_input, self.db_type_widget]
         self.tns_rows = [self.tns_dir_widget, self.tns_alias_widget]
-        self.custom_rows = [self.dsn_input]
 
         # Credentials & Role
         self.user_input = QLineEdit()
@@ -359,71 +345,11 @@ class OracleEngineForm(BaseEngineForm):
 
         self.main_layout.addLayout(self.server_form)
 
-        # Driver Engine Section
-        self.main_layout.addWidget(create_static_header("DRIVER ENGINE"))
-
-        self.driver_form = QFormLayout()
-        self.driver_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.driver_form.setContentsMargins(0, 0, 0, 0)
-        self.driver_form.setHorizontalSpacing(14)
-        self.driver_form.setVerticalSpacing(8)
-
-        self.driver_mode_group = QButtonGroup(self)
-        self.radio_thin = QRadioButton("Thin mode (Default)")
-        self.radio_thick = QRadioButton("Thick mode (Instant Client)")
-        self.radio_thin.setChecked(True)
-        self.driver_mode_group.addButton(self.radio_thin, 0)
-        self.driver_mode_group.addButton(self.radio_thick, 1)
-
-        driver_mode_layout = QHBoxLayout()
-        driver_mode_layout.setContentsMargins(0, 0, 0, 0)
-        driver_mode_layout.setSpacing(14)
-        driver_mode_layout.addWidget(self.radio_thin)
-        driver_mode_layout.addWidget(self.radio_thick)
-        driver_mode_layout.addStretch()
-
-        self.driver_form.addRow(make_field_label("Driver Engine"), driver_mode_layout)
-
-        # Instant Client Widget
-        self.client_widget = QWidget()
-        client_layout = QHBoxLayout(self.client_widget)
-        client_layout.setContentsMargins(0, 0, 0, 0)
-        client_layout.setSpacing(6)
-
-        self.client_dir_combo = QComboBox()
-        self.client_dir_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.client_dir_combo.setMinimumContentsLength(15)
-        self.client_dir_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.client_dir_combo.view().setTextElideMode(Qt.TextElideMode.ElideMiddle)
-        self.client_dir_combo.setToolTip("Select or scan Oracle Instant Client library.")
-
-        self.client_browse_btn = CompactButton("Browse...")
-        self.client_browse_btn.setFixedWidth(74)
-        self.client_browse_btn.clicked.connect(self._browse_custom_client_dir)
-
-        self.client_scan_btn = CompactButton("Scan")
-        self.client_scan_btn.setFixedWidth(74)
-        self.client_scan_btn.clicked.connect(self._scan_for_clients)
-
-        client_layout.addWidget(self.client_dir_combo, stretch=1)
-        client_layout.addWidget(self.client_browse_btn)
-        client_layout.addWidget(self.client_scan_btn)
-
-        self.client_row_label = make_field_label("Oracle Client")
-        self.driver_form.addRow(self.client_row_label, self.client_widget)
-        self.main_layout.addLayout(self.driver_form)
-
-        self._populate_client_dirs()
-
-        # Connect toggles & preview triggers
-        self.radio_thin.toggled.connect(self._on_driver_mode_toggled)
-        self.radio_thick.toggled.connect(self._on_driver_mode_toggled)
-        self._on_driver_mode_toggled()
-
+        # Connect preview triggers
+        self.radio_service.toggled.connect(self._on_db_type_toggled)
         self.host_input.textChanged.connect(self._update_preview)
         self.port_input.textChanged.connect(self._update_preview)
         self.db_input.textChanged.connect(self._update_preview)
-        self.dsn_input.textChanged.connect(self._update_preview)
         self.tns_alias_combo.editTextChanged.connect(self._update_preview)
         self.tns_alias_combo.currentIndexChanged.connect(self._update_preview)
         self.role_combo.currentIndexChanged.connect(self._update_preview)
@@ -432,63 +358,24 @@ class OracleEngineForm(BaseEngineForm):
         self._initialized = True
 
     def _on_mode_changed(self, index: int) -> None:
-        is_basic = (index == 0)
+        is_direct = (index == 0)
         is_tns = (index == 1)
-        is_custom = (index == 2)
 
         for w in self.basic_rows:
-            self.server_form.setRowVisible(w, is_basic)
+            self.server_form.setRowVisible(w, is_direct)
         for w in self.tns_rows:
             self.server_form.setRowVisible(w, is_tns)
-        for w in self.custom_rows:
-            self.server_form.setRowVisible(w, is_custom)
 
         self._update_preview()
 
     def _on_db_type_toggled(self) -> None:
-        if hasattr(self, "db_label"):
-            self.db_label.setText("Service Name:" if self.radio_service.isChecked() else "SID:")
+        if hasattr(self, "db_input"):
+            self.db_input.setPlaceholderText(
+                "e.g. XEPDB1, FREEPDB1, ORCL (use PDB for local XE/FREE)"
+                if self.radio_service.isChecked()
+                else "e.g. XE, ORCL (older SID-based instances)"
+            )
         self._update_preview()
-
-    def _on_driver_mode_toggled(self) -> None:
-        is_thick = self.radio_thick.isChecked()
-        self.client_widget.setVisible(is_thick)
-        self.client_row_label.setVisible(is_thick)
-        if is_thick and getattr(self, "_initialized", False) and not getattr(self, "_suppress_scroll", False):
-            QTimer.singleShot(60, self._scroll_to_client_widget)
-
-    def _get_scroll_area(self) -> QScrollArea | None:
-        p = self.parentWidget()
-        while p:
-            if isinstance(p, QScrollArea):
-                return p
-            p = p.parentWidget()
-        return None
-
-    def _scroll_to_client_widget(self) -> None:
-        sa = self._get_scroll_area()
-        if not sa:
-            return
-        vbar = sa.verticalScrollBar()
-        if not vbar:
-            return
-
-        if (
-            hasattr(self, "_scroll_anim")
-            and self._scroll_anim
-            and self._scroll_anim.state() == QPropertyAnimation.State.Running
-        ):
-            self._scroll_anim.stop()
-
-        start_val = vbar.value()
-        target_val = vbar.maximum()
-        if target_val > start_val:
-            self._scroll_anim = QPropertyAnimation(vbar, b"value", self)
-            self._scroll_anim.setDuration(280)
-            self._scroll_anim.setStartValue(start_val)
-            self._scroll_anim.setEndValue(target_val)
-            self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-            self._scroll_anim.start()
 
     def _browse_tns_dir(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select TNS Admin Directory", self.tns_dir_input.text())
@@ -502,165 +389,34 @@ class OracleEngineForm(BaseEngineForm):
         if aliases:
             self.tns_alias_combo.addItems(aliases)
 
-    def _browse_custom_client_dir(self) -> None:
-        initial_dir = self.client_dir_combo.currentData() or ""
-        folder = QFileDialog.getExistingDirectory(self, "Select Oracle Instant Client Directory", initial_dir)
-        if not folder:
-            return
-
-        is_valid, missing = is_valid_oracle_client_dir(folder)
-        if not is_valid:
-            QMessageBox.warning(
-                self,
-                "Incomplete Oracle Client",
-                "The selected directory is missing required Oracle Instant Client files:\n\n"
-                + "\n".join(f"• {m}" for m in missing)
-                + "\n\nPlease select an extracted Oracle Instant Client directory containing all required libraries (oci.dll, oraociei/oraociicus DLL, and orannzsbb DLL).",
-            )
-            return
-
-        norm_folder = normalize_client_path(folder)
-        ver = detect_oracle_client_version(norm_folder)
-        label = f"Oracle Instant Client {ver} - {norm_folder}"
-
-        target_norm = os.path.normcase(norm_folder)
-        existing_idx = -1
-        for i in range(self.client_dir_combo.count()):
-            item_data = self.client_dir_combo.itemData(i)
-            if item_data and os.path.normcase(normalize_client_path(str(item_data))) == target_norm:
-                existing_idx = i
-                break
-
-        if existing_idx >= 0:
-            self.client_dir_combo.setCurrentIndex(existing_idx)
-            ToastNotification.show_toast(self, "Client directory is already selected.", kind="info")
-        else:
-            if self.client_dir_combo.count() == 1 and not self.client_dir_combo.itemData(0):
-                self.client_dir_combo.clear()
-            self.client_dir_combo.insertItem(0, label, norm_folder)
-            self.client_dir_combo.setItemData(0, norm_folder, Qt.ItemDataRole.ToolTipRole)
-            self.client_dir_combo.setCurrentIndex(0)
-            ToastNotification.show_toast(self, f"Selected Oracle Instant Client {ver}.", kind="success")
-
-    def _scan_for_clients(self) -> None:
-        self.client_scan_btn.start_loading("Scanning")
-        current_data = self.client_dir_combo.currentData()
-
-        import time
-
-        def _do_scan() -> list[dict[str, Any]]:
-            t0 = time.time()
-            results = scan_oracle_client_dirs()
-            elapsed = time.time() - t0
-            if elapsed < 0.35:
-                time.sleep(0.35 - elapsed)
-            return results
-
-        self._scan_worker = WorkerThread(_do_scan)
-        self._scan_worker.finished_signal.connect(
-            lambda res, err: self._on_scan_finished(res, err, current_data)
-        )
-        self._scan_worker.start()
-
-    def _on_scan_finished(
-        self, results: list[dict[str, Any]] | None, error: Exception | None, previous_selection: str | None
-    ) -> None:
-        self.client_scan_btn.stop_loading()
-        if error:
-            ToastNotification.show_toast(self, f"Scan failed: {error}", kind="error")
-            return
-
-        detected = results or []
-        self._apply_detected_clients(detected, previous_selection=previous_selection)
-        count = len(detected)
-        if count > 0:
-            ToastNotification.show_toast(self, f"Found {count} Oracle Instant Client(s).", kind="success")
-        else:
-            ToastNotification.show_toast(
-                self, "No Oracle Instant Client detected. Click Browse to select.", kind="warning"
-            )
-
-    def _apply_detected_clients(
-        self, detected: list[dict[str, Any]], previous_selection: str | None = None
-    ) -> None:
-        self.client_dir_combo.clear()
-        if not detected:
-            self.client_dir_combo.addItem("(No Oracle Instant Client detected - Click Browse to select)", "")
-            return
-
-        seen_norm: set[str] = set()
-        for item in detected:
-            raw_path = item.get("path") or ""
-            path = normalize_client_path(raw_path)
-            if not path:
-                continue
-            norm_k = os.path.normcase(path)
-            if norm_k in seen_norm:
-                continue
-            seen_norm.add(norm_k)
-            label = item.get("label") or f"Oracle Instant Client - {path}"
-            self.client_dir_combo.addItem(label, path)
-            self.client_dir_combo.setItemData(self.client_dir_combo.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
-
-        # Restore previous selection if valid
-        selected_idx = -1
-        if previous_selection:
-            prev_norm = os.path.normcase(normalize_client_path(previous_selection))
-            for i in range(self.client_dir_combo.count()):
-                data = self.client_dir_combo.itemData(i)
-                if data and os.path.normcase(normalize_client_path(str(data))) == prev_norm:
-                    selected_idx = i
-                    break
-
-        if selected_idx >= 0:
-            self.client_dir_combo.setCurrentIndex(selected_idx)
-        else:
-            best = find_oracle_client_dir()
-            if best:
-                best_norm = os.path.normcase(normalize_client_path(best))
-                for i in range(self.client_dir_combo.count()):
-                    data = self.client_dir_combo.itemData(i)
-                    if data and os.path.normcase(normalize_client_path(str(data))) == best_norm:
-                        self.client_dir_combo.setCurrentIndex(i)
-                        break
-            if self.client_dir_combo.currentIndex() < 0 and self.client_dir_combo.count() > 0:
-                self.client_dir_combo.setCurrentIndex(0)
-
-    def _populate_client_dirs(self) -> None:
-        detected = scan_oracle_client_dirs()
-        self._apply_detected_clients(detected)
-
     def _update_preview(self) -> None:
         mode = self.conn_type_combo.currentIndex()
         if mode == 0:
             db_type = "service_name" if self.radio_service.isChecked() else "sid"
             target = build_oracle_dsn(self.host_input.text(), self.port_input.text(), self.db_input.text(), db_type)
-        elif mode == 1:
-            target = self.tns_alias_combo.currentText().strip()
         else:
-            target = self.dsn_input.text().strip()
+            target = self.tns_alias_combo.currentText().strip()
         self.preview_lbl.setText(target or "(None)")
 
     def get_data(self) -> dict[str, Any]:
         data = super().get_data()
         mode_idx = self.conn_type_combo.currentIndex()
-        is_thick = self.radio_thick.isChecked()
-        client_dir = self.client_dir_combo.currentData() if is_thick else ""
+        conn_mode = "direct" if mode_idx == 0 else "tns"
 
         config_dict = {
-            "driver_mode": "thick" if is_thick else "thin",
-            "oracle_client_dir": client_dir,
+            "driver_mode": "thin",
+            "oracle_client_dir": "",
             "database_type": "service_name" if self.radio_service.isChecked() else "sid",
             "tns_admin": self.tns_dir_input.text().strip(),
             "tns_alias": self.tns_alias_combo.currentText().strip(),
-            "connection_mode": ["basic", "tns", "custom"][mode_idx],
+            "connection_mode": conn_mode,
         }
 
         data.update({
-            "connection_mode": ["basic", "tns", "custom"][mode_idx],
+            "connection_mode": conn_mode,
             "host": self.host_input.text().strip(),
             "port": self.port_input.text().strip(),
-            "database": self.db_input.text().strip(),
+            "database": self.db_input.text().strip() if mode_idx == 0 else self.tns_alias_combo.currentText().strip(),
             "database_type": "service_name" if self.radio_service.isChecked() else "sid",
             "tns_admin": self.tns_dir_input.text().strip(),
             "tns_alias": self.tns_alias_combo.currentText().strip(),
@@ -668,95 +424,74 @@ class OracleEngineForm(BaseEngineForm):
             "user": self.user_input.text().strip(),
             "password": self.password_input.text(),
             "role": self.role_combo.currentText(),
-            "driver_mode": "thick" if is_thick else "thin",
-            "oracle_client_dir": client_dir,
+            "driver_mode": "thin",
+            "oracle_client_dir": "",
             "config_json": json.dumps(config_dict),
         })
         return data
 
     def load_data(self, data: dict[str, Any]) -> None:
-        self._suppress_scroll = True
-        try:
-            super().load_data(data)
-            if "config_json" in data and isinstance(data["config_json"], str) and data["config_json"].strip():
-                try:
-                    cfg = json.loads(data["config_json"])
-                    if isinstance(cfg, dict):
-                        merged = dict(cfg)
-                        merged.update(data)
-                        data = merged
-                except Exception:
-                    pass
-            self.host_input.setText(data.get("host", "localhost"))
-            self.port_input.setText(str(data.get("port") or 1521))
-            self.db_input.setText(data.get("database", ""))
-            self.user_input.setText(data.get("user", ""))
-            self.password_input.setText(data.get("password", ""))
+        super().load_data(data)
+        if "config_json" in data and isinstance(data["config_json"], str) and data["config_json"].strip():
+            try:
+                cfg = json.loads(data["config_json"])
+                if isinstance(cfg, dict):
+                    merged = dict(cfg)
+                    merged.update(data)
+                    data = merged
+            except Exception:
+                pass
+        self.host_input.setText(data.get("host", "localhost"))
+        self.port_input.setText(str(data.get("port") or 1521))
+        self.db_input.setText(data.get("database", ""))
+        self.user_input.setText(data.get("user", ""))
+        self.password_input.setText(data.get("password", ""))
 
-            if data.get("database_type") == "sid" or data.get("oracle_db_type") == "sid":
-                self.radio_sid.setChecked(True)
-            else:
-                self.radio_service.setChecked(True)
+        if data.get("database_type") == "sid" or data.get("oracle_db_type") == "sid":
+            self.radio_sid.setChecked(True)
+        else:
+            self.radio_service.setChecked(True)
 
-            if data.get("driver_mode") == "thick" or data.get("oracle_client_dir"):
-                self.radio_thick.setChecked(True)
-                cd = data.get("oracle_client_dir", "")
-                if cd:
-                    idx = self.client_dir_combo.findData(cd)
-                    if idx >= 0:
-                        self.client_dir_combo.setCurrentIndex(idx)
-                    else:
-                        self.client_dir_combo.insertItem(0, cd, cd)
-                        self.client_dir_combo.setCurrentIndex(0)
-            else:
-                self.radio_thin.setChecked(True)
+        role = data.get("role", "Normal")
+        ridx = self.role_combo.findText(role)
+        if ridx >= 0:
+            self.role_combo.setCurrentIndex(ridx)
 
-            role = data.get("role", "Normal")
-            ridx = self.role_combo.findText(role)
-            if ridx >= 0:
-                self.role_combo.setCurrentIndex(ridx)
-
-            mode = data.get("connection_mode")
-            dsn = data.get("dsn", "")
-            if not mode and dsn:
-                from db.oracle_utils import parse_oracle_dsn
-                parsed = parse_oracle_dsn(dsn)
-                parsed_mode = parsed.get("mode", "basic")
-                if parsed_mode == "basic" and parsed.get("host"):
-                    mode = "basic"
-                    self.host_input.setText(parsed["host"])
-                    self.port_input.setText(str(parsed.get("port") or 1521))
-                    self.db_input.setText(parsed.get("database") or "")
-                    if parsed.get("db_type") == "sid":
-                        self.radio_sid.setChecked(True)
-                    else:
-                        self.radio_service.setChecked(True)
-                elif parsed_mode == "tns":
-                    mode = "tns"
-                    self.tns_alias_combo.setEditText(parsed.get("database") or dsn)
+        mode = data.get("connection_mode")
+        dsn = data.get("dsn", "")
+        if not mode and dsn:
+            from db.oracle_utils import parse_oracle_dsn
+            parsed = parse_oracle_dsn(dsn)
+            parsed_mode = parsed.get("mode", "basic")
+            if parsed_mode == "basic" and parsed.get("host"):
+                mode = "direct"
+                self.host_input.setText(parsed["host"])
+                self.port_input.setText(str(parsed.get("port") or 1521))
+                self.db_input.setText(parsed.get("database") or "")
+                if parsed.get("db_type") == "sid":
+                    self.radio_sid.setChecked(True)
                 else:
-                    mode = "custom"
-                    self.dsn_input.setText(dsn)
-
-            if not mode:
-                mode = "basic"
-
-            if mode == "tns":
-                self.conn_type_combo.setCurrentIndex(1)
-                tns_dir = data.get("tns_admin") or data.get("config_dir") or ""
-                if tns_dir:
-                    self.tns_dir_input.setText(tns_dir)
-                tns_alias = data.get("tns_alias") or (data.get("database") if data.get("connection_mode") == "tns" else "")
-                if tns_alias:
-                    self.tns_alias_combo.setEditText(tns_alias)
-            elif mode == "custom":
-                self.conn_type_combo.setCurrentIndex(2)
-                self.dsn_input.setText(data.get("dsn", ""))
+                    self.radio_service.setChecked(True)
+            elif parsed_mode == "tns":
+                mode = "tns"
+                self.tns_alias_combo.setEditText(parsed.get("database") or dsn)
             else:
-                self.conn_type_combo.setCurrentIndex(0)
-            self._update_preview()
-        finally:
-            self._suppress_scroll = False
+                mode = "direct"
+
+        if not mode:
+            mode = "direct"
+
+        if mode == "tns":
+            self.conn_type_combo.setCurrentIndex(1)
+            tns_dir = data.get("tns_admin") or data.get("config_dir") or ""
+            if tns_dir:
+                self.tns_dir_input.setText(tns_dir)
+            tns_alias = data.get("tns_alias") or (data.get("database") if data.get("connection_mode") == "tns" else "")
+            if tns_alias:
+                self.tns_alias_combo.setEditText(tns_alias)
+        else:
+            self.conn_type_combo.setCurrentIndex(0)
+        self._update_preview()
 
     def get_effective_dsn(self) -> str:
         return self.preview_lbl.text().strip()
@@ -767,13 +502,6 @@ class OracleEngineForm(BaseEngineForm):
             return ok, msg
         if not self.preview_lbl.text().strip():
             return False, "Target connection string or host/service name is required."
-        if self.radio_thick.isChecked():
-            client_dir = self.client_dir_combo.currentData() or ""
-            if not client_dir:
-                return False, "Thick mode requires a valid Oracle Instant Client directory. Please browse and select an extracted Instant Client folder."
-            is_valid, missing = is_valid_oracle_client_dir(client_dir)
-            if not is_valid:
-                return False, f"The selected Oracle Instant Client directory is incomplete:\n- {', '.join(missing)}"
         return True, ""
 
     def test_connection(self) -> tuple[bool, str]:

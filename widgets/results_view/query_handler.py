@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QAbstractItemView, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QWidget, QTabWidget, QTableView
 
 from db.query_context import resolve_writable_table_context
+from widgets.results_view.dbms_output import append_dbms_output
 from widgets.results_view.explain import ExplainVisualizer
 from widgets.results_view.perf_metrics import perf_elapsed_ms, perf_record, perf_take, perf_now
 from widgets.results_view.value_state import display_cell_text, editor_text_from_raw, values_equal_for_editor
@@ -529,14 +530,16 @@ def handle_query_result(
             status_text = "PL/SQL BLOCK COMPLETED"
             msg = f"PL/SQL block completed successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
+            final_tab_index = 7
         else:
             msg = f"{q_type}\n\nQuery returned successfully in {time_str}."
             tab_status = f"Rows affected: {row_count} | Time: {time_str}"
 
         dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
         if dbms_output:
-            msg = f"--- DBMS_OUTPUT ---\n{dbms_output}\n\n-------------------\n{msg}"
+            append_dbms_output(target_tab, dbms_output)
             tab_status = f"PL/SQL executed | Time: {time_str}"
+            final_tab_index = 7
 
         if should_refresh_tree:
             manager.main_window.refresh_object_explorer()
@@ -545,10 +548,13 @@ def handle_query_result(
             results_info_bar.hide()
 
     dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
+    if is_select_query and dbms_output:
+        append_dbms_output(target_tab, dbms_output)
+
     if message_view:
-        if is_select_query and dbms_output:
-            message_view.setPlainText(f"--- DBMS_OUTPUT ---\n{dbms_output}\n\n-------------------\nQuery returned {row_count} rows in {time_str if 'time_str' in locals() else f'{elapsed_time:.2f}s'}.")
-        elif not is_select_query:
+        if is_select_query:
+            message_view.setPlainText(f"Query returned {row_count} rows in {time_str if 'time_str' in locals() else f'{elapsed_time:.2f}s'}.")
+        else:
             message_view.setPlainText(msg)
         sb = message_view.verticalScrollBar()
         sb.setValue(sb.maximum())

@@ -207,12 +207,3 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_autocommit_action.setCheckable(True)
     manager.ws_autocommit_action.setChecked(True)
     manager.ws_autocommit_action.toggled.connect(manager.toggle_autocommit)
-
-    manager.ws_dbms_output_action = QAction(
-        qta.icon("fa5s.terminal", color="#28a745"), "DBMS Output", manager
-    )
-    manager.ws_dbms_output_action.setToolTip("Enable DBMS Output (Oracle SERVEROUTPUT)")
-    manager.ws_dbms_output_action.setCheckable(True)
-    manager.ws_dbms_output_action.setChecked(True)
-    manager.ws_dbms_output_action.setVisible(False)
-    manager.ws_dbms_output_action.toggled.connect(manager.toggle_dbms_output)
