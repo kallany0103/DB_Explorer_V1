@@ -1,7 +1,8 @@
+import html
 import time
 
 from PySide6.QtWidgets import (
-    QMessageBox, QLabel
+    QMessageBox, QLabel, QWidget
 )
 import qtawesome as qta
 
@@ -43,6 +44,8 @@ def start_query_worker(manager, current_tab, conn_data, query, output_mode="curr
     runnable = RunnableQuery(conn_data, query, signals)
     signals.finished.connect(manager._on_query_finished_signal)
     signals.error.connect(manager._on_query_error_signal)
+    if hasattr(signals, "dbms_chunk"):
+        signals.dbms_chunk.connect(lambda chunk: append_dbms_output(current_tab, chunk))
     return runnable
 
 
@@ -359,7 +362,11 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
     conn_data, query = resolve_query_context(current_tab, conn_data, query)
     if isinstance(conn_data, dict):
         conn_data = dict(conn_data)
-        conn_data["enable_dbms_output"] = manager.tab_dbms_output.get(current_tab, True)
+        is_dbms_enabled = getattr(current_tab, "_dbms_enabled", None)
+        if is_dbms_enabled is None:
+            is_dbms_enabled = manager.tab_dbms_output.get(current_tab, True)
+        conn_data["enable_dbms_output"] = is_dbms_enabled
+        conn_data["dbms_buffer_size"] = getattr(current_tab, "_dbms_buffer_size", None)
 
     if not query or not query.strip():
         manager.show_info("Please enter a valid query.")
@@ -418,10 +425,37 @@ def handle_query_error(manager, current_tab, output_tab_index, conn_data, query,
         pass
 
     set_tab_status(current_tab, "")
+    enable_dbms = conn_data.get("enable_dbms_output", True) if isinstance(conn_data, dict) else True
+    if hasattr(current_tab, "_dbms_enabled") and not current_tab._dbms_enabled:
+        enable_dbms = False
     dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
-    if dbms_output:
+    if enable_dbms and dbms_output:
         append_dbms_output(current_tab, dbms_output)
     append_error_message(current_tab, error_message)
+
+    compiler_errors = conn_data.get("compiler_errors") if isinstance(conn_data, dict) else None
+    if compiler_errors:
+        err_lines = [
+            "<div style='font-family: Consolas, Courier New, monospace; font-size: 10pt; line-height: 1.6;'>",
+            f"<span style='color: #dc2626; font-weight: bold;'>Oracle Compilation Errors ({len(compiler_errors)}):</span><br><br>",
+        ]
+        for err in compiler_errors:
+            err_line = err.get("line", 1)
+            err_pos = err.get("position", 1)
+            err_text = html.escape(err.get("text", ""))
+            name = html.escape(err.get("name", ""))
+            type_ = html.escape(err.get("type", ""))
+            prefix = f"{type_} {name} — " if name else ""
+            err_lines.append(
+                f"&nbsp;&nbsp;• <a href='jump:{err_line}:{err_pos}' style='color: #2563eb; text-decoration: underline; font-weight: 600;'>"
+                f"Line {err_line}, Column {err_pos}</a>: {prefix}<span style='color: #b91c1c;'>{err_text}</span><br>"
+            )
+        err_lines.append(
+            "<br><span style='color: #64748b; font-size: 8.5pt;'>💡 Click any line number above to jump directly to the code in your editor.</span></div>"
+        )
+        msg_view = current_tab.findChild(QWidget, "message_view")
+        if msg_view and hasattr(msg_view, "setHtml"):
+            msg_view.setHtml("".join(err_lines))
 
     show_error_view(current_tab)
 

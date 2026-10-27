@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeoutError
+import ctypes
+import ctypes.wintypes
 import logging
 import os
 import re
+import struct
 import string
 import sys
 from pathlib import Path
@@ -38,6 +41,47 @@ def get_active_oracle_client_dir() -> str | None:
 def get_last_thick_mode_error() -> str | None:
     """Return the last error message recorded during init_oracle_thick_mode, if any."""
     return _last_thick_mode_error
+
+
+def get_oci_dll_version(dir_path: Path | str) -> str | None:
+    """Read the exact file version from oci.dll in the given directory.
+
+    Returns a dotted version string like ``'19.32.0.0'`` on Windows,
+    or ``None`` if the DLL is absent or the version cannot be read.
+    """
+    if sys.platform != "win32":
+        return None
+    p = Path(dir_path)
+    oci = p / "oci.dll"
+    if not oci.is_file():
+        return None
+    try:
+        path_str = str(oci)
+        size = ctypes.windll.version.GetFileVersionInfoSizeW(path_str, None)
+        if not size:
+            return None
+        buf = ctypes.create_string_buffer(size)
+        if not ctypes.windll.version.GetFileVersionInfoW(path_str, None, size, buf):
+            return None
+        u_len = ctypes.c_uint()
+        lp_data = ctypes.c_void_p()
+        if not ctypes.windll.version.VerQueryValueW(
+            buf, r"\\", ctypes.byref(lp_data), ctypes.byref(u_len)
+        ):
+            return None
+        raw = ctypes.string_at(lp_data, u_len.value)
+        ms, ls = struct.unpack("<II", raw[8:16])
+        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+    except Exception:
+        return None
+
+
+def get_client_sqlnet_path(client_dir: Path | str) -> Path:
+    """Return the expected ``sqlnet.ora`` path for the given Oracle Client directory.
+
+    The canonical location is ``<client_dir>/network/admin/sqlnet.ora``.
+    """
+    return Path(client_dir) / "network" / "admin" / "sqlnet.ora"
 
 
 def detect_oracle_client_version(dir_path: Path | str) -> str:
@@ -238,21 +282,100 @@ def _find_drive_candidates() -> list[Path]:
     return candidates
 
 
-def scan_oracle_client_dirs() -> list[dict[str, Any]]:
-    """Scan the system for installed Oracle Instant Client directories.
+def get_registered_oracle_homes() -> list[dict[str, Any]]:
+    """Read Oracle Homes registered in the Windows Registry by OUI (Oracle Universal Installer).
 
-    Scans all available drives, environment variables, PATH, and user directories.
-    Verifies that all required files (oci.dll, oraociei/oraociicus DLL, and orannzsbb DLL)
-    are present.
+    OUI writes each installed Oracle Home under:
+        HKLM\\SOFTWARE\\ORACLE\\KEY_<HomeName>   (64-bit clients)
+        HKLM\\SOFTWARE\\Wow6432Node\\ORACLE\\KEY_<HomeName>  (32-bit clients)
+
+    Returns a list of dicts with keys: path, home_name, label.
+    Returns an empty list on non-Windows platforms or if the registry is unreadable.
+    """
+    if sys.platform != "win32":
+        return []
+
+    import winreg
+
+    HIVE_PATHS: tuple[tuple[int, str], ...] = (
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\ORACLE"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Wow6432Node\ORACLE"),
+    )
+    homes: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+
+    for hive, base_path in HIVE_PATHS:
+        try:
+            with winreg.OpenKey(hive, base_path) as base_key:
+                idx = 0
+                while True:
+                    try:
+                        subkey_name = winreg.EnumKey(base_key, idx)
+                        idx += 1
+                    except OSError:
+                        break
+                    if not subkey_name.upper().startswith("KEY_"):
+                        continue
+                    try:
+                        with winreg.OpenKey(base_key, subkey_name) as sk:
+                            try:
+                                oracle_home, _ = winreg.QueryValueEx(sk, "ORACLE_HOME")
+                            except OSError:
+                                continue
+                            try:
+                                home_name, _ = winreg.QueryValueEx(sk, "HOME_NAME")
+                            except OSError:
+                                # Fall back to the key suffix when HOME_NAME is absent
+                                home_name = subkey_name[4:]  # strip "KEY_" prefix
+                    except OSError:
+                        continue
+
+                    resolved = normalize_client_path(oracle_home)
+                    if not resolved:
+                        continue
+                    norm_key = os.path.normcase(resolved)
+                    if norm_key in seen_paths:
+                        continue
+                    seen_paths.add(norm_key)
+
+                    homes.append({
+                        "path": resolved,
+                        "home_name": str(home_name),
+                        "label": str(home_name),
+                    })
+        except OSError:
+            continue
+
+    return homes
+
+
+def scan_oracle_client_dirs() -> list[dict[str, Any]]:
+    """Scan the system for installed Oracle Client and Instant Client directories.
+
+    Strategy:
+    - OUI-registered homes (read from Windows Registry) are labelled with their
+      HOME_NAME, matching TOAD's naming convention (e.g. ``OraClient19_home1``).
+    - Instant Client directories found only via filesystem scan are labelled
+      ``Instant Client - <version>``.
 
     Returns a list of dicts with client metadata (path, version, label, supports_10g).
     """
+    # Build a registry home lookup keyed by normalised path
+    registry_homes: dict[str, str] = {
+        os.path.normcase(h["path"]): h["home_name"]
+        for h in get_registered_oracle_homes()
+    }
+
     candidates = (
         _find_env_candidates()
         + _find_path_candidates()
         + _find_user_dir_candidates()
         + _find_drive_candidates()
     )
+    # Seed candidates with every registered home path so OUI homes are never missed
+    for reg_path in registry_homes:
+        candidates.append(Path(reg_path))
+
     seen: set[str] = set()
     results: list[dict[str, Any]] = []
 
@@ -273,11 +396,21 @@ def scan_oracle_client_dirs() -> list[dict[str, Any]]:
             continue
 
         ver = detect_oracle_client_version(cand)
-        label = f"Oracle Instant Client {ver} - {resolved}"
+        dll_ver = get_oci_dll_version(cand)
+        display_ver = dll_ver if dll_ver else ver
+
+        home_name = registry_homes.get(norm_key)
+        if home_name:
+            # OUI-registered home: use HOME_NAME as label (TOAD convention)
+            label = home_name
+        else:
+            # Instant Client (not registered in registry)
+            label = f"Instant Client - {display_ver}"
 
         results.append({
             "path": resolved,
             "version": ver,
+            "dll_version": dll_ver or "",
             "label": label,
             "supports_10g": ver in ("11.2", "10g"),
         })
@@ -431,6 +564,20 @@ def find_default_tns_admin_dir() -> str | None:
             return str(admin_candidate)
         if (Path(client_dir) / "tnsnames.ora").is_file():
             return str(client_dir)
+
+    # 4. Well-known "Oracle Client for Microsoft Tools" location (Power BI / Excel driver).
+    #    This client does not expose oci.dll so it is never found by find_oracle_client_dir(),
+    #    but its network/admin folder is a valid TNS admin directory.
+    _MS_TOOLS_CLIENT_ROOTS: tuple[str, ...] = (
+        r"C:\Program Files\Oracle Client for Microsoft Tools",
+        r"C:\Program Files (x86)\Oracle Client for Microsoft Tools",
+    )
+    for ms_root in _MS_TOOLS_CLIENT_ROOTS:
+        ms_admin = Path(ms_root) / "network" / "admin"
+        if ms_admin.is_dir():
+            return str(ms_admin)
+        if (Path(ms_root) / "tnsnames.ora").is_file():
+            return ms_root
 
     return None
 
@@ -654,7 +801,15 @@ def enable_dbms_output(cursor: Any, buffer_size: int | None = None) -> None:
         logger.debug(f"Failed to enable DBMS_OUTPUT: {e}")
 
 
-def fetch_dbms_output(cursor: Any, chunk_size: int = 100) -> str | None:
+def disable_dbms_output(cursor: Any) -> None:
+    """Disable Oracle DBMS_OUTPUT message buffer on the given cursor and purge messages."""
+    try:
+        cursor.callproc("dbms_output.disable")
+    except Exception as e:
+        logger.debug(f"Failed to disable DBMS_OUTPUT: {e}")
+
+
+def fetch_dbms_output(cursor: Any, chunk_size: int = 100, on_chunk: Any = None) -> str | None:
     """Fetch all pending DBMS_OUTPUT lines from the Oracle session buffer.
 
     Returns the concatenated string of lines or None if buffer was empty.
@@ -673,6 +828,11 @@ def fetch_dbms_output(cursor: Any, chunk_size: int = 100) -> str | None:
                 break
             chunk = lines_var.getvalue()[:num_lines]
             lines.extend(chunk)
+            if on_chunk:
+                try:
+                    on_chunk("\n".join(chunk))
+                except Exception:
+                    pass
             if num_lines < chunk_size:
                 break
     except Exception as e:
@@ -693,4 +853,61 @@ def is_oracle_plsql(query: str) -> bool:
         return False
     first_token = q.split()[0].upper()
     return first_token in ("BEGIN", "DECLARE", "CALL")
+
+
+def parse_oracle_ddl_target(query: str) -> tuple[str, str] | None:
+    """Extract (object_type, object_name) from CREATE OR REPLACE statements."""
+    if not query:
+        return None
+    q = re.sub(r"--[^\n]*", "", query)
+    q = re.sub(r"/\*.*?\*/", "", q, flags=re.DOTALL).strip()
+    match = re.search(
+        r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(PROCEDURE|FUNCTION|PACKAGE(?:\s+BODY)?|TRIGGER|TYPE(?:\s+BODY)?|VIEW)\s+(?:\"?(\w+)\"?\.)?\"?(\w+)\"?",
+        q,
+        re.IGNORECASE,
+    )
+    if match:
+        obj_type = re.sub(r"\s+", " ", match.group(1).upper().strip())
+        obj_name = match.group(3).upper()
+        return obj_type, obj_name
+    return None
+
+
+def fetch_oracle_compiler_errors(
+    cursor: Any,
+    object_name: str | None = None,
+    object_type: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch compilation errors from USER_ERRORS.
+
+    Returns a list of dicts: [{'name': ..., 'type': ..., 'line': ..., 'position': ..., 'text': ...}]
+    """
+    errors: list[dict[str, Any]] = []
+    try:
+        sql = "SELECT NAME, TYPE, LINE, POSITION, TEXT FROM USER_ERRORS"
+        params: list[Any] = []
+        clauses: list[str] = []
+        if object_name:
+            clauses.append("NAME = :name")
+            params.append(object_name.upper())
+        if object_type:
+            clauses.append("TYPE = :type")
+            params.append(object_type.upper())
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY SEQUENCE"
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall() or []
+        for r in rows:
+            errors.append({
+                "name": str(r[0]) if len(r) > 0 and r[0] is not None else "",
+                "type": str(r[1]) if len(r) > 1 and r[1] is not None else "",
+                "line": int(r[2]) if len(r) > 2 and r[2] is not None else 1,
+                "position": int(r[3]) if len(r) > 3 and r[3] is not None else 1,
+                "text": str(r[4]) if len(r) > 4 and r[4] is not None else "",
+            })
+    except Exception as e:
+        logger.debug(f"Failed to fetch USER_ERRORS: {e}")
+    return errors
 

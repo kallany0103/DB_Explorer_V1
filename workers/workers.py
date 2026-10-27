@@ -477,8 +477,11 @@ class RunnableQuery(QRunnable):
                 if not self._conn:
                     raise ConnectionError("Failed to connect to Oracle database")
                 cursor = self._conn.cursor()
+                buffer_size = self.conn_data.get("dbms_buffer_size") if isinstance(self.conn_data, dict) else None
                 if should_handle_dbms:
-                    db.enable_dbms_output(cursor)
+                    db.enable_dbms_output(cursor, buffer_size=buffer_size)
+                elif not enable_dbms:
+                    db.disable_dbms_output(cursor)
                 
                 oracle_query = self.query.strip()
                 # oracledb does not allow trailing semicolons for SQL, but requires them for PL/SQL blocks.
@@ -517,7 +520,12 @@ class RunnableQuery(QRunnable):
 
             dbms_output = None
             if should_handle_dbms and cursor:
-                dbms_output = db.fetch_dbms_output(cursor)
+                on_chunk = (
+                    (lambda chunk: self.signals.dbms_chunk.emit(chunk))
+                    if hasattr(self.signals, "dbms_chunk")
+                    else None
+                )
+                dbms_output = db.fetch_dbms_output(cursor, on_chunk=on_chunk)
 
             elapsed_time = time.time() - start_time
             
@@ -527,6 +535,13 @@ class RunnableQuery(QRunnable):
             conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
             if dbms_output:
                 conn_payload["dbms_output"] = dbms_output
+            if is_oracle and cursor:
+                ddl_target = db.parse_oracle_ddl_target(self.query)
+                if ddl_target:
+                    obj_type, obj_name = ddl_target
+                    compiler_errors = db.fetch_oracle_compiler_errors(cursor, obj_name, obj_type)
+                    if compiler_errors:
+                        conn_payload["compiler_errors"] = compiler_errors
             emit_query_finished(
                 self.signals,
                 conn_payload,
@@ -554,6 +569,13 @@ class RunnableQuery(QRunnable):
                 conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
                 if dbms_output:
                     conn_payload["dbms_output"] = dbms_output
+                if 'is_oracle' in locals() and is_oracle and cursor:
+                    ddl_target = db.parse_oracle_ddl_target(self.query)
+                    obj_name = ddl_target[1] if ddl_target else None
+                    obj_type = ddl_target[0] if ddl_target else None
+                    compiler_errors = db.fetch_oracle_compiler_errors(cursor, obj_name, obj_type)
+                    if compiler_errors:
+                        conn_payload["compiler_errors"] = compiler_errors
                 emit_query_error(self.signals, conn_payload, self.query, 0, elapsed_time, str(e))
 
         finally:
@@ -622,8 +644,11 @@ class RunnableTransactionQuery(QRunnable):
             should_handle_dbms = is_oracle and is_plsql and enable_dbms
 
             if is_oracle:
+                buffer_size = self._conn_data.get("dbms_buffer_size") if isinstance(self._conn_data, dict) else None
                 if should_handle_dbms:
-                    db.enable_dbms_output(cursor)
+                    db.enable_dbms_output(cursor, buffer_size=buffer_size)
+                elif not enable_dbms:
+                    db.disable_dbms_output(cursor)
                 oracle_query = self._query.strip()
                 if oracle_query.endswith(";") and not is_plsql:
                     oracle_query = oracle_query[:-1]
@@ -655,7 +680,12 @@ class RunnableTransactionQuery(QRunnable):
 
             dbms_output = None
             if should_handle_dbms and cursor:
-                dbms_output = db.fetch_dbms_output(cursor)
+                on_chunk = (
+                    (lambda chunk: self.signals.dbms_chunk.emit(chunk))
+                    if hasattr(self.signals, "dbms_chunk")
+                    else None
+                )
+                dbms_output = db.fetch_dbms_output(cursor, on_chunk=on_chunk)
             
             if not is_returning_results:
                 if hasattr(self._session, "has_pending_changes"):
@@ -664,6 +694,13 @@ class RunnableTransactionQuery(QRunnable):
             conn_payload = dict(self._conn_data) if isinstance(self._conn_data, dict) else {}
             if dbms_output:
                 conn_payload["dbms_output"] = dbms_output
+            if is_oracle and cursor:
+                ddl_target = db.parse_oracle_ddl_target(self._query)
+                if ddl_target:
+                    obj_type, obj_name = ddl_target
+                    compiler_errors = db.fetch_oracle_compiler_errors(cursor, obj_name, obj_type)
+                    if compiler_errors:
+                        conn_payload["compiler_errors"] = compiler_errors
             emit_query_finished(
                 self.signals,
                 conn_payload,
@@ -687,6 +724,13 @@ class RunnableTransactionQuery(QRunnable):
                 conn_payload = dict(self._conn_data) if isinstance(self._conn_data, dict) else {}
                 if dbms_output:
                     conn_payload["dbms_output"] = dbms_output
+                if 'is_oracle' in locals() and is_oracle and cursor:
+                    ddl_target = db.parse_oracle_ddl_target(self._query)
+                    obj_name = ddl_target[1] if ddl_target else None
+                    obj_type = ddl_target[0] if ddl_target else None
+                    compiler_errors = db.fetch_oracle_compiler_errors(cursor, obj_name, obj_type)
+                    if compiler_errors:
+                        conn_payload["compiler_errors"] = compiler_errors
                 emit_query_error(
                     self.signals,
                     conn_payload,

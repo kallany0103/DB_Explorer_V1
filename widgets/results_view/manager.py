@@ -83,6 +83,13 @@ class ResultsManager(QObject):
             return int(fallback)
         return normalized
 
+    @property
+    def tab_dbms_output(self) -> dict:
+        ws_mgr = getattr(self.main_window, "worksheet_manager", None)
+        if ws_mgr is not None and hasattr(ws_mgr, "tab_dbms_output"):
+            return ws_mgr.tab_dbms_output
+        return {}
+
     def _normalize_chunk_profiles(self, profiles):
         normalized_profiles = []
         if not isinstance(profiles, list):

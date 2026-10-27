@@ -233,6 +233,10 @@ class WorksheetManager(QWidget):
                     except Exception:
                         pass
                     del self.tab_transactions[widget]
+                self.tab_autocommit.pop(widget, None)
+                self.tab_dbms_output.pop(widget, None)
+                if hasattr(widget, "_dbms_poll_timer") and widget._dbms_poll_timer:
+                    widget._dbms_poll_timer.stop()
 
                 self.results_manager.cleanup_tab_resources(widget)
                 self.tab_widget.removeTab(index)
@@ -354,7 +358,11 @@ class WorksheetManager(QWidget):
 
         if isinstance(resolved_conn_data, dict):
             resolved_conn_data = dict(resolved_conn_data)
-            resolved_conn_data["enable_dbms_output"] = self.tab_dbms_output.get(tab, True)
+            is_dbms_enabled = getattr(tab, "_dbms_enabled", None)
+            if is_dbms_enabled is None:
+                is_dbms_enabled = self.tab_dbms_output.get(tab, True)
+            resolved_conn_data["enable_dbms_output"] = is_dbms_enabled
+            resolved_conn_data["dbms_buffer_size"] = getattr(tab, "_dbms_buffer_size", None)
 
         if query is None:
             editor = get_query_editor(tab)
@@ -379,6 +387,9 @@ class WorksheetManager(QWidget):
         )
         signals.finished.connect(self._on_query_finished_signal)
         signals.error.connect(self._on_query_error_signal)
+        if hasattr(signals, "dbms_chunk"):
+            from widgets.results_view.dbms_output import append_dbms_output
+            signals.dbms_chunk.connect(lambda chunk: append_dbms_output(tab, chunk))
 
         self.running_queries[tab] = runnable
         self.thread_pool.start(runnable)
@@ -406,6 +417,8 @@ class WorksheetManager(QWidget):
             return
 
         self.tab_dbms_output[tab] = checked
+        if hasattr(tab, "set_dbms_output_enabled"):
+            tab.set_dbms_output_enabled(checked)
         self._update_transaction_button_states()
 
     def commit_transaction(self) -> None:
@@ -457,6 +470,11 @@ class WorksheetManager(QWidget):
             else:
                 self.ws_autocommit_action.setIcon(qta.icon("fa5s.lock", color="#dc3545"))
             self.ws_autocommit_action.blockSignals(False)
+
+        if tab and hasattr(tab, "set_dbms_output_enabled"):
+            is_dbms = self.tab_dbms_output.get(tab, True)
+            if getattr(tab, "_dbms_enabled", None) != is_dbms:
+                tab.set_dbms_output_enabled(is_dbms)
 
         conn_data = get_tab_connection_data(tab) if tab else None
         conn_code = (
