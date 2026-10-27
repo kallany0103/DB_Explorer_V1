@@ -43,11 +43,19 @@ def _stop_chunk_loader_for_container(output_container):
 
 
 class FlatSelectionDelegate(QStyledItemDelegate):
-    """Paints result-table selection like the process tab (full-cell blue, no inner focus frame)."""
+    """Paints result-table selection with a soft, eye-friendly light blue."""
 
-    def __init__(self, selection_color="#8f959e", parent=None):
+    def __init__(
+        self,
+        selection_color="#CCE4F7",
+        hover_color="#E8F2FC",
+        text_color="#1E293B",
+        parent=None,
+    ):
         super().__init__(parent)
         self.selection_color = QColor(selection_color)
+        self.hover_color = QColor(hover_color)
+        self.text_color = QColor(text_color)
 
     def paint(self, painter, option, index):
         is_item_selected = bool(option.state & QStyle.StateFlag.State_Selected)
@@ -74,9 +82,7 @@ class FlatSelectionDelegate(QStyledItemDelegate):
                 fill.setAlpha(235)
             painter.fillRect(option.rect, fill)
         elif is_item_hovered and not is_editing_cell:
-            hover_fill = QColor(self.selection_color)
-            hover_fill.setAlpha(235)
-            painter.fillRect(option.rect, hover_fill)
+            painter.fillRect(option.rect, self.hover_color)
         elif is_editing_cell:
             border_color = QColor("#a9a9a9")
             painter.setPen(border_color)
@@ -89,7 +95,7 @@ class FlatSelectionDelegate(QStyledItemDelegate):
         if is_editing_cell:
             paint_option.text = ""
         if (is_item_selected or is_item_hovered) and not is_editing_cell:
-            paint_option.palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+            paint_option.palette.setColor(QPalette.ColorRole.Text, self.text_color)
         super().paint(painter, paint_option, index)
         painter.restore()
 

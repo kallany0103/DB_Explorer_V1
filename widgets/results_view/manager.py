@@ -11,11 +11,12 @@ from PySide6.QtWidgets import (
     QTableView, QMenu, QComboBox, QStackedWidget, QTreeView
 )
 from PySide6.QtCore import (
-    Qt, QObject, QEvent
+    Qt, QObject, QEvent, QTimer
 )
 from PySide6.QtGui import (
     QAction
 )
+import qtawesome as qta
 
 from db.query_context import resolve_writable_table_context
 from widgets.results_view.notifications import add_connection_event
@@ -28,6 +29,11 @@ import widgets.results_view.row_crud as row_crud
 import widgets.results_view.ui as ui
 from widgets.results_view.perf_metrics import perf_snapshot
 from dialogs.tools import ExportDialog
+from dialogs.statistics.cell_summary_dialog import CellSummaryDialog
+from widgets.results_view.summary_calculator import (
+    calculate_cell_summary,
+    format_summary_for_statusbar,
+)
 from workers import RunnableExportFromModel, ProcessSignals
 from workers.signals import emit_process_started
 
@@ -204,6 +210,78 @@ class ResultsManager(QObject):
             button = target_tab.findChild(QWidget, object_name)
             if button:
                 button.setEnabled(is_enabled)
+        self.sync_selection_summary(target_tab)
+
+    def attach_selection_summary_listener(self, table_view: QTableView, target_tab: QWidget):
+        sel_model = table_view.selectionModel()
+        if not sel_model:
+            return
+
+        timer = QTimer(table_view)
+        timer.setSingleShot(True)
+        timer.setInterval(60)
+
+        def _update():
+            self.sync_selection_summary(target_tab)
+
+        timer.timeout.connect(_update)
+        sel_model.selectionChanged.connect(lambda *_: timer.start())
+
+    def sync_selection_summary(self, tab_content=None):
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+
+        summary_label = target_tab.findChild(QLabel, "cell_summary_label")
+        if not summary_label:
+            return
+
+        table_view = self._get_result_table_for_tab(target_tab)
+        if not table_view:
+            summary_label.setText("")
+            summary_label.hide()
+            return
+
+        sel_model = table_view.selectionModel()
+        if not sel_model:
+            summary_label.setText("")
+            summary_label.hide()
+            return
+
+        indexes = sel_model.selectedIndexes()
+        if len(indexes) <= 1:
+            summary_label.setText("")
+            summary_label.hide()
+            return
+
+        summary = calculate_cell_summary(indexes)
+        summary_label.setText(format_summary_for_statusbar(summary))
+        summary_label.show()
+
+    def show_cell_summary_dialog(self, table_view: QTableView):
+        if not table_view:
+            return
+        sel_model = table_view.selectionModel()
+        indexes = sel_model.selectedIndexes() if sel_model else []
+        if not indexes:
+            QMessageBox.information(
+                self.main_window,
+                "Summarize Selected Cells",
+                "Please select one or more cells in the results table to summarize.",
+            )
+            return
+
+        summary = calculate_cell_summary(indexes)
+        dialog = CellSummaryDialog(summary, parent=self.main_window)
+        dialog.exec()
+
+    def show_cell_summary_for_tab(self, tab_content=None):
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+        table_view = self._get_result_table_for_tab(target_tab)
+        if table_view:
+            self.show_cell_summary_dialog(table_view)
 
     def _get_process_status_meta(self, status_text):
         return processes.get_process_status_meta(self, status_text)
@@ -470,6 +548,14 @@ class ResultsManager(QObject):
           return
 
         menu = QMenu()
+        selected_indexes = results_table.selectedIndexes()
+        if selected_indexes:
+            summarize_action = QAction("Summarize Selected Cells...", self.main_window)
+            summarize_action.setIcon(qta.icon("fa5s.calculator", color="#2563EB"))
+            summarize_action.triggered.connect(lambda: self.show_cell_summary_dialog(results_table))
+            menu.addAction(summarize_action)
+            menu.addSeparator()
+
         export_action = QAction("Export Rows", self.main_window)
         export_action.triggered.connect(lambda: self.export_result_rows(results_table))
         menu.addAction(export_action)

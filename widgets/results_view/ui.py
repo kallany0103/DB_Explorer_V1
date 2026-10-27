@@ -144,10 +144,30 @@ def create_results_ui(manager, tab_content):
     results_layout.addWidget(results_stack)
     results_layout.setStretchFactor(results_stack, 1)
 
+    footer_bar = QWidget()
+    footer_bar.setObjectName("results_footer_bar")
+    footer_layout = QHBoxLayout(footer_bar)
+    footer_layout.setContentsMargins(0, 0, 4, 0)
+    footer_layout.setSpacing(10)
+
     tab_status_label = QLabel("Ready")
     tab_status_label.setObjectName("tab_status_label")
-    results_layout.addWidget(tab_status_label)
-    results_layout.setStretchFactor(tab_status_label, 0)
+    footer_layout.addWidget(tab_status_label)
+
+    footer_layout.addStretch()
+
+    cell_summary_label = QLabel("")
+    cell_summary_label.setObjectName("cell_summary_label")
+    cell_summary_label.setCursor(Qt.CursorShape.PointingHandCursor)
+    cell_summary_label.setToolTip("Click to view detailed summary")
+    cell_summary_label.hide()
+    cell_summary_label.mousePressEvent = lambda e: (
+        manager.show_cell_summary_for_tab(tab_content) if e.button() == Qt.MouseButton.LeftButton else None
+    )
+    footer_layout.addWidget(cell_summary_label)
+
+    results_layout.addWidget(footer_bar)
+    results_layout.setStretchFactor(footer_bar, 0)
 
     def switch_results_view(index):
         results_stack.setCurrentIndex(index)
@@ -159,15 +179,18 @@ def create_results_ui(manager, tab_content):
               results_info_bar.hide()
             process_info_bar.hide()
             process_filter_bar.hide()
+            manager.sync_selection_summary(tab_content)
         elif index == 3:
             results_info_bar.hide()
             process_filter_bar.show()
             process_info_bar.hide()
+            cell_summary_label.hide()
             manager.refresh_processes_view()
         else:
             results_info_bar.hide()
             process_info_bar.hide()
             process_filter_bar.hide()
+            cell_summary_label.hide()
 
     results_header.tab_switched.connect(switch_results_view)
 
