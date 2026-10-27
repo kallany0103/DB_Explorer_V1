@@ -396,6 +396,7 @@ def handle_query_result(
 
         proxy_model.setSourceModel(model)
         table_view.setModel(proxy_model)
+        manager.attach_selection_summary_listener(table_view, target_tab)
         if output_state["is_editable"]:
             table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
         else:

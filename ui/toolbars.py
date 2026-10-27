@@ -370,6 +370,16 @@ class ResultsInfoToolbar(QWidget):
         self.download_btn.clicked.connect(lambda: manager.download_result(self.tab_content))
         layout.addWidget(self.download_btn)
 
+        self.calc_btn = IconButton(
+            qta.icon("fa5s.calculator", color="#475569", color_disabled="#CBD5E1"),
+            "Summarize selected cells",
+        )
+        self.calc_btn.setObjectName("calc_btn")
+        self.calc_btn.setFixedSize(22, 22)
+        self.calc_btn.setIconSize(QSize(12, 12))
+        self.calc_btn.clicked.connect(lambda: manager.show_cell_summary_for_tab(self.tab_content))
+        layout.addWidget(self.calc_btn)
+
         # Separator between tools and pagination
         layout.addWidget(_create_sep())
 
@@ -413,6 +423,7 @@ class ResultsInfoToolbar(QWidget):
             self.delete_row_btn,
             self.copy_btn,
             self.download_btn,
+            self.calc_btn,
             self.table_search_btn,
             self.rows_setting_btn,
             self.prev_btn,

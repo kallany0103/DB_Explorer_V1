@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QListView,
     QApplication,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont
 import qtawesome as qta
 from widgets.worksheet.connections import get_connection_icon
@@ -240,6 +240,8 @@ def add_tab(manager):
     history_details_group = QGroupBox("Query Details")
     history_details_group.setObjectName("history_details_group")
     history_details_layout = QVBoxLayout(history_details_group)
+    history_details_layout.setContentsMargins(12, 18, 12, 12)
+    history_details_layout.setSpacing(10)
     
     history_details_view = QTextEdit()
     history_details_view.setObjectName("history_details_view")
@@ -251,17 +253,18 @@ def add_tab(manager):
     history_action_container = QWidget()
     history_action_container.setObjectName("historyActionContainer")
     history_button_layout = QHBoxLayout(history_action_container)
-    history_button_layout.setContentsMargins(0, 8, 0, 0)
+    history_button_layout.setContentsMargins(0, 2, 0, 0)
     history_button_layout.setSpacing(8)
 
-    copy_history_btn = SecondaryButton(qta.icon("fa5s.copy", color="#555555"), "Copy")
-    copy_to_edit_btn = SecondaryButton(qta.icon("fa5s.external-link-alt", color="#555555"), "Copy to Editor")
-    remove_history_btn = SecondaryButton("Remove")
+    copy_history_btn = SecondaryButton(qta.icon("fa5s.copy", color="#475569"), "Copy")
+    copy_to_edit_btn = SecondaryButton(qta.icon("fa5s.external-link-alt", color="#475569"), "Copy to Editor")
+    remove_history_btn = SecondaryButton(qta.icon("fa5s.trash-alt", color="#64748B"), "Remove")
     remove_all_history_btn = SecondaryButton("Remove All")
-    copy_history_btn.setMinimumWidth(78)
-    copy_to_edit_btn.setMinimumWidth(132)
-    remove_history_btn.setMinimumWidth(78)
-    remove_all_history_btn.setMinimumWidth(98)
+
+    for btn in (copy_history_btn, copy_to_edit_btn, remove_history_btn, remove_all_history_btn):
+        btn.setStyleSheet("")
+        btn.setIconSize(QSize(13, 13))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
     history_button_layout.addStretch()
     history_button_layout.addWidget(copy_history_btn)
