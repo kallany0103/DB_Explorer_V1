@@ -42,8 +42,11 @@ from db.schema_retrieval import (
 
 from db.oracle_utils import (
     enable_dbms_output,
+    disable_dbms_output,
     fetch_dbms_output,
     is_oracle_plsql,
+    parse_oracle_ddl_target,
+    fetch_oracle_compiler_errors,
 )
 
 from db.db_modifications import (
@@ -139,6 +142,9 @@ __all__ = [
     "cancel_postgres_backend",
     "get_postgres_server_logs",
     "enable_dbms_output",
+    "disable_dbms_output",
     "fetch_dbms_output",
     "is_oracle_plsql",
+    "parse_oracle_ddl_target",
+    "fetch_oracle_compiler_errors",
 ]

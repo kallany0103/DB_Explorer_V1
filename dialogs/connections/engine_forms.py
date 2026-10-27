@@ -4,20 +4,24 @@ import os
 import json
 import sqlite3
 from typing import Any
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
     QRadioButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -312,14 +316,18 @@ class OracleEngineForm(BaseEngineForm):
         self.tns_alias_combo.setMinimumContentsLength(15)
         self.tns_alias_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.tns_alias_combo.setEditable(True)
-        self.tns_refresh_btn = CompactButton("Refresh")
-        self.tns_refresh_btn.setFixedWidth(74)
-        self.tns_refresh_btn.clicked.connect(self._populate_tns_aliases)
+        self.tns_editor_btn = CompactButton("TNSNames Editor")
+        self.tns_editor_btn.clicked.connect(self._open_tns_editor)
+        self.tns_file_status_lbl = QLabel()
+        self.tns_file_status_lbl.setFixedSize(20, 20)
+        self.tns_file_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tns_alias_layout.addWidget(self.tns_alias_combo, stretch=1)
-        tns_alias_layout.addWidget(self.tns_refresh_btn)
+        tns_alias_layout.addWidget(self.tns_editor_btn)
+        tns_alias_layout.addWidget(self.tns_file_status_lbl)
 
         self.server_form.addRow(make_field_label("TNS Folder"), self.tns_dir_widget)
-        self.server_form.addRow(make_field_label("TNS Name"), self.tns_alias_widget)
+        self.server_form.addRow(make_field_label("Database"), self.tns_alias_widget)
+        self.tns_dir_input.textChanged.connect(self._populate_tns_aliases)
         self._populate_tns_aliases()
 
         # Mode row grouping for visibility toggling
@@ -344,6 +352,72 @@ class OracleEngineForm(BaseEngineForm):
         self.preview_lbl.setWordWrap(True)
 
         self.main_layout.addLayout(self.server_form)
+
+        # ── ORACLE CLIENT section ────────────────────────────────────────
+        self.main_layout.addWidget(create_static_header("ORACLE CLIENT"))
+
+        self.use_client_chk = QCheckBox("Connect using Oracle Client")
+        self.use_client_chk.setObjectName("oracleClientCheckbox")
+        self.use_client_chk.toggled.connect(self._on_client_toggled)
+        self.main_layout.addWidget(self.use_client_chk)
+
+        # Group box — hidden until checkbox is checked
+        self.client_group = QGroupBox("Installed Clients")
+        self.client_group.setObjectName("oracleClientGroup")
+        cg_layout = QVBoxLayout(self.client_group)
+        cg_layout.setContentsMargins(12, 16, 12, 10)
+        cg_layout.setSpacing(8)
+
+        # Row 1: client dropdown + "..." browse button
+        client_row = QWidget()
+        client_row_layout = QHBoxLayout(client_row)
+        client_row_layout.setContentsMargins(0, 0, 0, 0)
+        client_row_layout.setSpacing(6)
+
+        self.client_combo = QComboBox()
+        self.client_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.client_combo.currentIndexChanged.connect(self._update_sqlnet_status)
+
+        self.client_browse_btn = CompactButton("...")
+        self.client_browse_btn.setFixedWidth(28)
+        self.client_browse_btn.setToolTip("Browse for a custom Oracle Client directory")
+        self.client_browse_btn.clicked.connect(self._on_browse_client)
+
+        client_row_layout.addWidget(self.client_combo, 1)
+        client_row_layout.addWidget(self.client_browse_btn)
+        cg_layout.addWidget(client_row)
+
+        # Row 2: "Use this client by default"
+        self.use_default_chk = QCheckBox("Use this client by default")
+        self.use_default_chk.setObjectName("oracleUseDefaultChk")
+        self.use_default_chk.toggled.connect(self._on_use_default_toggled)
+        cg_layout.addWidget(self.use_default_chk)
+
+        # Row 3: SQLNET Editor button + live status icon
+        sqlnet_row = QWidget()
+        sqlnet_row_layout = QHBoxLayout(sqlnet_row)
+        sqlnet_row_layout.setContentsMargins(0, 0, 0, 0)
+        sqlnet_row_layout.setSpacing(8)
+
+        self.sqlnet_btn = CompactButton("SQLNET Editor")
+        self.sqlnet_btn.clicked.connect(self._open_sqlnet_editor)
+
+        self.sqlnet_status_lbl = QLabel()
+        self.sqlnet_status_lbl.setObjectName("sqlnetStatusIcon")
+        self.sqlnet_status_lbl.setFixedSize(20, 20)
+        self.sqlnet_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        sqlnet_row_layout.addWidget(self.sqlnet_btn)
+        sqlnet_row_layout.addWidget(self.sqlnet_status_lbl)
+        sqlnet_row_layout.addStretch()
+        cg_layout.addWidget(sqlnet_row)
+
+        self.main_layout.addWidget(self.client_group)
+        self.client_group.hide()
+
+        # Populate detected clients lazily (fast env/PATH scan at form open)
+        self._scan_worker = None  # holds WorkerThread ref to prevent GC
+        self._populate_clients()
 
         # Connect preview triggers
         self.radio_service.toggled.connect(self._on_db_type_toggled)
@@ -384,10 +458,36 @@ class OracleEngineForm(BaseEngineForm):
             self._populate_tns_aliases()
 
     def _populate_tns_aliases(self) -> None:
+        from pathlib import Path as _Path
         self.tns_alias_combo.clear()
-        aliases = get_tns_names(self.tns_dir_input.text().strip())
+        tns_dir = self.tns_dir_input.text().strip()
+        tns_file_exists = bool(tns_dir) and (_Path(tns_dir) / "tnsnames.ora").is_file()
+        if tns_file_exists:
+            self.tns_file_status_lbl.setText("✔")
+            self.tns_file_status_lbl.setStyleSheet("color: #22c55e; font-size: 13px; font-weight: bold;")
+            self.tns_file_status_lbl.setToolTip(f"tnsnames.ora found in {tns_dir}")
+        else:
+            self.tns_file_status_lbl.setText("✘")
+            self.tns_file_status_lbl.setStyleSheet("color: #ef4444; font-size: 13px; font-weight: bold;")
+            tip = f"tnsnames.ora not found in {tns_dir}" if tns_dir else "No TNS folder set"
+            self.tns_file_status_lbl.setToolTip(tip)
+        aliases = get_tns_names(tns_dir)
         if aliases:
             self.tns_alias_combo.addItems(aliases)
+
+    def _open_tns_editor(self) -> None:
+        """Open tnsnames.ora in the system default text editor, or reveal the folder."""
+        import subprocess
+        from pathlib import Path as _Path
+        tns_dir = self.tns_dir_input.text().strip()
+        if not tns_dir:
+            return
+        tns_file = _Path(tns_dir) / "tnsnames.ora"
+        if tns_file.is_file():
+            subprocess.Popen(["notepad.exe", str(tns_file)])
+        else:
+            # File missing — open the folder so the user can create it
+            subprocess.Popen(["explorer.exe", str(_Path(tns_dir))])
 
     def _update_preview(self) -> None:
         mode = self.conn_type_combo.currentIndex()
@@ -403,9 +503,13 @@ class OracleEngineForm(BaseEngineForm):
         mode_idx = self.conn_type_combo.currentIndex()
         conn_mode = "direct" if mode_idx == 0 else "tns"
 
+        use_thick = self.use_client_chk.isChecked()
+        driver_mode = "thick" if use_thick else "thin"
+        oracle_client_dir = self.client_combo.currentData() or "" if use_thick else ""
+
         config_dict = {
-            "driver_mode": "thin",
-            "oracle_client_dir": "",
+            "driver_mode": driver_mode,
+            "oracle_client_dir": oracle_client_dir,
             "database_type": "service_name" if self.radio_service.isChecked() else "sid",
             "tns_admin": self.tns_dir_input.text().strip(),
             "tns_alias": self.tns_alias_combo.currentText().strip(),
@@ -424,8 +528,8 @@ class OracleEngineForm(BaseEngineForm):
             "user": self.user_input.text().strip(),
             "password": self.password_input.text(),
             "role": self.role_combo.currentText(),
-            "driver_mode": "thin",
-            "oracle_client_dir": "",
+            "driver_mode": driver_mode,
+            "oracle_client_dir": oracle_client_dir,
             "config_json": json.dumps(config_dict),
         })
         return data
@@ -493,8 +597,222 @@ class OracleEngineForm(BaseEngineForm):
             self.conn_type_combo.setCurrentIndex(0)
         self._update_preview()
 
+        # Restore Oracle Client selection
+        driver_mode = data.get("driver_mode", "thin")
+        oracle_client_dir = data.get("oracle_client_dir", "")
+        if driver_mode == "thick" or oracle_client_dir:
+            self.use_client_chk.setChecked(True)
+            if oracle_client_dir:
+                self._select_or_add_client(oracle_client_dir)
+            # Check if saved dir matches the persisted default
+            settings = QSettings("DBExplorer", "OracleClient")
+            default_dir = settings.value("default_client_dir", "")
+            if oracle_client_dir and oracle_client_dir == default_dir:
+                self.use_default_chk.setChecked(True)
+
     def get_effective_dsn(self) -> str:
         return self.preview_lbl.text().strip()
+
+    # ------------------------------------------------------------------
+    # Oracle Client helpers
+    # ------------------------------------------------------------------
+
+    def _on_client_toggled(self, checked: bool) -> None:
+        """Show/hide the Installed Clients group box and auto-expand / scroll into view."""
+        self.client_group.setVisible(checked)
+        self._update_sqlnet_status()
+        if checked:
+            QTimer.singleShot(50, self._ensure_client_section_visible)
+
+    def _ensure_client_section_visible(self) -> None:
+        """Auto-expand dialog window if space allows, and scroll client section into view."""
+        if not self.use_client_chk.isChecked():
+            return
+
+        # 1. Auto-expand dialog window height if there is available screen space
+        top_win = self.window()
+        if top_win and top_win.isWidgetType() and not top_win.isMaximized():
+            screen = top_win.screen() or QApplication.primaryScreen()
+            screen_h = screen.availableGeometry().height() if screen else 900
+            max_h = screen_h - 60
+            if hasattr(top_win, "maximumHeight"):
+                max_h = min(max_h, top_win.maximumHeight())
+
+            needed_h = top_win.sizeHint().height()
+            current_h = top_win.height()
+            if needed_h > current_h and current_h < max_h:
+                expand_h = self.client_group.sizeHint().height() or 130
+                target_h = min(max_h, max(needed_h, current_h + expand_h + 16))
+                top_win.resize(top_win.width(), target_h)
+
+        # 2. Scroll containing QScrollArea (FitScrollArea or standard QScrollArea) into view
+        parent = self.parentWidget()
+        scroll_area = None
+        while parent:
+            if isinstance(parent, QScrollArea):
+                scroll_area = parent
+                break
+            parent = parent.parentWidget()
+
+        if scroll_area:
+            scroll_area.ensureWidgetVisible(self.client_group, 0, 20)
+
+    def _populate_clients(self) -> None:
+        """Scan for installed Oracle clients and fill the combo.
+
+        Uses WorkerThread so the slow drive-scan does not block the UI.
+        Shows a placeholder item while scanning.
+        """
+        from db.oracle_utils import scan_oracle_client_dirs
+        from workers.workers import WorkerThread
+
+        self.client_combo.clear()
+        self.client_combo.addItem("Scanning…", None)
+        self.client_combo.setEnabled(False)
+        self.client_browse_btn.setEnabled(False)
+
+        self._scan_worker = WorkerThread(scan_oracle_client_dirs)
+        self._scan_worker.finished_signal.connect(self._on_scan_done)
+        self._scan_worker.start()
+
+    def _on_scan_done(self, clients: list | None, error: Exception | None) -> None:
+        """Populate the combo once the background scan has finished."""
+        from db.oracle_utils import normalize_client_path
+
+        self.client_combo.clear()
+        self.client_combo.setEnabled(True)
+        self.client_browse_btn.setEnabled(True)
+
+        if error or not clients:
+            self.client_combo.addItem("(No Oracle clients detected)", None)
+            return
+
+        settings = QSettings("DBExplorer", "OracleClient")
+        default_dir = settings.value("default_client_dir", "")
+        default_idx = -1
+
+        for i, c in enumerate(clients):
+            label = c["label"]
+            self.client_combo.addItem(label, c["path"])
+            if default_dir and normalize_client_path(c["path"]) == normalize_client_path(default_dir):
+                default_idx = i
+
+        if default_idx >= 0:
+            self.client_combo.setCurrentIndex(default_idx)
+            self.use_default_chk.setChecked(True)
+
+        self._update_sqlnet_status()
+
+    def _select_or_add_client(self, client_dir: str) -> None:
+        """Select a client dir in the combo, adding it as a custom entry if not found."""
+        from db.oracle_utils import get_oci_dll_version, normalize_client_path
+
+        norm_target = normalize_client_path(client_dir)
+        for i in range(self.client_combo.count()):
+            data = self.client_combo.itemData(i)
+            if data and normalize_client_path(data) == norm_target:
+                self.client_combo.setCurrentIndex(i)
+                return
+
+        # Not found — add as custom entry
+        from db.oracle_utils import get_registered_oracle_homes
+        norm_target = normalize_client_path(client_dir)
+        reg_label = next(
+            (h["home_name"] for h in get_registered_oracle_homes()
+             if normalize_client_path(h["path"]) == norm_target),
+            None,
+        )
+        if reg_label:
+            label = reg_label
+        else:
+            dll_ver = get_oci_dll_version(client_dir) or "Custom"
+            label = f"Instant Client - {dll_ver}"
+        self.client_combo.insertItem(0, label, client_dir)
+        self.client_combo.setCurrentIndex(0)
+
+    def _on_browse_client(self) -> None:
+        """Let the user browse for a custom Oracle Client directory."""
+        from db.oracle_utils import is_valid_oracle_client_dir
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Select Oracle Client Directory",
+            self.client_combo.currentData() or "",
+        )
+        if not folder:
+            return
+
+        is_valid, missing = is_valid_oracle_client_dir(folder)
+        if not is_valid:
+            QMessageBox.warning(
+                self,
+                "Invalid Oracle Client Directory",
+                "The selected directory does not appear to be a valid Oracle Client.\n\nMissing:\n"
+                + "\n".join(missing),
+            )
+            return
+
+        self._select_or_add_client(folder)
+        self._update_sqlnet_status()
+
+    def _on_use_default_toggled(self, checked: bool) -> None:
+        """Persist or remove the default Oracle Client path in QSettings."""
+        settings = QSettings("DBExplorer", "OracleClient")
+        if checked:
+            path = self.client_combo.currentData() or ""
+            settings.setValue("default_client_dir", path)
+        else:
+            settings.remove("default_client_dir")
+
+    def _get_current_client_dir(self) -> str:
+        """Return the selected client directory, or empty string if thick mode is off."""
+        if not self.use_client_chk.isChecked():
+            return ""
+        return self.client_combo.currentData() or ""
+
+    def _update_sqlnet_status(self) -> None:
+        """Update the ✔/✘ icon based on whether sqlnet.ora exists for the selected client."""
+        if not hasattr(self, "sqlnet_status_lbl") or not self.use_client_chk.isChecked():
+            return
+        from db.oracle_utils import get_client_sqlnet_path
+
+        client_dir = self._get_current_client_dir()
+        if not client_dir:
+            self.sqlnet_status_lbl.setText("")
+            return
+
+        sqlnet_path = get_client_sqlnet_path(client_dir)
+        if sqlnet_path.is_file():
+            self.sqlnet_status_lbl.setText("✔")
+            self.sqlnet_status_lbl.setStyleSheet(
+                "color: #16a34a; font-size: 13px; font-weight: bold;"
+            )
+            self.sqlnet_status_lbl.setToolTip(f"sqlnet.ora found:\n{sqlnet_path}")
+        else:
+            self.sqlnet_status_lbl.setText("✘")
+            self.sqlnet_status_lbl.setStyleSheet(
+                "color: #dc2626; font-size: 13px; font-weight: bold;"
+            )
+            self.sqlnet_status_lbl.setToolTip(
+                f"sqlnet.ora not found.\nExpected: {sqlnet_path}\nClick SQLNET Editor to create it."
+            )
+
+    def _open_sqlnet_editor(self) -> None:
+        """Open the SQLNET Editor dialog for the currently selected client."""
+        from dialogs.connections.sqlnet_editor_dialog import SqlnetEditorDialog
+        from db.oracle_utils import get_client_sqlnet_path
+
+        client_dir = self._get_current_client_dir()
+        if not client_dir:
+            QMessageBox.warning(
+                self, "No Client Selected", "Please select an Oracle Client directory first."
+            )
+            return
+
+        sqlnet_path = get_client_sqlnet_path(client_dir)
+        dlg = SqlnetEditorDialog(sqlnet_path, parent=self)
+        if dlg.exec():
+            self._update_sqlnet_status()
 
     def validate_inputs(self) -> tuple[bool, str]:
         ok, msg = super().validate_inputs()

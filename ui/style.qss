@@ -1093,6 +1093,61 @@ CSVEngineForm {
     background-color: #FFFFFF;
 }
 
+/* ── Oracle Client group box ──────────────────────────────────────── */
+OracleEngineForm QGroupBox#oracleClientGroup {
+    font-size: 9pt;
+    font-weight: 600;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    margin-top: 8px;
+    padding-top: 14px;
+    background-color: #f9fafb;
+}
+
+OracleEngineForm QGroupBox#oracleClientGroup::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    background-color: #f9fafb;
+    color: #374151;
+}
+
+OracleEngineForm QCheckBox#oracleClientCheckbox,
+OracleEngineForm QCheckBox#oracleUseDefaultChk {
+    font-size: 9pt;
+    color: #374151;
+    spacing: 6px;
+}
+
+OracleEngineForm QCheckBox#oracleClientCheckbox::indicator,
+OracleEngineForm QCheckBox#oracleUseDefaultChk::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #9ca3af;
+    border-radius: 3px;
+    background-color: #ffffff;
+}
+
+OracleEngineForm QCheckBox#oracleClientCheckbox::indicator:hover,
+OracleEngineForm QCheckBox#oracleUseDefaultChk::indicator:hover {
+    border-color: #0284c7;
+}
+
+OracleEngineForm QCheckBox#oracleClientCheckbox::indicator:checked,
+OracleEngineForm QCheckBox#oracleUseDefaultChk::indicator:checked {
+    background-color: #0284c7;
+    border-color: #0284c7;
+    image: url(assets/check-white.svg);
+}
+
+OracleEngineForm QCheckBox#oracleClientCheckbox::indicator:checked:hover,
+OracleEngineForm QCheckBox#oracleUseDefaultChk::indicator:checked:hover {
+    background-color: #0369a1;
+    border-color: #0369a1;
+    image: url(assets/check-white.svg);
+}
+
 #formTopHeader {
     background-color: #FFFFFF;
 }

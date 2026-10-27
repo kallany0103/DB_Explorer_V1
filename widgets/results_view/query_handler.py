@@ -1,5 +1,6 @@
-import re
 import datetime
+import html
+import re
 
 import sqlparse
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QTimer
@@ -530,13 +531,17 @@ def handle_query_result(
             status_text = "PL/SQL BLOCK COMPLETED"
             msg = f"PL/SQL block completed successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
-            final_tab_index = 7
+            final_tab_index = 1
         else:
             msg = f"{q_type}\n\nQuery returned successfully in {time_str}."
             tab_status = f"Rows affected: {row_count} | Time: {time_str}"
 
+        enable_dbms = bool(conn_data.get("enable_dbms_output", True)) if isinstance(conn_data, dict) else True
+        if hasattr(target_tab, "_dbms_enabled") and not target_tab._dbms_enabled:
+            enable_dbms = False
+
         dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
-        if dbms_output:
+        if enable_dbms and dbms_output:
             append_dbms_output(target_tab, dbms_output)
             tab_status = f"PL/SQL executed | Time: {time_str}"
             final_tab_index = 7
@@ -547,12 +552,39 @@ def handle_query_result(
         if results_info_bar:
             results_info_bar.hide()
 
+    enable_dbms = bool(conn_data.get("enable_dbms_output", True)) if isinstance(conn_data, dict) else True
+    if hasattr(target_tab, "_dbms_enabled") and not target_tab._dbms_enabled:
+        enable_dbms = False
+
     dbms_output = conn_data.get("dbms_output") if isinstance(conn_data, dict) else None
-    if is_select_query and dbms_output:
+    if is_select_query and enable_dbms and dbms_output:
         append_dbms_output(target_tab, dbms_output)
 
+    compiler_errors = conn_data.get("compiler_errors") if isinstance(conn_data, dict) else None
     if message_view:
-        if is_select_query:
+        if compiler_errors:
+            err_lines = [
+                "<div style='font-family: Consolas, Courier New, monospace; font-size: 10pt; line-height: 1.6;'>",
+                f"<span style='color: #dc2626; font-weight: bold;'>Oracle Compilation Warnings / Errors ({len(compiler_errors)}):</span><br><br>",
+            ]
+            for err in compiler_errors:
+                err_line = err.get("line", 1)
+                err_pos = err.get("position", 1)
+                err_text = html.escape(err.get("text", ""))
+                name = html.escape(err.get("name", ""))
+                type_ = html.escape(err.get("type", ""))
+                prefix = f"{type_} {name} — " if name else ""
+                err_lines.append(
+                    f"&nbsp;&nbsp;• <a href='jump:{err_line}:{err_pos}' style='color: #2563eb; text-decoration: underline; font-weight: 600;'>"
+                    f"Line {err_line}, Column {err_pos}</a>: {prefix}<span style='color: #b91c1c;'>{err_text}</span><br>"
+                )
+            err_lines.append(
+                "<br><span style='color: #64748b; font-size: 8.5pt;'>💡 Click any line number above to jump directly to the code in your editor.</span></div>"
+            )
+            message_view.setHtml("".join(err_lines))
+            final_tab_index = 1
+            tab_status = f"Compilation errors: {len(compiler_errors)}"
+        elif is_select_query:
             message_view.setPlainText(f"Query returned {row_count} rows in {time_str if 'time_str' in locals() else f'{elapsed_time:.2f}s'}.")
         else:
             message_view.setPlainText(msg)

@@ -9,8 +9,8 @@ class ProcessSignals(QObject):
       
 class QuerySignals(QObject):
     finished = Signal(object, object, object, object, object, object, object, object)
-
-    error = Signal(object, object, object, object, object)  
+    error = Signal(object, object, object, object, object)
+    dbms_chunk = Signal(object)  
 
 
 def _as_dict(value):

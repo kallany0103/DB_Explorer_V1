@@ -14,6 +14,7 @@ from .sqlite_ds_dialog import SQLiteDataSourceDialog
 from .oracle_ds_dialog import OracleDataSourceDialog
 from .csv_ds_dialog import CSVDataSourceDialog
 from .servicenow_ds_dialog import ServiceNowDataSourceDialog
+from .sqlnet_editor_dialog import SqlnetEditorDialog
 
 __all__ = [
     "BaseConnectionDialog",
@@ -29,4 +30,5 @@ __all__ = [
     "OracleDataSourceDialog",
     "CSVDataSourceDialog",
     "ServiceNowDataSourceDialog",
+    "SqlnetEditorDialog",
 ]
