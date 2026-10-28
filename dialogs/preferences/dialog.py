@@ -321,20 +321,59 @@ class PreferencesDialog(QDialog):
         self.editor_line_numbers_check.setChecked(getattr(self.main_window, "editor_line_numbers", True))
         form.addRow("", self.editor_line_numbers_check)
 
-        # 6. Auto Uppercase Keywords
-        self.editor_auto_uppercase_check = QCheckBox("Automatically uppercase SQL keywords")
-        self.editor_auto_uppercase_check.setChecked(getattr(self.main_window, "editor_auto_uppercase", True))
-        form.addRow("", self.editor_auto_uppercase_check)
-
-        # 7. Auto Completion / IntelliSense
+        # 6. Auto Completion / IntelliSense
         self.editor_autocomplete_check = QCheckBox("Enable SQL Auto-completion (IntelliSense popup)")
         self.editor_autocomplete_check.setChecked(getattr(self.main_window, "editor_autocomplete", True))
         form.addRow("", self.editor_autocomplete_check)
 
-        # 8. Highlight Current Line
+        # 7. Highlight Current Line
         self.editor_highlight_line_check = QCheckBox("Highlight current cursor line")
         self.editor_highlight_line_check.setChecked(getattr(self.main_window, "editor_highlight_line", True))
         form.addRow("", self.editor_highlight_line_check)
+
+        # ── SQL Formatting & Code Style Sub-section ──
+        form.addRow("", QLabel(""))  # spacer
+        style_subheading = QLabel("SQL Formatting & Code Style")
+        style_subheading.setStyleSheet("font-size: 11pt; font-weight: 700; color: #111827; margin-top: 4px;")
+        form.addRow(style_subheading)
+
+        # 8. Keyword Casing
+        self.editor_keyword_casing_combo = self._create_combo(16)
+        self.editor_keyword_casing_combo.addItems(["UPPERCASE", "lowercase", "Preserve (As-is)"])
+        saved_kw_casing = getattr(self.main_window, "editor_keyword_casing", "UPPERCASE")
+        idx = self.editor_keyword_casing_combo.findText(saved_kw_casing)
+        if idx >= 0:
+            self.editor_keyword_casing_combo.setCurrentIndex(idx)
+        form.addRow("Keyword Casing:", self.editor_keyword_casing_combo)
+
+        kw_help = QLabel("Casing applied to SQL keywords (SELECT, FROM, WHERE...) when typing or formatting.")
+        kw_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        kw_help.setWordWrap(True)
+        form.addRow("", kw_help)
+
+        # 9. Identifier Casing
+        self.editor_identifier_casing_combo = self._create_combo(16)
+        self.editor_identifier_casing_combo.addItems(["lowercase", "UPPERCASE", "Preserve (As-is)"])
+        saved_id_casing = getattr(self.main_window, "editor_identifier_casing", "Preserve (As-is)")
+        idx = self.editor_identifier_casing_combo.findText(saved_id_casing)
+        if idx >= 0:
+            self.editor_identifier_casing_combo.setCurrentIndex(idx)
+        form.addRow("Identifier Casing:", self.editor_identifier_casing_combo)
+
+        id_help = QLabel("Casing style for schema names, tables, and column identifiers.")
+        id_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
+        id_help.setWordWrap(True)
+        form.addRow("", id_help)
+
+        # 10. Auto-Close Characters
+        self.editor_auto_close_chars_check = QCheckBox("Auto-close quotes and brackets ('', \"\", (), [], {})")
+        self.editor_auto_close_chars_check.setChecked(getattr(self.main_window, "editor_auto_close_chars", True))
+        form.addRow("", self.editor_auto_close_chars_check)
+
+        # 11. Auto-Indent on Enter
+        self.editor_auto_indent_check = QCheckBox("Auto-indent on Enter (maintain indent & step into blocks)")
+        self.editor_auto_indent_check.setChecked(getattr(self.main_window, "editor_auto_indent", True))
+        form.addRow("", self.editor_auto_indent_check)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -532,6 +571,7 @@ class PreferencesDialog(QDialog):
         self.ai_provider_combo = self._create_combo(16)
         self.ai_provider_combo.addItems([
             "OpenAI",
+            "Groq",
             "Google Gemini",
             "Anthropic Claude",
             "Ollama (Local)",
@@ -551,7 +591,7 @@ class PreferencesDialog(QDialog):
         # 2. Model Name
         self.ai_model_edit = QLineEdit()
         self.ai_model_edit.setText(getattr(self.main_window, "ai_model", ""))
-        self.ai_model_edit.setPlaceholderText("e.g. gpt-4o-mini, gemini-1.5-flash, llama3")
+        self.ai_model_edit.setPlaceholderText("e.g. gpt-4o-mini, qwen/qwen3.8-27b, gemini-1.5-flash")
         form.addRow("Model Name:", self.ai_model_edit)
 
         model_help = QLabel("Leave empty to use recommended default for the selected provider.")
@@ -563,10 +603,10 @@ class PreferencesDialog(QDialog):
         self.ai_api_key_edit = QLineEdit()
         self.ai_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.ai_api_key_edit.setText(getattr(self.main_window, "ai_api_key", ""))
-        self.ai_api_key_edit.setPlaceholderText("sk-... or API key (leave blank for local Ollama / offline)")
+        self.ai_api_key_edit.setPlaceholderText("sk-... or gsk_... (leave blank for local Ollama)")
         form.addRow("API Key:", self.ai_api_key_edit)
 
-        key_help = QLabel("Securely stored locally. If left blank, intelligent offline SQL analysis is used.")
+        key_help = QLabel("Securely stored locally. Not required when running a local Ollama instance.")
         key_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
         key_help.setWordWrap(True)
         form.addRow("", key_help)
@@ -574,17 +614,22 @@ class PreferencesDialog(QDialog):
         # 4. Custom Base URL
         self.ai_base_url_edit = QLineEdit()
         self.ai_base_url_edit.setText(getattr(self.main_window, "ai_base_url", ""))
-        self.ai_base_url_edit.setPlaceholderText("e.g. http://localhost:11434/v1 or custom proxy")
+        self.ai_base_url_edit.setPlaceholderText("e.g. https://api.groq.com/openai/v1 or http://localhost:11434/v1")
         form.addRow("Base URL (Optional):", self.ai_base_url_edit)
 
-        url_help = QLabel("Custom endpoint. Defaults to provider official URL or http://localhost:11434/v1 for Ollama.")
+        url_help = QLabel("Custom endpoint. Leave blank to automatically use official provider endpoints.")
         url_help.setStyleSheet("color: #6b7280; font-size: 8pt;")
         url_help.setWordWrap(True)
         form.addRow("", url_help)
 
         # Provider change handler to adjust placeholders
         def on_provider_changed(text):
-            if "Ollama" in text:
+            if "Groq" in text:
+                if not self.ai_base_url_edit.text():
+                    self.ai_base_url_edit.setPlaceholderText("https://api.groq.com/openai/v1")
+                if not self.ai_model_edit.text():
+                    self.ai_model_edit.setPlaceholderText("qwen/qwen3.8-27b")
+            elif "Ollama" in text:
                 if not self.ai_base_url_edit.text():
                     self.ai_base_url_edit.setPlaceholderText("http://localhost:11434/v1")
                 if not self.ai_model_edit.text():
@@ -631,9 +676,12 @@ class PreferencesDialog(QDialog):
         self.editor_tab_size_spin.setValue(4)
         self.editor_word_wrap_check.setChecked(False)
         self.editor_line_numbers_check.setChecked(True)
-        self.editor_auto_uppercase_check.setChecked(True)
         self.editor_autocomplete_check.setChecked(True)
         self.editor_highlight_line_check.setChecked(True)
+        self.editor_keyword_casing_combo.setCurrentText("UPPERCASE")
+        self.editor_identifier_casing_combo.setCurrentText("Preserve (As-is)")
+        self.editor_auto_close_chars_check.setChecked(True)
+        self.editor_auto_indent_check.setChecked(True)
 
         self.grid_null_text_edit.setText("NULL")
         self.grid_date_format_combo.setCurrentText("YYYY-MM-DD HH:mm:ss")
@@ -667,9 +715,12 @@ class PreferencesDialog(QDialog):
             "editor_tab_size": self.editor_tab_size_spin.value(),
             "editor_word_wrap": self.editor_word_wrap_check.isChecked(),
             "editor_line_numbers": self.editor_line_numbers_check.isChecked(),
-            "editor_auto_uppercase": self.editor_auto_uppercase_check.isChecked(),
             "editor_autocomplete": self.editor_autocomplete_check.isChecked(),
             "editor_highlight_line": self.editor_highlight_line_check.isChecked(),
+            "editor_keyword_casing": self.editor_keyword_casing_combo.currentText(),
+            "editor_identifier_casing": self.editor_identifier_casing_combo.currentText(),
+            "editor_auto_close_chars": self.editor_auto_close_chars_check.isChecked(),
+            "editor_auto_indent": self.editor_auto_indent_check.isChecked(),
 
             # Results & Grid
             "grid_null_text": self.grid_null_text_edit.text(),

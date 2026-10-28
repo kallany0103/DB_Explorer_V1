@@ -21,7 +21,6 @@ This package contains all primary UI layers and managers.
 | `inspector/` | Live server stats, session logs, state monitoring |
 | `backup_and_restore/` | Database backup and restore workflows |
 | `encryption/` | Encrypted SQLite database connections |
-| `test_cases/` | SQL test suite management and execution |
 | `usql_tool/` | Integrated terminal emulator for direct PostgreSQL interaction |
 
 ## Key Entrypoints
@@ -166,8 +165,6 @@ widgets/
 │   ├── backup/
 │   ├── restore/
 │   └── core/
-├── test_cases/
-│   └── test_cases_widget.py
 └── usql_tool/
     ├── editor.py
     ├── terminal_widget.py

@@ -13,7 +13,6 @@ Supports:
 import json
 from typing import Dict, Any, List, Optional
 import httpx
-from widgets.ai_assistant.offline_analyzer import analyze_sql_locally
 
 
 SYSTEM_PROMPT = """You are an expert Database Architect and SQL Performance Tuning Assistant (similar to Toad for Oracle's AI assistant).
@@ -41,24 +40,19 @@ def explain_query_ai(
 ) -> str:
     """
     Explains the SQL query using the configured AI provider.
-    If no API key is set or call fails, falls back gracefully.
     """
     provider = (ai_settings.get("ai_provider") or "OpenAI").strip()
     api_key = (ai_settings.get("ai_api_key") or "").strip()
     base_url = (ai_settings.get("ai_base_url") or "").strip()
     model = (ai_settings.get("ai_model") or "").strip()
 
-    # If no provider API key and not a local endpoint, use local offline analyzer
     is_local_ollama = "ollama" in provider.lower() or "localhost" in base_url or "127.0.0.1" in base_url
     if not api_key and not is_local_ollama:
-        if user_prompt and user_prompt.strip().lower() not in ("explain", "explain this query", "explain code using ai"):
-            return (
-                "⚠️ **API Key Required for Interactive Chat**\n\n"
-                "Please configure an API Key (OpenAI, Gemini, Claude, or Ollama) in **Preferences → AI Assistant** "
-                "to ask arbitrary follow-up questions.\n\n"
-                f"**Local Analysis of your SQL:**\n\n{analyze_sql_locally(sql, db_type)}"
-            )
-        return analyze_sql_locally(sql, db_type)
+        return (
+            "⚠️ **API Key Required**\n\n"
+            "Please configure your API Key and provider in **Preferences → AI Assistant** "
+            "(e.g. Groq, OpenAI, Google Gemini, Anthropic Claude, or local Ollama)."
+        )
 
     # Determine message prompt
     if user_prompt:
@@ -71,6 +65,17 @@ def explain_query_ai(
             return _call_gemini(api_key, model or "gemini-1.5-flash", actual_user_message, chat_history)
         elif "claude" in provider.lower() or "anthropic" in provider.lower():
             return _call_anthropic(api_key, model or "claude-3-5-sonnet-20241022", actual_user_message, chat_history)
+        elif "groq" in provider.lower():
+            endpoint = base_url if base_url else "https://api.groq.com/openai/v1"
+            if not endpoint.endswith("/v1") and not endpoint.endswith("/v1/"):
+                endpoint = endpoint.rstrip("/") + "/v1"
+            return _call_openai_compatible(
+                api_key=api_key,
+                base_url=endpoint,
+                model=model or "qwen/qwen3.8-27b",
+                user_message=actual_user_message,
+                chat_history=chat_history
+            )
         else:
             # OpenAI or OpenAI-compatible (Ollama, vLLM, LMStudio, Azure OpenAI)
             endpoint = base_url if base_url else "https://api.openai.com/v1"
@@ -86,12 +91,7 @@ def explain_query_ai(
             )
     except Exception as e:
         error_msg = str(e)
-        offline_fallback = analyze_sql_locally(sql, db_type)
-        return (
-            f"⚠️ **AI Service Error**: `{error_msg}`\n\n"
-            f"> *(Showing local offline analysis instead)*\n\n"
-            f"{offline_fallback}"
-        )
+        return f"⚠️ **AI Service Error**: `{error_msg}`"
 
 
 def _call_openai_compatible(
@@ -119,10 +119,21 @@ def _call_openai_compatible(
     }
 
     with httpx.Client(timeout=30.0) as client:
-        resp = client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        try:
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as exc:
+            try:
+                err_json = exc.response.json()
+                if "error" in err_json and isinstance(err_json["error"], dict):
+                    msg = err_json["error"].get("message")
+                    if msg:
+                        raise RuntimeError(msg) from exc
+            except Exception:
+                pass
+            raise exc
 
 
 def _call_gemini(

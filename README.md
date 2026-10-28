@@ -15,7 +15,6 @@ Universal SQL Client is a desktop multi-database SQL client built with Python an
 - **Inspector** — live server stats, session logs, and state monitoring
 - **Backup & Restore** — database backup and restore workflows
 - **Encryption** — encrypted SQLite connections via `widgets/encryption/`
-- **Test Cases Widget** — manage and execute SQL query test suites
 - **Schema properties dialogs** — rich property panels for tables, views, functions, sequences, triggers, extensions, and foreign data wrappers
 - **Context menus** — modular, registry-driven context menus for every schema object type
 - **Connection pooling** — managed pool in `db/connection_pool.py` for efficient reuse
@@ -44,7 +43,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full system design.
 | Directory | Responsibility |
 | :--- | :--- |
 | `db/` | Connection creation, connection pooling, schema introspection, retrieval, modification, history, and metadata |
-| `widgets/` | All UI feature domains — worksheet, results, connections, ERD, dashboard, inspector, backup/restore, encryption, test cases, USQL |
+| `widgets/` | All UI feature domains — worksheet, results, connections, ERD, dashboard, inspector, backup/restore, encryption, USQL |
 | `dialogs/` | Connection dialogs, object-creation dialogs, schema properties panels, export and statistics dialogs |
 | `workers/` | Background runnables (`QThread`/`ProcessPoolExecutor`) and typed signal contracts |
 | `ui/` | Global QSS stylesheet, theme tokens, shared UI components, and toolbar builders |
