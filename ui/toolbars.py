@@ -10,6 +10,7 @@ from ui.components import (
     IconButton, SearchBox, ActionToolButton, DropdownToolButton,
     NavigationTabButton, ToolbarActionButton, CompactButton
 )
+from ui.menu_style import apply_menu_style
 
 
 
@@ -108,6 +109,7 @@ class WorksheetToolbar(QWidget):
         self.exec_btn.setIconSize(QSize(16, 16))
         self.exec_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         exec_menu = QMenu(self.exec_btn)
+        apply_menu_style(exec_menu)
         exec_menu.addAction(manager.ws_execute_new_tab_action)
         self.exec_btn.setMenu(exec_menu)
         self.exec_btn.setFixedWidth(48)
@@ -200,6 +202,7 @@ class WorksheetToolbar(QWidget):
         self.edit_btn.setToolTip("Edit Operations")
         
         edit_menu = QMenu(self)
+        apply_menu_style(edit_menu)
         self._populate_edit_menu(edit_menu)
         self.edit_btn.setMenu(edit_menu)
         layout.addWidget(self.edit_btn)
@@ -372,12 +375,14 @@ class ResultsInfoToolbar(QWidget):
 
         self.calc_btn = IconButton(
             qta.icon("fa5s.calculator", color="#475569", color_disabled="#CBD5E1"),
-            "Summarize selected cells",
+            "Turn ON/OFF live cell summary",
         )
         self.calc_btn.setObjectName("calc_btn")
+        self.calc_btn.setCheckable(True)
+        self.calc_btn.setChecked(False)
         self.calc_btn.setFixedSize(22, 22)
         self.calc_btn.setIconSize(QSize(12, 12))
-        self.calc_btn.clicked.connect(lambda: manager.show_cell_summary_for_tab(self.tab_content))
+        self.calc_btn.toggled.connect(lambda checked: manager.toggle_cell_summary(self.tab_content, checked))
         layout.addWidget(self.calc_btn)
 
         # Separator between tools and pagination

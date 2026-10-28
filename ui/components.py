@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve,
 from typing import Optional
 import qtawesome as qta
 import qtawesome.iconic_font
+from ui.menu_style import apply_menu_style
 
 # Guard against Qt console spam when qtawesome is queried with uninitialized/zero size
 _orig_char_icon_pixmap = qtawesome.iconic_font.CharIconEngine.pixmap
@@ -431,6 +432,7 @@ class ActionToolButton(QToolButton):
     def __init__(self, text, icon=None, parent=None):
         super().__init__(parent)
         self._menu = QMenu(self)
+        apply_menu_style(self._menu)
         self.setMenu(self._menu)
         self.setFixedHeight(28)
         self.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)

@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QMenu
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction, QGuiApplication, QTextCursor
+from ui.menu_style import apply_menu_style
 
 
 def create_message_view(manager, tab_content):
@@ -62,6 +63,7 @@ def create_message_view(manager, tab_content):
     # Right-click context menu to allow copying without clicking/focusing
     def _show_context_menu(pos):
         menu = QMenu(message_view)
+        apply_menu_style(menu)
         copy_all_action = QAction("Copy All", menu)
         copy_all_action.triggered.connect(
             lambda: QGuiApplication.clipboard().setText(message_view.toPlainText())

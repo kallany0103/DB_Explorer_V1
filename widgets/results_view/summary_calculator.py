@@ -27,6 +27,9 @@ def calculate_cell_summary(selected_indexes: list[QModelIndex]) -> CellSummary:
     if total_count == 0:
         return CellSummary(0, 0, 0, 0, 0, None, None, None, None, None, None)
 
+    if total_count > 50000:
+        selected_indexes = selected_indexes[:50000]
+
     null_count = 0
     distinct_values: set[str | None] = set()
     numeric_values: list[float] = []

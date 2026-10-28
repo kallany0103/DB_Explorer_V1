@@ -35,6 +35,7 @@ from widgets.worksheet.editor_actions import (
     go_to_line as go_to_line_action,
 )
 from widgets.worksheet.context_menu import show_editor_context_menu as show_editor_context_menu_action
+from ui.menu_style import apply_menu_style
 from widgets.worksheet.query_executor import (
     start_query_worker,
     on_query_finished_signal,
@@ -608,15 +609,7 @@ class WorksheetManager(QWidget):
             return
 
         menu = QMenu(self.tab_widget)
-        menu.setStyleSheet(
-            """
-                QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
-                QMenu::item { padding: 6px 24px 6px 8px; font-size: 10pt; color: #333333; }
-                QMenu::item:selected { background-color: #e8eaed; color: #000000; }
-                QMenu::icon { padding: 4px; }
-                QMenu::separator { height: 1px; background: #eeeeee; margin: 4px 0px; }
-            """
-        )
+        apply_menu_style(menu)
 
         rename_action = QAction("Rename", self)
         rename_action.triggered.connect(lambda: self.rename_tab(clicked_index))

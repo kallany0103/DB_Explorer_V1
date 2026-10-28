@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QSizeF
 
 from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.items.resizable import ResizableItemMixin
+from ui.menu_style import apply_menu_style
 
 
 class NoteTextItem(QGraphicsTextItem):
@@ -107,12 +108,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
 
     def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
-            QMenu::item { padding: 6px 16px; font-size: 9pt; }
-            QMenu::item:selected { background: #e8f0fe; color: #1a73e8; border-radius: 4px; }
-            QMenu::separator { height: 1px; background: #e5e7eb; margin: 4px 8px; }
-        """)
+        apply_menu_style(menu)
 
         pin_text = "Unpin Note" if self.is_pinned else "Pin Note"
         pin_action = menu.addAction(self._pin_icon, pin_text)

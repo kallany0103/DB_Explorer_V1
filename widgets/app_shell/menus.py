@@ -1,5 +1,6 @@
 from PySide6.QtGui import QAction
 import qtawesome as qta
+from ui.menu_style import apply_menu_style
 
 def build_main_window_menu(main_window):
     menubar = main_window.menuBar()
@@ -101,3 +102,6 @@ def build_main_window_menu(main_window):
     help_menu.addAction(main_window.technical_docs_action)
     help_menu.addSeparator()
     help_menu.addAction(main_window.about_action)
+
+    for menu in (file_menu, edit_menu, actions_menu, tools_menu, window_menu, help_menu):
+        apply_menu_style(menu)

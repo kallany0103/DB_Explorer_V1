@@ -22,7 +22,7 @@ from widgets.erd.view import ERDView
 from widgets.erd.property_panel import PropertyPanel
 from widgets.erd.palette import ERDPalette
 from widgets.erd.dialogs import TableDesignerDialog, RelationDesignerDialog
-from ui.components import ToolbarActionButton, SearchBox
+from ui.components import SearchBox
 from widgets.erd.commands import AddTableCommand, AddConnectionCommand, AddNoteCommand
 from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
 from widgets.erd.sql_generator import SQLPreviewDialog, generate_sql_script, DialectPickerDialog
@@ -193,20 +193,17 @@ class ERDWidget(QWidget):
 
     def _build_toolbar_advanced_group(self) -> None:
         """Add SQL generator and search toolbar buttons plus their keyboard shortcuts."""
-        self.sql_btn = ToolbarActionButton(icon=qta.icon('fa5s.database', color='#555555'))
-        self.sql_btn.setMinimumWidth(26)
-        self.sql_btn.setToolTip("Generate SQL Script (Alt+Ctrl+S)")
-        self.sql_btn.clicked.connect(self.generate_forward_sql)
-        self.toolbar.addWidget(self.sql_btn)
-        self.sql_shortcut = QAction(self)
-        self.sql_shortcut.setShortcut("Alt+Ctrl+S")
-        self.sql_shortcut.triggered.connect(self.generate_forward_sql)
-        self.addAction(self.sql_shortcut)
-        self.search_btn = ToolbarActionButton(icon=qta.icon('fa5s.search', color='#555555'))
-        self.search_btn.setMinimumWidth(26)
-        self.search_btn.setToolTip("Search (Ctrl+F)")
-        self.search_btn.clicked.connect(self.toggle_search)
-        self.toolbar.addWidget(self.search_btn)
+        self.sql_action = QAction(qta.icon('fa5s.database', color='#555555'), "Generate SQL Script", self)
+        self.sql_action.setShortcut("Alt+Ctrl+S")
+        self.sql_action.triggered.connect(self.generate_forward_sql)
+        self.toolbar.addAction(self.sql_action)
+        self.sql_btn = self.toolbar.widgetForAction(self.sql_action)
+
+        self.search_action = QAction(qta.icon('fa5s.search', color='#555555'), "Search", self)
+        self.search_action.setShortcut("Ctrl+F")
+        self.search_action.triggered.connect(self.toggle_search)
+        self.toolbar.addAction(self.search_action)
+        self.search_btn = self.toolbar.widgetForAction(self.search_action)
 
     def _build_floating_search(self) -> None:
         """Create the floating search input overlay and its Ctrl+F shortcut."""
@@ -217,10 +214,6 @@ class ERDWidget(QWidget):
         self.search_input.textChanged.connect(self.on_search_text_changed)
         self.search_input.returnPressed.connect(self.on_search_return_pressed)
         self.search_input.installEventFilter(self)
-        search_action = QAction(self)
-        search_action.setShortcut("Ctrl+F")
-        search_action.triggered.connect(self.toggle_search)
-        self.addAction(search_action)
 
 
 

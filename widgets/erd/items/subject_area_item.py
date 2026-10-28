@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QSizeF
 
 from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.items.resizable import ResizableItemMixin
+from ui.menu_style import apply_menu_style
 
 
 class _GroupTitleItem(QGraphicsTextItem):
@@ -184,12 +185,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu { background:#ffffff; border:1px solid #d1d5db; border-radius:6px; padding:4px; }
-            QMenu::item { padding:6px 16px; font-size:9pt; }
-            QMenu::item:selected { background:#e8f0fe; color:#1a73e8; border-radius:4px; }
-            QMenu::separator { height:1px; background:#e5e7eb; margin:4px 8px; }
-        """)
+        apply_menu_style(menu)
         color_names = ["Blue", "Pink", "Green", "Amber", "Violet", "Rose"]
         color_menu = menu.addMenu("Change Color")
         for idx, name in enumerate(color_names):

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 import db
+from ui.menu_style import apply_menu_style
 
 
 def append_dbms_output(target_tab: QWidget, output_text: str) -> None:
@@ -380,6 +381,7 @@ def create_dbms_output_view(manager, tab_content: QWidget) -> QWidget:
     # Context menu
     def _show_context_menu(pos):
         menu = QMenu(output_view)
+        apply_menu_style(menu)
         copy_action = QAction("Copy", menu)
         copy_action.triggered.connect(output_view.copy)
         copy_all_action = QAction("Copy All", menu)

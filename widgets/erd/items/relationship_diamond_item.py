@@ -9,6 +9,7 @@ from widgets.erd.commands import DeleteItemCommand, ResizeItemCommand
 from widgets.erd.constants import PORT_HIT_RADIUS_SQ
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
 from widgets.erd.items.floating_connection import arm_port_drag, maybe_start_port_drag, cancel_port_drag
+from ui.menu_style import apply_menu_style
 
 
 class _DiamondLabelItem(QGraphicsTextItem):
@@ -224,12 +225,7 @@ class ERDRelationshipDiamondItem(QGraphicsPolygonItem, ResizableItemMixin):
 
     def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu { background:#ffffff; border:1px solid #d1d5db; border-radius:6px; padding:4px; }
-            QMenu::item { padding:6px 16px; font-size:9pt; }
-            QMenu::item:selected { background:#e8f0fe; color:#1a73e8; border-radius:4px; }
-            QMenu::separator { height:1px; background:#e5e7eb; margin:4px 8px; }
-        """)
+        apply_menu_style(menu)
         label = "✓ Identifying" if self.is_identifying else "Identifying Relationship"
         menu.addAction(label).triggered.connect(self._toggle_identifying)
         if self.size_mode == "manual":

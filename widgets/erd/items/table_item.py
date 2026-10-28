@@ -9,6 +9,7 @@ from widgets.erd.constants import DRAG_ENDPOINT_RADIUS
 from widgets.erd.items.resizable import ResizableItemMixin, item_visual_scene_rect
 import widgets.erd.items.connection_item
 from widgets.erd.items.floating_connection import arm_port_drag, maybe_start_port_drag, cancel_port_drag
+from ui.menu_style import apply_menu_style
 
 GRID_SNAP: float = 20.0  # pixel grid for snap-to-grid during drag
 
@@ -493,11 +494,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
 
     def show_context_menu(self, screen_pos) -> None:
         menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px; }
-            QMenu::item { padding: 6px 16px; font-size: 9pt; }
-            QMenu::item:selected { background: #e8f0fe; color: #1a73e8; border-radius: 4px; }
-        """)
+        apply_menu_style(menu)
         
         menu.addAction(
             qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Table"

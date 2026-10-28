@@ -4,6 +4,7 @@ Extracted to satisfy the SRP.  This module owns exclusively the construction
 of the right-click QMenu; it has no awareness of path routing or painting.
 """
 import qtawesome as qta
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
 
 
@@ -23,7 +24,7 @@ _CONTEXT_MENU_STYLE = """
         border-radius: 4px;
         margin: 1px 4px;
     }
-    QMenu::item:selected  { background: #eff6ff; color: #1d4ed8; }
+    QMenu::item:selected  { background: #EEF4FA; color: #1E293B; border-radius: 5px; }
     QMenu::item:checked   { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
     QMenu::item:disabled  {
         color: #9ca3af;
@@ -33,13 +34,23 @@ _CONTEXT_MENU_STYLE = """
         background: transparent;
         margin: 0px 4px;
     }
-    QMenu::separator { height: 1px; background: #e5e7eb; margin: 4px 8px; }
-    QMenu::right-arrow { width: 8px; height: 8px; }
+    QMenu::right-arrow {
+        image: url(assets/chevron-right.svg);
+        width: 10px;
+        height: 10px;
+        padding-right: 6px;
+    }
 """
 
 
 def _make_menu(parent=None) -> QMenu:
     m = QMenu(parent)
+    m.setWindowFlags(
+        m.windowFlags()
+        | Qt.WindowType.FramelessWindowHint
+        | Qt.WindowType.NoDropShadowWindowHint
+    )
+    m.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
     m.setStyleSheet(_CONTEXT_MENU_STYLE)
     return m
 
