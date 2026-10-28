@@ -1,19 +1,12 @@
 from PySide6.QtWidgets import QMenu, QApplication
 from PySide6.QtGui import QAction, QIcon
 import qtawesome as qta
+from ui.menu_style import apply_menu_style
 
 
 def show_editor_context_menu(manager, pos, editor):
     menu = QMenu(manager)
-    menu.setStyleSheet(
-        """
-            QMenu { background-color: #ffffff; border: 1px solid #cccccc; }
-            QMenu::item { padding: 4px; spacing: 4px; font-size: 10pt; color: #333333; }
-            QMenu::item:selected { background-color: #e8eaed; color: #000000; }
-            QMenu::icon { padding: 4px; }
-            QMenu::separator { height: 1px; background: #eeeeee; margin: 4px 0px; }
-        """
-    )
+    apply_menu_style(menu)
 
     undo_action = QAction(qta.icon("fa5s.undo", color="#555555"), "Undo", manager)
     undo_action.setIconVisibleInMenu(True)

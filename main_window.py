@@ -17,6 +17,7 @@ from widgets.usql_tool.terminal_widget import USQLToolWidget
 from dialogs import PreferencesDialog
 from widgets.login_dialog import LoginDialog
 from ui.theme import setup_theme
+from ui.menu_style import apply_menu_style
 import db
 import qtawesome as qta
 from PySide6.QtWidgets import QSpacerItem
@@ -159,6 +160,7 @@ class MainWindow(QMainWindow):
 
         # Create Dropdown Menu
         new_tab_menu = QMenu(self)
+        apply_menu_style(new_tab_menu)
         new_tab_menu.setObjectName("new_tab_menu")
         new_tab_menu.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -179,24 +181,7 @@ class MainWindow(QMainWindow):
         self.addAction(action_new_worksheet)
         self.addAction(action_new_erd)
 
-        # Style for the dropdown menu
-        new_tab_menu.setStyleSheet("""
-            QMenu#new_tab_menu {
-                background-color: #FFFFFF;
-                border: 1px solid #B8BEC6;
-                border-radius: 4px;
-                padding: 4px 0px 4px 4px;
-            }
-            QMenu#new_tab_menu::item {
-                padding: 6px 24px 6px 4px;
-                color: #1f2937;
-                font-size: 9pt;
-            }
-            QMenu#new_tab_menu::item:selected {
-                background-color: #E8E8E8;
-                color: #000000;
-            }
-        """)
+
 
         def show_new_tab_menu():
             menu_width = new_tab_menu.sizeHint().width()

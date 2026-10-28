@@ -29,7 +29,7 @@ import widgets.results_view.row_crud as row_crud
 import widgets.results_view.ui as ui
 from widgets.results_view.perf_metrics import perf_snapshot
 from dialogs.tools import ExportDialog
-from dialogs.statistics.cell_summary_dialog import CellSummaryDialog
+from ui.menu_style import apply_menu_style
 from widgets.results_view.summary_calculator import (
     calculate_cell_summary,
     format_summary_for_statusbar,
@@ -222,10 +222,34 @@ class ResultsManager(QObject):
         timer.setInterval(60)
 
         def _update():
-            self.sync_selection_summary(target_tab)
+            calc_btn = target_tab.findChild(QWidget, "calc_btn")
+            if calc_btn and hasattr(calc_btn, "isChecked") and calc_btn.isChecked():
+                self.sync_selection_summary(target_tab)
 
         timer.timeout.connect(_update)
         sel_model.selectionChanged.connect(lambda *_: timer.start())
+
+    def toggle_cell_summary(self, tab_content=None, checked=None):
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+
+        calc_btn = target_tab.findChild(QWidget, "calc_btn")
+        if calc_btn and hasattr(calc_btn, "isChecked"):
+            if checked is not None and calc_btn.isChecked() != checked:
+                calc_btn.setChecked(checked)
+            is_active = calc_btn.isChecked()
+        else:
+            is_active = bool(checked)
+
+        if not is_active:
+            summary_label = target_tab.findChild(QLabel, "cell_summary_label")
+            if summary_label:
+                summary_label.setText("")
+                summary_label.hide()
+            return
+
+        self.sync_selection_summary(target_tab)
 
     def sync_selection_summary(self, tab_content=None):
         target_tab = tab_content or self.tab_widget.currentWidget()
@@ -234,6 +258,12 @@ class ResultsManager(QObject):
 
         summary_label = target_tab.findChild(QLabel, "cell_summary_label")
         if not summary_label:
+            return
+
+        calc_btn = target_tab.findChild(QWidget, "calc_btn")
+        if not (calc_btn and hasattr(calc_btn, "isChecked") and calc_btn.isChecked()):
+            summary_label.setText("")
+            summary_label.hide()
             return
 
         table_view = self._get_result_table_for_tab(target_tab)
@@ -250,8 +280,8 @@ class ResultsManager(QObject):
 
         indexes = sel_model.selectedIndexes()
         if len(indexes) <= 1:
-            summary_label.setText("")
-            summary_label.hide()
+            summary_label.setText("Select 2+ cells to summarize")
+            summary_label.show()
             return
 
         summary = calculate_cell_summary(indexes)
@@ -272,6 +302,7 @@ class ResultsManager(QObject):
             return
 
         summary = calculate_cell_summary(indexes)
+        from dialogs.statistics.cell_summary_dialog import CellSummaryDialog
         dialog = CellSummaryDialog(summary, parent=self.main_window)
         dialog.exec()
 
@@ -548,6 +579,7 @@ class ResultsManager(QObject):
           return
 
         menu = QMenu()
+        apply_menu_style(menu)
         selected_indexes = results_table.selectedIndexes()
         if selected_indexes:
             summarize_action = QAction("Summarize Selected Cells...", self.main_window)

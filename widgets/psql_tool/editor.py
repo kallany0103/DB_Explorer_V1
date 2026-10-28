@@ -21,6 +21,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QMenu, QPlainTextEdit
 
 from widgets.psql_tool.constants import _TERM_MAX_BLOCKS
+from ui.menu_style import apply_menu_style
 
 
 class _TerminalEdit(QPlainTextEdit):
@@ -557,6 +558,7 @@ class _TerminalEdit(QPlainTextEdit):
     def contextMenuEvent(self, event) -> None: 
         """Right-click context menu: Copy / Paste / Select All / Clear."""
         menu = QMenu(self)
+        apply_menu_style(menu)
         menu.addAction("Copy", self.copy)
         menu.addAction("Paste", self._paste_at_input)
         menu.addSeparator()

@@ -172,8 +172,10 @@ QMenuBar::separator {
 
 QMenu {
     background-color: #ffffff;
-    border: 1px solid #D3D8DF;
-    padding: 3px 0px;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 4px;
+    font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 QMenu#accountMenu {
@@ -214,25 +216,41 @@ QLabel#accountMenuSubtitle {
 }
 
 QMenu::item {
-    padding: 4px 24px 4px 6px;
+    padding: 6px 24px 6px 8px;
     font-size: 9pt;
-    color: #333333;
+    color: #1F2937;
+    border-radius: 5px;
+    margin: 2px 4px;
 }
 
 QMenu::icon {
-    padding-left: 6px;
-    width: 14px;
-    height: 14px;
+    padding-left: 4px;
+    width: 16px;
+    height: 16px;
 }
 
 QMenu::item:selected {
-    background-color: #e8e8e8;
-    color: #000000;
+    background-color: #EEF4FA;
+    color: #1E293B;
+    border-radius: 5px;
 }
 
 QMenu::item:disabled {
-    color: #a0a8b4;
+    color: #9ca3af;
     background-color: transparent;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #E2E8F0;
+    margin: 4px 8px;
+}
+
+QMenu::right-arrow {
+    image: url(assets/chevron-right.svg);
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
 }
 
 QTableView QTableCornerButton::section { background-color: #9FA6AF; border: 1px solid #B8BEC6; }
@@ -429,6 +447,11 @@ QTableWidget#cell_summary_table::item:selected {
     background-color: #E2E8F0;
     border-color: #64748B;
 }
+#resultsInfoBar QPushButton:checked {
+    background-color: #E0F2FE;
+    border-color: #38BDF8;
+    color: #0284C7;
+}
 #resultsInfoBar QPushButton:disabled {
     background-color: #F8FAFC;
     border-color: #E2E8F0;
@@ -568,8 +591,7 @@ QTabBar::tab:hover:!selected {
     color: #0F172A;
     border: 1px solid #CBD5E1;
     border-bottom: 1px solid #FFFFFF;
-    margin-bottom: -1px;
-    font-weight: 600;
+    font-weight: 500;
 }
 #output_tabs QTabBar::tab:hover:!selected {
     background: #F1F5F9;

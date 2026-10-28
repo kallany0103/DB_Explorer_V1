@@ -23,6 +23,7 @@ import qtawesome as qta
 
 from ui.components import SecondaryButton, PrimaryButton
 from widgets.ai_assistant.ai_service import explain_query_ai
+from ui.menu_style import apply_menu_style
 
 
 def markdown_to_html(md_text: str) -> str:
@@ -522,28 +523,7 @@ class AIChatPanel(QWidget):
     def show_past_conversations(self):
         """Displays a menu of past conversations to view or switch back to."""
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #FFFFFF;
-                border: 1px solid #D1D5DB;
-                border-radius: 6px;
-                padding: 4px 0px;
-                font-size: 8.5pt;
-            }
-            QMenu::item {
-                padding: 6px 14px 6px 10px;
-                color: #1F2937;
-            }
-            QMenu::item:selected {
-                background-color: #EFF6FF;
-                color: #2563EB;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: #E5E7EB;
-                margin: 4px 0px;
-            }
-        """)
+        apply_menu_style(menu)
 
         if not self.past_conversations:
             empty_action = menu.addAction("No past conversations yet")
