@@ -94,6 +94,12 @@ class CodeEditor(QPlainTextEdit):
         self._ghost_accepting = False
         self.folding_gutter_width = 18
         self.auto_uppercase = True
+        self.autocomplete_enabled = True
+        self.highlight_line_enabled = True
+        self.keyword_casing = "UPPERCASE"
+        self.identifier_casing = "Preserve (As-is)"
+        self.auto_close_chars = True
+        self.auto_indent = True
 
         self._sync_document_font_from_widget()
 
@@ -688,12 +694,29 @@ class CodeEditor(QPlainTextEdit):
         else:
             self._clear_ghost()
 
+    def _format_keyword_case(self, word: str) -> str:
+        """Format a SQL keyword according to keyword_casing preference."""
+        casing = getattr(self, "keyword_casing", "UPPERCASE")
+        if casing == "UPPERCASE":
+            return word.upper()
+        elif casing == "lowercase":
+            return word.lower()
+        return word
+
+    def _format_identifier_case(self, word: str) -> str:
+        """Format an identifier (table, column, schema) according to identifier_casing preference."""
+        casing = getattr(self, "identifier_casing", "Preserve (As-is)")
+        if casing == "UPPERCASE":
+            return word.upper()
+        elif casing == "lowercase":
+            return word.lower()
+        return word
+
     def _accept_ghost(self):
         """Insert the ghost suggestion and clear the ghost overlay."""
         if not self._ghost_text:
             return
         self._ghost_accepting = True
-
 
         full_word = getattr(self, "_ghost_full_match", None) or (self._ghost_prefix + self._ghost_text)
         prefix_len = len(self._ghost_prefix)
@@ -706,19 +729,16 @@ class CodeEditor(QPlainTextEdit):
                 QTextCursor.MoveMode.KeepAnchor,
                 prefix_len,
             )
-            cursor.insertText(full_word.upper())
+            cursor.insertText(self._format_keyword_case(full_word))
         elif prefix_len > 0:
-            # Non-keyword with a typed prefix (e.g. a table/column from Oracle which
-            # stores names in uppercase). Replace the prefix so the accepted result
-            # is the canonical form from the engine list, not prefix + ghost-suffix.
             cursor.movePosition(
                 QTextCursor.MoveOperation.Left,
                 QTextCursor.MoveMode.KeepAnchor,
                 prefix_len,
             )
-            cursor.insertText(full_word)
+            cursor.insertText(self._format_identifier_case(full_word))
         else:
-            cursor.insertText(self._ghost_text)
+            cursor.insertText(self._format_identifier_case(self._ghost_text))
 
         self.setTextCursor(cursor)
         self._ghost_accepting = False
@@ -737,9 +757,7 @@ class CodeEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _try_uppercase_word_before_cursor(self):
-        """If the word immediately left of the cursor is a SQL keyword, uppercase it in place."""
-        if not getattr(self, "auto_uppercase", True):
-            return
+        """If the word immediately left of the cursor is a SQL keyword or identifier, format according to preferences."""
         engine = self._engine
         if not engine:
             return
@@ -752,21 +770,22 @@ class CodeEditor(QPlainTextEdit):
             return
             
         word = match.group(1)
-        if not engine.is_keyword(word):
-            return
-            
-        upper = word.upper()
-        if word == upper:
-            return  # already uppercase — nothing to do
-            
-        # Get exact positions of the word so we don't accidentally swallow whitespace/newlines
         start_pos = match.start(1)
         end_pos = match.end(1)
-        
+
+        if engine.is_keyword(word):
+            formatted = self._format_keyword_case(word)
+        elif getattr(self, "identifier_casing", "Preserve (As-is)") != "Preserve (As-is)":
+            formatted = self._format_identifier_case(word)
+        else:
+            return
+
+        if word == formatted:
+            return  # already formatted properly
+            
         cursor.setPosition(start_pos)
         cursor.setPosition(end_pos, QTextCursor.MoveMode.KeepAnchor)
-        cursor.insertText(upper)
-        # Restore cursor to original position, adjusted for any length difference (though upper() shouldn't change length)
+        cursor.insertText(formatted)
         cursor.setPosition(pos)
         self.setTextCursor(cursor)
 
@@ -822,7 +841,7 @@ class CodeEditor(QPlainTextEdit):
                 self._clear_ghost()
                 return
 
-        # 1b. Tab with no ghost — uppercase the current word if it is a keyword
+        # 1b. Tab with no ghost — format word before cursor if keyword/identifier
         if engine and not self._ghost_text and event.key() == Qt.Key.Key_Tab:
             self._try_uppercase_word_before_cursor()
             return
@@ -830,7 +849,7 @@ class CodeEditor(QPlainTextEdit):
         # 2. Ctrl+Space — force-show ghost for current prefix
         if (event.modifiers() == Qt.KeyboardModifier.ControlModifier
                 and event.key() == Qt.Key.Key_Space):
-            if engine:
+            if engine and getattr(self, "autocomplete_enabled", True):
                 prefix = self._current_word_prefix()
                 match = engine.best_match(prefix) if prefix else ""
                 if match:
@@ -840,47 +859,144 @@ class CodeEditor(QPlainTextEdit):
                     self._update_ghost_label()
             return
 
-        # 3. Dot — capture word BEFORE super() inserts the dot, then branch:
-        if engine and event.text() == '.':
+        # 3. Enter / Return — Auto-indent on Enter
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and getattr(self, "auto_indent", True):
+            if self._ghost_text:
+                self._clear_ghost()
+            if engine:
+                self._try_uppercase_word_before_cursor()
+
+            cursor = self.textCursor()
+            current_line = cursor.block().text()
+            cursor_pos_in_block = cursor.positionInBlock()
+            line_before_cursor = current_line[:cursor_pos_in_block]
+
+            # Measure existing leading whitespace
+            indent_match = re.match(r'^(\s*)', current_line)
+            indent = indent_match.group(1) if indent_match else ""
+
+            # Check if entering a new block or opening parenthesis
+            trimmed_before = line_before_cursor.strip().upper()
+            open_parens = line_before_cursor.count('(') - line_before_cursor.count(')')
+            open_brackets = line_before_cursor.count('[') - line_before_cursor.count(']')
+            open_braces = line_before_cursor.count('{') - line_before_cursor.count('}')
+
+            extra_indent = ""
+            tab_spaces = "    "
+
+            if (open_parens > 0 or open_brackets > 0 or open_braces > 0
+                    or trimmed_before.endswith(('BEGIN', 'CASE', 'THEN', 'ELSE', 'LOOP', 'DO', 'AS', '('))):
+                extra_indent = tab_spaces
+
+            cursor.beginEditBlock()
+            cursor.insertText("\n" + indent + extra_indent)
+            cursor.endEditBlock()
+            self.setTextCursor(cursor)
+            self.ensureCursorVisible()
+            if engine:
+                engine.reset_active_list()
+            return
+
+        # 4. Auto-Close Characters ('', "", (), [], {})
+        text = event.text()
+        close_pairs = {
+            '(': ')',
+            '[': ']',
+            '{': '}',
+            "'": "'",
+            '"': '"',
+        }
+        # If user typed a closing character and next character is that closing char, step over it
+        if getattr(self, "auto_close_chars", True) and text in (')', ']', '}', "'", '"'):
+            cursor = self.textCursor()
+            if not cursor.hasSelection():
+                pos = cursor.position()
+                full_text = self.toPlainText()
+                next_char = full_text[pos:pos + 1]
+                if next_char == text:
+                    cursor.movePosition(QTextCursor.MoveOperation.Right)
+                    self.setTextCursor(cursor)
+                    if self._ghost_text:
+                        self._clear_ghost()
+                    return
+
+        if getattr(self, "auto_close_chars", True) and text in close_pairs:
+            cursor = self.textCursor()
+            closing_char = close_pairs[text]
+
+            # If user has selected text, wrap selection with the pair
+            if cursor.hasSelection():
+                selected = cursor.selectedText()
+                cursor.beginEditBlock()
+                cursor.insertText(text + selected + closing_char)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+                if self._ghost_text:
+                    self._clear_ghost()
+                return
+
+            # For quotes, avoid auto-pairing if immediately preceded by alphanumeric (e.g. don't)
+            pos = cursor.position()
+            full_text = self.toPlainText()
+            prev_char = full_text[pos - 1:pos] if pos > 0 else ""
+            if text in ("'", '"') and prev_char.isalnum():
+                super().keyPressEvent(event)
+                return
+
+            cursor.beginEditBlock()
+            cursor.insertText(text + closing_char)
+            cursor.movePosition(QTextCursor.MoveOperation.Left)
+            cursor.endEditBlock()
+            self.setTextCursor(cursor)
+            if self._ghost_text:
+                self._clear_ghost()
+            return
+
+        # 4b. Backspace over auto-closed pair
+        if getattr(self, "auto_close_chars", True) and event.key() == Qt.Key.Key_Backspace:
+            cursor = self.textCursor()
+            if not cursor.hasSelection():
+                pos = cursor.position()
+                full_text = self.toPlainText()
+                if 0 < pos < len(full_text):
+                    prev_char = full_text[pos - 1]
+                    next_char = full_text[pos]
+                    if (prev_char, next_char) in (('(', ')'), ('[', ']'), ('{', '}'), ("'", "'"), ('"', '"')):
+                        cursor.beginEditBlock()
+                        cursor.deletePreviousChar()
+                        cursor.deleteChar()
+                        cursor.endEditBlock()
+                        self.setTextCursor(cursor)
+                        if self._ghost_text:
+                            self._clear_ghost()
+                        return
+
+        # 5. Dot — capture word BEFORE super() inserts the dot, then branch:
+        if engine and text == '.':
             word = self._word_before_cursor()
             self._clear_ghost()
             super().keyPressEvent(event)
             if word:
                 if engine.is_schema(word):
-                    # Uppercase the schema name in the editor (before the dot)
-                    upper = word.upper()
-                    if word != upper:
+                    formatted_schema = self._format_identifier_case(word)
+                    if word != formatted_schema:
                         cur = self.textCursor()
-                        # Step back over the dot we just inserted, select schema word
-                        cur.movePosition(
-                            QTextCursor.MoveOperation.Left,
-                            QTextCursor.MoveMode.MoveAnchor,
-                            1,
-                        )
-                        cur.movePosition(
-                            QTextCursor.MoveOperation.Left,
-                            QTextCursor.MoveMode.KeepAnchor,
-                            len(word),
-                        )
-                        cur.insertText(upper)
-                        # Reposition after the dot
-                        cur.movePosition(
-                            QTextCursor.MoveOperation.Right,
-                            QTextCursor.MoveMode.MoveAnchor,
-                            1,
-                        )
+                        cur.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.MoveAnchor, 1)
+                        cur.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, len(word))
+                        cur.insertText(formatted_schema)
+                        cur.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.MoveAnchor, 1)
                         self.setTextCursor(cur)
                     items = engine.fetch_for_schema_dot(self._conn_data, word)
                 else:
                     items = engine.get_columns_for_table(self._conn_data, word)
-                if items:
+                if items and getattr(self, "autocomplete_enabled", True):
                     self._ghost_prefix = ""
                     self._ghost_full_match = ""
                     self._ghost_text = items[0]
                     self._update_ghost_label()
             return
 
-        # 4. Default editor handling; clear any stale ghost first
+        # 6. Default editor handling; clear any stale ghost first
         if self._ghost_text:
             self._clear_ghost()
 
@@ -889,20 +1005,20 @@ class CodeEditor(QPlainTextEdit):
         if not engine:
             return
 
-        # 5. Reset to base word list on word-breaking characters; also auto-uppercase keywords
-        text = event.text()
+        # 7. Reset to base word list on word-breaking characters; also format keywords/identifiers
         if text and text in ' \t\n\r;,()=!<>+-*/%|&\'"':
             self._try_uppercase_word_before_cursor()
             engine.reset_active_list()
             return
 
-        # 6. Skip modifier-only keys except Backspace / Delete
+        # 8. Skip modifier-only keys except Backspace / Delete
         is_delete = event.key() in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete)
         if not text and not is_delete:
             return
 
-        # 7. Compute and display ghost suggestion
-        self._compute_ghost()
+        # 9. Compute and display ghost suggestion
+        if getattr(self, "autocomplete_enabled", True):
+            self._compute_ghost()
 
     def wheelEvent(self, event: QWheelEvent):
         """Ctrl+Scroll dynamically zooms font size (clamped 8-32 pt)."""
@@ -976,3 +1092,15 @@ class CodeEditor(QPlainTextEdit):
             self.highlight_line_enabled = bool(prefs["editor_highlight_line"])
             if hasattr(self, "highlightCurrentLine"):
                 self.highlightCurrentLine()
+
+        if "editor_keyword_casing" in prefs:
+            self.keyword_casing = prefs["editor_keyword_casing"]
+
+        if "editor_identifier_casing" in prefs:
+            self.identifier_casing = prefs["editor_identifier_casing"]
+
+        if "editor_auto_close_chars" in prefs:
+            self.auto_close_chars = bool(prefs["editor_auto_close_chars"])
+
+        if "editor_auto_indent" in prefs:
+            self.auto_indent = bool(prefs["editor_auto_indent"])

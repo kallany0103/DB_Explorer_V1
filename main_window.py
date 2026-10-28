@@ -892,6 +892,10 @@ class MainWindow(QMainWindow):
             self.editor_auto_uppercase = settings.get("editor_auto_uppercase", True)
             self.editor_autocomplete = settings.get("editor_autocomplete", True)
             self.editor_highlight_line = settings.get("editor_highlight_line", True)
+            self.editor_keyword_casing = settings.get("editor_keyword_casing", "UPPERCASE")
+            self.editor_identifier_casing = settings.get("editor_identifier_casing", "Preserve (As-is)")
+            self.editor_auto_close_chars = settings.get("editor_auto_close_chars", True)
+            self.editor_auto_indent = settings.get("editor_auto_indent", True)
 
             # Execution settings
             self.query_timeout_sec = settings.get("query_timeout_sec", 300)
@@ -938,6 +942,10 @@ class MainWindow(QMainWindow):
             "editor_auto_uppercase": self.editor_auto_uppercase,
             "editor_autocomplete": self.editor_autocomplete,
             "editor_highlight_line": self.editor_highlight_line,
+            "editor_keyword_casing": getattr(self, "editor_keyword_casing", "UPPERCASE"),
+            "editor_identifier_casing": getattr(self, "editor_identifier_casing", "Preserve (As-is)"),
+            "editor_auto_close_chars": getattr(self, "editor_auto_close_chars", True),
+            "editor_auto_indent": getattr(self, "editor_auto_indent", True),
         }
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)

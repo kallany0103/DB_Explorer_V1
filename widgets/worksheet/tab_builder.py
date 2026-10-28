@@ -22,7 +22,6 @@ from ui.toolbars import WorksheetToolbar, NavigationHeader
 from ui.components import SecondaryButton
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.autocomplete import CompletionEngine
-from widgets.test_cases.test_cases_widget import TestCasesWidget
 from widgets.ai_assistant import AIChatPanel
 from PySide6.QtCore import QTimer
 
@@ -194,7 +193,6 @@ def add_tab(manager):
     editor_tabs = [
         ("Query", 120, 0),
         ("Query History", 120, 1),
-        ("Test Case", 120, 2)
     ]
     editor_header = NavigationHeader("editorHeader", editor_tabs)
     editor_layout.addWidget(editor_header)
@@ -218,6 +216,12 @@ def add_tab(manager):
             "editor_word_wrap": getattr(mw, "editor_word_wrap", False),
             "editor_line_numbers": getattr(mw, "editor_line_numbers", True),
             "editor_auto_uppercase": getattr(mw, "editor_auto_uppercase", True),
+            "editor_autocomplete": getattr(mw, "editor_autocomplete", True),
+            "editor_highlight_line": getattr(mw, "editor_highlight_line", True),
+            "editor_keyword_casing": getattr(mw, "editor_keyword_casing", "UPPERCASE"),
+            "editor_identifier_casing": getattr(mw, "editor_identifier_casing", "Preserve (As-is)"),
+            "editor_auto_close_chars": getattr(mw, "editor_auto_close_chars", True),
+            "editor_auto_indent": getattr(mw, "editor_auto_indent", True),
         })
 
     editor_stack.addWidget(text_edit)
@@ -279,9 +283,6 @@ def add_tab(manager):
     history_widget.setSizes([400, 400])
     editor_stack.addWidget(history_widget)
 
-    test_cases_widget = TestCasesWidget()
-    editor_stack.addWidget(test_cases_widget)
-
     editor_layout.addWidget(editor_stack)
     editor_layout.setStretchFactor(editor_stack, 1)
 
@@ -309,15 +310,6 @@ def add_tab(manager):
             manager.load_connection_history(tab_content)
 
     editor_header.tab_switched.connect(switch_editor_view)
-
-    def _on_test_case_copy_to_editor(text):
-        text_edit.setPlainText(text)
-        btn = editor_header.get_button(0)
-        if btn:
-            btn.setChecked(True)
-        switch_editor_view(0)
-
-    test_cases_widget.copy_to_editor_requested.connect(_on_test_case_copy_to_editor)
 
     def _refresh_engine(skip_slow=False):
         data = db_combo_box.currentData()

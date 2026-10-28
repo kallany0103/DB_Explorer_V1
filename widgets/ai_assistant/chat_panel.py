@@ -10,6 +10,7 @@ Displays:
 
 import html
 import re
+import uuid
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser,
@@ -162,7 +163,8 @@ class AIChatPanel(QWidget):
         self.chat_history = []
         self._last_raw_response = ""
         self._worker_thread = None
-        self.past_conversations = []  # List of saved conversation dicts: {"timestamp", "title", "messages", "sql", "preview"}
+        self.past_conversations = []  # List of saved conversation dicts
+        self.active_conversation_id = None  # Tracks which conversation is currently open
 
         self.setup_ui()
 
@@ -447,6 +449,9 @@ class AIChatPanel(QWidget):
         self.chat_view.append(f"<div style='margin-bottom: 14px;'>{html_resp}</div>")
         self.chat_view.moveCursor(QTextCursor.MoveOperation.End)
 
+        # Automatically update/save this session in past conversations
+        self._archive_current_conversation()
+
     def _on_ai_error(self, error_msg: str):
         self._remove_typing_indicator()
         self.btn_send.setEnabled(True)
@@ -467,22 +472,41 @@ class AIChatPanel(QWidget):
         self.chat_view.moveCursor(QTextCursor.MoveOperation.End)
 
     def _archive_current_conversation(self):
-        """Archives the current non-empty chat into past_conversations."""
+        """Saves or updates the current conversation in past_conversations without creating duplicates."""
         if not self.chat_history:
             return
+
         preview = ""
-        for msg in self.chat_history:
-            if msg.get("role") == "user":
-                preview = msg.get("content", "").strip()
-                break
-        if not preview and self.current_sql:
+        # Look for the target SQL or first real question for the title
+        if self.current_sql:
             preview = self.current_sql.splitlines()[0].strip()
         if not preview:
-            preview = "Conversation"
+            for msg in self.chat_history:
+                if msg.get("role") == "user" and msg.get("content") != "Explain this code using AI":
+                    preview = msg.get("content", "").strip()
+                    break
+        if not preview:
+            preview = "SQL Explanation"
         if len(preview) > 35:
             preview = preview[:32] + "..."
 
+        # If this is already an active tracked conversation in past_conversations, update it
+        if self.active_conversation_id:
+            for conv in self.past_conversations:
+                if conv.get("id") == self.active_conversation_id:
+                    conv["title"] = preview
+                    conv["messages"] = list(self.chat_history)
+                    conv["sql"] = self.current_sql
+                    conv["db_type"] = self.db_type
+                    conv["html"] = self.chat_view.toHtml()
+                    conv["last_raw_response"] = self._last_raw_response
+                    return
+
+        # Otherwise create a new entry
+        conv_id = str(uuid.uuid4())
+        self.active_conversation_id = conv_id
         session_entry = {
+            "id": conv_id,
             "title": preview,
             "timestamp": datetime.now().strftime("%H:%M:%S"),
             "messages": list(self.chat_history),
@@ -492,7 +516,6 @@ class AIChatPanel(QWidget):
             "last_raw_response": self._last_raw_response
         }
         self.past_conversations.insert(0, session_entry)
-        # Keep maximum 20 past conversations
         if len(self.past_conversations) > 20:
             self.past_conversations.pop()
 
@@ -529,8 +552,10 @@ class AIChatPanel(QWidget):
             for idx, conv in enumerate(self.past_conversations):
                 title = conv.get("title", f"Chat #{idx + 1}")
                 time_str = conv.get("timestamp", "")
-                label = f"[{time_str}] {title}" if time_str else title
-                action = menu.addAction(qta.icon("fa5s.comment-dots", color="#6B7280"), label)
+                is_current = (conv.get("id") == self.active_conversation_id)
+                prefix = "✓ " if is_current else ""
+                label = f"{prefix}[{time_str}] {title}" if time_str else f"{prefix}{title}"
+                action = menu.addAction(qta.icon("fa5s.comment-dots", color="#2563EB" if is_current else "#6B7280"), label)
                 action.triggered.connect(lambda checked=False, c=conv: self._restore_conversation(c))
 
             menu.addSeparator()
@@ -541,11 +566,16 @@ class AIChatPanel(QWidget):
         menu.exec(self.btn_history.mapToGlobal(self.btn_history.rect().bottomLeft()))
 
     def _restore_conversation(self, conv: dict):
-        """Restores a past conversation into the chat view and state."""
-        # Archive current if active and distinct
-        if self.chat_history and self.chat_history != conv.get("messages", []):
+        """Restores a past conversation without creating duplicate history."""
+        # If user clicks the currently active conversation, no action needed
+        if conv.get("id") and conv.get("id") == self.active_conversation_id:
+            return
+
+        # Save any in-progress changes to the currently open chat before switching
+        if self.chat_history:
             self._archive_current_conversation()
 
+        self.active_conversation_id = conv.get("id")
         self.chat_history = list(conv.get("messages", []))
         self.current_sql = conv.get("sql", "")
         self.db_type = conv.get("db_type", "GENERIC")
@@ -571,10 +601,12 @@ class AIChatPanel(QWidget):
     def _clear_past_conversations(self):
         """Clears stored past conversations."""
         self.past_conversations.clear()
+        self.active_conversation_id = None
 
     def clear_chat(self, show_greeting: bool = True):
-        """Starts a new clean chat, archiving the current one if not empty."""
+        """Starts a new clean chat, saving current if needed and resetting conversation ID."""
         self._archive_current_conversation()
+        self.active_conversation_id = None
         self.chat_history.clear()
         self._last_raw_response = ""
         self.chat_view.clear()

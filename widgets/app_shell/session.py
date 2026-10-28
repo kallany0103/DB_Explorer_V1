@@ -36,6 +36,10 @@ def save_main_window_session(main_window, session_file):
         "editor_auto_uppercase": getattr(main_window, "editor_auto_uppercase", True),
         "editor_autocomplete": getattr(main_window, "editor_autocomplete", True),
         "editor_highlight_line": getattr(main_window, "editor_highlight_line", True),
+        "editor_keyword_casing": getattr(main_window, "editor_keyword_casing", "UPPERCASE"),
+        "editor_identifier_casing": getattr(main_window, "editor_identifier_casing", "Preserve (As-is)"),
+        "editor_auto_close_chars": getattr(main_window, "editor_auto_close_chars", True),
+        "editor_auto_indent": getattr(main_window, "editor_auto_indent", True),
         "query_timeout_sec": getattr(main_window, "query_timeout_sec", 300),
         "default_row_limit": getattr(main_window, "default_row_limit", "No Limit"),
         "grid_null_text": getattr(main_window, "grid_null_text", "NULL"),
@@ -181,6 +185,10 @@ def restore_main_window_session(main_window, session_file):
         main_window.editor_auto_uppercase = session_data.get("editor_auto_uppercase", True)
         main_window.editor_autocomplete = session_data.get("editor_autocomplete", True)
         main_window.editor_highlight_line = session_data.get("editor_highlight_line", True)
+        main_window.editor_keyword_casing = session_data.get("editor_keyword_casing", "UPPERCASE")
+        main_window.editor_identifier_casing = session_data.get("editor_identifier_casing", "Preserve (As-is)")
+        main_window.editor_auto_close_chars = session_data.get("editor_auto_close_chars", True)
+        main_window.editor_auto_indent = session_data.get("editor_auto_indent", True)
         main_window.query_timeout_sec = session_data.get("query_timeout_sec", 300)
         main_window.default_row_limit = session_data.get("default_row_limit", "No Limit")
         main_window.grid_null_text = session_data.get("grid_null_text", "NULL")
