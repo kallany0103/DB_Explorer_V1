@@ -308,6 +308,81 @@ class WorksheetManager(QWidget):
     def describe_query(self):
         describe_query_action(self)
 
+    def optimize_query(self):
+        current_tab = self.tab_widget.currentWidget()
+        if not current_tab:
+            return
+
+        query_editor = get_query_editor(current_tab)
+        if not query_editor:
+            return
+
+        cursor = query_editor.textCursor()
+        if cursor.hasSelection():
+            query = cursor.selectedText().replace("\u2029", "\n").strip()
+        else:
+            query = extract_query_under_cursor(query_editor)
+            if not query:
+                query = query_editor.toPlainText().strip()
+
+        if not query:
+            self.show_info("Please select or enter a SQL query to optimize.")
+            return
+
+        conn_data = get_tab_connection_data(current_tab)
+        db_type = (conn_data.get("db_type") or conn_data.get("code") or "postgres").lower() if conn_data else "postgres"
+
+        def apply_callback(optimized_sql: str):
+            if cursor.hasSelection():
+                cursor.insertText(optimized_sql)
+            else:
+                query_editor.selectAll()
+                query_editor.insertPlainText(optimized_sql)
+
+        from widgets.worksheet.optimize_dialog import OptimizeSqlDialog
+
+        dialog = OptimizeSqlDialog(
+            parent=self.main_window,
+            sql=query,
+            dialect=db_type,
+            conn_data=conn_data,
+            on_apply=apply_callback,
+        )
+        dialog.exec()
+
+    def optimize_workload_script(self):
+        """Analyzes all statements in the current worksheet and opens the Batch Optimizer dialog."""
+        current_tab = self.tab_widget.currentWidget()
+        if not current_tab:
+            return
+
+        query_editor = current_tab.findChild(QTextEdit, "query_editor")
+        if not query_editor:
+            return
+
+        script_text = query_editor.toPlainText().strip()
+        if not script_text:
+            self.show_info("Please enter a SQL script to optimize.")
+            return
+
+        conn_data = get_tab_connection_data(current_tab)
+        db_type = (conn_data.get("db_type") or conn_data.get("code") or "postgres").lower() if conn_data else "postgres"
+
+        def apply_batch_callback(optimized_script: str):
+            query_editor.selectAll()
+            query_editor.insertPlainText(optimized_script)
+
+        from widgets.worksheet.batch_optimize_dialog import BatchOptimizerDialog
+
+        dialog = BatchOptimizerDialog(
+            parent=self.main_window,
+            script_text=script_text,
+            dialect=db_type,
+            conn_data=conn_data,
+            on_apply_script=apply_batch_callback,
+        )
+        dialog.exec()
+
     def describe_object(self, target: str = None, conn_data: dict = None):
         describe_object_action(self, target=target, conn_data=conn_data)
 
