@@ -96,6 +96,7 @@ def create_processes_view(manager, tab_content):
     processes_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
     processes_view.setAlternatingRowColors(True)
     processes_view.horizontalHeader().setSectionsClickable(True)
+    processes_view.horizontalHeader().setHighlightSections(False)
     processes_view.verticalHeader().setSectionsClickable(True)
     processes_view.verticalHeader().setDefaultSectionSize(28)
     processes_view.horizontalHeader().setStretchLastSection(True)
