@@ -30,7 +30,7 @@ def replace_message(tab, text):
     if not message_view:
         return
     message_view.setText(str(text or ""))
-    message_view.verticalScrollBar().setValue(message_view.verticalScrollBar().maximum())
+    message_view.verticalScrollBar().setValue(message_view.verticalScrollBar().minimum())
 
 
 def append_error_message(tab, error_message):
@@ -43,4 +43,4 @@ def append_error_message(tab, error_message):
     msg = f"[{timestamp}]  ERROR:\n\n{error_message}"
     
     message_view.setPlainText(msg)
-    message_view.verticalScrollBar().setValue(message_view.verticalScrollBar().maximum())
+    message_view.verticalScrollBar().setValue(message_view.verticalScrollBar().minimum())

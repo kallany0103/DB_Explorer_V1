@@ -6,6 +6,185 @@ from widgets.worksheet.code_editor import CodeEditor
 IDENT_SEG_PAT = r'(?:"[^"]+"|\`[^\`]+\`|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_#$]*)'
 IDENT_FIND_PAT = re.compile(rf'{IDENT_SEG_PAT}(?:\s*\.\s*{IDENT_SEG_PAT})*')
 
+DOLLAR_TAG_PATTERN = re.compile(r"^\$[A-Za-z0-9_]*\$")
+PLSQL_BLOCK_START_KEYWORDS = {"BEGIN", "DECLARE"}
+PLSQL_DDL_PATTERN = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?(PROCEDURE|FUNCTION|PACKAGE(?:\s+BODY)?|TRIGGER|TYPE(?:\s+BODY)?)\b",
+    re.IGNORECASE,
+)
+
+
+def split_sql_statements(text: str) -> list[tuple[int, int, str]]:
+    """Split text into individual SQL / PL-SQL statements preserving statement bounds.
+
+    Returns a list of (start_offset, end_offset, stripped_sql).
+    """
+    if not text:
+        return []
+
+    statements: list[tuple[int, int, str]] = []
+    length = len(text)
+    idx = 0
+    stmt_start = 0
+    in_single_quote = False
+    in_double_quote = False
+    in_line_comment = False
+    in_block_comment = False
+    dollar_tag: str | None = None
+    had_dollar_quote = False
+
+    current_tokens: list[str] = []
+    current_word: list[str] = []
+    in_plsql = False
+    block_depth = 0
+
+    while idx < length:
+        ch = text[idx]
+        nxt = text[idx + 1] if idx + 1 < length else ""
+
+        # 1. Line comment
+        if in_line_comment:
+            if ch == "\n":
+                in_line_comment = False
+            idx += 1
+            continue
+
+        # 2. Block comment
+        if in_block_comment:
+            if ch == "*" and nxt == "/":
+                in_block_comment = False
+                idx += 2
+                continue
+            idx += 1
+            continue
+
+        # 3. PostgreSQL dollar quote ($$ or $tag$)
+        if dollar_tag is not None:
+            if text.startswith(dollar_tag, idx):
+                idx += len(dollar_tag)
+                dollar_tag = None
+                in_plsql = False
+                block_depth = 0
+                continue
+            idx += 1
+            continue
+
+        # 4. Single quote
+        if in_single_quote:
+            if ch == "'":
+                if nxt == "'":
+                    idx += 2
+                    continue
+                in_single_quote = False
+            idx += 1
+            continue
+
+        # 5. Double quote
+        if in_double_quote:
+            if ch == '"':
+                in_double_quote = False
+            idx += 1
+            continue
+
+        # Start of comments
+        if ch == "-" and nxt == "-":
+            in_line_comment = True
+            idx += 2
+            continue
+        if ch == "/" and nxt == "*":
+            in_block_comment = True
+            idx += 2
+            continue
+
+        # PostgreSQL dollar quote start
+        if ch == "$":
+            m = DOLLAR_TAG_PATTERN.match(text[idx:])
+            if m:
+                dollar_tag = m.group(0)
+                idx += len(dollar_tag)
+                had_dollar_quote = True
+                continue
+
+        # Start of quotes
+        if ch == "'":
+            in_single_quote = True
+            idx += 1
+            continue
+        if ch == '"':
+            in_double_quote = True
+            idx += 1
+            continue
+
+        # Slash on a line by itself (Oracle block terminator, allowing leading/trailing whitespace)
+        if ch == "/":
+            p = idx - 1
+            while p >= 0 and text[p] in " \t\r":
+                p -= 1
+            if p < 0 or text[p] == "\n":
+                j = idx + 1
+                while j < length and text[j] in " \t\r":
+                    j += 1
+                if j >= length or text[j] == "\n":
+                    stmt_text = text[stmt_start:idx].strip()
+                    if stmt_text:
+                        statements.append((stmt_start, idx, stmt_text))
+                    idx = j + 1
+                    stmt_start = idx
+                    in_plsql = False
+                    had_dollar_quote = False
+                block_depth = 0
+                current_tokens = []
+                current_word = []
+                continue
+
+        # Token tracking outside quotes/comments
+        if ch.isalnum() or ch in ("_", "$", "#"):
+            current_word.append(ch)
+        else:
+            if current_word:
+                w = "".join(current_word).upper()
+                current_word = []
+                current_tokens.append(w)
+
+                if not in_plsql and not had_dollar_quote:
+                    fw = current_tokens[0]
+                    if fw in PLSQL_BLOCK_START_KEYWORDS:
+                        in_plsql = True
+                        block_depth = 1
+                    elif fw == "CREATE":
+                        joined = " ".join(current_tokens[:6])
+                        if PLSQL_DDL_PATTERN.match(joined):
+                            in_plsql = True
+                            block_depth = 1
+                elif in_plsql:
+                    if w in ("BEGIN", "CASE", "LOOP", "IF"):
+                        block_depth += 1
+                if in_plsql and len(current_tokens) >= 2 and current_tokens[-2] == "END":
+                    block_depth = max(0, block_depth - 1)
+
+            if ch == ";":
+                if in_plsql and current_tokens and current_tokens[-1] == "END":
+                    block_depth = max(0, block_depth - 1)
+
+                if (not in_plsql and not had_dollar_quote) or (had_dollar_quote and dollar_tag is None) or block_depth == 0:
+                    stmt_text = text[stmt_start:idx].strip()
+                    if stmt_text:
+                        statements.append((stmt_start, idx, stmt_text))
+                    stmt_start = idx + 1
+                    in_plsql = False
+                    had_dollar_quote = False
+                    block_depth = 0
+                    current_tokens = []
+
+        idx += 1
+
+    if stmt_start < length:
+        stmt_text = text[stmt_start:].strip()
+        if stmt_text:
+            statements.append((stmt_start, length, stmt_text))
+
+    return statements
+
 
 def get_query_editor(current_tab):
     query_editor = current_tab.findChild(CodeEditor, "query_editor")
@@ -16,24 +195,27 @@ def get_query_editor(current_tab):
 
 def extract_query_under_cursor(query_editor):
     cursor = query_editor.textCursor()
-    
+
     # If there's a selection, execute the selection
     if cursor.hasSelection():
-        return cursor.selectedText().replace('\u2029', '\n').strip()
+        return cursor.selectedText().replace("\u2029", "\n").strip()
 
     cursor_pos = cursor.position()
     full_text = query_editor.toPlainText()
-    queries = full_text.split(";")
+    if not full_text.strip():
+        return ""
 
-    selected_query = ""
-    start = 0
-    for query_part in queries:
-        end = start + len(query_part)
+    statements = split_sql_statements(full_text)
+    if not statements:
+        return full_text.strip()
+
+    for start, end, stmt_text in statements:
         if start <= cursor_pos <= end:
-            selected_query = query_part.strip()
-            break
-        start = end + 1
-    return selected_query
+            return stmt_text
+
+    # If cursor is between statements or in whitespace, return closest statement
+    closest = min(statements, key=lambda s: min(abs(s[0] - cursor_pos), abs(s[1] - cursor_pos)))
+    return closest[2]
 
 
 def extract_identifier_under_cursor(query_editor) -> str:

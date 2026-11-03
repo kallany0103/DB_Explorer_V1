@@ -414,9 +414,8 @@ class RunnableQuery(QRunnable):
                     code = "SQLITE"
 
             is_oracle = code in ("ORACLE", "ORACLE_DB")
-            is_plsql = db.is_oracle_plsql(self.query) if is_oracle else False
             enable_dbms = bool(self.conn_data.get("enable_dbms_output", True)) if isinstance(self.conn_data, dict) else True
-            should_handle_dbms = is_oracle and is_plsql and enable_dbms
+            should_handle_dbms = False
 
             # DB Execution
             if code in ("SERVICENOW", "CSV"):
@@ -453,8 +452,11 @@ class RunnableQuery(QRunnable):
                 
                 cursor = self._conn.cursor()
                 
-                # Use sqlparse for much more reliable query splitting
-                statements = sqlparse.split(self.query)
+                # Use sqlparse for query splitting with fallback for large queries
+                try:
+                    statements = sqlparse.split(self.query)
+                except Exception:
+                    statements = [self.query]
                 
                 if not statements:
                     statements = [self.query]
@@ -477,16 +479,13 @@ class RunnableQuery(QRunnable):
                 if not self._conn:
                     raise ConnectionError("Failed to connect to Oracle database")
                 cursor = self._conn.cursor()
+                oracle_query, is_plsql, query_handles_dbms = db.prepare_oracle_query(self.query)
+                should_handle_dbms = is_oracle and query_handles_dbms and enable_dbms
                 buffer_size = self.conn_data.get("dbms_buffer_size") if isinstance(self.conn_data, dict) else None
                 if should_handle_dbms:
                     db.enable_dbms_output(cursor, buffer_size=buffer_size)
                 elif not enable_dbms:
                     db.disable_dbms_output(cursor)
-                
-                oracle_query = self.query.strip()
-                # oracledb does not allow trailing semicolons for SQL, but requires them for PL/SQL blocks.
-                if oracle_query.endswith(';') and not is_plsql:
-                    oracle_query = oracle_query[:-1]
                 
                 cursor.execute(oracle_query)
             else:
@@ -533,6 +532,8 @@ class RunnableQuery(QRunnable):
                 self._conn.commit()
 
             conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
+            if code == "POSTGRES" and self._conn and getattr(self._conn, "notices", None):
+                conn_payload["pg_notices"] = list(self._conn.notices)
             if dbms_output:
                 conn_payload["dbms_output"] = dbms_output
             if is_oracle and cursor:
@@ -639,19 +640,17 @@ class RunnableTransactionQuery(QRunnable):
             cursor = self._conn.cursor()
 
             is_oracle = code in ("ORACLE", "ORACLE_DB")
-            is_plsql = db.is_oracle_plsql(self._query) if is_oracle else False
             enable_dbms = bool(self._conn_data.get("enable_dbms_output", True)) if isinstance(self._conn_data, dict) else True
-            should_handle_dbms = is_oracle and is_plsql and enable_dbms
+            should_handle_dbms = False
 
             if is_oracle:
+                oracle_query, is_plsql, query_handles_dbms = db.prepare_oracle_query(self._query)
+                should_handle_dbms = is_oracle and query_handles_dbms and enable_dbms
                 buffer_size = self._conn_data.get("dbms_buffer_size") if isinstance(self._conn_data, dict) else None
                 if should_handle_dbms:
                     db.enable_dbms_output(cursor, buffer_size=buffer_size)
                 elif not enable_dbms:
                     db.disable_dbms_output(cursor)
-                oracle_query = self._query.strip()
-                if oracle_query.endswith(";") and not is_plsql:
-                    oracle_query = oracle_query[:-1]
                 cursor.execute(oracle_query)
             else:
                 cursor.execute(self._query)
@@ -692,6 +691,8 @@ class RunnableTransactionQuery(QRunnable):
                     self._session.has_pending_changes = True
 
             conn_payload = dict(self._conn_data) if isinstance(self._conn_data, dict) else {}
+            if code == "POSTGRES" and self._conn and getattr(self._conn, "notices", None):
+                conn_payload["pg_notices"] = list(self._conn.notices)
             if dbms_output:
                 conn_payload["dbms_output"] = dbms_output
             if is_oracle and cursor:
