@@ -1,4 +1,21 @@
-﻿# Release Notes — Universal SQL Client
+# Release Notes — Universal SQL Client
+
+## [v1.44.4] — Latest Update
+
+### 📅 Last Update
+October 31, 2026
+
+### Features & Fixes in Last Update
+- **Toad-Grade SQL Optimizer**: Multi-variant execution plan benchmarking, deterministic rewrites (EXISTS, ANSI JOIN, Sargable ranges, UNION ALL), and procedural code awareness.
+- **Visual Plan Diff & Benchmarking**: Side-by-side execution plan comparison trees and safe empirical execution benchmarks.
+- **Risk-Free Virtual Index Simulator**: Test candidate index adoption virtually without physical disk space allocation.
+- **Batch Workload Optimizer**: Bulk multi-statement script optimizer with AST analysis, progress tracking, and optimization metrics.
+- **Card-Based Messages View**: Redesigned query feedback stream with accent brackets, execution metrics, and one-click copy.
+- **Oracle & PostgreSQL Script Generation**: Non-blocking asynchronous CREATE, INSERT, and UPDATE script generators with live progress feedback and sequence/identity detection.
+- **Oracle Client Architecture Guard**: Added PE binary bitness verification to prevent 32-bit/64-bit client mismatches with clear diagnostic guidance.
+- **Connection UX Enhancements**: Streamlined Oracle Client toggle, improved SQLNET status indicators, and normalized host connectivity.
+
+---
 
 ## [v1.44.0] — Latest Update
 

@@ -65,11 +65,23 @@ def show_editor_context_menu(manager, pos, editor):
     explain_plan_action.triggered.connect(manager.explain_plan_query)
     menu.addAction(explain_plan_action)
 
-    explain_ai_action = QAction(qta.icon("fa5s.magic", color="#3b82f6"), "Explain with AI", manager)
+    explain_ai_action = QAction(qta.icon("fa5s.magic", color="#555555"), "Explain with AI", manager)
     explain_ai_action.setIconVisibleInMenu(True)
     explain_ai_action.setShortcut("Ctrl+Alt+E")
     explain_ai_action.triggered.connect(manager.main_window.explain_code_using_ai)
     menu.addAction(explain_ai_action)
+
+    optimize_sql_action = QAction(qta.icon("fa5s.tachometer-alt", color="#555555"), "Optimize SQL", manager)
+    optimize_sql_action.setIconVisibleInMenu(True)
+    optimize_sql_action.setShortcut("Ctrl+Alt+O")
+    optimize_sql_action.triggered.connect(manager.optimize_query)
+    menu.addAction(optimize_sql_action)
+
+    optimize_batch_action = QAction(qta.icon("fa5s.tasks", color="#555555"), "Optimize Script Workload (Batch)...", manager)
+    optimize_batch_action.setIconVisibleInMenu(True)
+    optimize_batch_action.setShortcut("Ctrl+Shift+O")
+    optimize_batch_action.triggered.connect(manager.optimize_workload_script)
+    menu.addAction(optimize_batch_action)
 
     describe_obj_action = QAction(qta.icon("fa5s.info-circle", color="#555555"), "Describe", manager)
     describe_obj_action.setIconVisibleInMenu(True)

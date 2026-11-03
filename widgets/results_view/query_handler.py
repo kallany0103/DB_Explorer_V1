@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QAbstractItemView, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QWidget, QTabWidget, QTableView
 
 from db.query_context import resolve_writable_table_context
+from ui.messages_style import format_elapsed_time_hms
 from widgets.results_view.dbms_output import append_dbms_output
 from widgets.results_view.explain import ExplainVisualizer
 from widgets.results_view.perf_metrics import perf_elapsed_ms, perf_record, perf_take, perf_now
@@ -185,6 +186,23 @@ def _build_header_text(manager, column_name, spec):
     return f"{column_name}{suffix}"
 
 
+def _adjust_results_column_widths(table_view, min_width=80, max_width=500):
+    """Auto-fit column widths so the full column header is always visible."""
+    if not table_view or not table_view.model():
+        return
+    table_view.resizeColumnsToContents()
+    header = table_view.horizontalHeader()
+    col_count = table_view.model().columnCount()
+    for col in range(col_count):
+        header_hint = header.sectionSizeHint(col)
+        current_w = table_view.columnWidth(col)
+        min_allowed = max(header_hint + 16, min_width)
+        desired_w = max(current_w + 12, min_allowed)
+        if max_width and desired_w > max_width:
+            desired_w = max(min_allowed, max_width)
+        table_view.setColumnWidth(col, desired_w)
+
+
 def _set_row_action_state(target_tab, is_enabled):
     manager = getattr(target_tab, "_results_manager", None)
     if manager:
@@ -253,18 +271,31 @@ def handle_query_result(
     first_word = match_query.split()[0] if match_query.split() else ""
 
     q_type_parsed = ""
-    parsed = sqlparse.parse(query)
-    if parsed:
-        for statement in parsed:
-            statement_type = statement.get_type().upper()
-            if statement_type != "UNKNOWN":
-                q_type_parsed = statement_type
-                break
+    # Avoid passing massive queries (> 2000 chars) to sqlparse to prevent MAX_GROUPING_TOKENS errors and latency
+    if len(query) <= 2000:
+        try:
+            parsed = sqlparse.parse(query)
+            if parsed:
+                for statement in parsed:
+                    statement_type = statement.get_type().upper()
+                    if statement_type != "UNKNOWN":
+                        q_type_parsed = statement_type
+                        break
+        except Exception:
+            q_type_parsed = ""
+
+    if not q_type_parsed or q_type_parsed == "UNKNOWN":
+        if match_query.startswith("WITH"):
+            q_type_parsed = "SELECT"
+        elif match_query.startswith("DO"):
+            q_type_parsed = "DO"
+        else:
+            q_type_parsed = first_word
 
     q_type = q_type_parsed if q_type_parsed and q_type_parsed != "UNKNOWN" else first_word
 
     is_structural = q_type in ["CREATE", "DROP", "ALTER", "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "RENAME"]
-    is_select = q_type == "SELECT" or first_word == "SELECT"
+    is_select = q_type == "SELECT" or first_word in ("SELECT", "WITH")
     has_tabular_results = not is_structural and (is_select or (columns and len(columns) > 0))
 
     message_view = target_tab.findChild(QTextEdit, "message_view")
@@ -277,9 +308,6 @@ def handle_query_result(
     # Initialize defaults to prevent reference errors
     msg = ""
     tab_status = "Ready"
-
-    if message_view:
-        message_view.clear()
 
     if is_select_query:
         if query.upper().strip().startswith("EXPLAIN (ANALYZE,"):
@@ -396,6 +424,7 @@ def handle_query_result(
 
         proxy_model.setSourceModel(model)
         table_view.setModel(proxy_model)
+        _adjust_results_column_widths(table_view)
         manager.attach_selection_summary_listener(table_view, target_tab)
         if output_state["is_editable"]:
             table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -528,9 +557,10 @@ def handle_query_result(
             status_text = f"TRUNCATED {obj_type.upper()}"
             msg = f"{status_text}\n\nQuery returned successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
-        elif first_word in ("BEGIN", "DECLARE", "CALL") or q_type in ("BEGIN", "DECLARE", "CALL"):
-            status_text = "PL/SQL BLOCK COMPLETED"
-            msg = f"PL/SQL block completed successfully in {time_str}."
+        elif first_word in ("BEGIN", "DECLARE", "CALL", "EXEC", "EXECUTE", "DO") or q_type in ("BEGIN", "DECLARE", "CALL", "EXEC", "EXECUTE", "DO"):
+            is_pg_do = first_word == "DO" or q_type == "DO"
+            status_text = "PL/PGSQL BLOCK COMPLETED" if is_pg_do else "PL/SQL BLOCK COMPLETED"
+            msg = f"{status_text.title()} successfully in {time_str}."
             tab_status = f"{status_text} | Time: {time_str}"
             final_tab_index = 1
         else:
@@ -586,11 +616,19 @@ def handle_query_result(
             final_tab_index = 1
             tab_status = f"Compilation errors: {len(compiler_errors)}"
         elif is_select_query:
-            message_view.setPlainText(f"Query returned {row_count} rows in {time_str if 'time_str' in locals() else f'{elapsed_time:.2f}s'}.")
+            row_str = "1 row" if row_count == 1 else f"{row_count} rows"
+            time_hms = format_elapsed_time_hms(elapsed_time)
+            message_view.setPlainText(f"Query executed successfully. {row_str} returned in {time_hms}.")
         else:
             message_view.setPlainText(msg)
+
+        pg_notices = conn_data.get("pg_notices") if isinstance(conn_data, dict) else None
+        if pg_notices:
+            notices_text = "".join(pg_notices).rstrip()
+            if notices_text:
+                message_view.setPlainText(notices_text)
         sb = message_view.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        sb.setValue(sb.minimum())
 
     if tab_status_label:
         tab_status_label.setText(tab_status)

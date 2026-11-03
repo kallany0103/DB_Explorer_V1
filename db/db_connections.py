@@ -288,6 +288,8 @@ def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=N
             user = conn_data.get("user")
             password = conn_data.get("password")
             dsn = conn_data.get("dsn")
+            if dsn and isinstance(dsn, str) and dsn.startswith("localhost:"):
+                dsn = "127.0.0.1:" + dsn[10:]
             if not dsn:
                 host = conn_data.get("host")
                 port = conn_data.get("port") or 1521
@@ -303,6 +305,7 @@ def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=N
                 "user": user,
                 "password": password,
                 "dsn": dsn,
+                "tcp_connect_timeout": 5,
             }
             if mode != _oracledb.AUTH_MODE_DEFAULT:
                 connect_kwargs["mode"] = mode

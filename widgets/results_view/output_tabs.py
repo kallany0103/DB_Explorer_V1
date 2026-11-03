@@ -47,9 +47,9 @@ class FlatSelectionDelegate(QStyledItemDelegate):
 
     def __init__(
         self,
-        selection_color="#CCE4F7",
-        hover_color="#E8F2FC",
-        text_color="#1E293B",
+        selection_color="#D4E0EE",
+        hover_color="#EBF3FA",
+        text_color="#0F172A",
         parent=None,
     ):
         super().__init__(parent)
@@ -232,6 +232,8 @@ def create_output_table_view(manager, tab_content):
     table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
     table_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
     table_view.horizontalHeader().setSectionsClickable(True)
+    table_view.horizontalHeader().setHighlightSections(False)
+    table_view.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     table_view.verticalHeader().setSectionsClickable(True)
     table_view.verticalHeader().setDefaultSectionSize(28)
     table_view.setItemDelegate(FlatSelectionDelegate(parent=table_view))

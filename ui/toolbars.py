@@ -167,6 +167,24 @@ class WorksheetToolbar(QWidget):
             self.explain_ai_btn.setToolTip("Explain code using AI (Ctrl+Alt+E)")
             layout.addWidget(self.explain_ai_btn)
 
+        # Optimize Query
+        if hasattr(manager, 'ws_optimize_action'):
+            self.optimize_btn = ToolbarActionButton(icon=manager.ws_optimize_action.icon())
+            self.optimize_btn.setDefaultAction(manager.ws_optimize_action)
+            self.optimize_btn.setIconSize(QSize(16, 16))
+            self.optimize_btn.setMinimumWidth(32)
+            self.optimize_btn.setToolTip("Optimize SQL (Ctrl+Alt+O)")
+            layout.addWidget(self.optimize_btn)
+
+        # Optimize Workload / Batch Script
+        if hasattr(manager, 'ws_optimize_batch_action'):
+            self.optimize_batch_btn = ToolbarActionButton(icon=manager.ws_optimize_batch_action.icon())
+            self.optimize_batch_btn.setDefaultAction(manager.ws_optimize_batch_action)
+            self.optimize_batch_btn.setIconSize(QSize(16, 16))
+            self.optimize_batch_btn.setMinimumWidth(32)
+            self.optimize_batch_btn.setToolTip("Optimize Entire Script Workload (Ctrl+Shift+O)")
+            layout.addWidget(self.optimize_batch_btn)
+
         # Describe (F4) - table and schema
         if hasattr(manager, 'ws_describe_object_action'):
             self.describe_obj_btn = ToolbarActionButton(icon=manager.ws_describe_object_action.icon())

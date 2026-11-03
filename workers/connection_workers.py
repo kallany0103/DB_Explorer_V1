@@ -864,3 +864,35 @@ class SyncForeignSchemaWorker(QRunnable):
             })
         except Exception as exc:
             self.signals.error.emit(str(exc))
+
+# ── Table Script Worker ───────────────────────────────────────────────────────
+
+class TableScriptWorkerSignals(QObject):
+    finished = Signal(str)
+    error = Signal(str)
+
+
+class TableScriptWorker(QRunnable):
+    """Background worker to generate table scripts without blocking UI."""
+
+    def __init__(self, task_fn, *args, **kwargs):
+        super().__init__()
+        self.setAutoDelete(False)
+        self.task_fn = task_fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = TableScriptWorkerSignals()
+
+    def run(self):
+        try:
+            sql = self.task_fn(*self.args, **self.kwargs)
+            try:
+                self.signals.finished.emit(sql or "")
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+

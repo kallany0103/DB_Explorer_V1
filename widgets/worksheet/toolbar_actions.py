@@ -67,11 +67,25 @@ def build_worksheet_toolbar_actions(manager):
     manager.ws_describe_action.triggered.connect(main_window.describe_query)
 
     manager.ws_explain_ai_action = QAction(
-        qta.icon("fa5s.magic", color="#3b82f6"), "Explain code using AI", manager
+        qta.icon("fa5s.magic", color="#555555"), "Explain code using AI", manager
     )
     manager.ws_explain_ai_action.setToolTip("Explain code using AI (Ctrl+Alt+E)")
     manager.ws_explain_ai_action.setShortcut("Ctrl+Alt+E")
     manager.ws_explain_ai_action.triggered.connect(main_window.explain_code_using_ai)
+
+    manager.ws_optimize_action = QAction(
+        qta.icon("fa5s.tachometer-alt", color="#555555"), "Optimize SQL", manager
+    )
+    manager.ws_optimize_action.setToolTip("Optimize SQL (Ctrl+Alt+O)")
+    manager.ws_optimize_action.setShortcut("Ctrl+Alt+O")
+    manager.ws_optimize_action.triggered.connect(main_window.optimize_query)
+
+    manager.ws_optimize_batch_action = QAction(
+        qta.icon("fa5s.tasks", color="#555555"), "Optimize Script Workload", manager
+    )
+    manager.ws_optimize_batch_action.setToolTip("Optimize Entire Script Workload (Ctrl+Shift+O)")
+    manager.ws_optimize_batch_action.setShortcut("Ctrl+Shift+O")
+    manager.ws_optimize_batch_action.triggered.connect(manager.optimize_workload_script)
 
 
     manager.ws_undo_action = QAction(

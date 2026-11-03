@@ -71,9 +71,37 @@ def get_oci_dll_version(dir_path: Path | str) -> str | None:
             return None
         raw = ctypes.string_at(lp_data, u_len.value)
         ms, ls = struct.unpack("<II", raw[8:16])
-        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+        ver_str = f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+        return None if ver_str == "0.0.0.0" else ver_str
     except Exception:
         return None
+
+
+def get_pe_architecture(file_path: Path | str) -> str | None:
+    """Return '64-bit' or '32-bit' for a Windows PE binary (DLL/EXE), or None if unreadable."""
+    try:
+        with open(file_path, "rb") as f:
+            if f.read(2) != b"MZ":
+                return None
+            f.seek(0x3C)
+            pe_offset_bytes = f.read(4)
+            if len(pe_offset_bytes) < 4:
+                return None
+            pe_offset = struct.unpack("<I", pe_offset_bytes)[0]
+            f.seek(pe_offset)
+            if f.read(4) != b"PE\x00\x00":
+                return None
+            machine_bytes = f.read(2)
+            if len(machine_bytes) < 2:
+                return None
+            machine = struct.unpack("<H", machine_bytes)[0]
+            if machine in (0x8664, 0xAA64):  # AMD64 or ARM64
+                return "64-bit"
+            if machine == 0x14C:  # i386
+                return "32-bit"
+    except Exception:
+        return None
+    return None
 
 
 def get_client_sqlnet_path(client_dir: Path | str) -> Path:
@@ -135,6 +163,13 @@ def is_valid_oracle_client_dir(dir_path: Path | str) -> tuple[bool, list[str]]:
     if sys.platform == "win32":
         if "oci.dll" not in files:
             missing.append("oci.dll (Oracle Call Interface)")
+        else:
+            dll_arch = get_pe_architecture(p / "oci.dll")
+            app_arch = "64-bit" if sys.maxsize > 2**32 else "32-bit"
+            if dll_arch and dll_arch != app_arch:
+                missing.append(
+                    f"oci.dll is {dll_arch} (Universal SQL Client requires {app_arch})"
+                )
         # Supports Oracle Instant Client (oraociei/oraociicus) and Full DB/Client (orasql/oraclient/oracommon)
         has_engine = any(
             f.startswith("oraociei")
@@ -399,13 +434,17 @@ def scan_oracle_client_dirs() -> list[dict[str, Any]]:
         dll_ver = get_oci_dll_version(cand)
         display_ver = dll_ver if dll_ver else ver
 
+        arch_suffix = " (64-bit)" if sys.maxsize > 2**32 else " (32-bit)"
         home_name = registry_homes.get(norm_key)
         if home_name:
             # OUI-registered home: use HOME_NAME as label (TOAD convention)
-            label = home_name
+            label = f"{home_name}{arch_suffix}"
         else:
-            # Instant Client (not registered in registry)
-            label = f"Instant Client - {display_ver}"
+            cand_path = Path(cand)
+            cand_files = {f.name.lower() for f in cand_path.iterdir() if f.is_file()} if cand_path.is_dir() else set()
+            is_instant = any(f.startswith("oraociei") or f.startswith("oraociicus") for f in cand_files)
+            prefix = "Instant Client" if is_instant else "Oracle Client"
+            label = f"{prefix} - {display_ver}{arch_suffix}"
 
         results.append({
             "path": resolved,
@@ -507,11 +546,18 @@ def diagnose_oracle_error(error: str | Exception) -> str:
         )
 
     if "DPI-1072" in msg or "DPI-1047" in msg:
-        diagnostics.append(
-            "DPI error: The 64-bit Oracle Client library cannot be loaded. "
-            "Ensure the Microsoft Visual C++ 2015-2022 Redistributable (vcruntime140.dll) is installed, "
-            "and that the client architecture matches 64-bit Python."
-        )
+        if "not the correct architecture" in msg:
+            diagnostics.append(
+                "The Oracle Client in the selected directory is 32-bit and cannot be loaded by this 64-bit application.\n\n"
+                "• Uncheck 'Connect using Oracle Client' — a local client is not required for most connections.\n"
+                "• Or configure a 64-bit Oracle Client (e.g. 64-bit Oracle Instant Client)."
+            )
+        else:
+            diagnostics.append(
+                "The Oracle Client library could not be loaded.\n\n"
+                "• Uncheck 'Connect using Oracle Client' — a local client is not required for most connections.\n"
+                "• If a client is required: ensure the Microsoft Visual C++ 2015–2022 Redistributable is installed and the selected directory contains 64-bit Oracle libraries."
+            )
 
     if "ORA-12514" in msg:
         diagnostics.append(
@@ -630,6 +676,8 @@ def build_oracle_dsn(
     The Easy Connect format accepted by oracledb is identical to what makedsn produced.
     """
     clean_host = (host or "").strip()
+    if clean_host.lower() == "localhost":
+        clean_host = "127.0.0.1"
     clean_port = int(port) if str(port).strip().isdigit() else DEFAULT_ORACLE_PORT
     clean_db = (database or "").strip()
 
@@ -728,10 +776,11 @@ def _isolated_oracle_test_worker(conn_data: dict[str, Any]) -> tuple[bool, str]:
         if not init_oracle_thick_mode(client_dir):
             err = get_last_thick_mode_error() or "Unknown error initializing Oracle Instant Client"
             target = client_dir or "system default"
-            return (
-                False,
-                f'Oracle Thick Mode (Instant Client) failed to initialize with client directory "{target}":\n\n{err}',
-            )
+            advice = diagnose_oracle_error(err)
+            msg = f'Oracle Client failed to initialize (directory: "{target}"):\n\n{err}'
+            if advice:
+                msg += f"\n\n{advice}"
+            return (False, msg)
 
     import oracledb
 
@@ -761,9 +810,9 @@ def _isolated_oracle_test_worker(conn_data: dict[str, Any]) -> tuple[bool, str]:
         return True, "Connected successfully"
     except Exception as e:
         advice = diagnose_oracle_error(e)
-        msg = f"Oracle connection error: {e}"
+        msg = f"Oracle connection error:\n{e}"
         if advice:
-            msg += f"\n\nDiagnostic advice:\n{advice}"
+            msg += f"\n\nSuggested Fix:\n{advice}"
         return False, msg
 
 
@@ -841,6 +890,13 @@ def fetch_dbms_output(cursor: Any, chunk_size: int = 100, on_chunk: Any = None) 
     return "\n".join(lines) if lines else None
 
 
+_ORACLE_PLSQL_BLOCK_KEYWORDS: set[str] = {"BEGIN", "DECLARE"}
+_ORACLE_PLSQL_DDL_PATTERN: re.Pattern = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?(PROCEDURE|FUNCTION|PACKAGE(?:\s+BODY)?|TRIGGER|TYPE(?:\s+BODY)?)\b",
+    re.IGNORECASE,
+)
+
+
 def is_oracle_plsql(query: str) -> bool:
     """Return True if the query string is a PL/SQL block or procedure call."""
     if not query:
@@ -852,7 +908,48 @@ def is_oracle_plsql(query: str) -> bool:
     if not q:
         return False
     first_token = q.split()[0].upper()
-    return first_token in ("BEGIN", "DECLARE", "CALL")
+    if first_token in _ORACLE_PLSQL_BLOCK_KEYWORDS:
+        return True
+    if first_token in ("EXEC", "EXECUTE"):
+        return True
+    if first_token == "CREATE" and _ORACLE_PLSQL_DDL_PATTERN.match(q):
+        return True
+    return False
+
+
+def prepare_oracle_query(query: str) -> tuple[str, bool, bool]:
+    """Prepare an Oracle query for execution by oracledb.
+
+    Returns:
+        tuple of (prepared_query, is_plsql, should_handle_dbms)
+    """
+    if not query:
+        return "", False, False
+
+    raw = query.strip()
+    cleaned = re.sub(r"/\s*$", "", raw).strip()
+
+    uncommented = re.sub(r"--[^\n]*", "", cleaned)
+    uncommented = re.sub(r"/\*.*?\*/", "", uncommented, flags=re.DOTALL).strip()
+
+    words = uncommented.split()
+    first_token = words[0].upper() if words else ""
+
+    if first_token in ("EXEC", "EXECUTE"):
+        body = re.sub(r"^\s*(?:EXEC|EXECUTE)\s+", "", cleaned, flags=re.IGNORECASE).strip().rstrip(";")
+        prepared = f"BEGIN {body}; END;"
+        return prepared, True, True
+
+    is_plsql = is_oracle_plsql(cleaned)
+    is_call = first_token == "CALL"
+    should_handle_dbms = is_plsql or is_call
+
+    if is_plsql:
+        prepared = cleaned if cleaned.endswith(";") else cleaned + ";"
+    else:
+        prepared = cleaned[:-1].rstrip() if cleaned.endswith(";") else cleaned
+
+    return prepared, is_plsql, should_handle_dbms
 
 
 def parse_oracle_ddl_target(query: str) -> tuple[str, str] | None:
@@ -911,3 +1008,655 @@ def fetch_oracle_compiler_errors(
         logger.debug(f"Failed to fetch USER_ERRORS: {e}")
     return errors
 
+
+
+def _oracle_quote(ident: str) -> str:
+    """Format an Oracle identifier, quoting only when lowercase or special characters are present."""
+    if not ident:
+        return ""
+    if re.match(r"^[A-Z][A-Z0-9_$#]*$", ident):
+        return ident
+    return f'"{ident}"'
+
+
+def _format_oracle_col_type(dtype: str, dlen: Any, dprec: Any, dscale: Any) -> str:
+    """Format Oracle column type with precision/scale or length."""
+    if dtype == "NUMBER":
+        if dprec is not None and dscale is not None:
+            return f"NUMBER({dprec},{dscale})"
+        if dprec is not None:
+            return f"NUMBER({dprec})"
+        return "NUMBER"
+    if dtype in ("VARCHAR2", "CHAR", "RAW", "NVARCHAR2", "NCHAR") and dlen:
+        return f"{dtype}({dlen})"
+    return dtype
+
+
+def _build_oracle_table_ddl(cursor: Any, owner: str, table_name: str) -> str:
+    """Build clean, developer-friendly CREATE TABLE DDL using catalog views without DBMS_METADATA bloat."""
+    col_rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+                   NULLABLE, DATA_DEFAULT
+            FROM ALL_TAB_COLS
+            WHERE OWNER = :own AND TABLE_NAME = :tbl AND HIDDEN_COLUMN = 'NO'
+            ORDER BY COLUMN_ID
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        col_rows = cursor.fetchall()
+    except Exception:
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+                   NULLABLE, DATA_DEFAULT
+            FROM ALL_TAB_COLUMNS
+            WHERE OWNER = :own AND TABLE_NAME = :tbl
+            ORDER BY COLUMN_ID
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        col_rows = cursor.fetchall()
+
+    if not col_rows:
+        raise ValueError(f"Table '{owner}.{table_name}' has no accessible columns.")
+
+    identity_cols: dict[str, str] = {}
+    try:
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME, GENERATION_TYPE
+            FROM ALL_TAB_IDENTITY_COLS
+            WHERE OWNER = :own AND TABLE_NAME = :tbl
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        for cname, gen_type in cursor.fetchall():
+            identity_cols[cname] = str(gen_type).strip().upper()
+    except Exception:
+        pass
+
+    col_lines: list[str] = []
+    for cname, dtype, dlen, dprec, dscale, nullable, ddef in col_rows:
+        t_str = _format_oracle_col_type(dtype, dlen, dprec, dscale)
+        col_def = f"    {_oracle_quote(cname)} {t_str}"
+
+        if cname in identity_cols:
+            gen_type = identity_cols[cname]
+            if "ALWAYS" in gen_type:
+                col_def += " GENERATED ALWAYS AS IDENTITY"
+            else:
+                col_def += " GENERATED BY DEFAULT AS IDENTITY"
+        elif ddef and str(ddef).strip():
+            def_str = str(ddef).strip()
+            if "ISEQ$$" not in def_str:
+                col_def += f" DEFAULT {def_str}"
+
+        if nullable == "N":
+            col_def += " NOT NULL"
+        col_lines.append(col_def)
+
+    try:
+        cursor.execute(
+            """
+            SELECT c.CONSTRAINT_NAME, cc.COLUMN_NAME
+            FROM ALL_CONSTRAINTS c
+            JOIN ALL_CONS_COLUMNS cc
+              ON c.OWNER = cc.OWNER AND c.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+            WHERE c.OWNER = :own AND c.TABLE_NAME = :tbl AND c.CONSTRAINT_TYPE = 'P'
+            ORDER BY cc.POSITION
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        pk_rows = cursor.fetchall()
+        if pk_rows:
+            pk_name = pk_rows[0][0]
+            pk_cols = ", ".join(_oracle_quote(r[1]) for r in pk_rows)
+            if pk_name.startswith("SYS_C"):
+                col_lines.append(f"    PRIMARY KEY ({pk_cols})")
+            else:
+                col_lines.append(f"    CONSTRAINT {_oracle_quote(pk_name)} PRIMARY KEY ({pk_cols})")
+    except Exception as e:
+        logger.debug(f"Failed to fetch PK constraints: {e}")
+
+    full_tbl = f"{_oracle_quote(owner)}.{_oracle_quote(table_name)}" if owner else _oracle_quote(table_name)
+    ddl = f"-- Table: {owner}.{table_name}\n\nCREATE TABLE {full_tbl} (\n" + ",\n".join(col_lines) + "\n);"
+
+    try:
+        cursor.execute(
+            """
+            SELECT INDEX_NAME
+            FROM ALL_INDEXES
+            WHERE OWNER = :own AND TABLE_NAME = :tbl AND UNIQUENESS != 'UNIQUE'
+            ORDER BY INDEX_NAME
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        for (idx_name,) in cursor.fetchall():
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME
+                FROM ALL_IND_COLUMNS
+                WHERE INDEX_OWNER = :own AND INDEX_NAME = :iname
+                ORDER BY COLUMN_POSITION
+                """,
+                {"own": owner, "iname": idx_name},
+            )
+            icols = [r[0] for r in cursor.fetchall()]
+            if icols:
+                cols_str = ", ".join(_oracle_quote(c) for c in icols)
+                ddl += f"\n\nCREATE INDEX {_oracle_quote(owner)}.{_oracle_quote(idx_name)} ON {full_tbl} ({cols_str});"
+    except Exception as e:
+        logger.debug(f"Failed to fetch indexes: {e}")
+
+    return ddl
+
+
+_build_oracle_fallback_table_ddl = _build_oracle_table_ddl
+
+
+def _clean_oracle_ddl(ddl: str) -> str:
+    """Format Oracle raw DDL from DBMS_METADATA into clean, developer-friendly SQL."""
+    if not ddl:
+        return ""
+
+    # Simplify verbose identity sequence clauses
+    ddl = re.sub(
+        r'GENERATED\s+(ALWAYS|BY\s+DEFAULT(?:\s+ON\s+NULL)?)\s+AS\s+IDENTITY\s+MINVALUE\s+\d+.*?(?=\s+NOT\s+NULL|\s*,\s*$|\s*\))',
+        r'GENERATED \1 AS IDENTITY',
+        ddl,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Clean up redundant constraints/flags
+    ddl = re.sub(r'\bNOT\s+NULL\s+ENABLE\b', 'NOT NULL', ddl, flags=re.IGNORECASE)
+    ddl = re.sub(r'\s+USING\s+INDEX\s+ENABLE\b', '', ddl, flags=re.IGNORECASE)
+    ddl = re.sub(r'\s+ENABLE\b', '', ddl, flags=re.IGNORECASE)
+    ddl = re.sub(r'[ \t]{2,}', ' ', ddl)
+
+    # Unquote standard uppercase identifiers
+    def unquote_ident(m: re.Match) -> str:
+        ident = m.group(1)
+        if re.match(r'^[A-Z][A-Z0-9_$#]*$', ident):
+            return ident
+        return m.group(0)
+
+    ddl = re.sub(r'"([^"]+)"', unquote_ident, ddl)
+
+    # Normalize line indentation
+    lines = ddl.splitlines()
+    cleaned_lines = []
+    for idx, line in enumerate(lines):
+        line = line.replace('\t', '    ').rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if idx == 0:
+            cleaned_lines.append(stripped)
+        elif stripped.startswith('('):
+            cleaned_lines[0] = cleaned_lines[0] + ' ('
+            sub = stripped[1:].strip()
+            if sub:
+                cleaned_lines.append(f'    {sub}')
+        elif stripped.startswith(')'):
+            cleaned_lines.append(');' if ';' in stripped else ')')
+        else:
+            cleaned_lines.append(f'    {stripped}')
+
+    result = '\n'.join(cleaned_lines)
+    if not result.strip().endswith(';'):
+        result += ';'
+    return result
+
+
+def generate_oracle_table_ddl(
+    conn_data: dict[str, Any],
+    schema_name: str,
+    table_name: str,
+    obj_type: str = "TABLE",
+) -> str:
+    """Generate clean, developer-friendly DDL for an Oracle table, view, or materialized view."""
+    from db.db_connections import get_pooled_oracle_connection
+
+    owner = (schema_name or conn_data.get("user") or "").upper()
+    tbl = table_name.upper()
+    upper_type = obj_type.upper()
+
+    conn = get_pooled_oracle_connection(conn_data=conn_data)
+    try:
+        conn.call_timeout = 8000
+    except Exception:
+        pass
+
+    cursor = conn.cursor()
+    try:
+        full_name = f"{_oracle_quote(owner)}.{_oracle_quote(tbl)}" if owner else _oracle_quote(tbl)
+
+        if "MATERIALIZED" in upper_type or "MVIEW" in upper_type:
+            cursor.execute("SELECT QUERY FROM ALL_MVIEWS WHERE OWNER = :own AND MVIEW_NAME = :vname", {"own": owner, "vname": tbl})
+            mvrow = cursor.fetchone()
+            if mvrow and mvrow[0]:
+                mvtext = mvrow[0].read() if hasattr(mvrow[0], "read") else str(mvrow[0])
+                sql = f"-- Materialized View: {owner}.{tbl}\n\nCREATE MATERIALIZED VIEW {full_name} AS\n{mvtext.strip()}"
+                return sql if sql.endswith(";") else sql + ";"
+
+        if "VIEW" in upper_type:
+            cursor.execute("SELECT TEXT FROM ALL_VIEWS WHERE OWNER = :own AND VIEW_NAME = :vname", {"own": owner, "vname": tbl})
+            vrow = cursor.fetchone()
+            if vrow and vrow[0]:
+                vtext = vrow[0].read() if hasattr(vrow[0], "read") else str(vrow[0])
+                sql = f"-- View: {owner}.{tbl}\n\nCREATE OR REPLACE VIEW {full_name} AS\n{vtext.strip()}"
+                return sql if sql.endswith(";") else sql + ";"
+
+        # For tables: fast (<50ms) direct catalog DDL avoids DBMS_METADATA locks and bloat
+        try:
+            return _build_oracle_table_ddl(cursor, owner, tbl)
+        except Exception as e:
+            logger.debug(f"Direct catalog DDL failed ({e}); attempting DBMS_METADATA fallback.")
+
+        # Fallback to DBMS_METADATA if direct catalog generation had an issue
+        try:
+            cursor.execute(
+                "SELECT DBMS_METADATA.GET_DDL('TABLE', :obj_name, :owner) FROM DUAL",
+                {"obj_name": tbl, "owner": owner or None},
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                val = row[0]
+                ddl_str = val.read() if hasattr(val, "read") else str(val)
+                ddl_str = ddl_str.strip()
+                if ddl_str:
+                    return _clean_oracle_ddl(ddl_str)
+        except Exception as e:
+            logger.debug(f"DBMS_METADATA fallback failed: {e}")
+
+        raise ValueError(f"Could not generate DDL for '{owner}.{tbl}'. Object not found or access denied.")
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _detect_oracle_sequences(
+    cursor: Any,
+    owner: str,
+    table_name: str,
+    columns: list[dict[str, Any]],
+    pk_columns: list[str],
+) -> dict[str, dict[str, str]]:
+    """Detect sequences associated with table columns via Identity, DEFAULT, triggers, or naming conventions."""
+    col_seq_map: dict[str, dict[str, str]] = {}
+
+    # 1. Identity Columns (Oracle 12c+)
+    try:
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME, GENERATION_TYPE, SEQUENCE_NAME
+            FROM ALL_TAB_IDENTITY_COLS
+            WHERE OWNER = :own AND TABLE_NAME = :tbl
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        for cname, gen_type, seq_name in cursor.fetchall():
+            gen = (gen_type or "").upper()
+            col_seq_map[cname] = {
+                "sequence": seq_name or "IDENTITY",
+                "type": f"Identity ({gen})",
+                "value": "DEFAULT",
+                "is_identity": True,
+            }
+    except Exception as e:
+        logger.debug(f"Identity column check failed: {e}")
+
+    # 2. Columns with DEFAULT containing .NEXTVAL
+    for col in columns:
+        cname = col["name"]
+        ddef = col.get("default", "")
+        if cname not in col_seq_map and ddef and "NEXTVAL" in ddef.upper():
+            m = re.search(r'([A-Za-z0-9_".]+)\.NEXTVAL', ddef, re.IGNORECASE)
+            seq_expr = m.group(0) if m else ddef
+            seq_name = m.group(1).replace('"', '') if m else "SEQUENCE"
+            if "ISEQ$$_" in seq_name.upper():
+                col_seq_map[cname] = {
+                    "sequence": seq_name,
+                    "type": "Identity (DEFAULT)",
+                    "value": "DEFAULT",
+                    "is_identity": True,
+                }
+            else:
+                col_seq_map[cname] = {
+                    "sequence": seq_name,
+                    "type": "Column DEFAULT",
+                    "value": seq_expr,
+                    "is_identity": False,
+                }
+
+    # 3. BEFORE INSERT triggers referencing a sequence
+    try:
+        cursor.execute(
+            """
+            SELECT d.REFERENCED_NAME, t.TRIGGER_NAME
+            FROM ALL_DEPENDENCIES d
+            JOIN ALL_TRIGGERS t ON d.NAME = t.TRIGGER_NAME AND d.OWNER = t.OWNER
+            WHERE (t.TABLE_OWNER = :own OR t.OWNER = :own)
+              AND t.TABLE_NAME = :tbl
+              AND (t.TRIGGERING_EVENT LIKE '%INSERT%' OR t.TRIGGERING_EVENT = 'ALL')
+              AND d.REFERENCED_TYPE = 'SEQUENCE'
+            """,
+            {"own": owner, "tbl": table_name},
+        )
+        for seq_name, trig_name in cursor.fetchall():
+            target_col = None
+            try:
+                cursor.execute(
+                    "SELECT TRIGGER_BODY FROM ALL_TRIGGERS WHERE OWNER = :own AND TRIGGER_NAME = :tname",
+                    {"own": owner, "tname": trig_name},
+                )
+                tb_row = cursor.fetchone()
+                if tb_row and tb_row[0]:
+                    tbody = tb_row[0].read() if hasattr(tb_row[0], "read") else str(tb_row[0])
+                    m1 = re.search(r":NEW\.([A-Za-z0-9_]+)\s*:=", tbody, re.I)
+                    m2 = re.search(r"INTO\s+:NEW\.([A-Za-z0-9_]+)", tbody, re.I)
+                    if m1:
+                        target_col = m1.group(1).upper()
+                    elif m2:
+                        target_col = m2.group(1).upper()
+            except Exception:
+                target_col = None
+
+            if not target_col and len(pk_columns) == 1:
+                target_col = pk_columns[0]
+            elif not target_col and pk_columns:
+                for col in columns:
+                    if col["name"] in pk_columns and "NUMBER" in col["data_type"]:
+                        target_col = col["name"]
+                        break
+
+            if target_col and target_col not in col_seq_map:
+                col_seq_map[target_col] = {
+                    "sequence": seq_name,
+                    "type": f"Trigger ({trig_name})",
+                    "value": f"{_oracle_quote(owner)}.{_oracle_quote(seq_name)}.NEXTVAL" if owner else f"{_oracle_quote(seq_name)}.NEXTVAL",
+                }
+    except Exception as e:
+        logger.debug(f"Trigger sequence check failed: {e}")
+
+    # 4. Standard naming conventions in ALL_SEQUENCES
+    if not col_seq_map and pk_columns:
+        candidates = [
+            f"{table_name}_SEQ",
+            f"SEQ_{table_name}",
+            f"{table_name}_ID_SEQ",
+            f"SEQ_{table_name}_ID",
+        ]
+        try:
+            placeholders = ", ".join(f":c{i}" for i in range(len(candidates)))
+            params = {"own": owner}
+            params.update({f"c{i}": c for i, c in enumerate(candidates)})
+            cursor.execute(
+                f"SELECT SEQUENCE_NAME FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = :own AND SEQUENCE_NAME IN ({placeholders})",
+                params,
+            )
+            srow = cursor.fetchone()
+            if srow and srow[0]:
+                matched_seq = srow[0]
+                target_col = pk_columns[0]
+                col_seq_map[target_col] = {
+                    "sequence": matched_seq,
+                    "type": "Naming Convention",
+                    "value": f"{_oracle_quote(owner)}.{_oracle_quote(matched_seq)}.NEXTVAL" if owner else f"{_oracle_quote(matched_seq)}.NEXTVAL",
+                }
+        except Exception as e:
+            logger.debug(f"Naming convention sequence check failed: {e}")
+
+    return col_seq_map
+
+
+def _format_oracle_insert_value(col: dict[str, Any], col_seq_map: dict[str, dict[str, str]]) -> str:
+    """Return appropriate placeholder or sequence expression for an Oracle column value."""
+    cname = col["name"]
+    raw_type = col.get("raw_type", "").upper()
+
+    if cname in col_seq_map:
+        return col_seq_map[cname]["value"]
+    if "DATE" in raw_type:
+        return "SYSDATE"
+    if "TIMESTAMP" in raw_type:
+        return "SYSTIMESTAMP"
+    if any(t in raw_type for t in ("NUMBER", "FLOAT", "INTEGER", "INT", "SMALLINT", "DECIMAL")):
+        return "1"
+    if any(t in raw_type for t in ("VARCHAR", "CHAR", "CLOB", "NCHAR", "NVARCHAR")):
+        return f"'{cname.title()}'"
+    if "RAW" in raw_type:
+        return "HEXTORAW('00')"
+    if "BLOB" in raw_type:
+        return "EMPTY_BLOB()"
+    return "NULL"
+
+
+def generate_oracle_insert_script(
+    conn_data: dict[str, Any],
+    schema_name: str,
+    table_name: str,
+) -> str:
+    """Generate an INSERT script for an Oracle table with actual column names and sequence detection."""
+    from db.db_connections import get_pooled_oracle_connection
+
+    owner = (schema_name or conn_data.get("user") or "").upper()
+    tbl = table_name.upper()
+
+    conn = get_pooled_oracle_connection(conn_data=conn_data)
+    try:
+        conn.call_timeout = 8000
+    except Exception:
+        pass
+    cursor = conn.cursor()
+    try:
+        col_rows = []
+        try:
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+                       NULLABLE, DATA_DEFAULT
+                FROM ALL_TAB_COLS
+                WHERE OWNER = :own AND TABLE_NAME = :tbl AND HIDDEN_COLUMN = 'NO'
+                ORDER BY COLUMN_ID
+                """,
+                {"own": owner, "tbl": tbl},
+            )
+            col_rows = cursor.fetchall()
+        except Exception:
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+                       NULLABLE, DATA_DEFAULT
+                FROM ALL_TAB_COLUMNS
+                WHERE OWNER = :own AND TABLE_NAME = :tbl
+                ORDER BY COLUMN_ID
+                """,
+                {"own": owner, "tbl": tbl},
+            )
+            col_rows = cursor.fetchall()
+
+        if not col_rows:
+            raise ValueError(f"Table '{owner}.{tbl}' not found or has no visible columns.")
+
+        columns: list[dict[str, Any]] = []
+        for cname, dtype, dlen, dprec, dscale, nullable, ddef in col_rows:
+            dtype_str = _format_oracle_col_type(dtype, dlen, dprec, dscale)
+            columns.append({
+                "name": cname,
+                "data_type": dtype_str,
+                "raw_type": dtype,
+                "nullable": (nullable == "Y"),
+                "default": str(ddef).strip() if ddef else "",
+            })
+
+        pk_columns: list[str] = []
+        try:
+            cursor.execute(
+                """
+                SELECT cc.COLUMN_NAME
+                FROM ALL_CONSTRAINTS c
+                JOIN ALL_CONS_COLUMNS cc
+                  ON c.OWNER = cc.OWNER AND c.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+                WHERE c.OWNER = :own AND c.TABLE_NAME = :tbl AND c.CONSTRAINT_TYPE = 'P'
+                ORDER BY cc.POSITION
+                """,
+                {"own": owner, "tbl": tbl},
+            )
+            pk_columns = [r[0] for r in cursor.fetchall()]
+        except Exception as e:
+            logger.debug(f"Failed to fetch PK columns: {e}")
+
+        col_seq_map = _detect_oracle_sequences(cursor, owner, tbl, columns, pk_columns)
+
+        col_names = [f"    {_oracle_quote(col['name'])}" for col in columns]
+        val_exprs = [f"    {_format_oracle_insert_value(col, col_seq_map)}" for col in columns]
+
+        full_tbl = f"{_oracle_quote(owner)}.{_oracle_quote(tbl)}" if owner else _oracle_quote(tbl)
+
+        header_lines = [f"-- Insert Script for {full_tbl}"]
+        if col_seq_map:
+            for cname, sinfo in col_seq_map.items():
+                if sinfo.get("is_identity"):
+                    header_lines.append(
+                        f"-- Identity column detected on {cname}: auto-generated (uses DEFAULT)"
+                    )
+                else:
+                    header_lines.append(
+                        f"-- Sequence detected on column {cname}: {sinfo['sequence']} via {sinfo['type']}"
+                    )
+        else:
+            header_lines.append("-- No sequence detected for this table")
+
+        header = "\n".join(header_lines)
+        cols_block = ",\n".join(col_names)
+        vals_block = ",\n".join(val_exprs)
+
+        return f"{header}\n\nINSERT INTO {full_tbl} (\n{cols_block}\n)\nVALUES (\n{vals_block}\n);"
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+
+def generate_oracle_update_script(
+    conn_data: dict[str, Any],
+    schema_name: str,
+    table_name: str,
+) -> str:
+    """Generate an UPDATE script for an Oracle table with non-PK columns in SET and PK in WHERE."""
+    from db.db_connections import get_pooled_oracle_connection
+
+    owner = (schema_name or conn_data.get("user") or "").upper()
+    tbl = table_name.upper()
+
+    conn = get_pooled_oracle_connection(conn_data=conn_data)
+    try:
+        conn.call_timeout = 8000
+    except Exception:
+        pass
+    cursor = conn.cursor()
+    try:
+        col_rows = []
+        try:
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+                       NULLABLE, DATA_DEFAULT
+                FROM ALL_TAB_COLS
+                WHERE OWNER = :own AND TABLE_NAME = :tbl AND HIDDEN_COLUMN = 'NO'
+                ORDER BY COLUMN_ID
+                """,
+                {"own": owner, "tbl": tbl},
+            )
+            col_rows = cursor.fetchall()
+        except Exception:
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+                       NULLABLE, DATA_DEFAULT
+                FROM ALL_TAB_COLUMNS
+                WHERE OWNER = :own AND TABLE_NAME = :tbl
+                ORDER BY COLUMN_ID
+                """,
+                {"own": owner, "tbl": tbl},
+            )
+            col_rows = cursor.fetchall()
+
+        if not col_rows:
+            raise ValueError(f"Table '{owner}.{tbl}' not found or has no visible columns.")
+
+        columns: list[dict[str, Any]] = []
+        for cname, dtype, dlen, dprec, dscale, nullable, ddef in col_rows:
+            dtype_str = _format_oracle_col_type(dtype, dlen, dprec, dscale)
+            columns.append({
+                "name": cname,
+                "data_type": dtype_str,
+                "raw_type": dtype,
+                "nullable": (nullable == "Y"),
+                "default": str(ddef).strip() if ddef else "",
+            })
+
+        pk_columns: list[str] = []
+        try:
+            cursor.execute(
+                """
+                SELECT cc.COLUMN_NAME
+                FROM ALL_CONSTRAINTS c
+                JOIN ALL_CONS_COLUMNS cc
+                  ON c.OWNER = cc.OWNER AND c.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+                WHERE c.OWNER = :own AND c.TABLE_NAME = :tbl AND c.CONSTRAINT_TYPE = 'P'
+                ORDER BY cc.POSITION
+                """,
+                {"own": owner, "tbl": tbl},
+            )
+            pk_columns = [r[0] for r in cursor.fetchall()]
+        except Exception as e:
+            logger.debug(f"Failed to fetch PK columns: {e}")
+
+        col_seq_map = _detect_oracle_sequences(cursor, owner, tbl, columns, pk_columns)
+
+        set_lines = []
+        for col in columns:
+            cname = col["name"]
+            if cname in pk_columns:
+                continue
+            sinfo = col_seq_map.get(cname, {})
+            if "ALWAYS" in sinfo.get("type", ""):
+                continue
+            val = _format_oracle_insert_value(col, col_seq_map)
+            if val == "DEFAULT" or ".NEXTVAL" in val:
+                raw_t = col.get("raw_type", "").upper()
+                val = "1" if any(t in raw_t for t in ("NUMBER", "FLOAT", "INT")) else f"'{cname.title()}'"
+            set_lines.append(f"    {_oracle_quote(cname)} = {val}")
+
+        full_tbl = f"{_oracle_quote(owner)}.{_oracle_quote(tbl)}" if owner else _oracle_quote(tbl)
+
+        if pk_columns:
+            where_cond = " AND ".join(f"{_oracle_quote(pk)} = 1" for pk in pk_columns)
+            where_line = f"WHERE {where_cond};"
+            header = f"-- Update Script for {full_tbl}\n-- Primary Key: {', '.join(pk_columns)}"
+        else:
+            where_line = "WHERE <condition>;"
+            header = f"-- Update Script for {full_tbl}\n-- Note: No primary key detected; specify WHERE condition"
+
+        if not set_lines:
+            set_lines = ["    -- No editable non-PK columns found"]
+
+        set_block = ",\n".join(set_lines)
+        return f"{header}\n\nUPDATE {full_tbl}\nSET\n{set_block}\n{where_line}"
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass

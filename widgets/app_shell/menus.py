@@ -60,6 +60,7 @@ def build_main_window_menu(main_window):
     actions_menu.addAction(main_window.execute_sqlplus_action)
     actions_menu.addSeparator()
     actions_menu.addAction(main_window.explain_action)
+    actions_menu.addAction(main_window.optimize_action)
     actions_menu.addAction(main_window.describe_object_action)
     actions_menu.addAction(main_window.quick_describe_action)
     actions_menu.addAction(main_window.describe_query_action)
