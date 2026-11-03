@@ -353,10 +353,7 @@ class OracleEngineForm(BaseEngineForm):
 
         self.main_layout.addLayout(self.server_form)
 
-        # ── ORACLE CLIENT section ────────────────────────────────────────
-        self.main_layout.addWidget(create_static_header("ORACLE CLIENT"))
-
-        self.use_client_chk = QCheckBox("Connect using Oracle Client")
+        self.use_client_chk = QCheckBox("Connect using Oracle Client  (Optional)")
         self.use_client_chk.setObjectName("oracleClientCheckbox")
         self.use_client_chk.toggled.connect(self._on_client_toggled)
         self.main_layout.addWidget(self.use_client_chk)
@@ -380,7 +377,7 @@ class OracleEngineForm(BaseEngineForm):
 
         self.client_browse_btn = CompactButton("...")
         self.client_browse_btn.setFixedWidth(28)
-        self.client_browse_btn.setToolTip("Browse for a custom Oracle Client directory")
+        self.client_browse_btn.setToolTip("Browse for an Oracle Client directory")
         self.client_browse_btn.clicked.connect(self._on_browse_client)
 
         client_row_layout.addWidget(self.client_combo, 1)
@@ -393,7 +390,7 @@ class OracleEngineForm(BaseEngineForm):
         self.use_default_chk.toggled.connect(self._on_use_default_toggled)
         cg_layout.addWidget(self.use_default_chk)
 
-        # Row 3: SQLNET Editor button + live status icon
+        # Row 3: SQLNET Editor button + live status label
         sqlnet_row = QWidget()
         sqlnet_row_layout = QHBoxLayout(sqlnet_row)
         sqlnet_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -404,8 +401,7 @@ class OracleEngineForm(BaseEngineForm):
 
         self.sqlnet_status_lbl = QLabel()
         self.sqlnet_status_lbl.setObjectName("sqlnetStatusIcon")
-        self.sqlnet_status_lbl.setFixedSize(20, 20)
-        self.sqlnet_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sqlnet_status_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
 
         sqlnet_row_layout.addWidget(self.sqlnet_btn)
         sqlnet_row_layout.addWidget(self.sqlnet_status_lbl)
@@ -439,6 +435,9 @@ class OracleEngineForm(BaseEngineForm):
             self.server_form.setRowVisible(w, is_direct)
         for w in self.tns_rows:
             self.server_form.setRowVisible(w, is_tns)
+
+        self.use_client_chk.setVisible(is_tns)
+        self.client_group.setVisible(is_tns and self.use_client_chk.isChecked())
 
         self._update_preview()
 
@@ -503,7 +502,7 @@ class OracleEngineForm(BaseEngineForm):
         mode_idx = self.conn_type_combo.currentIndex()
         conn_mode = "direct" if mode_idx == 0 else "tns"
 
-        use_thick = self.use_client_chk.isChecked()
+        use_thick = self.use_client_chk.isChecked() if conn_mode == "tns" else False
         driver_mode = "thick" if use_thick else "thin"
         oracle_client_dir = self.client_combo.currentData() or "" if use_thick else ""
 
@@ -619,9 +618,10 @@ class OracleEngineForm(BaseEngineForm):
 
     def _on_client_toggled(self, checked: bool) -> None:
         """Show/hide the Installed Clients group box and auto-expand / scroll into view."""
-        self.client_group.setVisible(checked)
+        is_tns = (self.conn_type_combo.currentIndex() == 1)
+        self.client_group.setVisible(checked and is_tns)
         self._update_sqlnet_status()
-        if checked:
+        if checked and is_tns:
             QTimer.singleShot(50, self._ensure_client_section_visible)
 
     def _ensure_client_section_visible(self) -> None:
@@ -715,7 +715,8 @@ class OracleEngineForm(BaseEngineForm):
                 return
 
         # Not found — add as custom entry
-        from db.oracle_utils import get_registered_oracle_homes
+        from db.oracle_utils import get_registered_oracle_homes, get_pe_architecture
+        from pathlib import Path as _Path
         norm_target = normalize_client_path(client_dir)
         reg_label = next(
             (h["home_name"] for h in get_registered_oracle_homes()
@@ -725,8 +726,14 @@ class OracleEngineForm(BaseEngineForm):
         if reg_label:
             label = reg_label
         else:
-            dll_ver = get_oci_dll_version(client_dir) or "Custom"
-            label = f"Instant Client - {dll_ver}"
+            dll_ver = get_oci_dll_version(client_dir)
+            label = f"Oracle Client - {dll_ver}" if dll_ver else "Oracle Client (Custom)"
+        p = _Path(client_dir)
+        oci_f = (p / "bin" / "oci.dll") if (p / "bin" / "oci.dll").is_file() else (p / "oci.dll")
+        if oci_f.is_file() and get_pe_architecture(oci_f) == "32-bit":
+            label = f"{label} (32-bit - Not Supported)"
+        elif oci_f.is_file() and get_pe_architecture(oci_f) == "64-bit":
+            label = f"{label} (64-bit)"
         self.client_combo.insertItem(0, label, client_dir)
         self.client_combo.setCurrentIndex(0)
 
@@ -744,12 +751,22 @@ class OracleEngineForm(BaseEngineForm):
 
         is_valid, missing = is_valid_oracle_client_dir(folder)
         if not is_valid:
-            QMessageBox.warning(
-                self,
-                "Invalid Oracle Client Directory",
-                "The selected directory does not appear to be a valid Oracle Client.\n\nMissing:\n"
-                + "\n".join(missing),
-            )
+            is_arch_issue = any("architecture" in m.lower() or "bit" in m.lower() for m in missing)
+            if is_arch_issue:
+                title = "32-bit Oracle Client Not Supported"
+                msg = (
+                    "The selected Oracle Client is 32-bit and cannot be used with this 64-bit application.\n\n"
+                    "• Uncheck 'Connect using Oracle Client' — TNS connections work without any client installed.\n"
+                    "• Or configure a 64-bit Oracle Client (e.g. 64-bit Oracle Instant Client)."
+                )
+            else:
+                title = "Invalid Oracle Client Directory"
+                msg = (
+                    "The selected directory does not appear to be a valid Oracle Client.\n\n"
+                    "Missing: " + ", ".join(missing)
+                    + "\n\nPlease select a valid 64-bit Oracle Client or ORACLE_HOME bin directory."
+                )
+            QMessageBox.warning(self, title, msg)
             return
 
         self._select_or_add_client(folder)
@@ -771,7 +788,7 @@ class OracleEngineForm(BaseEngineForm):
         return self.client_combo.currentData() or ""
 
     def _update_sqlnet_status(self) -> None:
-        """Update the ✔/✘ icon based on whether sqlnet.ora exists for the selected client."""
+        """Update status label based on whether sqlnet.ora exists for the selected client."""
         if not hasattr(self, "sqlnet_status_lbl") or not self.use_client_chk.isChecked():
             return
         from db.oracle_utils import get_client_sqlnet_path
@@ -783,18 +800,18 @@ class OracleEngineForm(BaseEngineForm):
 
         sqlnet_path = get_client_sqlnet_path(client_dir)
         if sqlnet_path.is_file():
-            self.sqlnet_status_lbl.setText("✔")
+            self.sqlnet_status_lbl.setText("✔ Configured")
             self.sqlnet_status_lbl.setStyleSheet(
-                "color: #16a34a; font-size: 13px; font-weight: bold;"
+                "color: #16a34a; font-size: 8pt; font-weight: 500;"
             )
             self.sqlnet_status_lbl.setToolTip(f"sqlnet.ora found:\n{sqlnet_path}")
         else:
-            self.sqlnet_status_lbl.setText("✘")
+            self.sqlnet_status_lbl.setText("Default (optional)")
             self.sqlnet_status_lbl.setStyleSheet(
-                "color: #dc2626; font-size: 13px; font-weight: bold;"
+                "color: #64748B; font-size: 8pt;"
             )
             self.sqlnet_status_lbl.setToolTip(
-                f"sqlnet.ora not found.\nExpected: {sqlnet_path}\nClick SQLNET Editor to create it."
+                f"sqlnet.ora is optional and not present.\nExpected at: {sqlnet_path}\nClick SQLNET Editor to create custom settings if needed."
             )
 
     def _open_sqlnet_editor(self) -> None:
@@ -820,9 +837,40 @@ class OracleEngineForm(BaseEngineForm):
             return ok, msg
         if not self.preview_lbl.text().strip():
             return False, "Target connection string or host/service name is required."
+        if (
+            self.conn_type_combo.currentIndex() == 1
+            and self.use_client_chk.isChecked()
+        ):
+            client_dir = self.client_combo.currentData()
+            if not client_dir:
+                return (
+                    False,
+                    "No Oracle Client directory is selected.\n\n"
+                    "• Uncheck 'Connect using Oracle Client' — a local client is not required for most connections.\n"
+                    "• Or click '...' to select an Oracle Instant Client directory."
+                )
+            from db.oracle_utils import is_valid_oracle_client_dir
+            is_valid, missing = is_valid_oracle_client_dir(client_dir)
+            if not is_valid:
+                is_arch = any("bit" in m.lower() or "architecture" in m.lower() for m in missing)
+                if is_arch:
+                    return (
+                        False,
+                        "The selected Oracle Client is 32-bit and cannot be used with this 64-bit application.\n\n"
+                        "• Uncheck 'Connect using Oracle Client' — TNS connections work without any client installed.\n"
+                        "• Or select a 64-bit Oracle Client directory."
+                    )
+                return (
+                    False,
+                    "The selected Oracle Client directory is invalid:\n"
+                    + "\n".join(f"• {m}" for m in missing)
+                )
         return True, ""
 
     def test_connection(self) -> tuple[bool, str]:
+        ok, msg = self.validate_inputs()
+        if not ok:
+            return False, msg
         d = self.get_data()
         from db.oracle_utils import test_oracle_connection_isolated
         return test_oracle_connection_isolated(d)

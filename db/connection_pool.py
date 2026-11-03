@@ -506,6 +506,8 @@ def get_or_create_oracle_pool(conn_params: Dict,
             user = conn_params.get("user")
             password = conn_params.get("password")
             dsn = conn_params.get("dsn")
+            if dsn and isinstance(dsn, str) and dsn.startswith("localhost:"):
+                dsn = "127.0.0.1:" + dsn[10:]
 
             if not dsn:
                 host = conn_params.get("host")
@@ -525,6 +527,7 @@ def get_or_create_oracle_pool(conn_params: Dict,
                 "min": min_connections,
                 "max": max_connections,
                 "increment": 1,
+                "tcp_connect_timeout": 5,
             }
             if mode != _oracledb.AUTH_MODE_DEFAULT:
                 pool_kwargs["mode"] = mode

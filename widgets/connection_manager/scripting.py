@@ -1,13 +1,26 @@
 import sqlite3 as sqlite
+from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QComboBox, QPlainTextEdit
 from widgets.worksheet.code_editor import CodeEditor
-from ui.components import ToastNotification
+from ui.components import LoadingOverlay, ToastNotification
+from workers.connection_workers import TableScriptWorker
 import db
+from db.oracle_utils import (
+    generate_oracle_table_ddl,
+    generate_oracle_insert_script,
+    generate_oracle_update_script,
+)
+from db.postgres_utils import (
+    generate_postgres_table_ddl,
+    generate_postgres_insert_script,
+    generate_postgres_update_script,
+)
 
 
 class ScriptGenerator:
     def __init__(self, manager):
         self.manager = manager
+        self._active_workers: set = set()
 
     def open_script_in_editor(self, item_data, sql):
         if not item_data:
@@ -37,12 +50,113 @@ class ScriptGenerator:
 
         self.manager.tab_widget.setCurrentWidget(new_tab)
 
+    def _run_script_task_async(self, item_data, action_name, target_name, task_fn, *args, **kwargs):
+        if not item_data:
+            return
+
+        conn_data = item_data.get("conn_data")
+        if conn_data and isinstance(conn_data, dict) and str(conn_data.get("host", "")).strip().lower() == "localhost":
+            conn_data = dict(conn_data)
+            conn_data["host"] = "127.0.0.1"
+            item_data = dict(item_data)
+            item_data["conn_data"] = conn_data
+        new_tab = self.manager.add_tab()
+        if not new_tab:
+            return
+
+        query_editor = new_tab.findChild(CodeEditor, "query_editor")
+        if not query_editor:
+            query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+
+        db_combo_box = new_tab.findChild(QComboBox, "db_combo_box")
+        if db_combo_box and conn_data:
+            for i in range(db_combo_box.count()):
+                data = db_combo_box.itemData(i)
+                if data and data.get("id") == conn_data.get("id"):
+                    db_combo_box.setCurrentIndex(i)
+                    break
+
+        self.manager.tab_widget.setCurrentWidget(new_tab)
+
+        overlay = LoadingOverlay(new_tab, label=f"Generating {action_name} for {target_name}…")
+        overlay.show_overlay()
+
+        worker = TableScriptWorker(task_fn, *args, **kwargs)
+        self._active_workers.add(worker)
+
+        def on_finished(sql_text: str):
+            self._active_workers.discard(worker)
+            try:
+                overlay.hide_overlay()
+                overlay.deleteLater()
+            except RuntimeError:
+                pass
+            try:
+                if query_editor:
+                    query_editor.setPlainText(sql_text)
+                    query_editor.setFocus()
+            except RuntimeError:
+                pass
+
+        def on_error(err_msg: str):
+            self._active_workers.discard(worker)
+            try:
+                overlay.hide_overlay()
+                overlay.deleteLater()
+            except RuntimeError:
+                pass
+            try:
+                ToastNotification.show_toast(
+                    self.manager,
+                    f"Could not generate {action_name}: {err_msg}",
+                    kind="error",
+                )
+            except RuntimeError:
+                pass
+
+        worker.signals.finished.connect(on_finished)
+        worker.signals.error.connect(on_error)
+
+        thread_pool = getattr(self.manager, "thread_pool", None) or QThreadPool.globalInstance()
+        thread_pool.start(worker)
+
     def script_table_as_create(self, item_data, table_name):
         if not item_data:
             return
 
         db_type = item_data.get('db_type')
         conn_data = item_data.get('conn_data')
+
+        if db_type == 'oracle':
+            schema_name = item_data.get('schema_name') or conn_data.get('user', '')
+            obj_type = item_data.get('table_type', 'TABLE')
+            self._run_script_task_async(
+                item_data,
+                "CREATE script",
+                table_name,
+                generate_oracle_table_ddl,
+                conn_data,
+                schema_name=schema_name,
+                table_name=table_name,
+                obj_type=obj_type,
+            )
+            return
+
+        if db_type == 'postgres':
+            schema_name = item_data.get('schema_name') or 'public'
+            obj_type = item_data.get('table_type', 'TABLE')
+            self._run_script_task_async(
+                item_data,
+                "CREATE script",
+                table_name,
+                generate_postgres_table_ddl,
+                conn_data,
+                schema_name=schema_name,
+                table_name=table_name,
+                obj_type=obj_type,
+            )
+            return
+
         sql_script = ""
 
         if db_type == 'sqlite':
@@ -58,125 +172,96 @@ class ScriptGenerator:
                 ToastNotification.show_toast(self.manager, f"Could not generate SQLite script: {e}", kind="error")
                 return
 
-        elif db_type == 'postgres':
-            schema_name = item_data.get('schema_name', 'public')
-            try:
-                conn = db.get_pooled_postgres_connection(
-                    conn_data,
-                    application_name=f"Universal SQL Client (Scripting) - {conn_data.get('database', 'postgres')}",
-                    use_pool=True
-                )
-                if not conn:
-                    raise Exception("Failed to establish database connection")
-                cursor = conn.cursor()
-
-                # Get relkind to distinguish table/view/mview
-                cursor.execute(
-                    "SELECT c.relkind, c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = %s AND c.relname = %s;",
-                    (schema_name, table_name)
-                )
-                res = cursor.fetchone()
-                if not res:
-                    raise Exception(f"Object '{schema_name}.{table_name}' not found.")
-                relkind, oid = res
-
-                if relkind == 'r': # Table
-                    cursor.execute(
-                        """
-                        SELECT column_name, data_type, is_nullable, column_default
-                        FROM information_schema.columns
-                        WHERE table_schema = %s AND table_name = %s
-                        ORDER BY ordinal_position;
-                        """,
-                        (schema_name, table_name),
-                    )
-                    cols = cursor.fetchall()
-
-                    col_defs = []
-                    for col_name, dtype, nullable, default in cols:
-                        null_str = " NOT NULL" if nullable == "NO" else ""
-                        def_str = f' DEFAULT {default}' if default else ""
-                        col_defs.append(f'    {col_name} {dtype}{null_str}{def_str}')
-
-                    cursor.execute(
-                        """
-                        SELECT kcu.column_name
-                        FROM information_schema.table_constraints tc
-                        JOIN information_schema.key_column_usage kcu
-                          ON tc.constraint_name = kcu.constraint_name
-                          AND tc.table_schema = kcu.table_schema
-                        WHERE tc.constraint_type = 'PRIMARY KEY'
-                          AND tc.table_schema = %s AND tc.table_name = %s;
-                        """,
-                        (schema_name, table_name),
-                    )
-                    pk_cols = [r[0] for r in cursor.fetchall()]
-
-                    if pk_cols:
-                        pk_names = ", ".join([f'{c}' for c in pk_cols])
-                        col_defs.append(f'    CONSTRAINT {table_name}_pkey PRIMARY KEY ({pk_names})')
-
-                    sql_script = f'-- Table: {schema_name}.{table_name}\n\n'
-                    sql_script += f'CREATE TABLE {schema_name}.{table_name} (\n' + ",\n".join(col_defs) + "\n);"
-
-                elif relkind in ('v', 'm'): # View or Materialized View
-                    obj_type = "VIEW" if relkind == 'v' else "MATERIALIZED VIEW"
-                    cursor.execute("SELECT pg_get_viewdef(%s);", (oid,))
-                    view_def = cursor.fetchone()[0]
-                    sql_script = f'-- {obj_type.title()}: {schema_name}.{table_name}\n\n'
-                    sql_script += f'CREATE {obj_type} {schema_name}.{table_name} AS\n{view_def}'
-                    if not sql_script.strip().endswith(';'):
-                        sql_script += ';'
-
-                # Indexes (applicable to tables and mviews)
-                if relkind in ('r', 'm'):
-                    cursor.execute(
-                        "SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND tablename = %s;",
-                        (schema_name, table_name),
-                    )
-                    idxs = cursor.fetchall()
-                    if idxs:
-                        sql_script += "\n\n" + "\n".join([r[0] + ";" for r in idxs])
-
-                db.return_pooled_postgres_connection(conn_data, conn=conn)
-            except Exception as e:
-                ToastNotification.show_toast(self.manager, f"Could not generate Postgres script: {e}", kind="error")
-                return
-
         if sql_script:
             self.open_script_in_editor(item_data, sql_script)
 
     def script_table_as_insert(self, item_data, table_name):
-        schema_name = item_data.get('schema_name', 'public')
+        if not item_data:
+            return
         db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data') or {}
+        schema_name = item_data.get('schema_name') or (conn_data.get('user', '') if db_type == 'oracle' else 'public')
+
+        if db_type == 'oracle':
+            self._run_script_task_async(
+                item_data,
+                "INSERT script",
+                table_name,
+                generate_oracle_insert_script,
+                conn_data,
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+            return
+
         if db_type == 'postgres':
-            sql = f'INSERT INTO {schema_name}.{table_name} (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
-        else:
-            sql = f'INSERT INTO {table_name} (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
+            self._run_script_task_async(
+                item_data,
+                "INSERT script",
+                table_name,
+                generate_postgres_insert_script,
+                conn_data,
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+            return
+
+        sql = f'INSERT INTO {table_name} (\n    -- column1, column2, ...\n)\nVALUES (\n    -- value1, value2, ...\n);'
         self.open_script_in_editor(item_data, sql)
 
     def script_table_as_update(self, item_data, table_name):
-        schema_name = item_data.get('schema_name', 'public')
+        if not item_data:
+            return
         db_type = item_data.get('db_type')
+        conn_data = item_data.get('conn_data') or {}
+        schema_name = item_data.get('schema_name') or (conn_data.get('user', '') if db_type == 'oracle' else 'public')
+
+        if db_type == 'oracle':
+            self._run_script_task_async(
+                item_data,
+                "UPDATE script",
+                table_name,
+                generate_oracle_update_script,
+                conn_data,
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+            return
+
         if db_type == 'postgres':
-            sql = f'UPDATE {schema_name}.{table_name}nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
-        else:
-            sql = f'UPDATE {table_name}\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
+            self._run_script_task_async(
+                item_data,
+                "UPDATE script",
+                table_name,
+                generate_postgres_update_script,
+                conn_data,
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+            return
+
+        sql = f'UPDATE {table_name}\nSET \n    -- column1 = value1,\n    -- column2 = value2\nWHERE <condition>;'
         self.open_script_in_editor(item_data, sql)
 
     def script_table_as_delete(self, item_data, table_name):
-        schema_name = item_data.get('schema_name', 'public')
+        if not item_data:
+            return
         db_type = item_data.get('db_type')
-        if db_type == 'postgres':
+        conn_data = item_data.get('conn_data') or {}
+        schema_name = item_data.get('schema_name') or (conn_data.get('user', '') if db_type == 'oracle' else 'public')
+        if db_type in ('postgres', 'oracle') and schema_name:
             sql = f'DELETE FROM {schema_name}.{table_name}\nWHERE <condition>;'
         else:
             sql = f'DELETE FROM {table_name}\nWHERE <condition>;'
         self.open_script_in_editor(item_data, sql)
 
     def script_table_as_select(self, item_data, table_name):
-        schema_name = item_data.get('schema_name', 'public')
+        if not item_data:
+            return
         db_type = item_data.get('db_type')
-        if db_type == 'postgres':
+        conn_data = item_data.get('conn_data') or {}
+        schema_name = item_data.get('schema_name') or (conn_data.get('user', '') if db_type == 'oracle' else 'public')
+        if db_type in ('postgres', 'oracle') and schema_name:
             sql = f'SELECT * FROM {schema_name}.{table_name};'
         else:
             sql = f'SELECT * FROM {table_name};'
