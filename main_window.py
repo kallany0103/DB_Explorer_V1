@@ -512,7 +512,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.3</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.4</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def show_release_notes_dialog(self):
         """Open RELEASE_NOTES.md in Notepad or standard text/document reader."""
@@ -695,6 +695,9 @@ class MainWindow(QMainWindow):
 
     def describe_query(self):
         self.worksheet_manager.describe_query()
+
+    def optimize_query(self):
+        self.worksheet_manager.optimize_query()
 
     def describe_object(self, target: str = None, conn_data: dict = None):
         self.worksheet_manager.describe_object(target=target, conn_data=conn_data)

@@ -73,9 +73,33 @@ class LoadingOverlay(QWidget):
         h_layout.addStretch()
 
         layout.addLayout(h_layout)
+
+        self._label = None
+        if self._label_text:
+            self._label = QLabel(self._label_text, self)
+            self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._label.setStyleSheet(
+                "color: #64748b; font-size: 13px; font-weight: 500; margin-top: 12px;"
+            )
+            layout.addWidget(self._label)
+
         layout.addStretch()
 
         self.hide()
+
+    def set_label(self, text: str) -> None:
+        """Update or set the text label displayed beneath the spinner."""
+        self._label_text = text
+        if self._label is None and text:
+            layout = self.layout()
+            self._label = QLabel(text, self)
+            self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._label.setStyleSheet(
+                "color: #64748b; font-size: 13px; font-weight: 500; margin-top: 12px;"
+            )
+            layout.insertWidget(layout.count() - 1, self._label)
+        elif self._label is not None:
+            self._label.setText(text)
 
     def show_overlay(self):
         """Show the overlay and center it over parent."""

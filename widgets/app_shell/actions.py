@@ -61,6 +61,13 @@ def build_main_window_actions(main_window):
     main_window.explain_plan_action = QAction(qta.icon("fa5s.stopwatch", color="#555555"), "Explain (Plan)", main_window)
     main_window.explain_plan_action.triggered.connect(main_window.explain_plan_query)
 
+    main_window.optimize_action = QAction(
+        qta.icon("fa5s.tachometer-alt", color="#555555"), "Optimize SQL", main_window
+    )
+    main_window.optimize_action.setShortcut("Ctrl+Alt+O")
+    main_window.optimize_action.setToolTip("Optimize SQL (Ctrl+Alt+O)")
+    main_window.optimize_action.triggered.connect(main_window.optimize_query)
+
     main_window.describe_object_action = QAction(
         qta.icon("fa5s.info-circle", color="#555555"), "Describe", main_window
     )
