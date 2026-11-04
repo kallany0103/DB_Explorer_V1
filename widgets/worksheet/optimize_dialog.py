@@ -90,15 +90,17 @@ class OptimizeSqlDialog(QDialog):
 
         # Left: Leaderboard & SQL Diff Viewer
         left_pane = self._create_left_pane()
+        left_pane.setMinimumWidth(500)
         body_splitter.addWidget(left_pane)
 
         # Right: Findings & Index Recommendations
         right_pane = self._create_findings_pane()
+        right_pane.setMinimumWidth(320)
         body_splitter.addWidget(right_pane)
 
-        body_splitter.setSizes([680, 360])
+        body_splitter.setSizes([640, 440])
         body_splitter.setStretchFactor(0, 3)
-        body_splitter.setStretchFactor(1, 1)
+        body_splitter.setStretchFactor(1, 2)
         main_layout.addWidget(body_splitter, 1)
 
         # 4. Footer Bar
@@ -351,6 +353,7 @@ class OptimizeSqlDialog(QDialog):
         scroll_area = QScrollArea(container)
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("background: transparent;")
 
         scroll_widget = QWidget()
@@ -417,11 +420,11 @@ class OptimizeSqlDialog(QDialog):
         badge.setProperty("severity", finding.severity)
 
         title = QLabel(finding.title, card)
+        title.setWordWrap(True)
         title.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #0F172A;")
 
         top_row.addWidget(badge)
-        top_row.addWidget(title)
-        top_row.addStretch()
+        top_row.addWidget(title, 1)
         card_layout.addLayout(top_row)
 
         desc = QLabel(finding.description, card)
@@ -452,27 +455,32 @@ class OptimizeSqlDialog(QDialog):
         hdr_row.addWidget(icon_lbl)
         hdr_row.addWidget(title)
         hdr_row.addStretch()
-
-        # Simulate Index Action Button
-        self.sim_btn = SecondaryButton("Simulate Index", card)
-        self.sim_btn.setIcon(qta.icon("fa5s.bolt", color="#475569"))
-        self.sim_btn.setToolTip("Test index adoption virtually without allocating physical disk space")
-        ddl_text = "\n".join(indexes)
-        self.sim_btn.clicked.connect(lambda: self._simulate_virtual_index(indexes[0]))
-        hdr_row.addWidget(self.sim_btn)
-
-        copy_idx_btn = SecondaryButton("Copy DDL", card)
-        copy_idx_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
-        copy_idx_btn.clicked.connect(lambda: QApplication.clipboard().setText(ddl_text))
-        hdr_row.addWidget(copy_idx_btn)
         card_layout.addLayout(hdr_row)
 
+        ddl_text = "\n".join(indexes)
         code_box = QTextEdit(card)
         code_box.setObjectName("indexCodeBox")
         code_box.setReadOnly(True)
         code_box.setMaximumHeight(80)
         code_box.setPlainText(ddl_text)
         card_layout.addWidget(code_box)
+
+        # Action Buttons Row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+        btn_row.addStretch()
+
+        self.sim_btn = SecondaryButton("Simulate Index", card)
+        self.sim_btn.setIcon(qta.icon("fa5s.bolt", color="#475569"))
+        self.sim_btn.setToolTip("Test index adoption virtually without allocating physical disk space")
+        self.sim_btn.clicked.connect(lambda: self._simulate_virtual_index(indexes[0]))
+        btn_row.addWidget(self.sim_btn)
+
+        copy_idx_btn = SecondaryButton("Copy DDL", card)
+        copy_idx_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_idx_btn.clicked.connect(lambda: QApplication.clipboard().setText(ddl_text))
+        btn_row.addWidget(copy_idx_btn)
+        card_layout.addLayout(btn_row)
 
         # Virtual Index Simulation Result Frame (Hidden until run)
         self.sim_result_frame = QFrame(card)
