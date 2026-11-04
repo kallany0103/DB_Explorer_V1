@@ -625,7 +625,7 @@ class OptimizeSqlDialog(QDialog):
         self.variant_table.setFixedHeight(clamped_h)
 
         for row, v in enumerate(self.variants):
-            label_text = f"⭐ {v.label}" if v.is_best and v.id != 0 else v.label
+            label_text = v.label
             item_candidate = QTableWidgetItem(label_text)
             item_candidate.setData(Qt.ItemDataRole.UserRole, v.id)
             item_candidate.setData(Qt.ItemDataRole.UserRole + 1, v.strategy)
@@ -819,7 +819,7 @@ class OptimizeSqlDialog(QDialog):
         self.sim_status_lbl.setProperty("picked", "true" if res.is_picked else "false")
 
         if res.is_picked:
-            self.sim_status_lbl.setText("✓ OPTIMIZER SELECTED INDEX")
+            self.sim_status_lbl.setText("OPTIMIZER SELECTED INDEX")
             self.sim_status_lbl.setStyleSheet("color: #166534; font-weight: 700;")
             self.sim_result_frame.setStyleSheet(
                 "background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 4px; padding: 8px 10px; margin-top: 6px;"
