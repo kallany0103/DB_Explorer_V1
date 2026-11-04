@@ -161,6 +161,11 @@ def _evaluate_oracle_costs(variants: List[QueryVariant], conn_data: dict) -> boo
                     all_rows = cursor.fetchall()
                     if all_rows:
                         v.plan_root = parse_oracle_plan_rows(all_rows)
+                        if (not op or op == "SELECT STATEMENT") and len(all_rows) > 1:
+                            child = next((r for r in all_rows if r[1] == 0), all_rows[1])
+                            c_op = f"{child[2] or ''} {child[3] or ''}".strip()
+                            c_obj = child[4] or ""
+                            v.plan_summary = f"{c_op} on {c_obj}" if c_obj else c_op
                 except Exception:
                     pass
 
