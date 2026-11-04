@@ -267,12 +267,26 @@ class OptimizeSqlDialog(QDialog):
             self.kpi_best_lbl.setText("Baseline")
             self.kpi_best_lbl.setStyleSheet("color: #475569; font-weight: 700;")
 
-        if best_v and baseline_v and best_v.cost is not None and baseline_v.cost is not None:
+        if (
+            best_v
+            and baseline_v
+            and best_v.cost is not None
+            and baseline_v.cost is not None
+            and best_v.id != 0
+            and abs(best_v.cost - baseline_v.cost) >= 0.05
+        ):
             self.kpi_cost_lbl.setText(f"{best_v.cost:.1f} vs {baseline_v.cost:.1f}")
+            self.kpi_cost_lbl.setToolTip(
+                f"Optimized Plan Cost: {best_v.cost:.1f} | Original Baseline Cost: {baseline_v.cost:.1f}"
+            )
         elif baseline_v and baseline_v.cost is not None:
             self.kpi_cost_lbl.setText(f"{baseline_v.cost:.1f}")
+            self.kpi_cost_lbl.setToolTip(
+                f"Baseline Plan Cost: {baseline_v.cost:.1f} (Rewrites produced identical plan cost)"
+            )
         else:
             self.kpi_cost_lbl.setText("-")
+            self.kpi_cost_lbl.setToolTip("")
 
         if self.result.findings:
             high_findings = [f for f in self.result.findings if f.severity == "HIGH"]
