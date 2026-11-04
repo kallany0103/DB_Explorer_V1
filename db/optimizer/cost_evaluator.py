@@ -151,7 +151,8 @@ def _evaluate_oracle_costs(variants: List[QueryVariant], conn_data: dict) -> boo
                 try:
                     cursor.execute(
                         """
-                        SELECT id, parent_id, operation, options, object_name, cost, cardinality
+                        SELECT id, parent_id, operation, options, object_name, cost, cardinality,
+                               access_predicates, filter_predicates
                         FROM plan_table
                         WHERE statement_id = :1
                         ORDER BY id

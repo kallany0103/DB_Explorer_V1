@@ -106,6 +106,19 @@ def parse_oracle_plan_rows(rows: List[tuple]) -> Optional[PlanNode]:
         cost = float(r[5]) if len(r) > 5 and r[5] is not None else 0.0
         rows_est = int(r[6]) if len(r) > 6 and r[6] is not None else 0
 
+        access_pred = str(r[7]).strip() if len(r) > 7 and r[7] else ""
+        filter_pred = str(r[8]).strip() if len(r) > 8 and r[8] else ""
+
+        cond_parts = []
+        if access_pred:
+            cond_parts.append(f"Access: {access_pred}")
+        if filter_pred:
+            cond_parts.append(f"Filter: {filter_pred}")
+        if rows_est:
+            cond_parts.append(f"Est. Rows: {rows_est:,}")
+
+        condition = " • ".join(cond_parts) if cond_parts else ""
+
         is_bottleneck = "full" in op.lower()
         is_optimized = "index" in op.lower()
 
@@ -114,6 +127,7 @@ def parse_oracle_plan_rows(rows: List[tuple]) -> Optional[PlanNode]:
             relation=obj,
             cost=cost,
             rows=rows_est,
+            condition=condition,
             is_bottleneck=is_bottleneck,
             is_optimized=is_optimized,
         )

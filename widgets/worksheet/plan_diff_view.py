@@ -71,9 +71,9 @@ class PlanDiffWidget(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
-        self.plan_tree.setColumnWidth(0, 240)
+        self.plan_tree.setColumnWidth(0, 215)
         self.plan_tree.setColumnWidth(1, 135)
-        self.plan_tree.setColumnWidth(2, 85)
+        self.plan_tree.setColumnWidth(2, 125)
 
         layout.addWidget(self.plan_tree, 1)
 
@@ -114,7 +114,9 @@ class PlanDiffWidget(QWidget):
             self.summary_lbl.setText("Procedural Execution: Block executed directly by database server runtime")
             self.summary_lbl.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #475569;")
             self._set_tree_headers(["Execution Operation", "Cost", "Target Object", "Execution Detail"])
-            self.plan_tree.setColumnWidth(1, 75)
+            self.plan_tree.setColumnWidth(0, 215)
+            self.plan_tree.setColumnWidth(1, 65)
+            self.plan_tree.setColumnWidth(2, 125)
             self._populate_single_node(self.plan_tree.invisibleRootItem(), active_base)
             self.plan_tree.expandAll()
             return
@@ -126,7 +128,9 @@ class PlanDiffWidget(QWidget):
             )
             self.summary_lbl.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #334155;")
             self._set_tree_headers(["Execution Operation", "Cost", "Target Object", "Access Path / Predicate"])
-            self.plan_tree.setColumnWidth(1, 75)
+            self.plan_tree.setColumnWidth(0, 215)
+            self.plan_tree.setColumnWidth(1, 65)
+            self.plan_tree.setColumnWidth(2, 125)
             self._populate_single_node(self.plan_tree.invisibleRootItem(), active_base)
             self.plan_tree.expandAll()
             return
@@ -138,7 +142,9 @@ class PlanDiffWidget(QWidget):
             )
             self.summary_lbl.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #334155;")
             self._set_tree_headers(["Execution Operation", "Cost", "Target Object", "Access Path / Predicate"])
-            self.plan_tree.setColumnWidth(1, 75)
+            self.plan_tree.setColumnWidth(0, 215)
+            self.plan_tree.setColumnWidth(1, 65)
+            self.plan_tree.setColumnWidth(2, 125)
             self._populate_single_node(self.plan_tree.invisibleRootItem(), base_node)
             self.plan_tree.expandAll()
             return
@@ -168,7 +174,9 @@ class PlanDiffWidget(QWidget):
         self._set_tree_headers([
             "Execution Operation", "Cost (Base → Cand)", "Target Object", "Access Path / Predicate"
         ])
-        self.plan_tree.setColumnWidth(1, 140)
+        self.plan_tree.setColumnWidth(0, 215)
+        self.plan_tree.setColumnWidth(1, 135)
+        self.plan_tree.setColumnWidth(2, 125)
         self._populate_diff_tree(base_node, cand_node)
         self.plan_tree.expandAll()
 
@@ -182,6 +190,16 @@ class PlanDiffWidget(QWidget):
 
         item = QTreeWidgetItem(parent_item, [node.node_type, cost_text, node.relation, detail_text])
         item.setIcon(0, icon)
+
+        tt = (
+            f"Operation: {node.node_type}\n"
+            f"Target Object: {node.relation or 'N/A'}\n"
+            f"Plan Cost: {cost_text}\n"
+            f"Estimated Rows: {node.rows:,}\n"
+            f"Access / Predicates: {node.condition or 'None'}"
+        )
+        for col_idx in range(4):
+            item.setToolTip(col_idx, tt)
 
         if node.is_bottleneck or ("scan" in node.node_type.lower() and "index" not in node.node_type.lower()):
             item.setBackground(0, QColor("#FFFBEB"))
@@ -278,6 +296,15 @@ class PlanDiffWidget(QWidget):
 
         item = QTreeWidgetItem(parent_item, [op_text, cost_text, rel_text, cond_text])
         item.setIcon(0, icon)
+
+        tt = (
+            f"Operation: {op_text}\n"
+            f"Target Object: {rel_text or 'N/A'}\n"
+            f"Cost: {cost_text}\n"
+            f"Access / Predicates: {cond_text or 'None'}"
+        )
+        for col_idx in range(4):
+            item.setToolTip(col_idx, tt)
 
         if status == "optimized":
             item.setBackground(0, QColor("#F0FDF4"))
