@@ -731,6 +731,10 @@ class OptimizeSqlDialog(QDialog):
                 self.sql_tabs.setTabVisible(1, True)
 
             # Update Plan Diff Tree
+            is_base = (self.selected_variant.id == 0)
+            diff_tab_idx = 2 if self.sql_tabs.count() > 2 else 1
+            self.sql_tabs.setTabText(diff_tab_idx, "Execution Plan" if is_base else "Execution Plan Diff")
+
             baseline_v = next((v for v in self.variants if v.id == 0), None)
             base_plan = getattr(baseline_v, "plan_root", None) if baseline_v else None
             cand_plan = getattr(self.selected_variant, "plan_root", None)
@@ -740,18 +744,10 @@ class OptimizeSqlDialog(QDialog):
                     cand_plan,
                     "Baseline Plan",
                     f"{self.selected_variant.label} Plan",
+                    is_baseline=is_base,
                 )
 
             self._update_apply_button_state()
-            base_plan = getattr(baseline_v, "plan_root", None) if baseline_v else None
-            cand_plan = getattr(self.selected_variant, "plan_root", None)
-            if hasattr(self, "plan_diff_widget"):
-                self.plan_diff_widget.set_plans(
-                    base_plan,
-                    cand_plan,
-                    "Baseline Plan",
-                    f"{self.selected_variant.label} Plan",
-                )
 
     def _on_tuning_depth_changed(self, index: int) -> None:
         depth = "deep" if index == 1 else "standard"
