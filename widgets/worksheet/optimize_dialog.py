@@ -564,6 +564,7 @@ class OptimizeSqlDialog(QDialog):
         copy_idx_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
         copy_idx_btn.clicked.connect(lambda: QApplication.clipboard().setText(ddl_text))
         btn_row.addWidget(copy_idx_btn)
+        btn_row.addStretch()
         card_layout.addLayout(btn_row)
 
         # Virtual Index Simulation Result Frame (Hidden until run)
