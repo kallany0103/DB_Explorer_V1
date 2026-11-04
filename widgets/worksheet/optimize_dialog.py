@@ -544,6 +544,7 @@ class OptimizeSqlDialog(QDialog):
         code_box = QTextEdit(card)
         code_box.setObjectName("indexCodeBox")
         code_box.setReadOnly(True)
+        code_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         code_box.setMaximumHeight(80)
         code_box.setPlainText(ddl_text)
         card_layout.addWidget(code_box)
@@ -576,10 +577,12 @@ class OptimizeSqlDialog(QDialog):
 
         self.sim_status_lbl = QLabel(self.sim_result_frame)
         self.sim_status_lbl.setProperty("class", "sim-status")
+        self.sim_status_lbl.setWordWrap(True)
         sim_layout.addWidget(self.sim_status_lbl)
 
         self.sim_metric_lbl = QLabel(self.sim_result_frame)
         self.sim_metric_lbl.setProperty("class", "sim-metric")
+        self.sim_metric_lbl.setWordWrap(True)
         sim_layout.addWidget(self.sim_metric_lbl)
 
         self.sim_detail_lbl = QLabel(self.sim_result_frame)
@@ -828,8 +831,16 @@ class OptimizeSqlDialog(QDialog):
                 "background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px 10px; margin-top: 6px;"
             )
 
+        if res.cost_reduction_pct > 0:
+            reduction_str = f"(-{res.cost_reduction_pct:.1f}%)"
+        elif res.cost_reduction_pct < 0:
+            reduction_str = f"(+{abs(res.cost_reduction_pct):.1f}%)"
+        else:
+            reduction_str = "(0.0% change)"
+
         self.sim_metric_lbl.setText(
-            f"Plan: {res.baseline_plan_node} → {res.simulated_plan_node} | Cost: {res.baseline_cost:.1f} → {res.simulated_cost:.1f} (-{res.cost_reduction_pct}%)"
+            f"Plan: {res.baseline_plan_node} → {res.simulated_plan_node} | "
+            f"Cost: {res.baseline_cost:.1f} → {res.simulated_cost:.1f} {reduction_str}"
         )
         self.sim_detail_lbl.setText(f"{res.engine_method} • {res.details}")
 
