@@ -162,19 +162,30 @@ QTabWidget::pane {
 
 QTabBar::tab {
     background-color: #F1F5F9;
-    color: #475569;
+    color: #64748B;
     border: 1px solid #CBD5E1;
-    border-bottom: none;
-    padding: 5px 12px;
+    border-top: 2px solid transparent;
+    border-bottom: 1px solid #CBD5E1;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 5px 14px;
     font-size: 8.5pt;
     font-weight: 500;
     margin-right: 2px;
 }
 
+QTabBar::tab:hover:!selected {
+    background-color: #E2E8F0;
+    color: #1E293B;
+}
+
 QTabBar::tab:selected {
     background-color: #FFFFFF;
     color: #0F172A;
-    font-weight: 600;
+    border: 1px solid #CBD5E1;
+    border-top: 2px solid #2563EB;
+    border-bottom: 1px solid #FFFFFF;
+    font-weight: 500;
 }
 
 /* Simulation Result Box */

@@ -276,6 +276,8 @@ class OptimizeSqlDialog(QDialog):
         # SQL Viewer Tab Widget
         self.sql_tabs = QTabWidget(container)
         self.sql_tabs.setObjectName("diffTabWidget")
+        self.sql_tabs.tabBar().setExpanding(False)
+        self.sql_tabs.tabBar().setUsesScrollButtons(False)
 
         # Tab 1: Selected Candidate
         selected_widget = QWidget()
