@@ -337,10 +337,15 @@ class OptimizeSqlDialog(QDialog):
 
         header = self.variant_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+
+        self.variant_table.setColumnWidth(1, 55)
+        self.variant_table.setColumnWidth(2, 85)
+        self.variant_table.setColumnWidth(3, 110)
+        self.variant_table.setColumnWidth(4, 125)
 
         self.variant_table.itemSelectionChanged.connect(self._on_variant_selected)
         layout.addWidget(self.variant_table)
