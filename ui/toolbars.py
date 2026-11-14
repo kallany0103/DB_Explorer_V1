@@ -1,6 +1,6 @@
 import qtawesome as qta
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPainter, QIcon
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QButtonGroup, 
     QToolButton, QMenu, QLabel, QPushButton, QFrame,
@@ -229,13 +229,81 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Rows Limit
-        self.rows_limit_combo = DropdownToolButton("No Limit", qta.icon("mdi6.table-row", color="#555555"))
-        self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._row_limit_icon = qta.icon("mdi6.table-row", color="#555555")
+        self.rows_limit_combo = DropdownToolButton("No Limit", self._row_limit_icon)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setMinimumWidth(96)
-        self.rows_limit_combo.setToolTip("Row Limit")
+        self.rows_limit_combo.setFixedWidth(58)
+        self.rows_limit_combo.setToolTip("Row Limit: No Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
-        self.rows_limit_combo.setCurrentText("No Limit")
+
+        # Override setCurrentText and currentText to handle icon-only for "No Limit"
+        # and text-only (number) for numeric limits
+        self._current_row_limit = "No Limit"
+
+        def _update_limit_style(is_icon_only):
+            pad_left = 0 if is_icon_only else 4
+            pad_right = 16 if is_icon_only else 18
+            self.rows_limit_combo.setStyleSheet(f"""
+                QToolButton {{
+                    border: 1px solid #b9b9b9;
+                    border-radius: 4px;
+                    background-color: #ffffff;
+                    color: #333333;
+                    padding: 0px {pad_right}px 0px {pad_left}px;
+                    font-size: 8.5pt;
+                }}
+                QToolButton:hover {{
+                    background-color: #e8e8e8;
+                    border-color: #9c9c9c;
+                }}
+                QToolButton:pressed {{
+                    background-color: #dcdcdc;
+                }}
+                QToolButton::menu-button {{
+                    subcontrol-origin: padding;
+                    subcontrol-position: right center;
+                    width: 14px;
+                    border: none;
+                }}
+                QToolButton::menu-button:hover, QToolButton::menu-button:open {{
+                    background-color: #dcdcdc;
+                    border-radius: 3px;
+                }}
+                QToolButton::menu-arrow {{
+                    image: url(assets/toolbar-chevron-down.svg);
+                    width: 9px;
+                    height: 9px;
+                    subcontrol-position: center center;
+                }}
+            """)
+
+        def _get_current_limit():
+            return self._current_row_limit
+
+        def _set_current_limit(val):
+            val_str = str(val or "No Limit")
+            self._current_row_limit = val_str
+            if val_str == "No Limit":
+                self.rows_limit_combo.setText("")
+                self.rows_limit_combo.setIcon(self._row_limit_icon)
+                self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+                self.rows_limit_combo.setToolTip("Row Limit: No Limit")
+                _update_limit_style(is_icon_only=True)
+            else:
+                self.rows_limit_combo.setText(val_str)
+                self.rows_limit_combo.setIcon(QIcon())
+                self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                self.rows_limit_combo.setToolTip(f"Row Limit: {val_str}")
+                _update_limit_style(is_icon_only=False)
+            for action in self.rows_limit_combo._menu.actions():
+                if action.text() == val_str:
+                    action.setChecked(True)
+                    break
+
+        self.rows_limit_combo.currentText = _get_current_limit
+        self.rows_limit_combo.setCurrentText = _set_current_limit
+        _set_current_limit("No Limit")
+
         self.rows_limit_combo.itemTriggered.connect(
             lambda text: self.limit_changed.emit(text)
         )
