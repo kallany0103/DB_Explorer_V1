@@ -40,6 +40,21 @@ from db.schema_retrieval import (
     get_oracle_available_schemas,
 )
 
+from db.duckdb_manager import (
+    DuckDBManager,
+)
+
+from db.servicenow_metadata import (
+    test_servicenow_connection,
+    fetch_servicenow_tables,
+    fetch_servicenow_columns,
+)
+
+from db.servicenow_dlt import (
+    sync_servicenow_table,
+    get_synced_tables,
+)
+
 from db.oracle_utils import (
     enable_dbms_output,
     disable_dbms_output,
@@ -181,4 +196,10 @@ __all__ = [
     "ensure_host_fdw_extensions",
     "test_data_source_connection",
     "drop_postgres_fdw_source",
+    "DuckDBManager",
+    "test_servicenow_connection",
+    "fetch_servicenow_tables",
+    "fetch_servicenow_columns",
+    "sync_servicenow_table",
+    "get_synced_tables",
 ]

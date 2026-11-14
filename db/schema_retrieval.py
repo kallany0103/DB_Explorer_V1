@@ -186,8 +186,7 @@ def get_postgres_schema(conn_data, schema_name=None):
 
 def get_csv_schema(conn_info):
     """
-    Retrieves metadata for CSV files in the specified path.
-    CData CSV driver treats a folder as a database and each file as a table.
+    Retrieves metadata for CSV files in the specified path using DuckDB.
     """
     schema_data = {}
     conn = create_csv_connection(conn_info)
@@ -196,27 +195,25 @@ def get_csv_schema(conn_info):
 
     try:
         cursor = conn.cursor()
-        # Get tables (CSV files)
-        cursor.execute("SELECT TableName FROM sys_tables")
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' AND table_name NOT LIKE '%.csv'")
         tables = [row[0] for row in cursor.fetchall()]
 
         for table in tables:
-            # Get columns
-            cursor.execute("SELECT ColumnName, DataTypeName FROM sys_tablecolumns WHERE TableName = ?", (table,))
+            cursor.execute(f'PRAGMA table_info("{table}")')
             columns = []
-            for col_name, data_type in cursor.fetchall():
+            for col in cursor.fetchall():
                 columns.append({
-                    "name": col_name,
-                    "type": data_type,
-                    "pk": False # CSV doesn't have PKs by default
+                    "name": col[1],
+                    "type": col[2],
+                    "pk": bool(col[5]) if len(col) > 5 else False,
                 })
-            
+
             schema_data[table] = {
                 "columns": columns,
-                "foreign_keys": [] # CSV doesn't have FKs
+                "foreign_keys": []
             }
     except Exception as e:
-        print(f"Error retrieving CSV schema: {e}")
+        print(f"Error retrieving DuckDB CSV schema: {e}")
     finally:
         conn.close()
     return schema_data
@@ -233,107 +230,53 @@ def _subprocess_fetch_servicenow_schema(conn_info, table_name):
 
 def get_servicenow_schema(conn_info, table_name=None):
     """
-    Retrieves metadata for ServiceNow tables.
+    Retrieves metadata for ServiceNow tables using REST metadata and local DuckDB cache.
     """
+    from db.servicenow_metadata import fetch_servicenow_tables, fetch_servicenow_columns
+    from db.servicenow_dlt import get_synced_tables
+    from db.duckdb_manager import DuckDBManager
+
     schema_data = {}
-    conn = create_servicenow_connection(conn_info)
-    if not conn:
-        return schema_data
+    target_tables = [table_name] if table_name else []
 
-    try:
-        cursor = conn.cursor()
-        if table_name:
-            tables = [table_name]
+    if not target_tables:
+        raw_tables = fetch_servicenow_tables(conn_info)
+        target_tables = [t[0] for t in raw_tables]
+
+    conn_id = conn_info.get("id") or conn_info.get("connection_id") or "default"
+    db_path = DuckDBManager.get_servicenow_duckdb_path(conn_id)
+    synced_tables = set(get_synced_tables(db_path))
+
+    for table in target_tables:
+        cols_meta = fetch_servicenow_columns(conn_info, table)
+        columns = []
+        foreign_keys = []
+
+        if cols_meta:
+            for c in cols_meta:
+                columns.append({
+                    "name": c["name"],
+                    "type": c.get("type", "STRING"),
+                    "pk": c.get("pk", False),
+                })
+                ref = c.get("reference")
+                if ref:
+                    foreign_keys.append({"from": c["name"], "table": ref, "to": "sys_id"})
         else:
-            # Limiting to a few common tables to avoid timeout
-            cursor.execute("SELECT TableName FROM sys_tables LIMIT 50")
-            tables = [row[0] for row in cursor.fetchall()]
+            columns = [
+                {"name": "sys_id", "type": "STRING", "pk": True},
+                {"name": "number", "type": "STRING", "pk": False},
+                {"name": "short_description", "type": "STRING", "pk": False},
+                {"name": "sys_created_on", "type": "TIMESTAMP", "pk": False},
+            ]
 
-        for table in tables:
-            columns = []
-            foreign_keys = []
+        schema_data[table] = {
+            "table": table,
+            "columns": columns,
+            "foreign_keys": foreign_keys,
+            "is_cached": table in synced_tables,
+        }
 
-            # Attempt 1: fetch columns + ReferencedTable in one query
-            # CData exposes a ReferencedTable column in sys_tablecolumns for reference fields.
-            col_query_succeeded = False
-            try:
-                cursor.execute(
-                    "SELECT ColumnName, DataTypeName, IsKey, ReferencedTable "
-                    "FROM sys_tablecolumns WHERE TableName = ?",
-                    (table,)
-                )
-                for row in cursor.fetchall():
-                    col_name, data_type, is_key = row[0], row[1], row[2]
-                    ref_table = row[3] if len(row) > 3 else None
-                    columns.append({
-                        "name": col_name,
-                        "type": data_type,
-                        "pk": str(is_key).lower() == "true"
-                    })
-                    if ref_table:
-                        foreign_keys.append({"from": col_name, "table": ref_table, "to": "sys_id"})
-                col_query_succeeded = True
-            except Exception:
-                pass
-
-            # Fallback column query (no ReferencedTable) if Attempt 1 failed
-            if not col_query_succeeded:
-                try:
-                    cursor.execute(
-                        "SELECT ColumnName, DataTypeName, IsKey "
-                        "FROM sys_tablecolumns WHERE TableName = ?",
-                        (table,)
-                    )
-                    for col_name, data_type, is_key in cursor.fetchall():
-                        columns.append({
-                            "name": col_name,
-                            "type": data_type,
-                            "pk": str(is_key).lower() == "true"
-                        })
-                except Exception:
-                    pass
-
-            # Attempt 2: ServiceNow sys_dictionary (reference field metadata)
-            if not foreign_keys:
-                try:
-                    cursor.execute(
-                        "SELECT element, reference FROM sys_dictionary "
-                        "WHERE name = ? AND reference IS NOT NULL AND reference <> ''",
-                        (table,)
-                    )
-                    foreign_keys = [
-                        {"from": r[0], "table": r[1], "to": "sys_id"}
-                        for r in cursor.fetchall()
-                        if r[0] and r[1]
-                    ]
-                except Exception:
-                    pass
-
-            # Attempt 3: sys_foreignkeys (original fallback)
-            if not foreign_keys:
-                try:
-                    cursor.execute(
-                        "SELECT FKCOLUMN_NAME, PKTABLE_NAME FROM sys_foreignkeys "
-                        "WHERE FKTABLE_NAME = ?",
-                        (table,)
-                    )
-                    foreign_keys = [
-                        {"from": r[0], "table": r[1], "to": "sys_id"}
-                        for r in cursor.fetchall()
-                        if r[1]
-                    ]
-                except Exception:
-                    pass
-
-            schema_data[table] = {
-                "table": table,
-                "columns": columns,
-                "foreign_keys": foreign_keys
-            }
-    except Exception as e:
-        print(f"Error retrieving ServiceNow schema: {e}")
-    finally:
-        conn.close()
     return schema_data
 
 

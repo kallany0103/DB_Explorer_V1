@@ -43,6 +43,7 @@ def _default_column_spec(name, data_type=""):
         "pk": False,
         "fk": False,
         "nullable": None,
+        "read_only": False,
     }
 
 
@@ -109,6 +110,8 @@ def _resolve_postgres_column_specs(conn, conn_data, description):
         column_index = int(_description_value(desc, "table_column", 8, 0) or 0)
         if table_oid and column_index:
             requested_columns.append((result_index, table_oid, column_index))
+        else:
+            spec["read_only"] = True
 
     if not requested_columns:
         return specs
@@ -119,44 +122,55 @@ def _resolve_postgres_column_specs(conn, conn_data, description):
             metadata_cursor.mogrify("(%s, %s, %s)", values).decode("utf-8")
             for values in requested_columns
         )
-        metadata_cursor.execute(
-            f"""
-            WITH requested_cols(result_index, table_oid, column_index) AS (
-                VALUES {values_clause}
-            )
-            SELECT
-                rc.result_index,
-                UPPER(format_type(a.atttypid, a.atttypmod)) AS data_type,
-                a.attnotnull,
-                EXISTS (
-                    SELECT 1
-                    FROM pg_constraint c
-                    WHERE c.conrelid = rc.table_oid::oid
-                      AND c.contype = 'p'
-                      AND a.attnum = ANY(c.conkey)
-                ) AS is_pk,
-                EXISTS (
-                    SELECT 1
-                    FROM pg_constraint c
-                    WHERE c.conrelid = rc.table_oid::oid
-                      AND c.contype = 'f'
-                      AND a.attnum = ANY(c.conkey)
-                ) AS is_fk
-            FROM requested_cols rc
-            JOIN pg_attribute a
-              ON a.attrelid = rc.table_oid::oid
-             AND a.attnum = rc.column_index::int2
-            WHERE NOT a.attisdropped
-            """
+        server_version = getattr(conn, "server_version", 0) or 0
+        gen_col_clause = (
+            "COALESCE(a.attgenerated, '') <> '' AS is_generated"
+            if server_version == 0 or server_version >= 120000
+            else "FALSE AS is_generated"
         )
+        try:
+            metadata_cursor.execute(
+                f"""
+                WITH requested_cols(result_index, table_oid, column_index) AS (
+                    VALUES {values_clause}
+                )
+                SELECT
+                    rc.result_index,
+                    UPPER(format_type(a.atttypid, a.atttypmod)) AS data_type,
+                    a.attnotnull,
+                    EXISTS (
+                        SELECT 1
+                        FROM pg_constraint c
+                        WHERE c.conrelid = rc.table_oid::oid
+                          AND c.contype = 'p'
+                          AND a.attnum = ANY(c.conkey)
+                    ) AS is_pk,
+                    EXISTS (
+                        SELECT 1
+                        FROM pg_constraint c
+                        WHERE c.conrelid = rc.table_oid::oid
+                          AND c.contype = 'f'
+                          AND a.attnum = ANY(c.conkey)
+                    ) AS is_fk,
+                    {gen_col_clause}
+                FROM requested_cols rc
+                JOIN pg_attribute a
+                  ON a.attrelid = rc.table_oid::oid
+                 AND a.attnum = rc.column_index::int2
+                WHERE NOT a.attisdropped
+                """
+            )
+        except Exception:
+            return specs
 
-        for result_index, data_type, attnotnull, is_pk, is_fk in metadata_cursor.fetchall():
+        for result_index, data_type, attnotnull, is_pk, is_fk, is_generated in metadata_cursor.fetchall():
             if 0 <= result_index < len(specs):
                 specs[result_index].update({
                     "data_type": _normalize_postgres_type(data_type),
                     "pk": bool(is_pk),
                     "fk": bool(is_fk),
                     "nullable": not bool(attnotnull),
+                    "read_only": bool(is_generated),
                 })
     finally:
         metadata_cursor.close()
@@ -191,13 +205,16 @@ def _resolve_sqlite_column_specs(conn, query, description):
         for index, spec in enumerate(specs):
             row = table_columns.get(spec["name"].lower())
             if not row:
+                spec["read_only"] = True
                 continue
 
+            is_generated = len(row) >= 7 and row[6] in (2, 3)
             specs[index].update({
                 "data_type": normalize_type(row[2]),
                 "pk": bool(row[5]),
                 "fk": spec["name"].lower() in fk_columns,
                 "nullable": not bool(row[3]),
+                "read_only": bool(is_generated),
             })
     finally:
         cursor.close()
@@ -205,8 +222,10 @@ def _resolve_sqlite_column_specs(conn, query, description):
     return specs
 
 
-def _resolve_oracle_column_specs(description):
+def _resolve_oracle_column_specs(conn, query, description):
     from db.query_describe import _format_oracle_type
+    from db.query_context import resolve_writable_table_context
+
     specs = []
     for desc in description:
         col_name = _description_value(desc, "name", 0, "")
@@ -215,21 +234,151 @@ def _resolve_oracle_column_specs(description):
         spec = _default_column_spec(col_name, data_type)
         if null_ok is not None:
             spec["nullable"] = bool(null_ok)
+        spec["read_only"] = False
         specs.append(spec)
+
+    table_context = resolve_writable_table_context(query)
+    if not table_context:
+        for spec in specs:
+            spec["read_only"] = True
+        return specs
+
+    table_name = table_context.get("real_table_name")
+    schema_name = table_context.get("schema_name")
+    if not table_name:
+        return specs
+
+    table_upper = str(table_name).upper()
+    owner_upper = str(schema_name).upper() if schema_name else None
+
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            try:
+                # 1. Primary Keys
+                if owner_upper:
+                    cursor.execute(
+                        """
+                        SELECT cols.COLUMN_NAME
+                        FROM ALL_CONSTRAINTS cons
+                        JOIN ALL_CONS_COLUMNS cols
+                          ON cons.OWNER = cols.OWNER
+                         AND cons.CONSTRAINT_NAME = cols.CONSTRAINT_NAME
+                        WHERE cons.CONSTRAINT_TYPE = 'P'
+                          AND cons.OWNER = :owner
+                          AND (cons.TABLE_NAME = :tbl OR cons.TABLE_NAME = :tbl_raw)
+                        """,
+                        {"owner": owner_upper, "tbl": table_upper, "tbl_raw": table_name},
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT cols.COLUMN_NAME
+                        FROM USER_CONSTRAINTS cons
+                        JOIN USER_CONS_COLUMNS cols
+                          ON cons.CONSTRAINT_NAME = cols.CONSTRAINT_NAME
+                        WHERE cons.CONSTRAINT_TYPE = 'P'
+                          AND (cons.TABLE_NAME = :tbl OR cons.TABLE_NAME = :tbl_raw)
+                        """,
+                        {"tbl": table_upper, "tbl_raw": table_name},
+                    )
+                pk_cols = {str(row[0]).upper() for row in cursor.fetchall() if row and row[0]}
+
+                # 2. Foreign Keys
+                if owner_upper:
+                    cursor.execute(
+                        """
+                        SELECT cols.COLUMN_NAME
+                        FROM ALL_CONSTRAINTS cons
+                        JOIN ALL_CONS_COLUMNS cols
+                          ON cons.OWNER = cols.OWNER
+                         AND cons.CONSTRAINT_NAME = cols.CONSTRAINT_NAME
+                        WHERE cons.CONSTRAINT_TYPE = 'R'
+                          AND cons.OWNER = :owner
+                          AND (cons.TABLE_NAME = :tbl OR cons.TABLE_NAME = :tbl_raw)
+                        """,
+                        {"owner": owner_upper, "tbl": table_upper, "tbl_raw": table_name},
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT cols.COLUMN_NAME
+                        FROM USER_CONSTRAINTS cons
+                        JOIN USER_CONS_COLUMNS cols
+                          ON cons.CONSTRAINT_NAME = cols.CONSTRAINT_NAME
+                        WHERE cons.CONSTRAINT_TYPE = 'R'
+                          AND (cons.TABLE_NAME = :tbl OR cons.TABLE_NAME = :tbl_raw)
+                        """,
+                        {"tbl": table_upper, "tbl_raw": table_name},
+                    )
+                fk_cols = {str(row[0]).upper() for row in cursor.fetchall() if row and row[0]}
+
+                # 3. Table Columns (check existence, virtual, hidden)
+                table_cols = set()
+                virtual_cols = set()
+                try:
+                    if owner_upper:
+                        cursor.execute(
+                            """
+                            SELECT COLUMN_NAME, VIRTUAL_COLUMN, HIDDEN_COLUMN
+                            FROM ALL_TAB_COLS
+                            WHERE OWNER = :owner
+                              AND (TABLE_NAME = :tbl OR TABLE_NAME = :tbl_raw)
+                            """,
+                            {"owner": owner_upper, "tbl": table_upper, "tbl_raw": table_name},
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT COLUMN_NAME, VIRTUAL_COLUMN, HIDDEN_COLUMN
+                            FROM USER_TAB_COLS
+                            WHERE TABLE_NAME = :tbl OR TABLE_NAME = :tbl_raw
+                            """,
+                            {"tbl": table_upper, "tbl_raw": table_name},
+                        )
+                    for r in cursor.fetchall():
+                        if r and r[0]:
+                            col_u = str(r[0]).upper()
+                            table_cols.add(col_u)
+                            is_virt = len(r) > 1 and str(r[1]).upper() == "YES"
+                            is_hid = len(r) > 2 and str(r[2]).upper() == "YES"
+                            if is_virt or is_hid:
+                                virtual_cols.add(col_u)
+                except Exception:
+                    pass
+
+                for spec in specs:
+                    cname = spec["name"].upper()
+                    if table_cols and cname not in table_cols:
+                        spec["read_only"] = True
+                    elif cname in virtual_cols:
+                        spec["read_only"] = True
+                    if cname in pk_cols:
+                        spec["pk"] = True
+                    if cname in fk_cols:
+                        spec["fk"] = True
+            finally:
+                cursor.close()
+        except Exception:
+            pass
+
     return specs
 
 
 def resolve_column_specs(code, conn, conn_data, query, description):
     columns = [_description_value(desc, "name", 0, "") for desc in description]
+    code_upper = (code or "").upper()
 
-    if code == "POSTGRES":
+    if code_upper in ("POSTGRES", "POSTGRESQL"):
         specs = _resolve_postgres_column_specs(conn, conn_data, description)
-    elif code == "SQLITE":
+    elif code_upper == "SQLITE":
         specs = _resolve_sqlite_column_specs(conn, query, description)
-    elif code in ("ORACLE", "ORACLE_DB"):
-        specs = _resolve_oracle_column_specs(description)
+    elif code_upper in ("ORACLE", "ORACLE_DB", "ORACLE_FA"):
+        specs = _resolve_oracle_column_specs(conn, query, description)
     else:
         specs = [_default_column_spec(name) for name in columns]
+        for spec in specs:
+            spec["read_only"] = True
 
     return columns, specs
 

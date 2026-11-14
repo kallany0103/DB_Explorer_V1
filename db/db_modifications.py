@@ -4,6 +4,7 @@ import re
 import sqlite3 as sqlite
 import datetime
 from db.db_connections import DB_FILE, create_postgres_connection
+from db.servicenow_metadata import _normalize_instance_url
 
 def terminate_postgres_backend(conn_data, pid):
     """Terminates a PostgreSQL backend session by PID."""
@@ -62,6 +63,7 @@ def _extract_config_json(data: dict) -> str:
         "driver_mode", "oracle_client_dir", "database_type",
         "tns_admin", "tns_alias", "connection_mode",
         "service_name", "oracle_db_type",
+        "client_id", "client_secret", "resolve_display_values", "page_size",
     ):
         if key in data and data[key] is not None:
             cfg[key] = data[key]
@@ -94,6 +96,7 @@ def add_connection(data, connection_group_id):
 
         #  ServiceNow 
         elif data.get("instance_url"):
+            norm_url = _normalize_instance_url(data.get("instance_url"))
             c.execute(
                 """
                 INSERT INTO usf_connections
@@ -104,7 +107,7 @@ def add_connection(data, connection_group_id):
                     data.get("name"),
                     data.get("short_name"),
                     connection_group_id,
-                    data.get("instance_url"),
+                    norm_url,
                     data.get("user"),
                     None,
                     _extract_config_json(data),
@@ -174,6 +177,7 @@ def update_connection(data):
 
         #ServiceNow 
         elif data.get("instance_url"):
+            norm_url = _normalize_instance_url(data.get("instance_url"))
             c.execute(
                 """
                 UPDATE usf_connections
@@ -185,7 +189,7 @@ def update_connection(data):
                     data.get("name"),
                     data.get("short_name"),
                     data.get("connection_group_id"),
-                    data.get("instance_url"),
+                    norm_url,
                     data.get("user"),
                     data.get("password"),
                     _extract_config_json(data),
