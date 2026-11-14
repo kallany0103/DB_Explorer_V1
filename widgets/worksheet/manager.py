@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QWidget, QTextEdit,
     QFrame, QComboBox, QLabel,
     QMenu, QSplitter, QStackedWidget,
+    QMessageBox,
 )
 
 from PySide6.QtCore import (
@@ -200,13 +201,16 @@ class WorksheetManager(QWidget):
 
 
 
-    def close_tab(self, index):
+    def close_tab(self, index, prompt=True):
+        mw = getattr(self, "main_window", None)
+        if mw and hasattr(mw, "tab_widget") and mw.tab_widget is self.tab_widget:
+            return mw.close_tab(index, prompt=prompt)
+
+        # Standalone or unit-test fallback
         if index < 0:
             index = self.tab_widget.currentIndex()
         if index >= 0 and self.tab_widget.count() > 0:
             widget = self.tab_widget.widget(index)
-            # Prevent closing the last remaining worksheet tab.
-            # Use the widget attribute so renamed tabs are still protected.
             if getattr(widget, 'is_worksheet', False):
                 worksheet_count = sum(
                     1 for i in range(self.tab_widget.count())
@@ -216,35 +220,13 @@ class WorksheetManager(QWidget):
                     return False
 
             if widget:
-                results_mgr = getattr(widget, "_results_manager", None) or self.results_manager
+                results_mgr = getattr(widget, "_results_manager", None) or getattr(self, "results_manager", None)
                 if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
                     if not results_mgr.check_unsaved_changes_before_action(widget, "closing this worksheet"):
                         return False
 
-                if widget in self.running_queries:
-                    self.running_queries[widget].cancel()
-                    del self.running_queries[widget]
-                    if not self.running_queries:
-                        self.cancel_action.setEnabled(False)
-
-                if widget in self.tab_timers:
-                    self.tab_timers[widget]["timer"].stop()
-                    self.tab_timers[widget]["timeout_timer"].stop()
-                    del self.tab_timers[widget]
-
-                # Roll back and close any pending transaction connection
-                if widget in self.tab_transactions:
-                    try:
-                        self.tab_transactions[widget].rollback()
-                    except Exception:
-                        pass
-                    del self.tab_transactions[widget]
-                self.tab_autocommit.pop(widget, None)
-                self.tab_dbms_output.pop(widget, None)
-                if hasattr(widget, "_dbms_poll_timer") and widget._dbms_poll_timer:
-                    widget._dbms_poll_timer.stop()
-
-                self.results_manager.cleanup_tab_resources(widget)
+                if getattr(self, "results_manager", None):
+                    self.results_manager.cleanup_tab_resources(widget)
                 self.tab_widget.removeTab(index)
                 widget.deleteLater()
 
@@ -252,7 +234,8 @@ class WorksheetManager(QWidget):
                 self.add_tab()
 
             self.renumber_tabs()
-            self._update_transaction_button_states()
+            if hasattr(self, "_update_transaction_button_states"):
+                self._update_transaction_button_states()
             return True
         return False
 
@@ -698,7 +681,7 @@ class WorksheetManager(QWidget):
         menu.addAction(rename_action)
 
         close_action = QAction("Close", self)
-        close_action.triggered.connect(lambda: self.close_tab(clicked_index))
+        close_action.triggered.connect(lambda: self.close_tab(clicked_index, prompt=True))
         menu.addAction(close_action)
 
         close_others_action = QAction("Close Others", self)
@@ -726,19 +709,47 @@ class WorksheetManager(QWidget):
 
     def _close_other_tabs(self, keep_index: int) -> None:
         """Close all tabs except the one at *keep_index*."""
+        if self.tab_widget.count() <= 1:
+            return
+
+        # Check confirm_tab_close preference
+        if getattr(self.main_window, "confirm_tab_close", False) is True:
+            keep_title = self.tab_widget.tabText(keep_index) or "this tab"
+            parent_widget = self.main_window if isinstance(self.main_window, QWidget) else None
+            confirm = QMessageBox.question(
+                parent_widget,
+                "Close Other Tabs",
+                f"Are you sure you want to close all tabs except '{keep_title}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+
+        results_mgr = getattr(self.main_window, "results_manager", None)
+        if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+            for i in range(self.tab_widget.count()):
+                if i != keep_index:
+                    tab = self.tab_widget.widget(i)
+                    if tab and not results_mgr.check_unsaved_changes_before_action(tab, "closing this worksheet"):
+                        return
+
         # Collect indices to close in reverse order to avoid index shifting.
         indices_to_close = [
             i for i in range(self.tab_widget.count()) if i != keep_index
         ]
         for i in reversed(indices_to_close):
-            if not self.close_tab(i):
+            if not self.close_tab(i, prompt=False):
                 break
 
     def _close_all_tabs(self) -> None:
-        """Close all tabs (the last worksheet is protected by close_tab)."""
-        for i in reversed(range(self.tab_widget.count())):
-            if not self.close_tab(i):
-                break
+        """Close all tabs (delegates to main_window.close_all_tabs)."""
+        if hasattr(self, "main_window") and hasattr(self.main_window, "close_all_tabs"):
+            self.main_window.close_all_tabs()
+        else:
+            for i in reversed(range(self.tab_widget.count())):
+                if not self.close_tab(i, prompt=False):
+                    break
 
     def eventFilter(self, obj, event):
         if handle_event_filter(obj, event):

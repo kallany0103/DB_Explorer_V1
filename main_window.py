@@ -807,15 +807,10 @@ class MainWindow(QMainWindow):
     def close_all_tabs(self):
         close_all_tabs_action(self)
 
-    def close_tab(self, index):
+    def close_tab(self, index, prompt: bool = True):
         widget = self.tab_widget.widget(index)
         if not widget:
             return False
-
-        results_mgr = getattr(widget, "_results_manager", None) or getattr(self, "results_manager", None)
-        if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
-            if not results_mgr.check_unsaved_changes_before_action(widget, "closing this worksheet"):
-                return False
 
         # Keep dashboard reference accurate when the dashboard tab is closed.
         if widget is not None and widget is self.dashboard_widget:
@@ -823,7 +818,7 @@ class MainWindow(QMainWindow):
 
         if isinstance(widget, USQLToolWidget):
             widget.close_process()
-        return close_tab_action(self, index)
+        return close_tab_action(self, index, prompt=prompt)
 
 
     # WINDOW / HELP / STYLE / SESSION

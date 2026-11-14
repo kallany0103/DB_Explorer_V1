@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QSplitter, QMessageBox, QApplication
+from PySide6.QtWidgets import QSplitter, QMessageBox, QApplication, QWidget
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 import traceback
@@ -6,16 +6,7 @@ import traceback
 def close_current_tab(main_window):
     index = main_window.tab_widget.currentIndex()
     if index != -1:
-        tab = main_window.tab_widget.widget(index)
-        results_mgr = getattr(tab, "_results_manager", None) or getattr(main_window, "results_manager", None)
-        if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
-            if not results_mgr.check_unsaved_changes_before_action(tab, "closing this worksheet"):
-                return
-        if main_window.tab_widget.count() == 1:
-            main_window.add_tab()
-            main_window.close_tab(0)
-        else:
-            main_window.close_tab(index)
+        main_window.close_tab(index, prompt=True)
 
 
 def close_all_tabs(main_window):
@@ -23,6 +14,19 @@ def close_all_tabs(main_window):
     if initial_count == 0:
         main_window.add_tab()
         return
+
+    # Check confirm_tab_close preference
+    if getattr(main_window, "confirm_tab_close", False) is True:
+        parent_widget = main_window if isinstance(main_window, QWidget) else None
+        confirm = QMessageBox.question(
+            parent_widget,
+            "Close All Tabs",
+            "Are you sure you want to close all open tabs?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
 
     results_mgr = getattr(main_window, "results_manager", None)
     if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
@@ -33,11 +37,11 @@ def close_all_tabs(main_window):
 
     main_window.add_tab()
     for _ in range(initial_count):
-        main_window.close_tab(0)
+        main_window.close_tab(0, prompt=False)
     main_window.status.showMessage("All tabs closed. New worksheet opened.", 3000)
 
 
-def close_tab(main_window, index):
+def close_tab(main_window, index, prompt=True):
     wm = main_window.worksheet_manager
     tab = main_window.tab_widget.widget(index)
     if not tab:
@@ -49,10 +53,11 @@ def close_tab(main_window, index):
             return False
 
     # Check confirm_tab_close preference
-    if getattr(main_window, "confirm_tab_close", False):
+    if prompt and getattr(main_window, "confirm_tab_close", False) is True:
         tab_title = main_window.tab_widget.tabText(index) or "this tab"
+        parent_widget = main_window if isinstance(main_window, QWidget) else None
         confirm = QMessageBox.question(
-            main_window,
+            parent_widget,
             "Close Tab",
             f"Are you sure you want to close '{tab_title}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -60,6 +65,11 @@ def close_tab(main_window, index):
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return False
+
+    # If closing the only tab, add a new one first so the workspace stays functional
+    if main_window.tab_widget.count() == 1:
+        main_window.add_tab()
+        index = 0
 
     if tab in wm.running_queries:
         wm.running_queries[tab].cancel()
@@ -86,23 +96,19 @@ def close_tab(main_window, index):
     if hasattr(main_window, "results_manager"):
         main_window.results_manager.cleanup_tab_resources(tab)
 
-    if main_window.tab_widget.count() > 1:
-        if hasattr(tab, "cleanup"):
-            tab.cleanup()
-        ai_panel = getattr(tab, "ai_chat_panel", None)
-        if ai_panel and hasattr(ai_panel, "cleanup"):
-            ai_panel.cleanup()
-        if tab is getattr(main_window, "dashboard_widget", None):
-            main_window.dashboard_widget = None
-        main_window.tab_widget.removeTab(index)
-        main_window.renumber_tabs()
-        tab.deleteLater()
-        if hasattr(wm, "_update_transaction_button_states"):
-            wm._update_transaction_button_states()
-        return True
-    else:
-        main_window.status.showMessage("Must keep at least one tab", 3000)
-        return False
+    if hasattr(tab, "cleanup"):
+        tab.cleanup()
+    ai_panel = getattr(tab, "ai_chat_panel", None)
+    if ai_panel and hasattr(ai_panel, "cleanup"):
+        ai_panel.cleanup()
+    if tab is getattr(main_window, "dashboard_widget", None):
+        main_window.dashboard_widget = None
+    main_window.tab_widget.removeTab(index)
+    main_window.renumber_tabs()
+    tab.deleteLater()
+    if hasattr(wm, "_update_transaction_button_states"):
+        wm._update_transaction_button_states()
+    return True
 
 
 def reset_layout(main_window):
