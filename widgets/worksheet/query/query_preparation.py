@@ -1,4 +1,5 @@
 import re
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QTabWidget
 
 from widgets.worksheet.code_editor import CodeEditor
@@ -261,28 +262,148 @@ def resolve_query_context(current_tab, conn_data=None, query=None):
     return resolved_conn_data, resolved_query
 
 
-def apply_select_pagination(query, current_tab, preserve_pagination=False):
+def _strip_leading_sql_comments(sql: str) -> str:
+    """Return SQL with leading whitespace, -- comments, and /* */ comments skipped."""
+    pos = 0
+    length = len(sql)
+    while pos < length:
+        if sql[pos].isspace():
+            pos += 1
+        elif sql.startswith("--", pos):
+            nl = sql.find("\n", pos)
+            pos = length if nl == -1 else nl + 1
+        elif sql.startswith("/*", pos):
+            end = sql.find("*/", pos + 2)
+            pos = length if end == -1 else end + 2
+        else:
+            break
+    return sql[pos:]
+
+
+def _strip_sql_literals_and_comments(sql: str) -> str:
+    """Replace SQL comments and quoted literals/identifiers with spaces for clause checks."""
+    return re.sub(
+        r"--[^\n]*|/\*[\s\S]*?\*/|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"",
+        " ",
+        sql,
+    )
+
+
+def apply_select_pagination(query: str, current_tab, preserve_pagination: bool = False) -> str:
     if not query:
         return query
 
-    normalized_query = query.strip().rstrip(";")
-    upper_query = normalized_query.upper()
+    raw = query.strip()
+    had_trailing_semicolon = raw.endswith(";")
+    normalized_query = raw.rstrip(";")
+    leading_sql = _strip_leading_sql_comments(normalized_query)
+    is_select_like = bool(re.match(r"^\(?\s*(?:SELECT|WITH)\b", leading_sql, re.IGNORECASE))
+    token_sql = _strip_sql_literals_and_comments(normalized_query)
 
-    if upper_query.startswith("SELECT") and not preserve_pagination and "OFFSET" not in upper_query:
-        current_tab.current_offset = 0
-        current_tab.current_page = 1
+    if is_select_like and not preserve_pagination and not re.search(r"\bOFFSET\b", token_sql, re.IGNORECASE):
+        if current_tab:
+            current_tab.current_offset = 0
+            current_tab.current_page = 1
 
-    limit = getattr(current_tab, "current_limit", 0)
-    offset = getattr(current_tab, "current_offset", 0)
+    limit = getattr(current_tab, "current_limit", 0) if current_tab else 0
+    offset = getattr(current_tab, "current_offset", 0) if current_tab else 0
 
-    if upper_query.startswith("SELECT") and limit > 0:
-        if "LIMIT" not in upper_query:
+    if is_select_like:
+        has_limit = bool(re.search(r"\bLIMIT\b|\bFETCH\s+(?:FIRST|NEXT)\b", token_sql, re.IGNORECASE))
+        has_offset = bool(re.search(r"\bOFFSET\b", token_sql, re.IGNORECASE))
+        if limit > 0 and not has_limit:
             normalized_query += f" LIMIT {limit}"
-            upper_query = normalized_query.upper()
-        if offset > 0 and "OFFSET" not in upper_query:
+        if offset > 0 and not has_offset:
             normalized_query += f" OFFSET {offset}"
+        return normalized_query + ";"
 
-    return normalized_query + ";"
+    if had_trailing_semicolon and not raw.endswith("/;"):
+        return normalized_query + ";"
+    return normalized_query
+
+
+_TRAILING_LIMIT_RE = re.compile(
+    r"(\s+)LIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def apply_limit_to_sql_statement(
+    sql: str, limit: int, overwrite_existing: bool = True
+) -> str:
+    """Insert, update, or remove a trailing LIMIT clause in a SELECT/WITH statement."""
+    if not sql or not sql.strip():
+        return sql
+
+    rstripped = sql.rstrip()
+    trailing_ws = sql[len(rstripped):]
+    had_semi = rstripped.endswith(";")
+    body = rstripped[:-1].rstrip() if had_semi else rstripped
+
+    leading_sql = _strip_leading_sql_comments(body)
+    if not re.match(r"^\(?\s*(?:SELECT|WITH)\b", leading_sql, re.IGNORECASE):
+        return sql
+
+    match = _TRAILING_LIMIT_RE.search(body)
+    if limit > 0:
+        if match:
+            if not overwrite_existing:
+                return sql
+            sep = match.group(1)
+            offset_part = match.group(2) or ""
+            new_body = f"{body[:match.start()]}{sep}LIMIT {limit}{offset_part}"
+        else:
+            token_sql = _strip_sql_literals_and_comments(body)
+            if re.search(r"\bFETCH\s+(?:FIRST|NEXT)\b", token_sql, re.IGNORECASE):
+                return sql
+            sep = "\n" if "\n" in body else " "
+            new_body = f"{body}{sep}LIMIT {limit}"
+    else:
+        if not (match and overwrite_existing):
+            return sql
+        offset_part = match.group(2) or ""
+        new_body = f"{body[:match.start()]}{offset_part}".rstrip()
+
+    return f"{new_body}{';' if had_semi else ''}{trailing_ws}"
+
+
+def sync_editor_limit(editor, limit: int, overwrite_existing: bool = True) -> bool:
+    """Update the active SQL statement in the editor to reflect the selected row limit."""
+    if editor is None:
+        return False
+    text = editor.toPlainText()
+    if not text.strip():
+        return False
+
+    statements = split_sql_statements(text)
+    if not statements:
+        return False
+
+    cursor_pos = editor.textCursor().position()
+    target = statements[-1]
+    for start, end, stmt in statements:
+        if start <= cursor_pos <= end + 1:
+            target = (start, end, stmt)
+            break
+
+    start, end, _stmt = target
+    raw_slice = text[start:end]
+    # Include trailing semicolon if right after statement end
+    slice_end = end + 1 if end < len(text) and text[end] == ";" else end
+    raw_slice = text[start:slice_end]
+    updated = apply_limit_to_sql_statement(
+        raw_slice, limit, overwrite_existing=overwrite_existing
+    )
+    if updated == raw_slice:
+        return False
+
+    edit_cursor = QTextCursor(editor.document())
+    edit_cursor.beginEditBlock()
+    edit_cursor.setPosition(start)
+    edit_cursor.setPosition(slice_end, QTextCursor.MoveMode.KeepAnchor)
+    edit_cursor.insertText(updated)
+    edit_cursor.endEditBlock()
+    return True
 
 
 def resolve_output_tab_index(manager, current_tab, output_mode="current"):

@@ -122,7 +122,7 @@ def explain_plan_query(manager):
         manager.show_info("Please select a query to explain.")
         return
 
-    explain_sql, explain_error = build_explain_sql(selected_query, analyze=False)
+    explain_sql, explain_error = build_explain_sql(selected_query, analyze=False, conn_data=conn_data)
     if explain_error:
         manager.show_info(explain_error)
         return
@@ -157,7 +157,7 @@ def explain_query(manager):
         manager.show_info("Please select a query to explain.")
         return
 
-    explain_sql, explain_error = build_explain_sql(selected_query, analyze=True)
+    explain_sql, explain_error = build_explain_sql(selected_query, analyze=True, conn_data=conn_data)
     if explain_error:
         manager.show_info(explain_error)
         return
@@ -359,6 +359,11 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
     if not current_tab:
         return
 
+    results_mgr = getattr(manager.main_window, "results_manager", None)
+    if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+        if not results_mgr.check_unsaved_changes_before_action(current_tab, "running the query"):
+            return
+
     conn_data, query = resolve_query_context(current_tab, conn_data, query)
     if isinstance(conn_data, dict):
         conn_data = dict(conn_data)
@@ -367,6 +372,11 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
             is_dbms_enabled = manager.tab_dbms_output.get(current_tab, True)
         conn_data["enable_dbms_output"] = is_dbms_enabled
         conn_data["dbms_buffer_size"] = getattr(current_tab, "_dbms_buffer_size", None)
+        code = str(conn_data.get("code") or conn_data.get("db_type") or "").upper()
+        if code == "SERVICENOW":
+            sn_display = getattr(current_tab, "_sn_display_values", None)
+            if sn_display is not None:
+                conn_data["resolve_display_values"] = bool(sn_display)
 
     if not query or not query.strip():
         manager.show_info("Please enter a valid query.")

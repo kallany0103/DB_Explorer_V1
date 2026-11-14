@@ -23,6 +23,7 @@ from ui.components import SecondaryButton
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.autocomplete import CompletionEngine
 from widgets.ai_assistant import AIChatPanel
+from widgets.worksheet.query.query_preparation import sync_editor_limit
 from PySide6.QtCore import QTimer
 
 def add_tab(manager):
@@ -143,8 +144,11 @@ def add_tab(manager):
 
     toolbar_widget = WorksheetToolbar(manager)
     tab_content.toolbar_widget = toolbar_widget
-    
-    def on_limit_change(text):
+    tab_content._limit_manually_set = False
+
+    def on_limit_change(text, manual: bool = True):
+        if manual:
+            tab_content._limit_manually_set = True
         if text.lower() == "no limit":
             tab_content.current_limit = 0
         else:
@@ -155,7 +159,9 @@ def add_tab(manager):
 
         tab_content.current_page = 1
         tab_content.current_offset = 0
-        
+
+        sync_editor_limit(text_edit, tab_content.current_limit, overwrite_existing=manual)
+
         results_info_bar = tab_content.findChild(QWidget, "resultsInfoBar")
         if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
             results_info_bar.update_page_ui(tab_content)
@@ -173,8 +179,12 @@ def add_tab(manager):
                     rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
                 else:
                     rows_info_label.setText("No Limit")
-                
-    toolbar_widget.limit_changed.connect(on_limit_change)
+
+    toolbar_widget.limit_changed.connect(lambda text: on_limit_change(text, manual=True))
+    default_limit = str(getattr(manager.main_window, "default_row_limit", "No Limit") or "No Limit")
+    if default_limit != "No Limit":
+        toolbar_widget.rows_limit_combo.setCurrentText(default_limit)
+        on_limit_change(default_limit, manual=False)
     layout.addWidget(toolbar_widget)
     layout.setStretchFactor(toolbar_widget, 0)
 
@@ -319,11 +329,14 @@ def add_tab(manager):
         # so we don't auto-connect over the network or lock driver modes before the user acts.
         if not skip_slow or code in ("SQLITE", "CSV"):
             tab_content._sql_engine.refresh(data)
-        if limit_combo := tab_content.findChild(QComboBox, "rows_limit_combo"):
+        limit_btn = getattr(toolbar_widget, "rows_limit_combo", None)
+        if limit_btn and not getattr(tab_content, "_limit_manually_set", False):
             if code == "SERVICENOW":
-                limit_combo.setCurrentText("1000")
-            elif limit_combo.currentText() == "1000" and code != "SERVICENOW":
-                limit_combo.setCurrentText("No Limit")
+                limit_btn.setCurrentText("1000")
+                on_limit_change("1000", manual=False)
+            elif limit_btn.currentText() == "1000" and default_limit != "1000":
+                limit_btn.setCurrentText(default_limit)
+                on_limit_change(default_limit, manual=False)
 
     db_combo_box.currentIndexChanged.connect(lambda: _refresh_engine(skip_slow=False))
     QTimer.singleShot(300, lambda: _refresh_engine(skip_slow=True))
