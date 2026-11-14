@@ -252,8 +252,15 @@ def _launch_psql(
     # Sequence: run file → interactive session → delete temp file.
     # cmd /c closes the window once the interactive session exits and the
     # temp file is deleted.
-    # We pass a string to prevent subprocess from escaping quotes for cmd.exe
-    cmd_args = f'cmd /c "{run_cmd} & {interactive_cmd} & {cleanup}"'
+    # If WSL mode is enabled, run via wsl bash
+    if getattr(main_window, "use_wsl", False):
+        # Translate Windows path to WSL /mnt/... path if needed
+        drive = temp_path[0].lower()
+        wsl_temp = temp_path.replace("\\", "/").replace(f"{temp_path[0]}:", f"/mnt/{drive}")
+        wsl_conn = " ".join(f"'{a}'" for a in conn_args)
+        cmd_args = f'wsl -e bash -c "PGPASSWORD=\'{password}\' psql -f \'{wsl_temp}\' {wsl_conn} && PGPASSWORD=\'{password}\' psql {wsl_conn}; rm -f \'{wsl_temp}\'"'
+    else:
+        cmd_args = f'cmd /c "{run_cmd} & {interactive_cmd} & {cleanup}"'
     try:
         register_cli_terminal(
             main_window, _open_terminal(cmd_args, env=child_env), [temp_path]

@@ -1,6 +1,14 @@
 from collections import Counter
-from PySide6.QtCore import QObject, QSize, Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QObject, QSize, Qt, QRect
+from PySide6.QtGui import (
+    QColor,
+    QPalette,
+    QPainter,
+    QFont,
+    QPen,
+    QBrush,
+    QFontMetrics,
+)
 import qtawesome as qta
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
@@ -47,6 +55,120 @@ def _stop_chunk_loader_for_container(output_container):
         return
     table_view = output_container.findChild(QTableView, "results_table")
     _stop_chunk_loader_for_table(table_view)
+
+
+class ResultsHeaderView(QHeaderView):
+    """
+    Modern horizontal header for results table inspired by DataGrip and DBeaver:
+    - Top line: Bold column name with visual PK / FK / RO pill badges and red * for NOT NULL
+    - Bottom line: Monospace data type in a distinct subtle slate hue
+    """
+    def __init__(self, parent=None):
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.setSectionsClickable(True)
+        self.setHighlightSections(False)
+
+    def sizeHint(self):
+        s = super().sizeHint()
+        return QSize(s.width(), 44)
+
+    def paintSection(self, painter, rect, logicalIndex):
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+
+        model = self.model()
+        header_text = str(model.headerData(logicalIndex, Qt.Orientation.Horizontal) or "") if model else ""
+        lines = header_text.split("\n")
+        full_name = lines[0].strip() if lines else ""
+        dtype = lines[1].strip() if len(lines) > 1 else ""
+
+        # Header section background
+        painter.fillRect(rect, QColor("#F8FAFC"))
+
+        # Right subtle divider & bottom border
+        painter.setPen(QPen(QColor("#E2E8F0"), 1))
+        painter.drawLine(rect.right(), rect.top(), rect.right(), rect.bottom())
+        painter.setPen(QPen(QColor("#CBD5E1"), 1))
+        painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+
+        # Parse column metadata badges: [PK], [FK], [RO], *
+        tag = None
+        tag_bg = None
+        tag_fg = None
+        is_required = False
+
+        if "[PK]" in full_name:
+            tag = "PK"
+            tag_bg = QColor("#E0E7FF")
+            tag_fg = QColor("#3730A3")
+            full_name = full_name.replace("[PK]", "").strip()
+        elif "[FK]" in full_name:
+            tag = "FK"
+            tag_bg = QColor("#E0F2FE")
+            tag_fg = QColor("#0369A1")
+            full_name = full_name.replace("[FK]", "").strip()
+        elif "[RO]" in full_name:
+            tag = "RO"
+            tag_bg = QColor("#F1F5F9")
+            tag_fg = QColor("#64748B")
+            full_name = full_name.replace("[RO]", "").strip()
+
+        if full_name.endswith("*"):
+            is_required = True
+            full_name = full_name[:-1].strip()
+
+        pad_x = 10
+        cur_x = rect.left() + pad_x
+        top_y = rect.top() + 6
+
+        # 1. Column Name (Bold slate-900)
+        name_font = QFont("Segoe UI", 9)
+        name_font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(name_font)
+        painter.setPen(QColor("#0F172A"))
+        fm_name = QFontMetrics(name_font)
+        avail_name_w = rect.width() - (pad_x * 2) - (35 if tag else 0) - (10 if is_required else 0)
+        disp_name = fm_name.elidedText(full_name, Qt.TextElideMode.ElideRight, max(avail_name_w, 20))
+        disp_name_w = fm_name.horizontalAdvance(disp_name)
+        painter.drawText(cur_x, top_y + 14, disp_name)
+        cur_x += disp_name_w + 3
+
+        # 2. Required Asterisk
+        if is_required and cur_x < rect.right() - 25:
+            ast_font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+            painter.setFont(ast_font)
+            painter.setPen(QColor("#DC2626"))
+            painter.drawText(cur_x, top_y + 14, "*")
+            cur_x += 8
+
+        # 3. Constraint Badge (PK / FK / RO pill)
+        if tag and cur_x < rect.right() - 24:
+            cur_x += 4
+            badge_w = 20
+            badge_h = 13
+            badge_rect = QRect(cur_x, top_y + 2, badge_w, badge_h)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(tag_bg))
+            painter.drawRoundedRect(badge_rect, 3, 3)
+            badge_font = QFont("Segoe UI", 7, QFont.Weight.Bold)
+            painter.setFont(badge_font)
+            painter.setPen(tag_fg)
+            painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, tag)
+
+        # 4. Data Type (Subtle secondary monospace label)
+        if dtype:
+            bot_y = rect.top() + 25
+            dt_font = QFont("Consolas", 8)
+            painter.setFont(dt_font)
+            fm_dt = QFontMetrics(dt_font)
+            avail_dt_w = rect.width() - (pad_x * 2)
+            disp_dt = fm_dt.elidedText(dtype, Qt.TextElideMode.ElideRight, max(avail_dt_w, 10))
+            painter.setPen(QColor("#64748B"))
+            painter.drawText(rect.left() + pad_x, bot_y + 11, disp_dt)
+
+        painter.restore()
 
 
 class FlatSelectionDelegate(QStyledItemDelegate):
@@ -465,6 +587,7 @@ class ResultsTableView(QTableView):
 def create_output_table_view(manager, tab_content):
     table_view = ResultsTableView(manager, tab_content)
     table_view.setObjectName("results_table")
+    table_view.setHorizontalHeader(ResultsHeaderView(table_view))
     table_view.setAlternatingRowColors(True)
     table_view.setMouseTracking(True)
     table_view.viewport().setMouseTracking(True)

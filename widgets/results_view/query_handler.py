@@ -16,6 +16,7 @@ from widgets.results_view.value_state import (
     display_cell_text,
     editor_text_from_raw,
     get_grid_null_text,
+    get_grid_datetime_format,
     values_equal_for_editor,
 )
 
@@ -106,7 +107,7 @@ def _stop_chunk_loader(output_state):
 
 
 def _make_row_items(
-    row, columns, pk_indices, column_specs=None, is_table_editable=True, null_text="NULL"
+    row, columns, pk_indices, column_specs=None, is_table_editable=True, null_text="NULL", dt_format=None
 ):
     pk_val = None
     pk_col_name = None
@@ -118,7 +119,7 @@ def _make_row_items(
     items = []
     for col_idx, cell in enumerate(row):
         item = QStandardItem()
-        item.setData(display_cell_text(cell, null_text=null_text), Qt.ItemDataRole.DisplayRole)
+        item.setData(display_cell_text(cell, null_text=null_text, dt_format=dt_format), Qt.ItemDataRole.DisplayRole)
         item.setData(editor_text_from_raw(cell), Qt.ItemDataRole.EditRole)
         edit_data = {
             "pk_col": pk_col_name,
@@ -151,6 +152,7 @@ def _append_rows_batch(
     column_specs=None,
     is_table_editable=True,
     null_text="NULL",
+    dt_format=None,
 ):
     for row_index in range(start_index, end_index):
         model.appendRow(
@@ -161,6 +163,7 @@ def _append_rows_batch(
                 column_specs,
                 is_table_editable,
                 null_text=null_text,
+                dt_format=dt_format,
             )
         )
 
@@ -506,6 +509,7 @@ def handle_query_result(
 
         total_rows = len(results)
         null_text = get_grid_null_text(manager)
+        dt_format = get_grid_datetime_format(manager)
         profile_initial_rows, profile_batch_rows = _resolve_chunk_profile(total_rows, manager)
         initial_rows = min(total_rows, profile_initial_rows)
         _append_rows_batch(
@@ -513,6 +517,7 @@ def handle_query_result(
             column_specs=column_specs,
             is_table_editable=output_state["is_editable"],
             null_text=null_text,
+            dt_format=dt_format,
         )
 
         proxy_model = output_state.get("cached_proxy_model")
@@ -598,6 +603,7 @@ def handle_query_result(
                     column_specs=column_specs,
                     is_table_editable=output_state["is_editable"],
                     null_text=null_text,
+                    dt_format=dt_format,
                 )
                 chunk_state["next_index"] = end_index
                 chunk_state["batch_count"] += 1

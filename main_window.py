@@ -82,6 +82,8 @@ class MainWindow(QMainWindow):
 
         self.thread_pool = QThreadPool.globalInstance()
         self._saved_tree_paths = []
+        self._pre_max_geometry = None
+        self._is_maximized: bool = False
         self.pg_bin_path = ""
         self.use_wsl = False
         self.default_connection_id = None
@@ -261,7 +263,7 @@ class MainWindow(QMainWindow):
         self.restore_session_state()
 
         screen = QApplication.primaryScreen().availableGeometry()
-        if not self.isMaximized() and not self.isFullScreen():
+        if not getattr(self, "_is_maximized", False) and not self.isMaximized() and not self.isFullScreen():
             if self.width() >= screen.width() - 40 and self.height() >= screen.height() - 40:
                 # Dynamic default: 75% of available screen area.
                 # _MIN_* are soft targets only — always clamped to the actual
@@ -287,7 +289,6 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "_title_bar"):
             self._title_bar.update_maximize_button()
-        self._is_maximized: bool = False
 
         self._resize_filter = ResizeFilter(self)
         QApplication.instance().installEventFilter(self._resize_filter)
@@ -806,15 +807,10 @@ class MainWindow(QMainWindow):
     def close_all_tabs(self):
         close_all_tabs_action(self)
 
-    def close_tab(self, index):
+    def close_tab(self, index, prompt: bool = True):
         widget = self.tab_widget.widget(index)
         if not widget:
             return False
-
-        results_mgr = getattr(widget, "_results_manager", None) or getattr(self, "results_manager", None)
-        if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
-            if not results_mgr.check_unsaved_changes_before_action(widget, "closing this worksheet"):
-                return False
 
         # Keep dashboard reference accurate when the dashboard tab is closed.
         if widget is not None and widget is self.dashboard_widget:
@@ -822,7 +818,7 @@ class MainWindow(QMainWindow):
 
         if isinstance(widget, USQLToolWidget):
             widget.close_process()
-        return close_tab_action(self, index)
+        return close_tab_action(self, index, prompt=prompt)
 
 
     # WINDOW / HELP / STYLE / SESSION
@@ -1152,13 +1148,16 @@ class MainWindow(QMainWindow):
 
     def _apply_grid_preferences_to_all_tabs(self):
         """Updates row numbers visibility and table settings across open results tables."""
+        import datetime
         from PySide6.QtCore import QSortFilterProxyModel
         from PySide6.QtWidgets import QTableView
+        from widgets.results_view.value_state import format_datetime_value
 
         show_row_numbers = bool(getattr(self, "grid_show_row_numbers", True))
         null_text = getattr(self, "grid_null_text", "NULL")
         if null_text is None:
             null_text = "NULL"
+        dt_format = getattr(self, "grid_datetime_format", "YYYY-MM-DD HH:mm:ss")
 
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
@@ -1176,8 +1175,12 @@ class MainWindow(QMainWindow):
                             if item is None:
                                 continue
                             edit_data = item.data(Qt.ItemDataRole.UserRole)
-                            if isinstance(edit_data, dict) and edit_data.get("is_db_null"):
-                                item.setData(str(null_text), Qt.ItemDataRole.DisplayRole)
+                            if isinstance(edit_data, dict):
+                                if edit_data.get("is_db_null"):
+                                    item.setData(str(null_text), Qt.ItemDataRole.DisplayRole)
+                                elif isinstance(edit_data.get("raw_val"), (datetime.datetime, datetime.date)):
+                                    formatted_dt = format_datetime_value(edit_data["raw_val"], dt_format)
+                                    item.setData(formatted_dt, Qt.ItemDataRole.DisplayRole)
                 table.viewport().update()
 
     def show_login(self):

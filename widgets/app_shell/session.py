@@ -14,11 +14,25 @@ from widgets.worksheet.code_editor import CodeEditor
 
 
 def save_main_window_session(main_window, session_file):
-    main_window.connection_manager._save_tree_expansion_state()
-    main_window.connection_manager._save_schema_tree_expansion_state()
+    should_restore = bool(getattr(main_window, "restore_session_on_startup", True))
+    if should_restore:
+        main_window.connection_manager._save_tree_expansion_state()
+        main_window.connection_manager._save_schema_tree_expansion_state()
+    else:
+        main_window.connection_manager._saved_tree_paths = []
+        main_window.connection_manager._saved_selection_name = None
+        main_window.connection_manager._schema_states = {}
     
-    is_maximized = main_window.isMaximized() or main_window.isFullScreen()
-    normal = main_window.normalGeometry()
+    is_maximized = bool(
+        getattr(main_window, "_is_maximized", False)
+        or main_window.isMaximized()
+        or main_window.isFullScreen()
+    )
+    pre_geom = getattr(main_window, "_pre_max_geometry", None)
+    if is_maximized and pre_geom is not None:
+        normal = pre_geom
+    else:
+        normal = main_window.normalGeometry()
     window_rect = [normal.x(), normal.y(), normal.width(), normal.height()]
 
     session_data = {
@@ -32,7 +46,7 @@ def save_main_window_session(main_window, session_file):
         "theme": getattr(main_window, "theme", "Grey (Default)"),
         "default_connection_id": getattr(main_window, "default_connection_id", None),
         "confirm_tab_close": getattr(main_window, "confirm_tab_close", True),
-        "restore_session_on_startup": getattr(main_window, "restore_session_on_startup", True),
+        "restore_session_on_startup": should_restore,
         "editor_font_family": getattr(main_window, "editor_font_family", "Consolas"),
         "editor_font_size": getattr(main_window, "editor_font_size", 10),
         "editor_tab_size": getattr(main_window, "editor_tab_size", 4),
@@ -57,42 +71,43 @@ def save_main_window_session(main_window, session_file):
         "ai_api_key": getattr(main_window, "ai_api_key", ""),
         "ai_base_url": getattr(main_window, "ai_base_url", ""),
         "feature_flags": normalize_feature_flags(getattr(main_window, "feature_flags", None)),
-        "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])),
-        "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
-        "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
+        "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])) if should_restore else [],
+        "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None) if should_restore else None,
+        "schema_states": getattr(main_window.connection_manager, "_schema_states", {}) if should_restore else {},
         "tabs": [],
     }
 
-    for i in range(main_window.tab_widget.count()):
-        tab = main_window.tab_widget.widget(i)
-        tab_type = "worksheet"
-        if tab.__class__.__name__ == "PropertiesWorkbench":
-            tab_type = "properties"
-        elif tab.__class__.__name__ == "StatisticsWorkbench":
-            tab_type = "statistics"
-        elif tab.__class__.__name__ == "ERDWidget":
-            tab_type = "erd"
-        elif tab.__class__.__name__ == "DashboardWidget":
-            tab_type = "dashboard"
+    if should_restore:
+        for i in range(main_window.tab_widget.count()):
+            tab = main_window.tab_widget.widget(i)
+            tab_type = "worksheet"
+            if tab.__class__.__name__ == "PropertiesWorkbench":
+                tab_type = "properties"
+            elif tab.__class__.__name__ == "StatisticsWorkbench":
+                tab_type = "statistics"
+            elif tab.__class__.__name__ == "ERDWidget":
+                tab_type = "erd"
+            elif tab.__class__.__name__ == "DashboardWidget":
+                tab_type = "dashboard"
 
-        tab_data = {
-            "title": main_window.tab_widget.tabText(i),
-            "tab_type": tab_type,
-        }
+            tab_data = {
+                "title": main_window.tab_widget.tabText(i),
+                "tab_type": tab_type,
+            }
 
-        if tab_type == "worksheet":
-            editor = tab.findChild(CodeEditor, "query_editor")
-            db_combo = tab.findChild(QComboBox, "db_combo_box")
-            tab_data["sql_content"] = editor.toPlainText() if editor else ""
-            tab_data["selected_connection_index"] = db_combo.currentIndex() if db_combo else 0
-            tab_data["current_limit"] = getattr(tab, "current_limit", 0)
-            tab_data["current_offset"] = getattr(tab, "current_offset", 0)
-        elif tab_type in ("properties", "statistics"):
-            # Try to save current object context
-            tab_data["item_data"] = getattr(tab, "item_data", None)
-            tab_data["obj_name"] = getattr(tab, "obj_name", None)
+            if tab_type == "worksheet":
+                editor = tab.findChild(CodeEditor, "query_editor")
+                db_combo = tab.findChild(QComboBox, "db_combo_box")
+                tab_data["sql_content"] = editor.toPlainText() if editor else ""
+                tab_data["selected_connection_index"] = db_combo.currentIndex() if db_combo else 0
+                tab_data["current_limit"] = getattr(tab, "current_limit", 0)
+                tab_data["current_offset"] = getattr(tab, "current_offset", 0)
+            elif tab_type in ("properties", "statistics"):
+                # Try to save current object context
+                tab_data["item_data"] = getattr(tab, "item_data", None)
+                tab_data["obj_name"] = getattr(tab, "obj_name", None)
 
-        session_data["tabs"].append(tab_data)
+            session_data["tabs"].append(tab_data)
 
     try:
         with open(session_file, "w") as f:
@@ -124,9 +139,9 @@ def restore_main_window_session(main_window, session_file):
         if session_data.get("window_rect"):
             x, y, w, h = session_data["window_rect"]
             main_window.setGeometry(x, y, w, h)
-        elif "window_geometry" in session_data:
+        elif "window_geometry" in session_data and hasattr(main_window, "restoreGeometry"):
             main_window.restoreGeometry(QByteArray.fromBase64(session_data["window_geometry"].encode()))
-        if "window_state" in session_data:
+        if "window_state" in session_data and hasattr(main_window, "restoreState"):
             main_window.restoreState(QByteArray.fromBase64(session_data["window_state"].encode()))
 
         # Ensure window is visible on at least one screen and fully clamped
@@ -174,7 +189,27 @@ def restore_main_window_session(main_window, session_file):
             main_window.move(new_x, new_y)
 
         if session_data.get("is_maximized"):
-            main_window.showMaximized()
+            main_window._pre_max_geometry = main_window.geometry()
+            target_screen = (
+                QApplication.screenAt(main_window.geometry().center())
+                or intersecting_screen
+                or QApplication.primaryScreen()
+            )
+            avail = target_screen.availableGeometry()
+            if avail == target_screen.geometry():
+                avail.setHeight(avail.height() - 1)
+            main_window.setGeometry(avail)
+            main_window._is_maximized = True
+            if hasattr(main_window, "maximize_action"):
+                main_window.maximize_action.setText("Restore")
+            if hasattr(main_window, "_title_bar"):
+                main_window._title_bar.update_maximize_button()
+        else:
+            main_window._is_maximized = False
+            if hasattr(main_window, "maximize_action"):
+                main_window.maximize_action.setText("Maximize")
+            if hasattr(main_window, "_title_bar"):
+                main_window._title_bar.update_maximize_button()
   
         main_window.pg_bin_path = session_data.get("pg_bin_path", "")
         main_window.oracle_bin_path = session_data.get("oracle_bin_path", "")
@@ -211,36 +246,56 @@ def restore_main_window_session(main_window, session_file):
         if any(not main_window.feature_flags.get(key, True) for key in CONNECTOR_FEATURE_KEYS):
             main_window.connection_manager.load_data()
 
-        main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
-        main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)
-        
-        # Convert schema_states paths back to tuples and keys to int
-        raw_schema_states = session_data.get("schema_states", {})
-        processed_schema_states = {}
-        for conn_id, state in raw_schema_states.items():
-            try:
-                # Connection IDs are integers in DB but JSON makes them strings
-                parsed_conn_id = int(conn_id)
-            except ValueError:
-                parsed_conn_id = conn_id
-                
-            processed_state = {"paths": [], "selection": None}
-            if "paths" in state:
-                processed_state["paths"] = [tuple(p) for p in state["paths"]]
-            if "selection" in state and state["selection"] is not None:
-                processed_state["selection"] = tuple(state["selection"])
-            processed_schema_states[parsed_conn_id] = processed_state
-        
-        main_window.connection_manager._schema_states = processed_schema_states
-        main_window.connection_manager._restore_tree_expansion_state()
+        should_restore = bool(main_window.restore_session_on_startup)
 
-        # Trigger selection to load schema for the previously active connection
-        selected_indexes = main_window.connection_manager.tree.selectionModel().selectedIndexes()
-        if selected_indexes:
-            main_window.connection_manager.item_clicked(selected_indexes[0])
+        if should_restore:
+            main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
+            main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)
+            
+            # Convert schema_states paths back to tuples and keys to int
+            raw_schema_states = session_data.get("schema_states", {})
+            processed_schema_states = {}
+            for conn_id, state in raw_schema_states.items():
+                try:
+                    # Connection IDs are integers in DB but JSON makes them strings
+                    parsed_conn_id = int(conn_id)
+                except ValueError:
+                    parsed_conn_id = conn_id
+                    
+                processed_state = {"paths": [], "selection": None}
+                if "paths" in state:
+                    processed_state["paths"] = [tuple(p) for p in state["paths"]]
+                if "selection" in state and state["selection"] is not None:
+                    processed_state["selection"] = tuple(state["selection"])
+                processed_schema_states[parsed_conn_id] = processed_state
+            
+            main_window.connection_manager._schema_states = processed_schema_states
+            main_window.connection_manager._restore_tree_expansion_state()
+
+            # Trigger selection to load schema for the previously active connection
+            selected_indexes = main_window.connection_manager.tree.selectionModel().selectedIndexes()
+            if selected_indexes:
+                main_window.connection_manager.item_clicked(selected_indexes[0])
+        else:
+            main_window.connection_manager._saved_tree_paths = []
+            main_window.connection_manager._saved_selection_name = None
+            main_window.connection_manager._schema_states = {}
+            if hasattr(main_window, "connection_manager"):
+                cm = main_window.connection_manager
+                if hasattr(cm, "tree") and cm.tree:
+                    cm.tree.collapseAll()
+                    if cm.tree.selectionModel():
+                        cm.tree.selectionModel().clearSelection()
+                if hasattr(cm, "schema_tree") and cm.schema_tree:
+                    cm.schema_tree.collapseAll()
+                    if cm.schema_tree.selectionModel():
+                        cm.schema_tree.selectionModel().clearSelection()
+                if hasattr(cm, "schema_model") and cm.schema_model:
+                    cm.schema_model.clear()
+                    cm.schema_model.setHorizontalHeaderLabels(["Database Schema"])
 
         tabs = session_data.get("tabs", [])
-        if not tabs:
+        if not tabs or not should_restore:
             main_window.add_tab()
             if hasattr(main_window, "apply_feature_flags"):
                 main_window.apply_feature_flags(refresh_connections=False)
