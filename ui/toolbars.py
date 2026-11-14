@@ -11,6 +11,7 @@ from ui.components import (
     NavigationTabButton, ToolbarActionButton, CompactButton
 )
 from ui.menu_style import apply_menu_style
+from ui.feature_flags import is_feature_enabled
 
 
 
@@ -228,12 +229,13 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Rows Limit
-        self.rows_limit_combo = DropdownToolButton("", qta.icon("fa5s.list-ol"))
-        self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.rows_limit_combo = DropdownToolButton("No Limit", qta.icon("mdi6.table-row", color="#555555"))
+        self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(48)
+        self.rows_limit_combo.setMinimumWidth(96)
         self.rows_limit_combo.setToolTip("Row Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
+        self.rows_limit_combo.setCurrentText("No Limit")
         self.rows_limit_combo.itemTriggered.connect(
             lambda text: self.limit_changed.emit(text)
         )
@@ -241,6 +243,28 @@ class WorksheetToolbar(QWidget):
 
         layout.addWidget(manager.create_vertical_separator())
         layout.addStretch()
+
+        self.apply_feature_flags()
+
+    def apply_feature_flags(self, flags=None):
+        """Show or hide optional worksheet toolbar controls from feature flags."""
+        source = flags if flags is not None else self.manager
+        explain_on = is_feature_enabled(source, "execution_plan")
+        ai_on = is_feature_enabled(source, "ai_assistant")
+        optimizer_on = is_feature_enabled(source, "sql_optimizer")
+
+        if hasattr(self, "explain_combo"):
+            self.explain_combo.setVisible(explain_on)
+            self.explain_combo.setEnabled(explain_on)
+        if hasattr(self, "explain_ai_btn"):
+            self.explain_ai_btn.setVisible(ai_on)
+            self.explain_ai_btn.setEnabled(ai_on)
+        if hasattr(self, "optimize_btn"):
+            self.optimize_btn.setVisible(optimizer_on)
+            self.optimize_btn.setEnabled(optimizer_on)
+        if hasattr(self, "optimize_batch_btn"):
+            self.optimize_batch_btn.setVisible(optimizer_on)
+            self.optimize_batch_btn.setEnabled(optimizer_on)
 
     def paintEvent(self, event):
         opt = QStyleOption()
@@ -349,13 +373,24 @@ class ResultsInfoToolbar(QWidget):
 
         self.save_row_btn = IconButton(
             qta.icon("fa5s.save", color="#475569", color_disabled="#CBD5E1"),
-            "Save new row",
+            "Save changes",
         )
         self.save_row_btn.setObjectName("save_row_btn")
         self.save_row_btn.setFixedSize(22, 22)
         self.save_row_btn.setIconSize(QSize(12, 12))
         self.save_row_btn.clicked.connect(manager.save_new_row)
         layout.addWidget(self.save_row_btn)
+
+        self.discard_row_btn = IconButton(
+            qta.icon("fa5s.undo", color="#475569", color_disabled="#CBD5E1"),
+            "Discard unsaved changes",
+        )
+        self.discard_row_btn.setObjectName("discard_row_btn")
+        self.discard_row_btn.setFixedSize(22, 22)
+        self.discard_row_btn.setIconSize(QSize(12, 12))
+        self.discard_row_btn.clicked.connect(lambda: manager.discard_changes(self.tab_content))
+        self.discard_row_btn.setEnabled(False)
+        layout.addWidget(self.discard_row_btn)
 
         self.delete_row_btn = IconButton(
             qta.icon("fa5s.trash-alt", color="#DC2626", color_disabled="#CBD5E1"),
@@ -403,6 +438,34 @@ class ResultsInfoToolbar(QWidget):
         self.calc_btn.toggled.connect(lambda checked: manager.toggle_cell_summary(self.tab_content, checked))
         layout.addWidget(self.calc_btn)
 
+        self.sn_display_values_btn = IconButton(
+            qta.icon("mdi.label", color="#0284C7", color_disabled="#CBD5E1"),
+            "ServiceNow Display Labels: ON (showing readable names — click for raw sys_id/codes)",
+        )
+        self.sn_display_values_btn.setObjectName("sn_display_values_btn")
+        self.sn_display_values_btn.setCheckable(True)
+        self.sn_display_values_btn.setChecked(True)
+        self.sn_display_values_btn.setFixedSize(22, 22)
+        self.sn_display_values_btn.setIconSize(QSize(13, 13))
+        self.sn_display_values_btn.toggled.connect(
+            lambda checked: manager.toggle_servicenow_display_values(self.tab_content, checked)
+        )
+        self.sn_display_values_btn.hide()
+        layout.addWidget(self.sn_display_values_btn)
+
+        self.sn_resync_btn = IconButton(
+            qta.icon("mdi.cloud-sync", color="#475569", color_disabled="#CBD5E1"),
+            "Re-sync table(s) from ServiceNow",
+        )
+        self.sn_resync_btn.setObjectName("sn_resync_btn")
+        self.sn_resync_btn.setFixedSize(22, 22)
+        self.sn_resync_btn.setIconSize(QSize(13, 13))
+        self.sn_resync_btn.clicked.connect(
+            lambda: manager.resync_servicenow_results(self.tab_content)
+        )
+        self.sn_resync_btn.hide()
+        layout.addWidget(self.sn_resync_btn)
+
         # Separator between tools and pagination
         layout.addWidget(_create_sep())
 
@@ -443,10 +506,13 @@ class ResultsInfoToolbar(QWidget):
         for btn in (
             self.add_row_btn,
             self.save_row_btn,
+            self.discard_row_btn,
             self.delete_row_btn,
             self.copy_btn,
             self.download_btn,
             self.calc_btn,
+            self.sn_display_values_btn,
+            self.sn_resync_btn,
             self.table_search_btn,
             self.rows_setting_btn,
             self.prev_btn,

@@ -484,6 +484,16 @@ QTableWidget#cell_summary_table::item:selected {
     border-color: #E2E8F0;
     color: #CBD5E1;
 }
+#resultsInfoBar QPushButton#save_row_btn[has_changes="true"] {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+    color: #2563EB;
+}
+#resultsInfoBar QPushButton#save_row_btn[has_changes="true"]:hover {
+    background-color: #DBEAFE;
+    border-color: #2563EB;
+    color: #1D4ED8;
+}
 #resultsInfoBar QPushButton#delete_row_btn {
     color: #DC2626;
 }
@@ -573,16 +583,20 @@ QTabWidget::pane {
 QTabBar {
     background: transparent;
 }
+QTabBar::tear {
+    width: 0px;
+    border: none;
+}
 QTabBar::tab {
     background: #DEE2E6;
     color: #4b5563;
-    padding: 6px 20px 6px 12px;
+    padding: 4px 12px 4px 8px;
     border: 1px solid #B8BEC6;
     border-bottom: 2px solid transparent;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
     margin-right: 0px;
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: 500;
 }
 QTabBar::tab:selected {
@@ -628,12 +642,34 @@ QTabBar::close-button {
     image: url(assets/close.svg);
     subcontrol-origin: padding;
     subcontrol-position: right center;
-    margin-right: 6px;
-    width: 16px;
-    height: 16px;
+    margin-right: 4px;
+    width: 14px;
+    height: 14px;
     border: 1px solid transparent;
     border-radius: 4px;
     background-color: transparent;
+}
+#tab_list_btn, #add_tab_btn {
+    background-color: #ffffff;
+    border: 1px solid #B8BEC6;
+    border-radius: 4px;
+    font-size: 8.5pt;
+    color: #1f2937;
+    height: 25px;
+}
+#add_tab_btn {
+    padding: 0px 8px;
+}
+#tab_list_btn {
+    padding: 0px;
+    width: 25px;
+}
+#add_tab_btn:hover, #tab_list_btn:hover {
+    background-color: #f4f7fb;
+    border-color: #9ca3af;
+}
+#add_tab_btn:pressed, #tab_list_btn:pressed {
+    background-color: #e9eef5;
 }
 QTabBar::close-button:hover {
     image: url(assets/close_hover.svg);
@@ -686,6 +722,12 @@ QTabBar::close-button:pressed {
 }
 #schemaTreeHeader::section:last {
     border-right: none;
+    padding-right: 30px;
+}
+#schemaHeaderCorner {
+    background-color: #E4E8ED;
+    border: none;
+    border-bottom: 1px solid #D3D8DF;
 }
 QDialog {
     background-color: #f6f8fb;
@@ -865,16 +907,61 @@ QPushButton#headerBtn {
 }
 QPushButton#headerBtn:hover { background: #E2E8F0; }
 
-QSpinBox {
+QSpinBox,
+QDoubleSpinBox {
     min-height: 28px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
     background: white;
-    padding-left: 6px;
-    padding-right: 20px;
+    padding-left: 8px;
+    padding-right: 24px;
 }
-QSpinBox:focus {
+QSpinBox:focus,
+QDoubleSpinBox:focus {
     border: 1px solid #0078d4;
+}
+QSpinBox::up-button,
+QDoubleSpinBox::up-button {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid #E2E8F0;
+    border-bottom: 1px solid #E2E8F0;
+    border-top-right-radius: 5px;
+    background: transparent;
+}
+QSpinBox::down-button,
+QDoubleSpinBox::down-button {
+    subcontrol-origin: padding;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border-left: 1px solid #E2E8F0;
+    border-bottom-right-radius: 5px;
+    background: transparent;
+}
+QSpinBox::up-button:hover,
+QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover,
+QDoubleSpinBox::down-button:hover {
+    background-color: #F1F5F9;
+}
+QSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed,
+QDoubleSpinBox::up-button:pressed,
+QDoubleSpinBox::down-button:pressed {
+    background-color: #E2E8F0;
+}
+QSpinBox::up-arrow,
+QDoubleSpinBox::up-arrow {
+    image: url(assets/toolbar-chevron-up.svg);
+    width: 9px;
+    height: 9px;
+}
+QSpinBox::down-arrow,
+QDoubleSpinBox::down-arrow {
+    image: url(assets/toolbar-chevron-down.svg);
+    width: 9px;
+    height: 9px;
 }
 
 /* Custom QTreeView Branches */
@@ -1452,6 +1539,386 @@ QDialog QScrollArea#dialogScrollArea {
 QDialog QWidget#dialogFormWidget {
     background: transparent;
 }
+
+/* === Cell Value Inspector Dialog === */
+QDialog#cellViewerDialog {
+    background-color: #FFFFFF;
+    color: #1E293B;
+}
+
+/* ── Top Header Toolbar ── */
+#cellViewerTopBar {
+    background-color: #F8FAFC;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+#cellViewerFormatLabel {
+    font-weight: 600;
+    color: #475569;
+    font-size: 11px;
+    background: transparent;
+}
+
+#cellViewerFormatCombo {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: #1E293B;
+    min-width: 130px;
+}
+
+#cellViewerFormatCombo:hover {
+    border-color: #94A3B8;
+}
+
+#cellViewerFormatCombo:focus {
+    border-color: #3B82F6;
+}
+
+#cellViewerSeparator {
+    background-color: #CBD5E1;
+    border: none;
+    margin: 0 4px;
+}
+
+#cellViewerTopBar QToolButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 11px;
+    color: #334155;
+    font-weight: 500;
+}
+
+#cellViewerTopBar QToolButton:hover {
+    background-color: #F1F5F9;
+    border-color: #CBD5E1;
+}
+
+#cellViewerTopBar QToolButton:pressed {
+    background-color: #E2E8F0;
+}
+
+#cellViewerTopBar QToolButton:checked {
+    background-color: #E2E8F0;
+    border-color: #94A3B8;
+    color: #0F172A;
+}
+
+#cellViewerTopBar QToolButton:disabled {
+    color: #94A3B8;
+    background: transparent;
+    border-color: transparent;
+}
+
+/* ── Read-Only Status Indicator Badge ── */
+#cellViewerRoBadge {
+    background-color: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: 4px;
+}
+
+#cellViewerRoIcon {
+    background: transparent;
+}
+
+#cellViewerRoLabel {
+    color: #92400E;
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent;
+}
+
+/* ── Collapsible Search / Find Bar ── */
+#cellViewerSearchBar {
+    background-color: #F1F5F9;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+#cellViewerSearchInput {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: #0F172A;
+    min-height: 20px;
+}
+
+#cellViewerSearchInput:focus {
+    border-color: #3B82F6;
+}
+
+#cellViewerSearchCountLabel {
+    color: #64748B;
+    font-size: 11px;
+    background: transparent;
+}
+
+#cellViewerSearchBar QToolButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 5px;
+    color: #475569;
+}
+
+#cellViewerSearchBar QToolButton:hover {
+    background-color: #E2E8F0;
+    border-color: #CBD5E1;
+}
+
+#cellViewerSearchBar QToolButton:pressed {
+    background-color: #CBD5E1;
+}
+
+#cellViewerCaseCheck {
+    font-size: 11px;
+    color: #475569;
+    background: transparent;
+}
+
+/* ── Main Code & Text Editor ── */
+#cellViewerEditor {
+    border: none;
+    background-color: #FFFFFF;
+    color: #0F172A;
+    selection-background-color: #BFDBFE;
+    selection-color: #0F172A;
+}
+
+#cellViewerEditor:read-only {
+    background-color: #FFFFFF;
+    color: #1E293B;
+}
+
+/* ── Bottom Status Bar ── */
+#cellViewerStatusBar {
+    background-color: #F8FAFC;
+    border-top: 1px solid #E2E8F0;
+}
+
+#cellViewerStatsLabel,
+#cellViewerCursorLabel {
+    color: #64748B;
+    font-size: 11px;
+    background: transparent;
+}
+
+/* ── Bottom Actions Footer Bar ── */
+#cellViewerFooterBar {
+    background-color: #FFFFFF;
+    border-top: 1px solid #E2E8F0;
+}
+
+#cellViewerCopyFeedbackLabel {
+    color: #15803D;
+    font-weight: 500;
+    font-size: 11px;
+    background: transparent;
+}
+
+/* ── Results View Read-Only Banner ─────────────────────────────────────────── */
+QFrame#readonly_banner,
+#readonly_banner {
+    background-color: #FFFBEB;
+    border-bottom: 1px solid #FDE68A;
+    padding: 3px 10px;
+}
+
+QLabel#readonly_banner_label,
+#readonly_banner_label {
+    color: #92400E;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+QPushButton#readonly_banner_close,
+#readonly_banner_close {
+    border: none;
+    background: transparent;
+    padding: 2px;
+    border-radius: 2px;
+}
+
+QPushButton#readonly_banner_close:hover,
+#readonly_banner_close:hover {
+    background-color: #FEF3C7;
+}
+
+/* ── Results Table In-Cell Delegate Editor ─────────────────────────────────── */
+QTableView#results_table QLineEdit,
+QLineEdit#results_table_delegate_editor {
+    border: 1px solid #a9a9a9;
+    outline: none;
+    border-radius: 0px;
+    background-color: #ffffff;
+    padding: 0 2px;
+}
+
+/* ── Modern Settings Dialog (#preferencesDialog) ───────────────────────────── */
+QDialog#preferencesDialog #settingsSidebar {
+    background-color: #F8FAFC;
+    border-right: 1px solid #E2E8F0;
+}
+
+QDialog#preferencesDialog #settingsSidebarTitle {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0F172A;
+    padding: 0px 2px;
+}
+
+QDialog#preferencesDialog QLineEdit#settingsSearchEdit {
+    min-height: 30px;
+    max-height: 30px;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    background-color: #FFFFFF;
+    padding: 2px 8px 2px 4px;
+    font-size: 12px;
+    color: #1E293B;
+}
+QDialog#preferencesDialog QLineEdit#settingsSearchEdit:focus {
+    border: 1px solid #0284C7;
+}
+
+QDialog#preferencesDialog QListWidget#settingsCategoryList {
+    background-color: transparent;
+    border: none;
+    outline: none;
+    padding: 0px;
+}
+QDialog#preferencesDialog QListWidget#settingsCategoryList::item {
+    border: none;
+    background: transparent;
+}
+
+QDialog#preferencesDialog #settingsContentArea,
+QDialog#preferencesDialog QStackedWidget#settingsPagesStack,
+QDialog#preferencesDialog QScrollArea#settingsScrollArea,
+QDialog#preferencesDialog #settingsScrollContainer {
+    background-color: #FFFFFF;
+    border: none;
+}
+
+QDialog#preferencesDialog #settingsPageTitle {
+    font-size: 17px;
+    font-weight: 700;
+    color: #0F172A;
+}
+
+QDialog#preferencesDialog #settingsPageSubtitle {
+    font-size: 12px;
+    color: #64748B;
+}
+
+QDialog#preferencesDialog QFrame#settingsHeaderDivider {
+    background-color: #E2E8F0;
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}
+
+QDialog#preferencesDialog QLabel#settingsCardTitle {
+    font-size: 11px;
+    font-weight: 600;
+    color: #475569;
+    letter-spacing: 0.4px;
+    padding: 2px 2px;
+}
+
+QDialog#preferencesDialog QFrame#settingsCard {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+}
+
+QDialog#preferencesDialog QFrame#settingsRowDivider {
+    background-color: #F1F5F9;
+    border: none;
+    max-height: 1px;
+    min-height: 1px;
+}
+
+QDialog#preferencesDialog QLabel#settingsRowTitle {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: #0F172A;
+}
+
+QDialog#preferencesDialog QLabel#settingsRowDesc {
+    font-size: 11px;
+    color: #64748B;
+}
+
+QDialog#preferencesDialog QLabel#settingsNoteLabel {
+    font-size: 11px;
+    color: #64748B;
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+QDialog#preferencesDialog QSpinBox {
+    min-height: 28px;
+    max-height: 28px;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    background-color: #FFFFFF;
+    padding: 2px 24px 2px 8px;
+    font-size: 12px;
+    color: #1E293B;
+}
+QDialog#preferencesDialog QSpinBox:hover {
+    border: 1px solid #94A3B8;
+}
+QDialog#preferencesDialog QSpinBox:focus {
+    border: 1px solid #0284C7;
+}
+
+QDialog#preferencesDialog QFrame#settingsFooterBar {
+    background-color: #F8FAFC;
+    border-top: 1px solid #E2E8F0;
+}
+
+QDialog#preferencesDialog QLabel#settingsApplyFeedbackLabel {
+    color: #15803D;
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+    padding-right: 6px;
+}
+
+QDialog#preferencesDialog QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 6px;
+    margin: 2px 0px;
+}
+QDialog#preferencesDialog QScrollBar::handle:vertical {
+    background: #CBD5E1;
+    min-height: 24px;
+    border-radius: 3px;
+}
+QDialog#preferencesDialog QScrollBar::handle:vertical:hover {
+    background: #94A3B8;
+}
+QDialog#preferencesDialog QScrollBar::add-line:vertical,
+QDialog#preferencesDialog QScrollBar::sub-line:vertical {
+    height: 0px;
+    border: none;
+}
+QDialog#preferencesDialog QScrollBar::add-page:vertical,
+QDialog#preferencesDialog QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+
 
 
 
