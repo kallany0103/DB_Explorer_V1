@@ -168,7 +168,7 @@ def build_main_window_actions(main_window):
     main_window.query_tool_action.triggered.connect(main_window.add_tab)
 
     main_window.reset_layout_action = QAction(qta.icon("mdi.view-dashboard-outline", color="#555555"), "Reset Layout", main_window)
-    main_window.preferences_action = QAction(qta.icon("fa5s.cog", color="#555555"), "Global Settings...", main_window)
+    main_window.preferences_action = QAction(qta.icon("fa5s.cog", color="#555555"), "Settings...", main_window)
     main_window.preferences_action.setShortcut("Ctrl+,")
     main_window.preferences_action.triggered.connect(main_window.show_preferences)
 

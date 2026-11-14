@@ -102,6 +102,7 @@ class AIWorkerSignals(QObject):
 class AIWorkerThread(QThread):
     def __init__(self, sql, ai_settings, chat_history, user_prompt, db_type):
         super().__init__()
+        self.setObjectName("AIWorkerThread")
         self.sql = sql
         self.ai_settings = ai_settings
         self.chat_history = chat_history
@@ -435,6 +436,12 @@ class AIChatPanel(QWidget):
         self._worker_thread.signals.finished.connect(self._on_ai_finished)
         self._worker_thread.signals.error.connect(self._on_ai_error)
         self._worker_thread.start()
+
+    def cleanup(self):
+        """Wait briefly for any active AI worker thread before tearing down the tab."""
+        worker = getattr(self, "_worker_thread", None)
+        if worker and worker.isRunning():
+            worker.wait(2000)
 
     def _on_ai_finished(self, response_text: str):
         self._remove_typing_indicator()

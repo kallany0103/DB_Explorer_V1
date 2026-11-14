@@ -6,6 +6,11 @@ import traceback
 def close_current_tab(main_window):
     index = main_window.tab_widget.currentIndex()
     if index != -1:
+        tab = main_window.tab_widget.widget(index)
+        results_mgr = getattr(tab, "_results_manager", None) or getattr(main_window, "results_manager", None)
+        if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+            if not results_mgr.check_unsaved_changes_before_action(tab, "closing this worksheet"):
+                return
         if main_window.tab_widget.count() == 1:
             main_window.add_tab()
             main_window.close_tab(0)
@@ -14,8 +19,20 @@ def close_current_tab(main_window):
 
 
 def close_all_tabs(main_window):
+    initial_count = main_window.tab_widget.count()
+    if initial_count == 0:
+        main_window.add_tab()
+        return
+
+    results_mgr = getattr(main_window, "results_manager", None)
+    if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+        for i in range(initial_count):
+            tab = main_window.tab_widget.widget(i)
+            if tab and not results_mgr.check_unsaved_changes_before_action(tab, "closing this worksheet"):
+                return
+
     main_window.add_tab()
-    while main_window.tab_widget.count() > 1:
+    for _ in range(initial_count):
         main_window.close_tab(0)
     main_window.status.showMessage("All tabs closed. New worksheet opened.", 3000)
 
@@ -23,6 +40,14 @@ def close_all_tabs(main_window):
 def close_tab(main_window, index):
     wm = main_window.worksheet_manager
     tab = main_window.tab_widget.widget(index)
+    if not tab:
+        return False
+
+    results_mgr = getattr(tab, "_results_manager", None) or getattr(main_window, "results_manager", None)
+    if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+        if not results_mgr.check_unsaved_changes_before_action(tab, "closing this worksheet"):
+            return False
+
     if tab in wm.running_queries:
         wm.running_queries[tab].cancel()
         del wm.running_queries[tab]
@@ -33,11 +58,38 @@ def close_tab(main_window, index):
         if "timeout_timer" in wm.tab_timers[tab]:
             wm.tab_timers[tab]["timeout_timer"].stop()
         del wm.tab_timers[tab]
+
+    if tab in wm.tab_transactions:
+        try:
+            wm.tab_transactions[tab].rollback()
+        except Exception:
+            pass
+        del wm.tab_transactions[tab]
+    wm.tab_autocommit.pop(tab, None)
+    wm.tab_dbms_output.pop(tab, None)
+    if hasattr(tab, "_dbms_poll_timer") and tab._dbms_poll_timer:
+        tab._dbms_poll_timer.stop()
+
+    if hasattr(main_window, "results_manager"):
+        main_window.results_manager.cleanup_tab_resources(tab)
+
     if main_window.tab_widget.count() > 1:
+        if hasattr(tab, "cleanup"):
+            tab.cleanup()
+        ai_panel = getattr(tab, "ai_chat_panel", None)
+        if ai_panel and hasattr(ai_panel, "cleanup"):
+            ai_panel.cleanup()
+        if tab is getattr(main_window, "dashboard_widget", None):
+            main_window.dashboard_widget = None
         main_window.tab_widget.removeTab(index)
         main_window.renumber_tabs()
+        tab.deleteLater()
+        if hasattr(wm, "_update_transaction_button_states"):
+            wm._update_transaction_button_states()
+        return True
     else:
         main_window.status.showMessage("Must keep at least one tab", 3000)
+        return False
 
 
 def reset_layout(main_window):
@@ -64,7 +116,8 @@ def reset_layout(main_window):
         # 3. Close all tabs and ensure a single fresh worksheet remains
         main_window.add_tab()
         while main_window.tab_widget.count() > 1:
-            main_window.close_tab(0)
+            if not main_window.close_tab(0):
+                break
 
         # 4. Reset Current Tab Splitter
         current_tab = main_window.tab_widget.currentWidget()

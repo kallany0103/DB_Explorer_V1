@@ -5,6 +5,11 @@ import os
 from PySide6.QtCore import QByteArray
 from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QWidget
 
+from ui.feature_flags import (
+    CONNECTOR_FEATURE_KEYS,
+    is_feature_enabled,
+    normalize_feature_flags,
+)
 from widgets.worksheet.code_editor import CodeEditor
 
 
@@ -51,6 +56,7 @@ def save_main_window_session(main_window, session_file):
         "ai_model": getattr(main_window, "ai_model", ""),
         "ai_api_key": getattr(main_window, "ai_api_key", ""),
         "ai_base_url": getattr(main_window, "ai_base_url", ""),
+        "feature_flags": normalize_feature_flags(getattr(main_window, "feature_flags", None)),
         "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])),
         "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None),
         "schema_states": getattr(main_window.connection_manager, "_schema_states", {}),
@@ -200,6 +206,10 @@ def restore_main_window_session(main_window, session_file):
         main_window.ai_model = session_data.get("ai_model", "")
         main_window.ai_api_key = session_data.get("ai_api_key", "")
         main_window.ai_base_url = session_data.get("ai_base_url", "")
+        main_window.feature_flags = normalize_feature_flags(session_data.get("feature_flags"))
+
+        if any(not main_window.feature_flags.get(key, True) for key in CONNECTOR_FEATURE_KEYS):
+            main_window.connection_manager.load_data()
 
         main_window.connection_manager._saved_tree_paths = [tuple(p) for p in session_data.get("saved_tree_paths", [])]
         main_window.connection_manager._saved_selection_name = session_data.get("saved_selection_name", None)
@@ -232,6 +242,8 @@ def restore_main_window_session(main_window, session_file):
         tabs = session_data.get("tabs", [])
         if not tabs:
             main_window.add_tab()
+            if hasattr(main_window, "apply_feature_flags"):
+                main_window.apply_feature_flags(refresh_connections=False)
             return
 
         for tab_data in tabs:
@@ -239,6 +251,8 @@ def restore_main_window_session(main_window, session_file):
             tab_type = tab_data.get("tab_type", "worksheet")
             
             if tab_type == "properties":
+                if not is_feature_enabled(main_window, "object_inspector"):
+                    continue
                 main_window.add_properties_tab()
                 current_tab = main_window.tab_widget.widget(main_window.tab_widget.count() - 1)
                 item_data = tab_data.get("item_data")
@@ -246,6 +260,8 @@ def restore_main_window_session(main_window, session_file):
                 if item_data and obj_name:
                     current_tab.update_view(item_data, obj_name)
             elif tab_type == "statistics":
+                if not is_feature_enabled(main_window, "object_inspector"):
+                    continue
                 main_window.add_statistics_tab()
                 current_tab = main_window.tab_widget.widget(main_window.tab_widget.count() - 1)
                 item_data = tab_data.get("item_data")
@@ -253,8 +269,12 @@ def restore_main_window_session(main_window, session_file):
                 if item_data and obj_name:
                     current_tab.update_view(item_data, obj_name)
             elif tab_type == "erd":
+                if not is_feature_enabled(main_window, "erd_designer"):
+                    continue
                 main_window.add_erd_tab()
             elif tab_type == "dashboard":
+                if not is_feature_enabled(main_window, "workspace_dashboard"):
+                    continue
                 main_window.add_dashboard_tab()
             else:
                 main_window.add_tab()
@@ -293,9 +313,15 @@ def restore_main_window_session(main_window, session_file):
                     else:
                         rows_info_label.setText("No Limit")
 
+        if main_window.tab_widget.count() == 0:
+            main_window.add_tab()
+
         # Apply restored editor preferences to all restored worksheet tabs
         if hasattr(main_window, "_apply_editor_preferences_to_all_tabs"):
             main_window._apply_editor_preferences_to_all_tabs()
+
+        if hasattr(main_window, "apply_feature_flags"):
+            main_window.apply_feature_flags(refresh_connections=False)
 
 
     except Exception as e:

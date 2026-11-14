@@ -134,3 +134,8 @@ class AuthSession(QObject):
         self.user = None
         token_store.clear()
         self.state_changed.emit(False)
+
+    def cleanup(self) -> None:
+        """Wait briefly for avatar background thread to exit cleanly."""
+        if self._avatar_thread is not None and self._avatar_thread.isRunning():
+            self._avatar_thread.wait(2000)

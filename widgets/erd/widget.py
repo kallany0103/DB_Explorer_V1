@@ -378,6 +378,11 @@ class ERDWidget(QWidget):
         """Slot: cache the schema list returned by the background worker."""
         self._available_schemas_cache = schemas
 
+    def cleanup(self):
+        """Wait for background schema prefetch thread before closing the ERD tab."""
+        if self._schema_worker and self._schema_worker.isRunning():
+            self._schema_worker.wait(2000)
+
     def _get_available_schemas(self) -> list[str]:
         """Return sorted list of schema names. Uses pre-fetched cache when available."""
         if self._available_schemas_cache is not None:
