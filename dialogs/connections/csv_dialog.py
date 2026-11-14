@@ -26,7 +26,7 @@ class CSVConnectionDialog(BaseConnectionDialog):
             type_id=type_id,
             group_id=group_id,
             title="CSV",
-            subtitle="Configure local folder containing CSV, TSV or flat files.",
+            subtitle="Select a local directory containing CSV files.",
             min_size=(600, 420),
             form_cls=CSVEngineForm,
         )

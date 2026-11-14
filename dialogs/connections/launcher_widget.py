@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 import db
 from ui.components import SecondaryButton
+from ui.feature_flags import is_connection_type_enabled
 
 
 class EngineCard(QFrame):
@@ -112,11 +113,11 @@ class LauncherWidget(QWidget):
     cancelled = Signal()
 
     ENGINE_DEFS = [
-        ("ORACLE", "Oracle", "Service name, SID, TNS or wallet", "assets/oracle.svg"),
-        ("POSTGRES", "PostgreSQL", "Host, port, user and password", "assets/postgresql.svg"),
-        ("SQLITE", "SQLite", "An existing database file on this machine", "assets/sqlite.svg"),
-        ("SERVICENOW", "ServiceNow", "Instance URL, user and password", "assets/servicenow.svg"),
-        ("CSV", "CSV / Flat Files", "A directory of CSV or TSV files on this machine", "assets/csv.svg"),
+        ("ORACLE", "Oracle", "Service name, SID, TNS, or wallet", "assets/oracle.svg"),
+        ("POSTGRES", "PostgreSQL", "Host, port, database, and credentials", "assets/postgresql.svg"),
+        ("SQLITE", "SQLite", "A local SQLite database file", "assets/sqlite.svg"),
+        ("SERVICENOW", "ServiceNow", "Instance URL and API credentials", "assets/servicenow.svg"),
+        ("CSV", "CSV", "A local directory of CSV files", "assets/csv.svg"),
     ]
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -196,7 +197,14 @@ class LauncherWidget(QWidget):
         self.grid_layout.setColumnStretch(1, 1)
         self.grid_layout.setColumnStretch(2, 1)
 
-        for i, (code, title, subtitle, icon) in enumerate(self.ENGINE_DEFS):
+        enabled_engines = [
+            entry for entry in self.ENGINE_DEFS
+            if is_connection_type_enabled(self.parent(), entry[0])
+        ]
+        if not enabled_engines:
+            enabled_engines = list(self.ENGINE_DEFS)
+
+        for i, (code, title, subtitle, icon) in enumerate(enabled_engines):
             card = EngineCard(code, title, subtitle, icon, self.grid_widget)
             card.clicked.connect(self.engine_selected.emit)
             row = i // 3
