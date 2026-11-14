@@ -2,7 +2,12 @@
 import os
 import json
 import sqlite3 as sqlite
-from db.db_connections import DB_FILE, get_pooled_postgres_connection, return_pooled_postgres_connection
+from db.db_connections import (
+    DB_FILE,
+    PooledPostgresConnection,
+    get_pooled_postgres_connection,
+    return_pooled_postgres_connection,
+)
 from db.type_utils import normalize_type  # noqa: F401 – re-exported for backward compatibility
 from workers.signals import tracker
 
@@ -660,52 +665,50 @@ def get_uds_tables(host_conn_data, cached_schema_data=None):
     # 2. Query host PostgreSQL pg_foreign_table (if any FDW tables exist)
     if host_conn_data.get('host') or host_conn_data.get('dsn'):
         try:
-            conn = get_pooled_postgres_connection(
+            with PooledPostgresConnection(
                 host_conn_data,
                 application_name="Universal SQL Client (Fetch UDS Tables)",
-                use_pool=True,
-            )
-            if conn:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT fs.srvname, n.nspname, c.relname
-                    FROM pg_foreign_table ft
-                    JOIN pg_class c ON c.oid = ft.ftrelid
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    LEFT JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
-                    ORDER BY fs.srvname, c.relname;
-                """)
-                rows = cur.fetchall()
-                for server_name, schema_name, table_name in rows:
-                    if table_name in ('emp_ft', 'epm_f', 'epm_foreign'):
-                        continue
-                    server_name = server_name or "Unknown Server"
-                    ds_label = srv_display.get(server_name) or server_name
+            ) as conn:
+                if conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT fs.srvname, n.nspname, c.relname
+                        FROM pg_foreign_table ft
+                        JOIN pg_class c ON c.oid = ft.ftrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        LEFT JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
+                        ORDER BY fs.srvname, c.relname;
+                    """)
+                    rows = cur.fetchall()
+                    for server_name, schema_name, table_name in rows:
+                        if table_name in ('emp_ft', 'epm_f', 'epm_foreign'):
+                            continue
+                        server_name = server_name or "Unknown Server"
+                        ds_label = srv_display.get(server_name) or server_name
 
-                    key = (ds_label.lower(), table_name.lower())
-                    if key not in seen_tables:
-                        try:
-                            cur.execute("""
-                                SELECT column_name
-                                FROM information_schema.columns
-                                WHERE table_schema = %s AND table_name = %s
-                                ORDER BY ordinal_position;
-                            """, (schema_name, table_name))
-                            cols = [r[0] for r in cur.fetchall()]
-                        except Exception:
-                            cols = ['id']
+                        key = (ds_label.lower(), table_name.lower())
+                        if key not in seen_tables:
+                            try:
+                                cur.execute("""
+                                    SELECT column_name
+                                    FROM information_schema.columns
+                                    WHERE table_schema = %s AND table_name = %s
+                                    ORDER BY ordinal_position;
+                                """, (schema_name, table_name))
+                                cols = [r[0] for r in cur.fetchall()]
+                            except Exception:
+                                cols = ['id']
 
-                        seen_tables.add(key)
-                        tables.append({
-                            'server': server_name,
-                            'ds_label': ds_label,
-                            'schema': schema_name,
-                            'table': table_name,
-                            'full_name': f'"{schema_name}"."{table_name}"',
-                            'columns': cols or ['id'],
-                        })
-                cur.close()
-                conn.close()
+                            seen_tables.add(key)
+                            tables.append({
+                                'server': server_name,
+                                'ds_label': ds_label,
+                                'schema': schema_name,
+                                'table': table_name,
+                                'full_name': f'"{schema_name}"."{table_name}"',
+                                'columns': cols or ['id'],
+                            })
+                    cur.close()
         except Exception:
             pass
 

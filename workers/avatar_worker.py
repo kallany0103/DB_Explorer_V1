@@ -12,6 +12,7 @@ class AvatarRefreshWorker(QThread):
 
     def __init__(self, auth_session, parent=None):
         super().__init__(parent)
+        self.setObjectName("AvatarRefreshWorker")
         self._session = auth_session
 
     def run(self):

@@ -201,14 +201,9 @@ def _fetch_db_words(conn_data):
 
         elif code == "SERVICENOW":
             try:
-                conn = create_servicenow_connection(conn_data)
-                if not conn:
-                    return [], [], {}, {}
-                cur = conn.cursor()
-                cur.execute("SELECT TableName FROM sys_tables")
-                tables = [row[0] for row in cur.fetchall()]
-                conn.close()
-                return [], tables, {}, {}
+                from db.servicenow_metadata import fetch_servicenow_tables
+                raw = fetch_servicenow_tables(conn_data)
+                return [], [t[0] for t in raw], {}, {}
             except Exception as e:
                 print(f"ServiceNow autocomplete fetch error: {e}")
 
@@ -356,14 +351,9 @@ def fetch_columns(conn_data, table_name):
 
         elif code == "SERVICENOW":
             try:
-                conn = create_servicenow_connection(conn_data)
-                if not conn:
-                    return []
-                cur = conn.cursor()
-                cur.execute(f"SELECT ColumnName FROM sys_tablecolumns WHERE TableName='{table_name}'")
-                cols = [row[0] for row in cur.fetchall()]
-                conn.close()
-                return cols
+                from db.servicenow_metadata import fetch_servicenow_columns
+                cols = fetch_servicenow_columns(conn_data, table_name)
+                return [c["name"] for c in cols]
             except Exception:
                 pass
 

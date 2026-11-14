@@ -28,9 +28,9 @@ class CSVDataSourceDialog(QDialog):
         main_layout.setSpacing(12)
 
         # Header
-        header_title = QLabel("CSV / Flat-File Data Source Wizard")
+        header_title = QLabel("CSV Data Source")
         header_title.setObjectName("dialogTitle")
-        header_subtitle = QLabel("Auto-detect column headers and import CSV files into Unified Data Sources.")
+        header_subtitle = QLabel("Detect column headers and register CSV files in Unified Data Sources.")
         header_subtitle.setObjectName("dialogSubtitle")
         main_layout.addWidget(header_title)
         main_layout.addWidget(header_subtitle)

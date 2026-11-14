@@ -129,6 +129,7 @@ class ServerLogsWorker(QThread):
     
     def __init__(self, conn_data, parent=None):
         super().__init__(parent)
+        self.setObjectName("ServerLogsWorker")
         self.conn_data = conn_data
         
     def run(self):
@@ -236,6 +237,11 @@ class LogsWidget(QWidget):
         self._worker = ServerLogsWorker(conn_data)
         self._worker.finished.connect(self._on_server_logs_fetched)
         self._worker.start()
+
+    def cleanup(self):
+        """Wait for any active server logs fetch thread to finish before teardown."""
+        if self._worker and self._worker.isRunning():
+            self._worker.wait(2000)
 
     def _on_server_logs_fetched(self, result: dict):
         if result.get("status") == "error":

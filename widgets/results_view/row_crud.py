@@ -1,13 +1,31 @@
 import os
+import time
 import pandas as pd
-from PySide6.QtCore import Qt, QSortFilterProxyModel
+from PySide6.QtCore import QSize, QSortFilterProxyModel, Qt, QTimer
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QComboBox, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QComboBox, QFileDialog, QMessageBox, QTabWidget, QTableView, QWidget
+import qtawesome as qta
 from ui.components import ToastNotification
 
 import db
 from db.db_connections import get_downloads_dir
-from widgets.results_view.value_state import display_cell_text, editor_text_from_raw, editor_text_to_db_value
+from widgets.results_view.value_state import (
+    display_cell_text,
+    editor_text_from_raw,
+    editor_text_to_db_value,
+    get_grid_null_text,
+)
+
+
+def _normalize_db_code(conn_data):
+    if not isinstance(conn_data, dict):
+        return ""
+    code = (conn_data.get("code") or conn_data.get("db_type", "")).upper()
+    if code in ("POSTGRESQL", "PGSQL"):
+        return "POSTGRES"
+    if code in ("ORACLE_FA",):
+        return "ORACLE"
+    return code
 
 
 def delete_selected_row(manager):
@@ -22,55 +40,52 @@ def delete_selected_row(manager):
     output_state = table_view.property("output_state") or {}
     table_name = output_state.get("table_name")
     qualified_table_name = output_state.get("qualified_table_name")
+    pk_col = output_state.get("primary_key_column")
+    is_editable = output_state.get("is_editable")
 
-    if not output_state.get("is_editable") or not table_name or not qualified_table_name:
-        ToastNotification.show_toast(manager.main_window, "This result set is read-only. Run a simple single-table SELECT to edit rows.", kind="warning")
+    if not is_editable or not qualified_table_name or not pk_col:
+        ToastNotification.show_toast(manager.main_window, "Cannot delete row: Query is read-only or lacks a primary key.", kind="warning")
         return
 
-    display_model = table_view.model()
-    selection_model = table_view.selectionModel()
-    if not display_model or not selection_model:
+    selected_indexes = table_view.selectionModel().selectedRows()
+    if not selected_indexes:
+        ToastNotification.show_toast(manager.main_window, "Please select at least one row to delete.", kind="warning")
         return
 
-    if isinstance(display_model, QSortFilterProxyModel):
-        source_model = display_model.sourceModel()
-    else:
-        source_model = display_model
-
-    selected_source_rows = set()
-
-    for idx in selection_model.selectedRows():
-        if isinstance(display_model, QSortFilterProxyModel):
-            idx = display_model.mapToSource(idx)
-        selected_source_rows.add(idx.row())
-
-    if not selected_source_rows:
-        for idx in selection_model.selectedIndexes():
-            if isinstance(display_model, QSortFilterProxyModel):
-                idx = display_model.mapToSource(idx)
-            selected_source_rows.add(idx.row())
-
-    if not selected_source_rows:
-        ToastNotification.show_toast(manager.main_window, "Please select a row to delete.", kind="warning")
-        return
-
-    reply = QMessageBox.question(
+    confirm = QMessageBox.question(
         manager.main_window,
-        "Confirm Deletion",
-        f"Are you sure you want to delete {len(selected_source_rows)} row(s)?",
+        "Confirm Delete",
+        f"Are you sure you want to delete {len(selected_indexes)} selected row(s) from {table_name or qualified_table_name}?",
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
     )
+    if confirm != QMessageBox.StandardButton.Yes:
+        return
 
-    if reply == QMessageBox.StandardButton.No:
+    model = table_view.model()
+    if isinstance(model, QSortFilterProxyModel):
+        source_model = model.sourceModel()
+    else:
+        source_model = model
+
+    pk_col_idx = -1
+    col_names = output_state.get("column_names") or []
+    for idx, c in enumerate(col_names):
+        if c.lower() == pk_col.lower():
+            pk_col_idx = idx
+            break
+
+    if pk_col_idx == -1:
+        QMessageBox.critical(manager.main_window, "Error", f"Primary key column '{pk_col}' not found in results.")
         return
 
     db_combo_box = current_tab.findChild(QComboBox, "db_combo_box")
-    conn_data = db_combo_box.currentData()
+    conn_data = db_combo_box.currentData() if db_combo_box else None
     if not conn_data:
         QMessageBox.critical(manager.main_window, "Error", "No active database connection found.")
         return
 
-    db_code = (conn_data.get("code") or conn_data.get("db_type", "")).upper()
+    db_code = _normalize_db_code(conn_data)
     deleted_count = 0
     errors = []
 
@@ -82,6 +97,8 @@ def delete_selected_row(manager):
             conn = db.create_sqlite_connection(conn_data.get("db_path"))
         elif "SERVICENOW" in str(db_code):
             conn = db.create_servicenow_connection(conn_data)
+        elif db_code in ("ORACLE", "ORACLE_DB"):
+            conn = db.get_pooled_oracle_connection(conn_data=conn_data)
 
         if not conn:
             QMessageBox.critical(manager.main_window, "Error", "Could not create database connection.")
@@ -89,17 +106,20 @@ def delete_selected_row(manager):
 
         cursor = conn.cursor()
 
-        for row_idx in sorted(selected_source_rows, reverse=True):
-            item = source_model.item(row_idx, 0)
-            if not item:
-                continue
+        # Sort reverse so index shifting doesn't affect deletion
+        source_rows = []
+        for proxy_idx in selected_indexes:
+            if isinstance(model, QSortFilterProxyModel):
+                source_idx = model.mapToSource(proxy_idx)
+                source_rows.append(source_idx.row())
+            else:
+                source_rows.append(proxy_idx.row())
+        source_rows.sort(reverse=True)
 
-            item_data = item.data(Qt.ItemDataRole.UserRole)
-            pk_col = item_data.get("pk_col")
-            pk_val = item_data.get("pk_val")
-
-            if not pk_col or pk_val is None:
-                errors.append(f"Row {row_idx + 1}: No Primary Key found. Cannot delete safely.")
+        for row_idx in source_rows:
+            item = source_model.item(row_idx, pk_col_idx)
+            pk_val = item.data(Qt.ItemDataRole.UserRole).get("pk_val") if item and item.data(Qt.ItemDataRole.UserRole) else (item.text() if item else None)
+            if pk_val is None:
                 continue
 
             try:
@@ -112,10 +132,12 @@ def delete_selected_row(manager):
                 elif "SERVICENOW" in str(db_code):
                     sql = f"DELETE FROM {qualified_table_name} WHERE {pk_col} = ?"
                     cursor.execute(sql, (pk_val,))
+                elif db_code in ("ORACLE", "ORACLE_DB"):
+                    sql = f'DELETE FROM {qualified_table_name} WHERE "{pk_col}" = :1'
+                    cursor.execute(sql, (pk_val,))
 
                 source_model.removeRow(row_idx)
                 deleted_count += 1
-
             except Exception as inner_e:
                 errors.append(f"Row {row_idx + 1} Error: {str(inner_e)}")
 
@@ -225,8 +247,9 @@ def add_empty_row(manager):
     table.edit(model.index(row, 0))
 
 
-def save_new_row(manager):
-    tab = manager.tab_widget.currentWidget()
+def save_new_row(manager, tab=None):
+    target_tab = tab or manager.tab_widget.currentWidget()
+    tab = target_tab
     if not tab:
         return
 
@@ -244,166 +267,321 @@ def save_new_row(manager):
     if not output_state.get("is_editable") or not output_state.get("qualified_table_name"):
         ToastNotification.show_toast(manager.main_window, "This result set is read-only. Run a simple single-table SELECT to save changes.", kind="warning")
         return
-    model = table.model()
-    if isinstance(model, QSortFilterProxyModel):
-        model = model.sourceModel()
 
-    if output_state.get("new_row_index") is not None:
-        if not output_state.get("table_name") or not output_state.get("column_names"):
-            QMessageBox.warning(manager.main_window, "Error", "Table context missing.")
-        else:
-            row_idx = output_state["new_row_index"]
-            values = []
-            for col_idx in range(model.columnCount()):
-                item = model.item(row_idx, col_idx)
-                raw_text = item.data(Qt.ItemDataRole.EditRole) if item else None
-                raw_text = "" if raw_text is None else str(raw_text)
-                val = editor_text_to_db_value(raw_text) if item else None
-                values.append(val)
+    save_btn = tab.findChild(QWidget, "save_row_btn")
+    if save_btn and hasattr(save_btn, "setIcon"):
+        save_btn.setEnabled(False)
+        if hasattr(save_btn, "setIconSize"):
+            save_btn.setIconSize(QSize(14, 14))
+        save_btn.setIcon(
+            qta.icon(
+                "fa5s.circle-notch",
+                color="#2563EB",
+                color_disabled="#2563EB",
+                animation=qta.Spin(save_btn, interval=16, step=15),
+            )
+        )
+        if hasattr(manager, "status") and manager.status:
+            manager.status.showMessage("Saving changes to database...")
+        QApplication.processEvents()
 
-            cols_str = ", ".join([f'"{c}"' for c in output_state["column_names"]])
-            db_code = (conn_data.get("code") or conn_data.get("db_type", "")).upper()
+    start_time = time.time()
+    try:
+        model = table.model()
+        if isinstance(model, QSortFilterProxyModel):
+            model = model.sourceModel()
 
+        if output_state.get("new_row_index") is not None:
+            if not output_state.get("table_name") or not output_state.get("column_names"):
+                QMessageBox.warning(manager.main_window, "Error", "Table context missing.")
+            else:
+                row_idx = output_state["new_row_index"]
+                values = []
+                for col_idx in range(model.columnCount()):
+                    item = model.item(row_idx, col_idx)
+                    raw_text = item.data(Qt.ItemDataRole.EditRole) if item else None
+                    raw_text = "" if raw_text is None else str(raw_text)
+                    val = editor_text_to_db_value(raw_text) if item else None
+                    values.append(val)
+
+                cols_str = ", ".join([f'"{c}"' for c in output_state["column_names"]])
+                db_code = _normalize_db_code(conn_data)
+
+                conn = None
+
+                try:
+                    if db_code == "POSTGRES":
+                        placeholders = ", ".join(["%s"] * len(values))
+                        sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
+                        conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ["host", "port", "database", "user", "password"]})
+
+                    elif "SQLITE" in str(db_code):
+                        placeholders = ", ".join(["?"] * len(values))
+                        sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
+                        conn = db.create_sqlite_connection(conn_data.get("db_path"))
+
+                    elif "SERVICENOW" in str(db_code):
+                        placeholders = ", ".join(["?"] * len(values))
+                        sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
+                        conn = db.create_servicenow_connection(conn_data)
+                    elif db_code in ("ORACLE", "ORACLE_DB"):
+                        placeholders = ", ".join([f":{i+1}" for i in range(len(values))])
+                        sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
+                        conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+                    if conn:
+                        cursor = conn.cursor()
+                        cursor.execute(sql, values)
+                        conn.commit()
+                        conn.close()
+                        output_state["new_row_index"] = None
+                        for col_idx in range(model.columnCount()):
+                            item = model.item(row_idx, col_idx)
+                            if not item:
+                                continue
+                            raw_value = values[col_idx]
+                            edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
+                            edit_data["orig_val"] = raw_value
+                            edit_data["raw_val"] = raw_value
+                            edit_data["is_db_null"] = raw_value is None
+                            item.setData(edit_data, Qt.ItemDataRole.UserRole)
+                            item.setData(display_cell_text(raw_value, null_text=get_grid_null_text(manager)), Qt.ItemDataRole.DisplayRole)
+                            item.setData(editor_text_from_raw(raw_value), Qt.ItemDataRole.EditRole)
+                            item.setBackground(QColor(Qt.GlobalColor.white))
+                        table.setProperty("output_state", output_state)
+                        saved_any = True
+
+                except Exception as e:
+                    QMessageBox.critical(manager.main_window, "Insert Error", f"Failed to insert row:\n{str(e)}")
+
+        modified_coords = output_state.get("modified_coords", set())
+        updates_count = 0
+        update_errors = []
+        if modified_coords:
+            coords_to_process = list(modified_coords)
+            db_code = _normalize_db_code(conn_data)
             conn = None
 
             try:
                 if db_code == "POSTGRES":
-                    placeholders = ", ".join(["%s"] * len(values))
-                    sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
                     conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ["host", "port", "database", "user", "password"]})
-
                 elif "SQLITE" in str(db_code):
-                    placeholders = ", ".join(["?"] * len(values))
-                    sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
                     conn = db.create_sqlite_connection(conn_data.get("db_path"))
-
                 elif "SERVICENOW" in str(db_code):
-                    placeholders = ", ".join(["?"] * len(values))
-                    sql = f'INSERT INTO {output_state["qualified_table_name"]} ({cols_str}) VALUES ({placeholders})'
                     conn = db.create_servicenow_connection(conn_data)
-                if conn:
-                    cursor = conn.cursor()
-                    cursor.execute(sql, values)
-                    conn.commit()
-                    conn.close()
-                    output_state["new_row_index"] = None
-                    for col_idx in range(model.columnCount()):
-                        item = model.item(row_idx, col_idx)
-                        if not item:
+                elif db_code in ("ORACLE", "ORACLE_DB"):
+                    conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+
+                if not conn:
+                    raise Exception("Could not create database connection for updates.")
+
+                cursor = conn.cursor()
+                table_name_for_update = output_state.get("qualified_table_name")
+
+                for row, col in coords_to_process:
+                    item = model.item(row, col)
+                    if not item:
+                        continue
+
+                    edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
+                    pk_col = edit_data.get("pk_col")
+                    pk_val = edit_data.get("pk_val")
+                    col_name = edit_data.get("col_name")
+                    new_val = item.data(Qt.ItemDataRole.EditRole)
+                    new_val = "" if new_val is None else str(new_val)
+                    val_to_update = editor_text_to_db_value(new_val)
+
+                    if not table_name_for_update:
+                        update_errors.append("Missing table context for update.")
+                        continue
+                    if not pk_col or pk_val is None:
+                        update_errors.append(f"Missing PK for column {col_name}")
+                        continue
+
+                    try:
+                        if db_code == "POSTGRES":
+                            sql = f'UPDATE {table_name_for_update} SET "{col_name}" = %s WHERE "{pk_col}" = %s'
+                            cursor.execute(sql, (val_to_update, pk_val))
+                        elif "SQLITE" in str(db_code):
+                            sql = f'UPDATE {table_name_for_update} SET "{col_name}" = ? WHERE "{pk_col}" = ?'
+                            cursor.execute(sql, (val_to_update, pk_val))
+                        elif "SERVICENOW" in str(db_code):
+                            sql = f"UPDATE {table_name_for_update} SET {col_name} = ? WHERE {pk_col} = ?"
+                            cursor.execute(sql, (val_to_update, pk_val))
+                        elif db_code in ("ORACLE", "ORACLE_DB"):
+                            sql = f'UPDATE {table_name_for_update} SET "{col_name}" = :1 WHERE "{pk_col}" = :2'
+                            cursor.execute(sql, (val_to_update, pk_val))
+                        else:
+                            update_errors.append(f"Unsupported DB type for updates: {db_code}")
                             continue
-                        raw_value = values[col_idx]
-                        edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
-                        edit_data["orig_val"] = raw_value
-                        edit_data["raw_val"] = raw_value
-                        edit_data["is_db_null"] = raw_value is None
+
+                        if hasattr(cursor, "rowcount") and cursor.rowcount == 0:
+                            update_errors.append(f"No row updated for PK '{pk_col}'={pk_val}")
+                            continue
+
+                        edit_data["orig_val"] = val_to_update
+                        edit_data["raw_val"] = val_to_update
+                        edit_data["is_db_null"] = val_to_update is None
                         item.setData(edit_data, Qt.ItemDataRole.UserRole)
-                        item.setData(display_cell_text(raw_value), Qt.ItemDataRole.DisplayRole)
-                        item.setData(editor_text_from_raw(raw_value), Qt.ItemDataRole.EditRole)
+                        item.setData(display_cell_text(val_to_update, null_text=get_grid_null_text(manager)), Qt.ItemDataRole.DisplayRole)
+                        item.setData(editor_text_from_raw(val_to_update), Qt.ItemDataRole.EditRole)
                         item.setBackground(QColor(Qt.GlobalColor.white))
-                    table.setProperty("output_state", output_state)
+                        if (row, col) in modified_coords:
+                            modified_coords.remove((row, col))
+                        updates_count += 1
+                    except Exception as inner_e:
+                        update_errors.append(str(inner_e))
+
+                conn.commit()
+                if updates_count > 0:
                     saved_any = True
 
             except Exception as e:
-                QMessageBox.critical(manager.main_window, "Insert Error", f"Failed to insert row:\n{str(e)}")
+                QMessageBox.critical(manager.main_window, "Connection Error", f"Failed to update rows:\n{str(e)}")
+            finally:
+                if conn:
+                    conn.close()
 
-    modified_coords = output_state.get("modified_coords", set())
-    updates_count = 0
-    update_errors = []
-    if modified_coords:
-        coords_to_process = list(modified_coords)
-        db_code = (conn_data.get("code") or conn_data.get("db_type", "")).upper()
-        conn = None
+            output_state["modified_coords"] = modified_coords
+            table.setProperty("output_state", output_state)
 
-        try:
-            if db_code == "POSTGRES":
-                conn = db.create_postgres_connection(**{k: v for k, v in conn_data.items() if k in ["host", "port", "database", "user", "password"]})
-            elif "SQLITE" in str(db_code):
-                conn = db.create_sqlite_connection(conn_data.get("db_path"))
-            elif "SERVICENOW" in str(db_code):
-                conn = db.create_servicenow_connection(conn_data)
-
-            if not conn:
-                raise Exception("Could not create database connection for updates.")
-
-            cursor = conn.cursor()
-            table_name_for_update = output_state.get("qualified_table_name")
-
-            for row, col in coords_to_process:
-                item = model.item(row, col)
-                if not item:
-                    continue
-
-                edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
-                pk_col = edit_data.get("pk_col")
-                pk_val = edit_data.get("pk_val")
-                col_name = edit_data.get("col_name")
-                new_val = item.data(Qt.ItemDataRole.EditRole)
-                new_val = "" if new_val is None else str(new_val)
-                val_to_update = editor_text_to_db_value(new_val)
-
-                if not table_name_for_update:
-                    update_errors.append("Missing table context for update.")
-                    continue
-                if not pk_col or pk_val is None:
-                    update_errors.append(f"Missing PK for column {col_name}")
-                    continue
-
-                try:
-                    if db_code == "POSTGRES":
-                        sql = f'UPDATE {table_name_for_update} SET "{col_name}" = %s WHERE "{pk_col}" = %s'
-                        cursor.execute(sql, (val_to_update, pk_val))
-                    elif "SQLITE" in str(db_code):
-                        sql = f'UPDATE {table_name_for_update} SET "{col_name}" = ? WHERE "{pk_col}" = ?'
-                        cursor.execute(sql, (val_to_update, pk_val))
-                    elif "SERVICENOW" in str(db_code):
-                        sql = f"UPDATE {table_name_for_update} SET {col_name} = ? WHERE {pk_col} = ?"
-                        cursor.execute(sql, (val_to_update, pk_val))
-                    else:
-                        update_errors.append(f"Unsupported DB type for updates: {db_code}")
-                        continue
-
-                    if hasattr(cursor, "rowcount") and cursor.rowcount == 0:
-                        update_errors.append(f"No row updated for PK '{pk_col}'={pk_val}")
-                        continue
-
-                    edit_data["orig_val"] = val_to_update
-                    edit_data["raw_val"] = val_to_update
-                    edit_data["is_db_null"] = val_to_update is None
-                    item.setData(edit_data, Qt.ItemDataRole.UserRole)
-                    item.setData(display_cell_text(val_to_update), Qt.ItemDataRole.DisplayRole)
-                    item.setData(editor_text_from_raw(val_to_update), Qt.ItemDataRole.EditRole)
-                    item.setBackground(QColor(Qt.GlobalColor.white))
-                    if (row, col) in modified_coords:
-                        modified_coords.remove((row, col))
-                    updates_count += 1
-                except Exception as inner_e:
-                    update_errors.append(str(inner_e))
-
-            conn.commit()
             if updates_count > 0:
-                saved_any = True
+                update_popup_shown = True
+                ToastNotification.show_toast(manager.main_window, f"Updated {updates_count} value(s) successfully.", kind="success")
+            elif coords_to_process:
+                QMessageBox.warning(manager.main_window, "Update Failed", "Update failed. No values were updated.")
 
-        except Exception as e:
-            QMessageBox.critical(manager.main_window, "Connection Error", f"Failed to update rows:\n{str(e)}")
-        finally:
-            if conn:
-                conn.close()
+            if update_errors:
+                QMessageBox.warning(manager.main_window, "Update Details", "\n".join(update_errors[:8]))
 
+        if saved_any:
+            manager.status.showMessage("Changes saved successfully!", 3000)
+            if not update_popup_shown:
+                ToastNotification.show_toast(manager.main_window, "Changes saved successfully!", kind="success")
+        elif output_state.get("new_row_index") is None and not modified_coords:
+            manager.status.showMessage("No changes to save.", 3000)
+    finally:
+        def finish_save_ui():
+            try:
+                if save_btn and hasattr(save_btn, "setIconSize"):
+                    save_btn.setIconSize(QSize(12, 12))
+                manager.sync_row_action_state(target_tab)
+            except RuntimeError:
+                pass
+
+        min_display_time_ms = 700
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        remaining_ms = max(0, min_display_time_ms - elapsed_ms)
+        if remaining_ms > 0:
+            QTimer.singleShot(remaining_ms, finish_save_ui)
+        else:
+            finish_save_ui()
+
+
+def discard_changes(manager, tab=None):
+    """Reverts all unstaged cell edits and cancels new row insertion across all result tabs."""
+    target_tab = tab or manager.tab_widget.currentWidget()
+    if not target_tab:
+        return
+
+    output_tabs = target_tab.findChild(QTabWidget, "output_tabs")
+    tables = []
+    if output_tabs:
+        for i in range(output_tabs.count()):
+            container = output_tabs.widget(i)
+            t = container.findChild(QTableView, "results_table") if container else None
+            if t:
+                tables.append(t)
+    if not tables:
+        t = manager._get_result_table_for_tab(target_tab)
+        if t:
+            tables.append(t)
+
+    for table in tables:
+        output_state = table.property("output_state") or {}
+        model = table.model()
+        if isinstance(model, QSortFilterProxyModel):
+            source_model = model.sourceModel()
+        else:
+            source_model = model
+
+        modified_coords = output_state.get("modified_coords") or set()
+        for row, col in list(modified_coords):
+            if hasattr(source_model, "item"):
+                item = source_model.item(row, col)
+                if item:
+                    edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
+                    orig_val = edit_data.get("orig_val")
+                    item.setData(editor_text_from_raw(orig_val), Qt.ItemDataRole.EditRole)
+                    item.setData(display_cell_text(orig_val, null_text=get_grid_null_text(manager)), Qt.ItemDataRole.DisplayRole)
+                    item.setBackground(QColor(Qt.GlobalColor.white))
+
+        modified_coords.clear()
         output_state["modified_coords"] = modified_coords
+
+        new_row_idx = output_state.get("new_row_index")
+        if new_row_idx is not None:
+            if hasattr(source_model, "removeRow"):
+                source_model.removeRow(new_row_idx)
+            output_state["new_row_index"] = None
+
         table.setProperty("output_state", output_state)
 
-        if updates_count > 0:
-            update_popup_shown = True
-            QMessageBox.information(manager.main_window, "Update Success", f"Updated {updates_count} value(s) successfully.")
-        elif coords_to_process:
-            QMessageBox.warning(manager.main_window, "Update Failed", "Update failed. No values were updated.")
+    manager.sync_row_action_state(target_tab)
+    if hasattr(manager, "status") and manager.status:
+        manager.status.showMessage("Changes discarded.", 2000)
 
-        if update_errors:
-            QMessageBox.warning(manager.main_window, "Update Details", "\n".join(update_errors[:8]))
 
-    if saved_any:
-        manager.status.showMessage("Changes saved successfully!", 3000)
-        if not update_popup_shown:
-            QMessageBox.information(manager.main_window, "Success", "Changes saved successfully!")
-    elif output_state.get("new_row_index") is None and not modified_coords:
-        manager.status.showMessage("No changes to save.", 3000)
+def check_unsaved_changes_before_action(manager, tab=None, action_description="running the query") -> bool:
+    """Prompts the user to Save, Discard, or Cancel if unsaved changes exist before an action."""
+    target_tab = tab or manager.tab_widget.currentWidget()
+    if not target_tab:
+        return True
+
+    output_tabs = target_tab.findChild(QTabWidget, "output_tabs")
+    tables_to_check = []
+    if output_tabs:
+        for i in range(output_tabs.count()):
+            container = output_tabs.widget(i)
+            table = container.findChild(QTableView, "results_table") if container else None
+            if table:
+                state = table.property("output_state") or {}
+                if state.get("modified_coords") or state.get("new_row_index") is not None:
+                    tables_to_check.append((i, container, table, state))
+    else:
+        table = manager._get_result_table_for_tab(target_tab)
+        if table:
+            state = table.property("output_state") or {}
+            if state.get("modified_coords") or state.get("new_row_index") is not None:
+                tables_to_check.append((0, None, table, state))
+
+    if not tables_to_check:
+        return True
+
+    total_count = sum(
+        len(state.get("modified_coords") or set()) + (1 if state.get("new_row_index") is not None else 0)
+        for _, _, _, state in tables_to_check
+    )
+    change_word = "change" if total_count == 1 else "changes"
+
+    reply = QMessageBox.question(
+        manager.main_window,
+        "Unsaved Changes",
+        f"You have {total_count} unsaved {change_word} in the results table.\nDo you want to save before {action_description}?",
+        QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+        QMessageBox.StandardButton.Save,
+    )
+
+    if reply == QMessageBox.StandardButton.Save:
+        for tab_idx, _container, tbl, _state in tables_to_check:
+            if output_tabs:
+                output_tabs.setCurrentIndex(tab_idx)
+            save_new_row(manager, target_tab)
+            rem = tbl.property("output_state") or {}
+            if rem.get("modified_coords") or rem.get("new_row_index") is not None:
+                return False
+        return True
+    elif reply == QMessageBox.StandardButton.Discard:
+        discard_changes(manager, target_tab)
+        return True
+    else:
+        return False

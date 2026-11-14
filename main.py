@@ -14,6 +14,11 @@ from ui.theme import setup_theme
 from main_window import MainWindow
 
 os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
+# Suppress harmless Qt DirectWrite warnings for legacy Windows bitmap fonts (e.g. Fixedsys, Terminal, 8514oem)
+if "QT_LOGGING_RULES" in os.environ:
+    os.environ["QT_LOGGING_RULES"] += ";qt.qpa.fonts.warning=false"
+else:
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.fonts.warning=false"
 
 # The AppMutex name must match the AppMutex directive in Universal_SQL_Client.iss.
 # Holding this mutex lets the installer/uninstaller detect a running instance.
@@ -69,12 +74,14 @@ if __name__ == "__main__":
     loop = QEventLoop()
 
     worker = _StartupWorker()
+    worker.setObjectName("_StartupWorker")
     worker.progress.connect(lambda msg, val: splash.advance(msg, val))
     worker.finished.connect(loop.quit)
     worker.failed.connect(lambda err: (setattr(loop, "_startup_error", err), loop.quit()))
     worker.start()
 
     loop.exec()  # main thread is free here; splash is fully draggable
+    worker.wait(2000)
 
     if hasattr(loop, "_startup_error"):
         splash.close()

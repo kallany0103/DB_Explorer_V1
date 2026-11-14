@@ -1,11 +1,11 @@
 from PySide6.QtWidgets import (
-    QApplication, QAbstractScrollArea, QComboBox,
+    QApplication, QAbstractScrollArea, QCheckBox, QComboBox,
     QPushButton, QLineEdit, QToolButton, QMenu,
     QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
-    QDialog, QVBoxLayout, QProgressBar
+    QDialog, QVBoxLayout, QProgressBar, QStyle, QStyledItemDelegate
 )
-from PySide6.QtGui import QIcon, QAction, QPainter, QColor, QPainterPath, QFont, QPixmap
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QSize, QEvent
+from PySide6.QtGui import QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QPixmap, QPen
+from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QRectF, QSize, QEvent
 from typing import Optional
 import qtawesome as qta
 import qtawesome.iconic_font
@@ -545,19 +545,34 @@ class DropdownToolButton(ActionToolButton):
     def __init__(self, default_text, icon=None, prefix="", parent=None):
         super().__init__(default_text, icon, parent)
         self._prefix = prefix
+        self._action_group = QActionGroup(self)
+        self._action_group.setExclusive(True)
         self.itemTriggered.connect(self.setCurrentText)
-        
+
+    def addItem(self, text, icon=None, data=None):
+        action = super().addItem(text, icon=icon, data=data)
+        action.setCheckable(True)
+        self._action_group.addAction(action)
+        if text == self.currentText():
+            action.setChecked(True)
+        return action
+
     def currentText(self):
         text = self.text()
         if self._prefix and text.startswith(self._prefix):
             return text[len(self._prefix):]
         return text
-        
+
     def setCurrentText(self, text):
         if self._prefix and not text.startswith(self._prefix):
             self.setText(f"{self._prefix}{text}")
         else:
             self.setText(text)
+        target = self.currentText()
+        for action in self._menu.actions():
+            if action.text() == target:
+                action.setChecked(True)
+                break
 
 
 class NavigationTabButton(QPushButton):
@@ -989,3 +1004,115 @@ class ConfirmDialog(QDialog):
             parent=parent,
         )
         return dlg.exec() == QDialog.DialogCode.Accepted
+
+
+class ToggleSwitch(QCheckBox):
+    """Compact pill toggle switch compatible with standard QCheckBox APIs."""
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(40, 22)
+
+    def sizeHint(self) -> QSize:
+        return QSize(40, 22)
+
+    def hitButton(self, pos: QPoint) -> bool:
+        return self.rect().contains(pos)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(1.0, 1.0, self.width() - 2.0, self.height() - 2.0)
+        checked = self.isChecked()
+        hovered = self.underMouse()
+
+        if not self.isEnabled():
+            track_color = QColor("#E2E8F0")
+        elif checked:
+            track_color = QColor("#0369A1" if hovered else "#0284C7")
+        else:
+            track_color = QColor("#94A3B8" if hovered else "#CBD5E1")
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0)
+
+        thumb_d = rect.height() - 4.0
+        thumb_y = rect.y() + 2.0
+        thumb_x = (rect.right() - thumb_d - 2.0) if checked else (rect.x() + 2.0)
+
+        painter.setPen(QPen(QColor(0, 0, 0, 20), 0.75))
+        painter.setBrush(QColor("#FFFFFF"))
+        painter.drawEllipse(QRectF(thumb_x, thumb_y, thumb_d, thumb_d))
+        painter.end()
+
+
+class SettingsCategoryDelegate(QStyledItemDelegate):
+    """Paints crisp rounded category items with a corner-blended left accent bar."""
+
+    def sizeHint(self, option, index) -> QSize:
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), max(size.height(), 36))
+
+    def paint(self, painter: QPainter, option, index) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(option.rect).adjusted(0.5, 1.5, -0.5, -1.5)
+        card_path = QPainterPath()
+        card_path.addRoundedRect(rect, 6.0, 6.0)
+
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+
+        if is_selected:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#FFFFFF"))
+            painter.drawPath(card_path)
+
+            painter.setPen(QPen(QColor("#E2E8F0"), 1.0))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(card_path)
+
+            clip_path = QPainterPath()
+            clip_path.addRoundedRect(rect.adjusted(-0.5, -0.5, 0.5, 0.5), 6.0, 6.0)
+            painter.setClipPath(clip_path)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#0284C7"))
+            painter.drawRect(QRectF(rect.left() - 0.5, rect.top() - 0.5, 2.0, rect.height() + 1.0))
+            painter.setClipping(False)
+        elif is_hovered:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#F1F5F9"))
+            painter.drawPath(card_path)
+
+        icon = index.data(Qt.ItemDataRole.DecorationRole)
+        text_left = rect.left() + 14.0
+        if isinstance(icon, QIcon) and not icon.isNull():
+            icon_rect = QRectF(rect.left() + 13.0, rect.center().y() - 8.0, 16.0, 16.0).toRect()
+            icon.paint(painter, icon_rect)
+            text_left = rect.left() + 37.0
+
+        font = QFont(option.font)
+        font.setPointSizeF(9.5)
+        font.setWeight(QFont.Weight.Normal)
+        painter.setFont(font)
+        painter.setPen(QColor("#0F172A" if is_selected else "#334155"))
+
+        is_modified = bool(index.data(Qt.ItemDataRole.UserRole))
+        right_pad = 22.0 if is_modified else 8.0
+        text_rect = QRectF(text_left, rect.top(), rect.right() - text_left - right_pad, rect.height())
+        painter.drawText(
+            text_rect,
+            int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
+            str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
+        )
+
+        if is_modified:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#0284C7"))
+            dot_d = 6.0
+            painter.drawEllipse(QRectF(rect.right() - 14.0, rect.center().y() - dot_d / 2.0, dot_d, dot_d))
+        painter.restore()

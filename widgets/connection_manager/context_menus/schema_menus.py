@@ -10,6 +10,7 @@ from functools import partial
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
 
+from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.menu_style import apply_menu_style
 from widgets.connection_manager.context_menus._helpers import (
     action,
@@ -28,6 +29,21 @@ class SchemaMenuBuilder:
         self.manager = manager
         self.mview_builder = MaterializedViewMenuBuilder(manager)
         self.trigger_builder = TriggerMenuBuilder(manager)
+
+    def _add_backup_restore_actions(self, menu, item_data):
+        if not is_feature_enabled(self.manager, "backup_restore"):
+            return
+        act = action(self.manager, "Backup...", "mdi.backup-restore")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+        )
+        menu.addAction(act)
+
+        act = action(self.manager, "Restore...", "mdi.database-import")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+        )
+        menu.addAction(act)
 
     # Entry point
 
@@ -124,6 +140,14 @@ class SchemaMenuBuilder:
 
     # Shared helpers
 
+
+    def _add_query_tool_action(self, menu, item_data):
+        """Append a Query Tool action that opens a blank SQL tab for *item_data*."""
+        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act.triggered.connect(
+            lambda: self.manager.connection_actions.open_query_tool(item_data)
+        )
+        menu.addAction(act)
 
     def _add_refresh_actions(self, menu, index):
         """Append a separator then Refresh / Reset Tree to *menu*."""
@@ -225,10 +249,13 @@ class SchemaMenuBuilder:
         table_type   = item_data.get("table_type", "TABLE").upper()
         is_view      = "VIEW" in table_type
         label        = "View" if is_view else "Table"
-        hide_pg_style_actions = str(db_type or "").lower() in ("csv", "servicenow")
+        db_type_lower = str(db_type or "").lower()
+        is_servicenow = db_type_lower == "servicenow"
+        hide_pg_style_actions = db_type_lower in ("csv", "servicenow")
 
-        # View/Edit Data submenu
-        view_sub = submenu(menu, "View/Edit Data", "mdi.table-eye")
+        # View/Edit Data submenu (read-only label for ServiceNow)
+        view_label = "View Data" if is_servicenow else "View/Edit Data"
+        view_sub = submenu(menu, view_label, "mdi.table-eye")
         act = action(self.manager, "All Rows", "mdi.table-row")
         act.triggered.connect(
             lambda: self.manager.connection_actions.query_table_rows(
@@ -260,17 +287,14 @@ class SchemaMenuBuilder:
         view_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
-        act = action(self.manager, "Cross-Source Join Helper...", "mdi.transit-connection-variant")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data, display_name)
-        )
-        menu.addAction(act)
+        if not is_servicenow and is_feature_enabled(self.manager, "data_virtualization"):
+            act = action(self.manager, "Cross-Source Join Helper...", "mdi.transit-connection-variant")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data, display_name)
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
         act = action(self.manager, "Export Rows...", "mdi.export")
@@ -279,18 +303,48 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        if not hide_pg_style_actions:
-            act = action(self.manager, "Backup...", "mdi.backup-restore")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+        # Generate SQL submenu
+        sql_sub = submenu(menu, "Generate SQL", "mdi.code-tags")
+        act_sel = action(self.manager, "SELECT (Top Columns)", "mdi.table-search")
+        act_sel.triggered.connect(
+            lambda: self.manager.connection_actions.generate_select_template(
+                item_data, item_data.get("table_name", display_name)
             )
-            menu.addAction(act)
+        )
+        sql_sub.addAction(act_sel)
 
-            act = action(self.manager, "Restore...", "mdi.database-import")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+        act_sel_all = action(self.manager, "SELECT *", "mdi.asterisk")
+        act_sel_all.triggered.connect(
+            lambda: self.manager.connection_actions.generate_select_all_template(
+                item_data, item_data.get("table_name", display_name)
             )
-            menu.addAction(act)
+        )
+        sql_sub.addAction(act_sel_all)
+
+        if str(db_type or "").lower() == "servicenow":
+            menu.addSeparator()
+            conn_id = (item_data.get("conn_data") or {}).get("id") or "default"
+            target_name = item_data.get("table_name", display_name)
+            from widgets.connection_manager.favorites import is_table_favorite
+            is_fav = is_table_favorite(conn_id, target_name)
+            fav_label = "Remove from Favorites" if is_fav else "Add to Favorites"
+            fav_icon = "mdi.star-off" if is_fav else "mdi.star"
+            act_fav = action(self.manager, fav_label, fav_icon)
+            act_fav.triggered.connect(
+                lambda: self.manager.connection_actions.toggle_table_pin(item_data, target_name)
+            )
+            menu.addAction(act_fav)
+
+            act_sync = action(self.manager, "Re-sync Table from ServiceNow", "mdi.cloud-sync")
+            act_sync.triggered.connect(
+                lambda: self.manager.connection_actions.resync_servicenow_table(
+                    item_data, target_name
+                )
+            )
+            menu.addAction(act_sync)
+
+        if not hide_pg_style_actions:
+            self._add_backup_restore_actions(menu, item_data)
 
             menu.addSeparator()
             security_sub = submenu(menu, "Security", "mdi.shield-lock-outline")
@@ -316,12 +370,13 @@ class SchemaMenuBuilder:
             menu.addSeparator()
             add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
-            menu.addSeparator()
-            act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
-            act.triggered.connect(
-                lambda: self.manager.generate_erd_for_item(item_data, display_name)
-            )
-            menu.addAction(act)
+            if is_feature_enabled(self.manager, "erd_designer"):
+                menu.addSeparator()
+                act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
+                act.triggered.connect(
+                    lambda: self.manager.generate_erd_for_item(item_data, display_name)
+                )
+                menu.addAction(act)
 
             menu.addSeparator()
             scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
@@ -336,35 +391,36 @@ class SchemaMenuBuilder:
                 a.triggered.connect(fn)
                 scripts_sub.addAction(a)
 
-        if not is_view:
-            menu.addSeparator()
-            act = action(self.manager, "Truncate", "mdi.eraser")
+        if not is_servicenow:
+            if not is_view:
+                menu.addSeparator()
+                act = action(self.manager, "Truncate", "mdi.eraser")
+                act.triggered.connect(
+                    lambda: self.manager.connection_actions.truncate_table(item_data, display_name)
+                )
+                menu.addAction(act)
+
+                act = action(self.manager, "Truncate (Cascade)", "mdi.eraser-variant")
+                act.triggered.connect(
+                    lambda: self.manager.connection_actions.truncate_table(item_data, display_name, cascade=True)
+                )
+                menu.addAction(act)
+
+            act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
             act.triggered.connect(
-                lambda: self.manager.connection_actions.truncate_table(item_data, display_name)
+                lambda: self.manager.connection_actions.delete_table(item_data, display_name)
             )
             menu.addAction(act)
 
-            act = action(self.manager, "Truncate (Cascade)", "mdi.eraser-variant")
+            act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
             act.triggered.connect(
-                lambda: self.manager.connection_actions.truncate_table(item_data, display_name, cascade=True)
+                lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
             )
             menu.addAction(act)
 
-        act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_table(item_data, display_name)
-        )
-        menu.addAction(act)
-
-        act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
-        )
-        menu.addAction(act)
-
-        if hide_pg_style_actions:
-            menu.addSeparator()
-            add_properties_statistics_actions(menu, self.manager, item_data, display_name)
+            if hide_pg_style_actions:
+                menu.addSeparator()
+                add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
         self._add_refresh_actions(menu, index)
 
@@ -419,17 +475,7 @@ class SchemaMenuBuilder:
         act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, collapse=True))
         menu.addAction(act)
 
-        act = action(self.manager, "Backup...", "mdi.backup-restore")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
-        )
-        menu.addAction(act)
-
-        act = action(self.manager, "Restore...", "mdi.database-import")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_restore_dialog(item_data)
-        )
-        menu.addAction(act)
+        self._add_backup_restore_actions(menu, item_data)
 
         menu.addSeparator()
         act = action(self.manager, "CREATE Script", "mdi.script-text-outline")
@@ -438,11 +484,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "ERD for Schema", "fa6s.sitemap")
-        act.triggered.connect(
-            lambda: self.manager.generate_erd_for_item(item_data, f"Schema: {schema_name}")
-        )
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "erd_designer"):
+            act = action(self.manager, "ERD for Schema", "fa6s.sitemap")
+            act.triggered.connect(
+                lambda: self.manager.generate_erd_for_item(item_data, f"Schema: {schema_name}")
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
 
@@ -452,15 +499,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "PSQL Tool", "mdi.console")
-        act.triggered.connect(lambda: open_usql_tool(item_data.get("conn_data") or item_data, self.manager))
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "native_terminals"):
+            act = action(self.manager, "PSQL Tool", "mdi.console")
+            act.triggered.connect(lambda: open_usql_tool(item_data.get("conn_data") or item_data, self.manager))
+            menu.addAction(act)
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, schema_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, schema_name)
@@ -487,26 +531,12 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("conn_data", {}).get("database") or "Schemas")
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         db_type = item_data.get("db_type", "")
         if str(db_type).lower() not in ("csv", "servicenow"):
             menu.addSeparator()
-            act = action(self.manager, "Backup...", "mdi.backup-restore")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Restore...", "mdi.database-import")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
-            )
-            menu.addAction(act)
+            self._add_backup_restore_actions(menu, item_data)
 
         menu.addSeparator()
         conn = item_data.get("conn_data") or {}
@@ -582,26 +612,12 @@ class SchemaMenuBuilder:
             menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("group_name") or item.text())
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         db_type = item_data.get("db_type", "")
         if str(db_type).lower() not in ("csv", "servicenow"):
             menu.addSeparator()
-            act = action(self.manager, "Backup...", "mdi.backup-restore")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
-            )
-            menu.addAction(act)
-
-            act = action(self.manager, "Restore...", "mdi.database-import")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
-            )
-            menu.addAction(act)
+            self._add_backup_restore_actions(menu, item_data)
 
         self._add_refresh_actions(menu, index)
 
@@ -617,11 +633,7 @@ class SchemaMenuBuilder:
     def _sequence_menu(self, menu, item, item_data, index):
         display_name = item.text()
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
@@ -657,11 +669,7 @@ class SchemaMenuBuilder:
         display_name = item.text()
         label = table_type.lower().capitalize()
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
@@ -697,11 +705,7 @@ class SchemaMenuBuilder:
     def _language_menu(self, menu, item, item_data, index):
         display_name = item.text()
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
@@ -736,11 +740,7 @@ class SchemaMenuBuilder:
     def _extension_menu(self, menu, item, item_data, index):
         display_name = item.text()
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         act = action(self.manager, "Drop Extension", "mdi.delete-outline", shortcut="Alt+Shift+D")
@@ -772,11 +772,7 @@ class SchemaMenuBuilder:
 
 
     def _language_root_menu(self, menu, item_data, index):
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Languages")
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         self._add_refresh_actions(menu, index)
 
@@ -786,11 +782,7 @@ class SchemaMenuBuilder:
     # extension_root
 
     def _extension_root_menu(self, menu, item_data, index):
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Extensions")
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         self._add_refresh_actions(menu, index)
 
@@ -812,11 +804,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, "Foreign Data Wrappers")
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, "Foreign Data Wrappers")
@@ -850,11 +838,7 @@ class SchemaMenuBuilder:
         self._add_refresh_actions(menu, index)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("fdw_name", "Foreign Data Wrapper"))
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         menu.addSeparator()
         add_properties_statistics_actions(
@@ -892,11 +876,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("server_name", "Foreign Server"))
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         self._add_refresh_actions(menu, index)
 
@@ -929,11 +909,7 @@ class SchemaMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, item_data.get("user_name", "User Mapping"))
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
         self._add_refresh_actions(menu, index)
 
@@ -945,18 +921,14 @@ class SchemaMenuBuilder:
     # Data Source (UDS)
 
     def _data_source_menu(self, menu, item, item_data, index):
-        ds_name = item.text()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, ds_name)
-        )
-        menu.addAction(act)
+        self._add_query_tool_action(menu, item_data)
 
-        act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
-        )
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "data_virtualization"):
+            act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
+            )
+            menu.addAction(act)
 
         act = action(self.manager, "Test Connection", "mdi.connection")
         act.triggered.connect(
@@ -987,10 +959,11 @@ class SchemaMenuBuilder:
     # Unified Views Root (UDS)
 
     def _unified_views_root_menu(self, menu, item, item_data, index):
-        act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
-        )
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "data_virtualization"):
+            act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
+            )
+            menu.addAction(act)
 
         self._add_refresh_actions(menu, index)

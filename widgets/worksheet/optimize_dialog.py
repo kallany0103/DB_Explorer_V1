@@ -6,7 +6,8 @@ empirical runtime benchmarking, and risk-free virtual index simulation.
 
 from typing import Callable, List, Optional
 
-from PySide6.QtCore import QThreadPool, Qt
+from PySide6.QtCore import QRect, QSize, QThreadPool, Qt
+from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -17,6 +18,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QScrollArea,
     QSplitter,
+    QStyle,
+    QStyleOptionViewItem,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -34,6 +38,58 @@ from ui.components import PrimaryButton, SecondaryButton
 from ui.optimize_style import OPTIMIZE_DIALOG_STYLE
 from widgets.worksheet.plan_diff_view import PlanDiffWidget
 from workers.optimizer_worker import BenchmarkWorker, OptimizerCostWorker, VirtualIndexWorker
+
+
+class CandidateStrategyDelegate(QStyledItemDelegate):
+    """Renders candidate name on line 1 (semi-bold) and strategy on line 2 (muted subtext)."""
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        painter.save()
+
+        # Row selection background
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        if is_selected:
+            painter.fillRect(option.rect, QColor("#EFF6FF"))
+        else:
+            painter.fillRect(option.rect, QColor("#FFFFFF"))
+
+        # Subtle bottom divider line
+        painter.setPen(QColor("#F1F5F9"))
+        painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
+
+        title = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        subtitle = str(index.data(Qt.ItemDataRole.UserRole + 1) or "")
+        is_best = bool(index.data(Qt.ItemDataRole.UserRole + 2) or False)
+
+        content_rect = option.rect.adjusted(8, 2, -8, -2)
+        half_h = content_rect.height() // 2
+
+        # Line 1: Title (Candidate Name)
+        font_title = QFont(option.font)
+        font_title.setPointSize(8)
+        font_title.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font_title)
+        title_color = QColor("#166534") if is_best else QColor("#0F172A")
+        painter.setPen(title_color)
+
+        rect_title = QRect(content_rect.left(), content_rect.top(), content_rect.width(), half_h)
+        elided_title = painter.fontMetrics().elidedText(title, Qt.TextElideMode.ElideRight, rect_title.width())
+        painter.drawText(rect_title, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided_title)
+
+        # Line 2: Subtitle (Optimization Strategy Description)
+        font_sub = QFont(option.font)
+        font_sub.setPointSize(7)
+        painter.setFont(font_sub)
+        painter.setPen(QColor("#64748B"))
+
+        rect_sub = QRect(content_rect.left(), content_rect.top() + half_h, content_rect.width(), half_h)
+        elided_sub = painter.fontMetrics().elidedText(subtitle, Qt.TextElideMode.ElideRight, rect_sub.width())
+        painter.drawText(rect_sub, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided_sub)
+
+        painter.restore()
+
+    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
+        return QSize(240, 40)
 
 
 class OptimizeSqlDialog(QDialog):
@@ -90,15 +146,17 @@ class OptimizeSqlDialog(QDialog):
 
         # Left: Leaderboard & SQL Diff Viewer
         left_pane = self._create_left_pane()
+        left_pane.setMinimumWidth(500)
         body_splitter.addWidget(left_pane)
 
         # Right: Findings & Index Recommendations
         right_pane = self._create_findings_pane()
+        right_pane.setMinimumWidth(320)
         body_splitter.addWidget(right_pane)
 
-        body_splitter.setSizes([680, 360])
+        body_splitter.setSizes([640, 440])
         body_splitter.setStretchFactor(0, 3)
-        body_splitter.setStretchFactor(1, 1)
+        body_splitter.setStretchFactor(1, 2)
         main_layout.addWidget(body_splitter, 1)
 
         # 4. Footer Bar
@@ -209,12 +267,26 @@ class OptimizeSqlDialog(QDialog):
             self.kpi_best_lbl.setText("Baseline")
             self.kpi_best_lbl.setStyleSheet("color: #475569; font-weight: 700;")
 
-        if best_v and baseline_v and best_v.cost is not None and baseline_v.cost is not None:
+        if (
+            best_v
+            and baseline_v
+            and best_v.cost is not None
+            and baseline_v.cost is not None
+            and best_v.id != 0
+            and abs(best_v.cost - baseline_v.cost) >= 0.05
+        ):
             self.kpi_cost_lbl.setText(f"{best_v.cost:.1f} vs {baseline_v.cost:.1f}")
+            self.kpi_cost_lbl.setToolTip(
+                f"Optimized Plan Cost: {best_v.cost:.1f} | Original Baseline Cost: {baseline_v.cost:.1f}"
+            )
         elif baseline_v and baseline_v.cost is not None:
             self.kpi_cost_lbl.setText(f"{baseline_v.cost:.1f}")
+            self.kpi_cost_lbl.setToolTip(
+                f"Baseline Plan Cost: {baseline_v.cost:.1f} (Rewrites produced identical plan cost)"
+            )
         else:
             self.kpi_cost_lbl.setText("-")
+            self.kpi_cost_lbl.setToolTip("")
 
         if self.result.findings:
             high_findings = [f for f in self.result.findings if f.severity == "HIGH"]
@@ -251,24 +323,29 @@ class OptimizeSqlDialog(QDialog):
 
         self.variant_table = QTableWidget(container)
         self.variant_table.setObjectName("variantTable")
-        self.variant_table.setColumnCount(6)
+        self.variant_table.setColumnCount(5)
         self.variant_table.setHorizontalHeaderLabels([
-            "Candidate", "Strategy", "Cost", "Improvement", "Runtime", "Plan Operator"
+            "Candidate & Optimization Strategy", "Cost", "Improvement", "Runtime", "Plan Operator"
         ])
         self.variant_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.variant_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.variant_table.verticalHeader().setVisible(False)
-        self.variant_table.verticalHeader().setDefaultSectionSize(28)
+        self.variant_table.verticalHeader().setDefaultSectionSize(40)
         self.variant_table.setShowGrid(False)
-        self.variant_table.setMinimumHeight(58)
+        self.variant_table.setMinimumHeight(62)
+        self.variant_table.setItemDelegateForColumn(0, CandidateStrategyDelegate(self.variant_table))
 
         header = self.variant_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+
+        self.variant_table.setColumnWidth(1, 55)
+        self.variant_table.setColumnWidth(2, 85)
+        self.variant_table.setColumnWidth(3, 110)
+        self.variant_table.setColumnWidth(4, 125)
 
         self.variant_table.itemSelectionChanged.connect(self._on_variant_selected)
         layout.addWidget(self.variant_table)
@@ -276,6 +353,8 @@ class OptimizeSqlDialog(QDialog):
         # SQL Viewer Tab Widget
         self.sql_tabs = QTabWidget(container)
         self.sql_tabs.setObjectName("diffTabWidget")
+        self.sql_tabs.tabBar().setExpanding(False)
+        self.sql_tabs.tabBar().setUsesScrollButtons(False)
 
         # Tab 1: Selected Candidate
         selected_widget = QWidget()
@@ -284,10 +363,18 @@ class OptimizeSqlDialog(QDialog):
         sel_layout.setSpacing(4)
 
         sel_top_bar = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(1)
+
         self.selected_tab_title = QLabel("Selected Candidate Query", selected_widget)
         self.selected_tab_title.setStyleSheet("font-weight: 600; color: #166534; font-size: 8.5pt;")
-        sel_top_bar.addWidget(self.selected_tab_title)
-        sel_top_bar.addStretch()
+        self.selected_tab_strategy = QLabel("", selected_widget)
+        self.selected_tab_strategy.setStyleSheet("color: #64748B; font-size: 7.5pt; font-weight: 400;")
+        self.selected_tab_strategy.setWordWrap(True)
+
+        title_box.addWidget(self.selected_tab_title)
+        title_box.addWidget(self.selected_tab_strategy)
+        sel_top_bar.addLayout(title_box, 1)
 
         copy_sel_btn = SecondaryButton("Copy", selected_widget)
         copy_sel_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
@@ -349,6 +436,7 @@ class OptimizeSqlDialog(QDialog):
         scroll_area = QScrollArea(container)
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("background: transparent;")
 
         scroll_widget = QWidget()
@@ -415,11 +503,11 @@ class OptimizeSqlDialog(QDialog):
         badge.setProperty("severity", finding.severity)
 
         title = QLabel(finding.title, card)
+        title.setWordWrap(True)
         title.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #0F172A;")
 
         top_row.addWidget(badge)
-        top_row.addWidget(title)
-        top_row.addStretch()
+        top_row.addWidget(title, 1)
         card_layout.addLayout(top_row)
 
         desc = QLabel(finding.description, card)
@@ -450,27 +538,34 @@ class OptimizeSqlDialog(QDialog):
         hdr_row.addWidget(icon_lbl)
         hdr_row.addWidget(title)
         hdr_row.addStretch()
+        card_layout.addLayout(hdr_row)
 
-        # Simulate Index Action Button
+        ddl_text = "\n".join(indexes)
+        code_box = QTextEdit(card)
+        code_box.setObjectName("indexCodeBox")
+        code_box.setReadOnly(True)
+        code_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        code_box.setMaximumHeight(80)
+        code_box.setPlainText(ddl_text)
+        card_layout.addWidget(code_box)
+
+        # Action Buttons Row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+        btn_row.addStretch()
+
         self.sim_btn = SecondaryButton("Simulate Index", card)
         self.sim_btn.setIcon(qta.icon("fa5s.bolt", color="#475569"))
         self.sim_btn.setToolTip("Test index adoption virtually without allocating physical disk space")
-        ddl_text = "\n".join(indexes)
         self.sim_btn.clicked.connect(lambda: self._simulate_virtual_index(indexes[0]))
-        hdr_row.addWidget(self.sim_btn)
+        btn_row.addWidget(self.sim_btn)
 
         copy_idx_btn = SecondaryButton("Copy DDL", card)
         copy_idx_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
         copy_idx_btn.clicked.connect(lambda: QApplication.clipboard().setText(ddl_text))
-        hdr_row.addWidget(copy_idx_btn)
-        card_layout.addLayout(hdr_row)
-
-        code_box = QTextEdit(card)
-        code_box.setObjectName("indexCodeBox")
-        code_box.setReadOnly(True)
-        code_box.setMaximumHeight(80)
-        code_box.setPlainText(ddl_text)
-        card_layout.addWidget(code_box)
+        btn_row.addWidget(copy_idx_btn)
+        btn_row.addStretch()
+        card_layout.addLayout(btn_row)
 
         # Virtual Index Simulation Result Frame (Hidden until run)
         self.sim_result_frame = QFrame(card)
@@ -483,10 +578,12 @@ class OptimizeSqlDialog(QDialog):
 
         self.sim_status_lbl = QLabel(self.sim_result_frame)
         self.sim_status_lbl.setProperty("class", "sim-status")
+        self.sim_status_lbl.setWordWrap(True)
         sim_layout.addWidget(self.sim_status_lbl)
 
         self.sim_metric_lbl = QLabel(self.sim_result_frame)
         self.sim_metric_lbl.setProperty("class", "sim-metric")
+        self.sim_metric_lbl.setWordWrap(True)
         sim_layout.addWidget(self.sim_metric_lbl)
 
         self.sim_detail_lbl = QLabel(self.sim_result_frame)
@@ -522,18 +619,19 @@ class OptimizeSqlDialog(QDialog):
             for v in self.variants
         )
 
-        row_h = 28
+        row_h = 40
         hdr_h = 28
         total_h = hdr_h + (len(self.variants) * row_h) + 6
-        clamped_h = max(62, min(180, total_h))
+        clamped_h = max(74, min(220, total_h))
         self.variant_table.setFixedHeight(clamped_h)
 
         for row, v in enumerate(self.variants):
-            label_text = f"⭐ {v.label}" if v.is_best and v.id != 0 else v.label
+            label_text = v.label
             item_candidate = QTableWidgetItem(label_text)
             item_candidate.setData(Qt.ItemDataRole.UserRole, v.id)
-
-            item_strategy = QTableWidgetItem(v.strategy)
+            item_candidate.setData(Qt.ItemDataRole.UserRole + 1, v.strategy)
+            item_candidate.setData(Qt.ItemDataRole.UserRole + 2, v.is_best and v.id != 0)
+            item_candidate.setToolTip(f"{label_text}\n\nStrategy: {v.strategy}")
 
             if v.cost is not None:
                 cost_str = f"{v.cost:.1f}"
@@ -568,9 +666,11 @@ class OptimizeSqlDialog(QDialog):
             item_plan = QTableWidgetItem(v.plan_summary or "-")
 
             for col, item in enumerate([
-                item_candidate, item_strategy, item_cost, item_imp, item_time, item_plan
+                item_candidate, item_cost, item_imp, item_time, item_plan
             ]):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                if col > 0:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.variant_table.setItem(row, col, item)
 
     def _select_initial_variant(self) -> None:
@@ -620,14 +720,22 @@ class OptimizeSqlDialog(QDialog):
             if len(self.variants) <= 1:
                 title = "PL/SQL Block" if "oracle" in (self.dialect or "").lower() and is_proc else "Query"
                 self.selected_tab_title.setText(f"{title} Definition")
+                if hasattr(self, "selected_tab_strategy"):
+                    self.selected_tab_strategy.setText(self.selected_variant.strategy or "")
                 self.sql_tabs.setTabText(0, "Query")
                 self.sql_tabs.setTabVisible(1, False)
             else:
                 self.selected_tab_title.setText(f"{self.selected_variant.label} Query")
+                if hasattr(self, "selected_tab_strategy"):
+                    self.selected_tab_strategy.setText(f"Strategy: {self.selected_variant.strategy}")
                 self.sql_tabs.setTabText(0, "Selected Candidate")
                 self.sql_tabs.setTabVisible(1, True)
 
             # Update Plan Diff Tree
+            is_base = (self.selected_variant.id == 0)
+            diff_tab_idx = 2 if self.sql_tabs.count() > 2 else 1
+            self.sql_tabs.setTabText(diff_tab_idx, "Execution Plan" if is_base else "Execution Plan Diff")
+
             baseline_v = next((v for v in self.variants if v.id == 0), None)
             base_plan = getattr(baseline_v, "plan_root", None) if baseline_v else None
             cand_plan = getattr(self.selected_variant, "plan_root", None)
@@ -637,18 +745,10 @@ class OptimizeSqlDialog(QDialog):
                     cand_plan,
                     "Baseline Plan",
                     f"{self.selected_variant.label} Plan",
+                    is_baseline=is_base,
                 )
 
             self._update_apply_button_state()
-            base_plan = getattr(baseline_v, "plan_root", None) if baseline_v else None
-            cand_plan = getattr(self.selected_variant, "plan_root", None)
-            if hasattr(self, "plan_diff_widget"):
-                self.plan_diff_widget.set_plans(
-                    base_plan,
-                    cand_plan,
-                    "Baseline Plan",
-                    f"{self.selected_variant.label} Plan",
-                )
 
     def _on_tuning_depth_changed(self, index: int) -> None:
         depth = "deep" if index == 1 else "standard"
@@ -716,7 +816,7 @@ class OptimizeSqlDialog(QDialog):
         self.sim_status_lbl.setProperty("picked", "true" if res.is_picked else "false")
 
         if res.is_picked:
-            self.sim_status_lbl.setText("✓ OPTIMIZER SELECTED INDEX")
+            self.sim_status_lbl.setText("OPTIMIZER SELECTED INDEX")
             self.sim_status_lbl.setStyleSheet("color: #166534; font-weight: 700;")
             self.sim_result_frame.setStyleSheet(
                 "background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 4px; padding: 8px 10px; margin-top: 6px;"
@@ -728,8 +828,16 @@ class OptimizeSqlDialog(QDialog):
                 "background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 4px; padding: 8px 10px; margin-top: 6px;"
             )
 
+        if res.cost_reduction_pct > 0:
+            reduction_str = f"(-{res.cost_reduction_pct:.1f}%)"
+        elif res.cost_reduction_pct < 0:
+            reduction_str = f"(+{abs(res.cost_reduction_pct):.1f}%)"
+        else:
+            reduction_str = "(0.0% change)"
+
         self.sim_metric_lbl.setText(
-            f"Plan: {res.baseline_plan_node} → {res.simulated_plan_node} | Cost: {res.baseline_cost:.1f} → {res.simulated_cost:.1f} (-{res.cost_reduction_pct}%)"
+            f"Plan: {res.baseline_plan_node} → {res.simulated_plan_node} | "
+            f"Cost: {res.baseline_cost:.1f} → {res.simulated_cost:.1f} {reduction_str}"
         )
         self.sim_detail_lbl.setText(f"{res.engine_method} • {res.details}")
 

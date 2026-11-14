@@ -21,6 +21,9 @@ def copy_result_with_header(manager, table_view: QTableView):
         return
 
     rows = []
+    include_headers = bool(
+        getattr(getattr(manager, "main_window", None), "grid_copy_headers", True)
+    )
 
     selected_rows = sel.selectedRows()
     selected_indexes = sel.selectedIndexes()
@@ -28,11 +31,12 @@ def copy_result_with_header(manager, table_view: QTableView):
     if selected_rows:
         columns = range(model.columnCount())
 
-        header = [
-            str(model.headerData(col, Qt.Orientation.Horizontal) or "")
-            for col in columns
-        ]
-        rows.append("\t".join(header))
+        if include_headers:
+            header = [
+                str(model.headerData(col, Qt.Orientation.Horizontal) or "")
+                for col in columns
+            ]
+            rows.append("\t".join(header))
 
         for selected_row in selected_rows:
             row = selected_row.row()
@@ -48,11 +52,12 @@ def copy_result_with_header(manager, table_view: QTableView):
 
         columns = sorted({index.column() for index in selected_indexes})
 
-        header = [
-            str(model.headerData(col, Qt.Orientation.Horizontal) or "")
-            for col in columns
-        ]
-        rows.append("\t".join(header))
+        if include_headers:
+            header = [
+                str(model.headerData(col, Qt.Orientation.Horizontal) or "")
+                for col in columns
+            ]
+            rows.append("\t".join(header))
 
         current_row = selected_indexes[0].row()
         row_data = []

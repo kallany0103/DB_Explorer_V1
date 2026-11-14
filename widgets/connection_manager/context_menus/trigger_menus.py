@@ -2,6 +2,7 @@
 """Modular context menu builder for Triggers."""
 
 from functools import partial
+from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
 
 
@@ -37,17 +38,16 @@ class TriggerMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "PSQL Tool", "mdi.console")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_usql_tool(item_data)
-        )
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "native_terminals"):
+            act = action(self.manager, "PSQL Tool", "mdi.console")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_usql_tool(item_data)
+            )
+            menu.addAction(act)
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(
-                item_data, item_data.get("table_name", "Triggers")
-            )
+            lambda: self.manager.connection_actions.open_query_tool(item_data)
         )
         menu.addAction(act)
 
@@ -56,7 +56,6 @@ class TriggerMenuBuilder:
 
     def build_menu(self, menu, item, item_data):
         display_name = item_data.get('trigger_name')
-        table_name = item_data.get('table_name')
         enabled_status = item_data.get('tgenabled')
 
         # Enable/Disable toggle action
@@ -76,7 +75,7 @@ class TriggerMenuBuilder:
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, table_name)
+            lambda: self.manager.connection_actions.open_query_tool(item_data)
         )
         menu.addAction(act)
 

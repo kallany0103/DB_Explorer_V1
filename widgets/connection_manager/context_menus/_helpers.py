@@ -5,6 +5,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu
 import qtawesome as qta
 
+from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.menu_style import apply_menu_style
 
 
@@ -45,17 +46,18 @@ def add_properties_statistics_actions(menu, manager, item_data, obj_name):
     )
     menu.addAction(quick_desc_act)
 
-    act = action(manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
-    act.triggered.connect(
-        lambda _checked=False, data=item_data, name=obj_name: manager.open_properties_workbench(data, name)
-    )
-    menu.addAction(act)
+    if is_feature_enabled(manager, "object_inspector"):
+        act = action(manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+        act.triggered.connect(
+            lambda _checked=False, data=item_data, name=obj_name: manager.open_properties_workbench(data, name)
+        )
+        menu.addAction(act)
 
-    act = action(manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
-    act.triggered.connect(
-        lambda _checked=False, data=item_data, name=obj_name: manager.open_statistics_workbench(data, name)
-    )
-    menu.addAction(act)
+        act = action(manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
+        act.triggered.connect(
+            lambda _checked=False, data=item_data, name=obj_name: manager.open_statistics_workbench(data, name)
+        )
+        menu.addAction(act)
 
 
 def submenu(parent_menu, label, icon_key=None):

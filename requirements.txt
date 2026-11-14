@@ -11,5 +11,8 @@ openpyxl
 pywinpty
 httpx
 keyring
-drivers/windows/x64/cdata_servicenow_connector-25.0.9539-cp311-cp311-win_amd64.whl
-drivers/windows/x64/cdata_csv_connector-25.0.9539-cp311-cp311-win_amd64.whl
+duckdb>=2.0.0
+dlt>=1.32.0
+# CData legacy connectors (deprecated by DuckDB and dlt engine)
+# drivers/windows/x64/cdata_servicenow_connector-25.0.9539-cp311-cp311-win_amd64.whl
+# drivers/windows/x64/cdata_csv_connector-25.0.9539-cp311-cp311-win_amd64.whl

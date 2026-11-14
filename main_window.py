@@ -1,5 +1,17 @@
 # main_window.py
-from PySide6.QtWidgets import QMainWindow, QTabWidget, QSplitter, QStatusBar, QMessageBox, QLabel, QMenu, QProgressDialog
+from PySide6.QtWidgets import (
+    QMainWindow,
+    QTabWidget,
+    QSplitter,
+    QStatusBar,
+    QMessageBox,
+    QLabel,
+    QMenu,
+    QProgressDialog,
+    QWidget,
+    QHBoxLayout,
+    QPushButton,
+)
 from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint, QEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction, QDesktopServices
@@ -18,8 +30,13 @@ from dialogs import PreferencesDialog
 from widgets.login_dialog import LoginDialog
 from ui.theme import setup_theme
 from ui.menu_style import apply_menu_style
+from ui.feature_flags import (
+    CONNECTOR_FEATURE_KEYS,
+    default_feature_flags,
+    is_feature_enabled as check_feature_flag,
+    normalize_feature_flags,
+)
 import db
-import qtawesome as qta
 from PySide6.QtWidgets import QSpacerItem
 from widgets.app_shell import (
     build_main_window_actions,
@@ -50,9 +67,6 @@ from auth.session import AuthSession
 from workers.google_login_worker import GoogleSignInWorker
 import os
 import subprocess
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import QMessageBox
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -71,12 +85,19 @@ class MainWindow(QMainWindow):
         self.pg_bin_path = ""
         self.use_wsl = False
         self.default_connection_id = None
+        self.feature_flags: dict[str, bool] = default_feature_flags()
         self.editor_font_family = "Consolas"
         self.editor_font_size = 10
         self.editor_tab_size = 4
         self.editor_word_wrap = False
         self.editor_line_numbers = True
         self.editor_auto_uppercase = True
+        self.theme = "Grey (Default)"
+        self.grid_null_text = "NULL"
+        self.grid_datetime_format = "YYYY-MM-DD HH:mm:ss"
+        self.grid_page_size = "100"
+        self.grid_show_row_numbers = True
+        self.grid_copy_headers = True
 
         self.auth_session = AuthSession(self)
         self.auth_session.state_changed.connect(self._on_auth_state_changed)
@@ -96,8 +117,9 @@ class MainWindow(QMainWindow):
         # 2. Initialize Tab Widget (needed by managers)
         self.tab_widget = QTabWidget()
         self.tab_widget.setMinimumWidth(200)
-        self.tab_widget.setIconSize(QSize(16, 16))
+        self.tab_widget.setIconSize(QSize(14, 14))
         self.tab_widget.setTabsClosable(True)
+        self.tab_widget.setMovable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self._update_cli_action_states)
 
@@ -152,7 +174,9 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
 
         # 6. Additional UI for Tab Widget
-        add_tab_btn = SecondaryButton("New ")
+        add_tab_btn = QPushButton("New")
+        add_tab_btn.setObjectName("add_tab_btn")
+        add_tab_btn.setIconSize(QSize(11, 11))
         add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_tab_btn.setIcon(qta.icon('fa5s.caret-down', color='#1f2937'))
         add_tab_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -169,17 +193,17 @@ class MainWindow(QMainWindow):
         action_new_worksheet.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_worksheet.triggered.connect(self.add_tab)
 
-        action_new_erd = QAction(qta.icon('fa6s.sitemap'), "New ERD", self)
-        action_new_erd.setShortcut("Ctrl+Shift+E")
-        action_new_erd.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
-        action_new_erd.triggered.connect(self.add_erd_tab)
+        self.action_new_erd = QAction(qta.icon('fa6s.sitemap'), "New ERD", self)
+        self.action_new_erd.setShortcut("Ctrl+Shift+E")
+        self.action_new_erd.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.action_new_erd.triggered.connect(self.add_erd_tab)
 
         new_tab_menu.addAction(action_new_worksheet)
-        new_tab_menu.addAction(action_new_erd)
+        new_tab_menu.addAction(self.action_new_erd)
 
         # Explicitly add actions to the window so their shortcuts trigger regardless of whether the dropdown is open
         self.addAction(action_new_worksheet)
-        self.addAction(action_new_erd)
+        self.addAction(self.action_new_erd)
 
 
 
@@ -189,7 +213,46 @@ class MainWindow(QMainWindow):
             new_tab_menu.exec(add_tab_btn.mapToGlobal(QPoint(x_pos, add_tab_btn.height() + 2)))
 
         add_tab_btn.clicked.connect(show_new_tab_menu)
-        self.tab_widget.setCornerWidget(add_tab_btn, Qt.Corner.TopRightCorner)
+
+        tab_list_btn = QPushButton("")
+        tab_list_btn.setObjectName("tab_list_btn")
+        tab_list_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        tab_list_btn.setIcon(qta.icon("mdi6.format-list-bulleted", color="#475569"))
+        tab_list_btn.setIconSize(QSize(13, 13))
+        tab_list_btn.setToolTip("Open Worksheets & Tabs")
+
+        def show_tab_list_menu():
+            tab_list_menu = QMenu(self)
+            apply_menu_style(tab_list_menu)
+            tab_list_menu.setObjectName("tab_list_menu")
+            tab_list_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            current_idx = self.tab_widget.currentIndex()
+            for idx in range(self.tab_widget.count()):
+                title = self.tab_widget.tabText(idx) or f"Tab {idx + 1}"
+                act = QAction(title, tab_list_menu)
+                act.setCheckable(True)
+                act.setChecked(idx == current_idx)
+                act.triggered.connect(
+                    lambda _checked=False, target_idx=idx: self.tab_widget.setCurrentIndex(target_idx)
+                )
+                tab_list_menu.addAction(act)
+
+            menu_width = tab_list_menu.sizeHint().width()
+            x_pos = tab_list_btn.width() - menu_width
+            tab_list_menu.exec(tab_list_btn.mapToGlobal(QPoint(x_pos, tab_list_btn.height() + 2)))
+
+        tab_list_btn.clicked.connect(show_tab_list_menu)
+        self.tab_list_btn = tab_list_btn
+
+        tab_corner_widget = QWidget(self.tab_widget)
+        tab_corner_layout = QHBoxLayout(tab_corner_widget)
+        tab_corner_layout.setContentsMargins(4, 0, 2, 0)
+        tab_corner_layout.setSpacing(4)
+        tab_corner_layout.addWidget(tab_list_btn)
+        tab_corner_layout.addWidget(add_tab_btn)
+
+        self.tab_widget.setCornerWidget(tab_corner_widget, Qt.Corner.TopRightCorner)
 
         self.thread_monitor_timer = QTimer()
         self.thread_monitor_timer.timeout.connect(self.update_thread_pool_status)
@@ -250,6 +313,8 @@ class MainWindow(QMainWindow):
         return self.worksheet_manager.add_tab()
 
     def add_erd_tab(self):
+        if not self.is_feature_enabled("erd_designer"):
+            return
         erd_number = sum(
             1 for i in range(self.tab_widget.count())
             if getattr(self.tab_widget.widget(i), "is_empty_erd", False)
@@ -262,6 +327,8 @@ class MainWindow(QMainWindow):
         self.renumber_tabs()
 
     def add_dashboard_tab(self):
+        if not self.is_feature_enabled("workspace_dashboard"):
+            return
         # Prevent multiple dashboard tabs
         for i in range(self.tab_widget.count()):
             if self.tab_widget.tabText(i) == "Dashboard":
@@ -327,6 +394,8 @@ class MainWindow(QMainWindow):
         return widget
 
     def show_properties_workbench(self, item_data, obj_name):
+        if not self.is_feature_enabled("object_inspector"):
+            return
         if item_data is None:
             QMessageBox.warning(self, "Properties", "No object selected.")
             return
@@ -336,6 +405,8 @@ class MainWindow(QMainWindow):
         widget.update_view(prepared, obj_name)
 
     def show_statistics_workbench(self, item_data, obj_name):
+        if not self.is_feature_enabled("object_inspector"):
+            return
         if item_data is None:
             QMessageBox.warning(self, "Statistics", "No object selected.")
             return
@@ -345,11 +416,15 @@ class MainWindow(QMainWindow):
         widget.update_view(prepared, obj_name)
 
     def add_properties_tab(self):
+        if not self.is_feature_enabled("object_inspector"):
+            return
         widget = self._ensure_properties_workbench()
         self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(widget))
         self._populate_inspector_from_tree_selection(widget)
 
     def add_statistics_tab(self):
+        if not self.is_feature_enabled("object_inspector"):
+            return
         widget = self._ensure_statistics_workbench()
         self.tab_widget.setCurrentIndex(self.tab_widget.indexOf(widget))
         self._populate_inspector_from_tree_selection(widget)
@@ -512,7 +587,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.4</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.5</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def show_release_notes_dialog(self):
         """Open RELEASE_NOTES.md in Notepad or standard text/document reader."""
@@ -688,15 +763,21 @@ class MainWindow(QMainWindow):
                 cursor.insertText(text.title())
 
     def explain_query(self):
+        if not self.is_feature_enabled("execution_plan"):
+            return
         self.worksheet_manager.explain_query()
 
     def explain_plan_query(self):
+        if not self.is_feature_enabled("execution_plan"):
+            return
         self.worksheet_manager.explain_plan_query()
 
     def describe_query(self):
         self.worksheet_manager.describe_query()
 
     def optimize_query(self):
+        if not self.is_feature_enabled("sql_optimizer"):
+            return
         self.worksheet_manager.optimize_query()
 
     def describe_object(self, target: str = None, conn_data: dict = None):
@@ -726,14 +807,22 @@ class MainWindow(QMainWindow):
         close_all_tabs_action(self)
 
     def close_tab(self, index):
-        # Keep dashboard reference accurate when the dashboard tab is closed.
         widget = self.tab_widget.widget(index)
+        if not widget:
+            return False
+
+        results_mgr = getattr(widget, "_results_manager", None) or getattr(self, "results_manager", None)
+        if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+            if not results_mgr.check_unsaved_changes_before_action(widget, "closing this worksheet"):
+                return False
+
+        # Keep dashboard reference accurate when the dashboard tab is closed.
         if widget is not None and widget is self.dashboard_widget:
             self.dashboard_widget = None
 
         if isinstance(widget, USQLToolWidget):
             widget.close_process()
-        close_tab_action(self, index)
+        return close_tab_action(self, index)
 
 
     # WINDOW / HELP / STYLE / SESSION
@@ -788,7 +877,6 @@ class MainWindow(QMainWindow):
 
             # Flip button icon → expand arrow
             if hasattr(cm, 'collapse_panel_btn'):
-                from PySide6.QtCore import QSize
                 cm.collapse_panel_btn.setFixedSize(24, 24)
                 cm.collapse_panel_btn.setIcon(
                     qta.icon('mdi.chevron-double-right', color='#6b7280')
@@ -832,7 +920,6 @@ class MainWindow(QMainWindow):
 
             # Flip button icon → collapse arrow
             if hasattr(cm, 'collapse_panel_btn'):
-                from PySide6.QtCore import QSize
                 cm.collapse_panel_btn.setFixedSize(24, 24)
                 cm.collapse_panel_btn.setIcon(
                     qta.icon('mdi.chevron-double-left', color='#6b7280')
@@ -861,62 +948,184 @@ class MainWindow(QMainWindow):
         update_thread_pool_status_action(self)
    
     def show_preferences(self):
+        existing = getattr(self, "_preferences_dialog", None)
+        if existing is not None:
+            if existing.isMinimized():
+                existing.showNormal()
+            existing.show()
+            existing.raise_()
+            existing.activateWindow()
+            return
+
         dialog = PreferencesDialog(self)
-        if dialog.exec():
-            settings = dialog.get_settings()
-            self.pg_bin_path = settings.get("pg_bin_path", "")
-            self.oracle_bin_path = settings.get("oracle_bin_path", "")
-            self.use_wsl = settings.get("use_wsl", False)
-            self.default_connection_id = settings.get("default_connection_id", None)
-            self.confirm_tab_close = settings.get("confirm_tab_close", True)
-            self.restore_session_on_startup = settings.get("restore_session_on_startup", True)
-            
-            # Editor settings
-            self.editor_font_family = settings.get("editor_font_family", "Consolas")
-            self.editor_font_size = settings.get("editor_font_size", 10)
-            self.editor_tab_size = settings.get("editor_tab_size", 4)
-            self.editor_word_wrap = settings.get("editor_word_wrap", False)
-            self.editor_line_numbers = settings.get("editor_line_numbers", True)
-            self.editor_auto_uppercase = settings.get("editor_auto_uppercase", True)
-            self.editor_autocomplete = settings.get("editor_autocomplete", True)
-            self.editor_highlight_line = settings.get("editor_highlight_line", True)
-            self.editor_keyword_casing = settings.get("editor_keyword_casing", "UPPERCASE")
-            self.editor_identifier_casing = settings.get("editor_identifier_casing", "Preserve (As-is)")
-            self.editor_auto_close_chars = settings.get("editor_auto_close_chars", True)
-            self.editor_auto_indent = settings.get("editor_auto_indent", True)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self._preferences_dialog = dialog
+        dialog.settings_applied.connect(self._apply_preferences_dict)
+        dialog.accepted.connect(
+            lambda: self._apply_preferences_dict(dialog.get_settings())
+            if dialog.has_pending_changes()
+            else None
+        )
+        dialog.finished.connect(lambda _res: setattr(self, "_preferences_dialog", None))
+        dialog.show()
 
-            # Execution settings
-            self.query_timeout_sec = settings.get("query_timeout_sec", 300)
-            if hasattr(self, "worksheet_manager") and hasattr(self.worksheet_manager, "QUERY_TIMEOUT"):
-                self.worksheet_manager.QUERY_TIMEOUT = self.query_timeout_sec * 1000
-            self.default_row_limit = settings.get("default_row_limit", "No Limit")
+    def _apply_preferences_dict(self, settings: dict) -> None:
+        self.pg_bin_path = settings.get("pg_bin_path", "")
+        self.oracle_bin_path = settings.get("oracle_bin_path", "")
+        self.use_wsl = settings.get("use_wsl", False)
+        self.default_connection_id = settings.get("default_connection_id", None)
+        self.confirm_tab_close = settings.get("confirm_tab_close", True)
+        self.restore_session_on_startup = settings.get("restore_session_on_startup", True)
 
-            # Results & Grid settings
-            self.grid_null_text = settings.get("grid_null_text", "NULL")
-            self.grid_datetime_format = settings.get("grid_datetime_format", "YYYY-MM-DD HH:mm:ss")
-            self.grid_page_size = settings.get("grid_page_size", "100")
-            self.grid_show_row_numbers = settings.get("grid_show_row_numbers", True)
-            self.grid_copy_headers = settings.get("grid_copy_headers", True)
+        # Editor settings
+        self.editor_font_family = settings.get("editor_font_family", "Consolas")
+        self.editor_font_size = settings.get("editor_font_size", 10)
+        self.editor_tab_size = settings.get("editor_tab_size", 4)
+        self.editor_word_wrap = settings.get("editor_word_wrap", False)
+        self.editor_line_numbers = settings.get("editor_line_numbers", True)
+        self.editor_auto_uppercase = settings.get("editor_auto_uppercase", True)
+        self.editor_autocomplete = settings.get("editor_autocomplete", True)
+        self.editor_highlight_line = settings.get("editor_highlight_line", True)
+        self.editor_keyword_casing = settings.get("editor_keyword_casing", "UPPERCASE")
+        self.editor_identifier_casing = settings.get("editor_identifier_casing", "Preserve (As-is)")
+        self.editor_auto_close_chars = settings.get("editor_auto_close_chars", True)
+        self.editor_auto_indent = settings.get("editor_auto_indent", True)
 
-            # Apply grid preferences live to open result tables
-            self._apply_grid_preferences_to_all_tabs()
+        # Execution settings
+        self.query_timeout_sec = settings.get("query_timeout_sec", 300)
+        if hasattr(self, "worksheet_manager") and hasattr(self.worksheet_manager, "QUERY_TIMEOUT"):
+            self.worksheet_manager.QUERY_TIMEOUT = self.query_timeout_sec * 1000
+        self.default_row_limit = settings.get("default_row_limit", "No Limit")
 
-            # AI settings
-            self.ai_provider = settings.get("ai_provider", "OpenAI")
-            self.ai_model = settings.get("ai_model", "")
-            self.ai_api_key = settings.get("ai_api_key", "")
-            self.ai_base_url = settings.get("ai_base_url", "")
+        # Results & Grid settings
+        self.grid_null_text = settings.get("grid_null_text", "NULL")
+        self.grid_datetime_format = settings.get("grid_datetime_format", "YYYY-MM-DD HH:mm:ss")
+        self.grid_page_size = settings.get("grid_page_size", "100")
+        self.grid_show_row_numbers = settings.get("grid_show_row_numbers", True)
+        self.grid_copy_headers = settings.get("grid_copy_headers", True)
 
-            # Apply editor preferences to all open worksheet tabs
-            self._apply_editor_preferences_to_all_tabs()
+        self._apply_grid_preferences_to_all_tabs()
 
-            new_theme = settings.get("theme", "Light")
-            if getattr(self, "theme", "Light") != new_theme:
-                self.theme = new_theme
-                setup_theme(QApplication.instance(), new_theme)
-                
-            # Save session immediately to persist settings
-            save_main_window_session(self, self.SESSION_FILE)
+        # AI settings
+        self.ai_provider = settings.get("ai_provider", "OpenAI")
+        self.ai_model = settings.get("ai_model", "")
+        self.ai_api_key = settings.get("ai_api_key", "")
+        self.ai_base_url = settings.get("ai_base_url", "")
+
+        self._apply_editor_preferences_to_all_tabs()
+
+        new_theme = settings.get("theme", "Light")
+        if getattr(self, "theme", "Light") != new_theme:
+            self.theme = new_theme
+            setup_theme(QApplication.instance(), new_theme)
+
+        old_flags = normalize_feature_flags(getattr(self, "feature_flags", None))
+        new_flags = normalize_feature_flags(settings.get("feature_flags"))
+        connectors_changed = any(
+            old_flags.get(k) != new_flags.get(k) for k in CONNECTOR_FEATURE_KEYS
+        )
+        self.feature_flags = new_flags
+        self.apply_feature_flags(refresh_connections=connectors_changed)
+
+        # Save session immediately to persist settings
+        save_main_window_session(self, self.SESSION_FILE)
+
+    def is_feature_enabled(self, key: str) -> bool:
+        """Return True if the specified feature flag key is enabled."""
+        return check_feature_flag(self.feature_flags, key)
+
+    @staticmethod
+    def _set_action_feature_state(action: QAction | None, enabled: bool) -> None:
+        if action is None:
+            return
+        action.setVisible(enabled)
+        action.setEnabled(enabled)
+
+    def _apply_feature_flags_to_worksheets(self) -> None:
+        ai_on = self.is_feature_enabled("ai_assistant")
+        optimizer_on = self.is_feature_enabled("sql_optimizer")
+        wm = getattr(self, "worksheet_manager", None)
+        if wm:
+            self._set_action_feature_state(getattr(wm, "ws_explain_ai_action", None), ai_on)
+            self._set_action_feature_state(getattr(wm, "ws_optimize_action", None), optimizer_on)
+            self._set_action_feature_state(getattr(wm, "ws_optimize_batch_action", None), optimizer_on)
+
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            toolbar = getattr(tab, "toolbar_widget", None)
+            if toolbar and hasattr(toolbar, "apply_feature_flags"):
+                toolbar.apply_feature_flags(self.feature_flags)
+            ai_panel = getattr(tab, "ai_chat_panel", None)
+            if ai_panel and not ai_on:
+                ai_panel.hide()
+
+    def _close_disabled_feature_tabs(self) -> None:
+        disabled_indices = []
+        for i in range(self.tab_widget.count()):
+            widget = self.tab_widget.widget(i)
+            if isinstance(widget, DashboardWidget) and not self.is_feature_enabled("workspace_dashboard"):
+                disabled_indices.append(i)
+            elif isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)) and not self.is_feature_enabled("object_inspector"):
+                disabled_indices.append(i)
+            elif isinstance(widget, ERDWidget) and not self.is_feature_enabled("erd_designer"):
+                disabled_indices.append(i)
+
+        if not disabled_indices:
+            return
+
+        if len(disabled_indices) >= self.tab_widget.count():
+            self.add_tab()
+
+        for i in reversed(disabled_indices):
+            widget = self.tab_widget.widget(i)
+            if widget is not None and hasattr(widget, "cleanup"):
+                widget.cleanup()
+            if widget is self.dashboard_widget:
+                self.dashboard_widget = None
+            self.tab_widget.removeTab(i)
+            if widget is not None:
+                widget.deleteLater()
+        self.renumber_tabs()
+
+    def apply_feature_flags(self, refresh_connections: bool = False) -> None:
+        """Apply current feature toggles across menus, toolbars, workbenches, and explorers."""
+        action_feature_map = (
+            ("execution_plan", ("explain_action", "explain_analyze_action", "explain_plan_action")),
+            ("sql_optimizer", ("optimize_action",)),
+            ("erd_designer", ("action_new_erd",)),
+            ("workspace_dashboard", ("dashboard_action",)),
+            ("object_inspector", ("properties_tool_action", "statistics_tool_action")),
+            ("schema_compare", ("schema_diff_tool_action",)),
+            ("connector_oracle", ("oracle_help_action",)),
+        )
+        for key, attrs in action_feature_map:
+            enabled = self.is_feature_enabled(key)
+            for attr in attrs:
+                self._set_action_feature_state(getattr(self, attr, None), enabled)
+
+        terminals_on = self.is_feature_enabled("native_terminals")
+        for attr in ("execute_usql_action", "execute_sqlplus_action"):
+            act = getattr(self, attr, None)
+            if act is not None:
+                act.setVisible(terminals_on)
+                if not terminals_on:
+                    act.setEnabled(False)
+        if terminals_on:
+            self._update_cli_action_states()
+
+        cm = getattr(self, "connection_manager", None)
+        if cm and hasattr(cm, "collapsed_new_erd_btn"):
+            cm.collapsed_new_erd_btn.setVisible(self.is_feature_enabled("erd_designer"))
+
+        self._close_disabled_feature_tabs()
+        self._apply_feature_flags_to_worksheets()
+
+        if refresh_connections and cm:
+            cm._save_tree_expansion_state()
+            cm.load_data()
+            cm._restore_tree_expansion_state()
+            if hasattr(self, "worksheet_manager"):
+                self.worksheet_manager.refresh_all_comboboxes()
 
     def _apply_editor_preferences_to_all_tabs(self):
         """Broadcasts current editor preferences to all open worksheet CodeEditors."""
@@ -943,12 +1152,33 @@ class MainWindow(QMainWindow):
 
     def _apply_grid_preferences_to_all_tabs(self):
         """Updates row numbers visibility and table settings across open results tables."""
+        from PySide6.QtCore import QSortFilterProxyModel
         from PySide6.QtWidgets import QTableView
+
+        show_row_numbers = bool(getattr(self, "grid_show_row_numbers", True))
+        null_text = getattr(self, "grid_null_text", "NULL")
+        if null_text is None:
+            null_text = "NULL"
+
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             tables = tab.findChildren(QTableView, "results_table")
             for table in tables:
-                table.verticalHeader().setVisible(getattr(self, "grid_show_row_numbers", True))
+                table.verticalHeader().setVisible(show_row_numbers)
+                model = table.model()
+                source_model = (
+                    model.sourceModel() if isinstance(model, QSortFilterProxyModel) else model
+                )
+                if hasattr(source_model, "item") and source_model.rowCount() <= 5000:
+                    for row in range(source_model.rowCount()):
+                        for col in range(source_model.columnCount()):
+                            item = source_model.item(row, col)
+                            if item is None:
+                                continue
+                            edit_data = item.data(Qt.ItemDataRole.UserRole)
+                            if isinstance(edit_data, dict) and edit_data.get("is_db_null"):
+                                item.setData(str(null_text), Qt.ItemDataRole.DisplayRole)
+                table.viewport().update()
 
     def show_login(self):
         dialog = LoginDialog(self)
@@ -1025,6 +1255,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Confirm exit and save session state."""
+        # Prompt for unsaved changes across all open worksheets before exiting
+        if hasattr(self, "results_manager") and hasattr(self.results_manager, "check_unsaved_changes_before_action"):
+            for i in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(i)
+                if tab and not self.results_manager.check_unsaved_changes_before_action(tab, "exiting the application"):
+                    event.ignore()
+                    return
+
         active_queries = len(self.worksheet_manager.running_queries)
 
         if active_queries > 0:
@@ -1057,6 +1295,17 @@ class MainWindow(QMainWindow):
                     runner.cancel()
                 except Exception:
                     pass
+
+            # Cleanly stop tab background QThreads (Dashboard, ERD, AI) and auth worker
+            for i in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(i)
+                if tab and hasattr(tab, "cleanup"):
+                    tab.cleanup()
+                ai_panel = getattr(tab, "ai_chat_panel", None) if tab else None
+                if ai_panel and hasattr(ai_panel, "cleanup"):
+                    ai_panel.cleanup()
+            if hasattr(self, "auth_session") and hasattr(self.auth_session, "cleanup"):
+                self.auth_session.cleanup()
 
             # Close all PostgreSQL connection pools
             try:
@@ -1261,5 +1510,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.save_query_to_history(conn_data, query, status, rows, duration)
 
     def explain_code_using_ai(self):
+        if not self.is_feature_enabled("ai_assistant"):
+            return
         self.worksheet_manager.explain_code_using_ai()
 

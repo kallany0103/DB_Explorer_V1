@@ -1,6 +1,7 @@
 # widgets/connection_manager/context_menus/mview_menus.py
 """Modular context menu builder for Materialized Views."""
 
+from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
 
 class MaterializedViewMenuBuilder:
@@ -62,7 +63,7 @@ class MaterializedViewMenuBuilder:
         
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
         act.triggered.connect(
-            lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name)
+            lambda: self.manager.connection_actions.open_query_tool(item_data)
         )
         menu.addAction(act)
 
@@ -89,25 +90,27 @@ class MaterializedViewMenuBuilder:
         )
         scripts_sub.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "ERD for Materialized View", "fa6s.sitemap")
-        act.triggered.connect(
-            lambda: self.manager.generate_erd_for_item(item_data, f"M-View: {display_name}")
-        )
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "erd_designer"):
+            menu.addSeparator()
+            act = action(self.manager, "ERD for Materialized View", "fa6s.sitemap")
+            act.triggered.connect(
+                lambda: self.manager.generate_erd_for_item(item_data, f"M-View: {display_name}")
+            )
+            menu.addAction(act)
 
-        menu.addSeparator()
-        act = action(self.manager, "Backup...", "mdi.backup-restore")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_backup_dialog(item_data)
-        )
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "backup_restore"):
+            menu.addSeparator()
+            act = action(self.manager, "Backup...", "mdi.backup-restore")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+            )
+            menu.addAction(act)
 
-        act = action(self.manager, "Restore...", "mdi.database-import")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.open_restore_dialog(item_data)
-        )
-        menu.addAction(act)
+            act = action(self.manager, "Restore...", "mdi.database-import")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+            )
+            menu.addAction(act)
 
         menu.addSeparator()
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)

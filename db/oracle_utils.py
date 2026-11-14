@@ -927,7 +927,8 @@ def prepare_oracle_query(query: str) -> tuple[str, bool, bool]:
         return "", False, False
 
     raw = query.strip()
-    cleaned = re.sub(r"/\s*$", "", raw).strip()
+    cleaned = re.sub(r"(?:^|\n)\s*/\s*;?\s*$", "", raw).strip()
+    cleaned = re.sub(r"/\s*;?\s*$", "", cleaned).strip()
 
     uncommented = re.sub(r"--[^\n]*", "", cleaned)
     uncommented = re.sub(r"/\*.*?\*/", "", uncommented, flags=re.DOTALL).strip()
@@ -1660,3 +1661,169 @@ def generate_oracle_update_script(
             conn.close()
         except Exception:
             pass
+
+
+def is_oracle_explain_query(query: str) -> tuple[bool, bool, str]:
+    """Check if query is an Oracle explain plan or explain analyze command.
+
+    Returns:
+        (is_explain, is_analyze, clean_underlying_sql)
+    """
+    if not query:
+        return False, False, ""
+    cleaned = re.sub(r"--[^\n]*", "", query)
+    cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL).strip().rstrip(";")
+    upper = cleaned.upper()
+
+    # Pattern 1: EXPLAIN ANALYZE <sql>
+    if upper.startswith("EXPLAIN ANALYZE"):
+        underlying = re.sub(r"^\s*EXPLAIN\s+ANALYZE\s+", "", cleaned, flags=re.IGNORECASE).strip()
+        if underlying.upper().startswith("FOR "):
+            underlying = underlying[4:].strip()
+        return True, True, underlying
+
+    # Pattern 2: EXPLAIN PLAN FOR <sql>
+    if upper.startswith("EXPLAIN PLAN"):
+        underlying = re.sub(
+            r"^\s*EXPLAIN\s+PLAN\s+(?:SET\s+STATEMENT_ID\s*=\s*'[^']*'\s+)?(?:INTO\s+\w+\s+)?FOR\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        return True, False, underlying
+
+    # Pattern 3: EXPLAIN <sql> or EXPLAIN (...) <sql> (Postgres-style executed on Oracle)
+    if upper.startswith("EXPLAIN ") and not upper.startswith("EXPLAIN PLAN"):
+        underlying = re.sub(r"^\s*EXPLAIN\s+(?:\([^)]*\)\s+)?", "", cleaned, flags=re.IGNORECASE).strip()
+        if underlying.upper().startswith("FOR "):
+            underlying = underlying[4:].strip()
+        is_analyze = "ANALYZE" in upper[:35]
+        return True, is_analyze, underlying
+
+    return False, False, ""
+
+
+def execute_oracle_explain(cursor, conn, underlying_sql: str, is_analyze: bool = False):
+    """Execute Oracle explain plan/analyze.
+
+    Returns:
+        (text_rows, columns, column_specs, explain_json, elapsed_time)
+    """
+    import time
+    import uuid
+
+    clean_sql = underlying_sql.strip().rstrip(";")
+    stmt_id = f"usql_{uuid.uuid4().hex[:10]}"
+    t_start = time.time()
+    exec_time_ms = None
+    actual_rows = 0
+
+    if is_analyze:
+        upper = clean_sql.upper()
+        if upper.startswith("SELECT") or upper.startswith("WITH"):
+            t0 = time.time()
+            cursor.execute(clean_sql)
+            fetched = cursor.fetchall() if cursor.description else []
+            actual_rows = len(fetched)
+            exec_time_ms = round((time.time() - t0) * 1000, 2)
+
+    # Execute EXPLAIN PLAN
+    cursor.execute(f"EXPLAIN PLAN SET STATEMENT_ID = '{stmt_id}' FOR {clean_sql}")
+
+    # 1. Fetch text plan from DBMS_XPLAN
+    text_rows = []
+    try:
+        cursor.execute(
+            "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY('PLAN_TABLE', :1, 'TYPICAL'))",
+            [stmt_id],
+        )
+        text_rows = cursor.fetchall()
+    except Exception:
+        try:
+            cursor.execute("SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())")
+            text_rows = cursor.fetchall()
+        except Exception:
+            text_rows = [("Plan executed successfully.",)]
+
+    # 2. Fetch structured plan from PLAN_TABLE for ExplainVisualizer
+    plan_rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, parent_id, operation, options, object_name, cost, cardinality,
+                   access_predicates, filter_predicates
+            FROM plan_table
+            WHERE statement_id = :1
+            ORDER BY id
+            """,
+            [stmt_id],
+        )
+        plan_rows = cursor.fetchall()
+    except Exception:
+        pass
+    finally:
+        try:
+            cursor.execute("DELETE FROM plan_table WHERE statement_id = :1", [stmt_id])
+            if conn:
+                conn.commit()
+        except Exception:
+            pass
+
+    # 3. Build graphical plan JSON
+    explain_json = None
+    if plan_rows:
+        nodes_by_id = {}
+        parent_map = {}
+        root_id = None
+        for r in plan_rows:
+            node_id = int(r[0])
+            parent_id = int(r[1]) if r[1] is not None and r[1] != "" else None
+            op = f"{r[2] or ''} {r[3] or ''}".strip()
+            obj = str(r[4] or "")
+            cost = float(r[5]) if len(r) > 5 and r[5] is not None else 0.0
+            card = int(r[6]) if len(r) > 6 and r[6] is not None else 0
+
+            node_dict = {
+                "Node Type": op or "Operation",
+                "Relation Name": obj,
+                "Total Cost": cost,
+                "Plan Rows": card,
+                "Startup Cost": 0.0,
+                "Plans": [],
+            }
+            if is_analyze and exec_time_ms is not None:
+                node_dict["Actual Total Time"] = exec_time_ms
+                node_dict["Actual Rows"] = actual_rows
+
+            nodes_by_id[node_id] = node_dict
+            parent_map[node_id] = parent_id
+            if parent_id is None and root_id is None:
+                root_id = node_id
+
+        for nid, pid in parent_map.items():
+            if pid is not None and pid in nodes_by_id and nid in nodes_by_id:
+                nodes_by_id[pid]["Plans"].append(nodes_by_id[nid])
+
+        root_dict = nodes_by_id.get(root_id if root_id is not None else 0)
+        if root_dict:
+            explain_json = [
+                {
+                    "Plan": root_dict,
+                    "Total Runtime": exec_time_ms if is_analyze else None,
+                    "Execution Time": exec_time_ms if is_analyze else None,
+                }
+            ]
+
+    elapsed_time = time.time() - t_start
+    columns = ["PLAN_TABLE_OUTPUT"]
+    column_specs = [
+        {
+            "name": "PLAN_TABLE_OUTPUT",
+            "data_type": "VARCHAR2",
+            "pk": False,
+            "fk": False,
+            "nullable": True,
+            "read_only": True,
+        }
+    ]
+    return text_rows, columns, column_specs, explain_json, elapsed_time

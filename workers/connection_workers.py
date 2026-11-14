@@ -133,9 +133,9 @@ class CsvSchemaWorker(QRunnable):
 
 
 class ServiceNowSchemaWorker(QRunnable):
-    """Loads the ServiceNow table list off the GUI thread."""
+    """Loads the ServiceNow table list off the GUI thread using REST metadata."""
 
-    DEFAULT_TABLES = ["incident", "task", "change_request", "problem"]
+    DEFAULT_TABLES = ["incident", "task", "change_request", "problem", "sys_user", "cmdb_ci"]
 
     def __init__(self, conn_data):
         super().__init__()
@@ -143,26 +143,21 @@ class ServiceNowSchemaWorker(QRunnable):
         self.signals = SchemaWorkerSignals()
 
     def run(self):
-        conn = None
         try:
-            conn = db.create_servicenow_connection(self.conn_data)
-            if not conn:
-                try:
-                    self.signals.error.emit("Unable to connect to ServiceNow")
-                except RuntimeError:
-                    pass
-                return
-
-            cursor = conn.cursor()
-            try:
-                cursor.execute("SELECT TableName FROM sys_tables")
-                tables = [row[0] for row in cursor.fetchall()]
-            except Exception:
-                tables = list(self.DEFAULT_TABLES)
+            from db.servicenow_metadata import fetch_servicenow_tables
+            raw_tables = fetch_servicenow_tables(self.conn_data)
+            tables = [t[0] for t in raw_tables] if raw_tables else list(self.DEFAULT_TABLES)
+            table_entries = [
+                {"name": t[0], "label": t[1]} for t in raw_tables
+            ] if raw_tables else [{"name": t, "label": t.title()} for t in self.DEFAULT_TABLES]
 
             try:
                 self.signals.finished.emit(
-                    {"conn_data": self.conn_data, "tables": tables}
+                    {
+                        "conn_data": self.conn_data,
+                        "tables": tables,
+                        "table_entries": table_entries,
+                    }
                 )
             except RuntimeError:
                 pass
@@ -171,12 +166,6 @@ class ServiceNowSchemaWorker(QRunnable):
                 self.signals.error.emit(str(exc))
             except RuntimeError:
                 pass
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
 
 class ERDSchemaFetchWorker(QRunnable):
@@ -271,6 +260,7 @@ class AvailableSchemasWorker(QThread):
 
     def __init__(self, conn_data: dict, schema_data: dict, parent=None):
         super().__init__(parent)
+        self.setObjectName("AvailableSchemasWorker")
         self._conn_data = conn_data
         self._schema_data = schema_data
 
@@ -304,23 +294,24 @@ class ServiceNowTableDetailsWorker(QRunnable):
         self.signals = SchemaWorkerSignals()
 
     def run(self):
-        conn = None
         try:
-            conn = db.create_servicenow_connection(self.conn_data)
-            if not conn:
-                try:
-                    self.signals.error.emit("Unable to connect to ServiceNow")
-                except RuntimeError:
-                    pass
-                return
+            from db.servicenow_metadata import fetch_servicenow_columns
+            cols = fetch_servicenow_columns(self.conn_data, self.table_name)
+            columns = [c["name"] for c in cols] if cols else []
+            if not columns:
+                conn = db.create_servicenow_connection(self.conn_data)
+                if conn:
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute(f"PRAGMA table_info('{self.table_name}')")
+                        columns = [col[1] for col in cursor.fetchall()]
+                    except Exception:
+                        pass
+                    finally:
+                        conn.close()
 
-            cursor = conn.cursor()
-            try:
-                cursor.execute(f"SELECT * FROM {self.table_name} LIMIT 0")
-            except Exception:
-                cursor.execute(f"SELECT * FROM {self.table_name} WHERE 1=0")
-
-            columns = [col[0] for col in (cursor.description or [])]
+            if not columns:
+                columns = ["sys_id", "number", "short_description", "sys_created_on"]
 
             try:
                 self.signals.finished.emit(
@@ -328,8 +319,38 @@ class ServiceNowTableDetailsWorker(QRunnable):
                         "conn_data": self.conn_data,
                         "table_name": self.table_name,
                         "columns": columns,
+                        "column_details": cols if cols else [{"name": c, "label": c, "type": "STRING"} for c in columns],
                     }
                 )
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+
+
+class ServiceNowSyncWorker(QRunnable):
+    """Syncs or re-syncs a ServiceNow table into local DuckDB cache off the GUI thread."""
+
+    def __init__(self, conn_data: dict, table_name: str, limit: int = 5000):
+        super().__init__()
+        self.conn_data = conn_data
+        self.table_name = table_name
+        self.limit = limit
+        self.signals = SchemaWorkerSignals()
+
+    def run(self):
+        try:
+            from db.servicenow_dlt import sync_servicenow_table
+            db_path = sync_servicenow_table(self.conn_data, self.table_name, limit=self.limit)
+            try:
+                self.signals.finished.emit({
+                    "table_name": self.table_name,
+                    "db_path": db_path,
+                    "status": "success",
+                })
             except RuntimeError:
                 pass
         except Exception as exc:
@@ -549,7 +570,7 @@ class UDSSchemaWorker(QRunnable):
             unified_views = []
             if cursor:
                 try:
-                    cursor.execute("""
+                    cursor.execute(r"""
                         SELECT c.relname, n.nspname
                         FROM pg_class c
                         JOIN pg_namespace n ON n.oid = c.relnamespace

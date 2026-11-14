@@ -30,6 +30,7 @@ from dialogs.connections.engine_forms import (
 )
 from dialogs.connections.launcher_widget import LauncherWidget
 from ui.components import PrimaryButton, SecondaryButton
+from ui.feature_flags import is_connection_type_enabled
 from workers.workers import WorkerThread
 
 
@@ -45,7 +46,7 @@ class UnifiedConnectionDialog(QDialog):
         ("POSTGRES", "PostgreSQL", "assets/postgresql.svg", "POSTGRES"),
         ("SQLITE", "SQLite", "assets/sqlite.svg", "SQLITE"),
         ("SERVICENOW", "ServiceNow", "assets/servicenow.svg", "SERVICENOW"),
-        ("CSV", "CSV / Flat Files", "assets/csv.svg", "CSV"),
+        ("CSV", "CSV", "assets/csv.svg", "CSV"),
     ]
 
     def __init__(
@@ -199,7 +200,13 @@ class UnifiedConnectionDialog(QDialog):
             self.sidebar_back_btn.setVisible(False)
         else:
             self.main_stack.setCurrentIndex(0)
-            self.switch_to_engine(initial_engine)
+            target_engine = initial_engine
+            if not is_connection_type_enabled(self.manager, target_engine):
+                for code, _, _, _ in self.ENGINES:
+                    if is_connection_type_enabled(self.manager, code):
+                        target_engine = code
+                        break
+            self.switch_to_engine(target_engine)
 
     def _build_sidebar(self) -> None:
         self.sidebar_widget = QWidget()
@@ -225,6 +232,8 @@ class UnifiedConnectionDialog(QDialog):
         # Sidebar Engine Buttons
         self.sidebar_buttons: dict[str, QPushButton] = {}
         for code, label, icon_rel, _ in self.ENGINES:
+            if not self.is_editing and not is_connection_type_enabled(self.manager, code):
+                continue
             btn = QPushButton(f" {label}")
             btn.setObjectName("configSidebarItem")
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)

@@ -1037,45 +1037,108 @@ class ServiceNowEngineForm(BaseEngineForm):
         self.server_form.setVerticalSpacing(8)
 
         self.instance_url_input = QLineEdit()
-        self.instance_url_input.setPlaceholderText("e.g. https://dev12345.service-now.com")
+        self.instance_url_input.setPlaceholderText("e.g. dev12345 or https://dev12345.service-now.com")
+        self.instance_url_input.editingFinished.connect(self._format_instance_url)
+
+        self.auth_type_combo = QComboBox()
+        self.auth_type_combo.addItem("Basic Authentication (User / Password)", "basic")
+        self.auth_type_combo.addItem("OAuth 2.0 (Client ID / Client Secret)", "oauth")
+        self.auth_type_combo.currentIndexChanged.connect(self._on_auth_type_changed)
+
+        self.user_label = make_field_label("User")
         self.user_input = QLineEdit()
+        self.user_input.setPlaceholderText("Instance admin or integration user")
+
+        self.password_label = make_field_label("Password")
         self.password_input = PasswordBox()
 
+        self.client_id_label = make_field_label("Client ID")
+        self.client_id_input = QLineEdit()
+        self.client_id_input.setPlaceholderText("OAuth Client ID from ServiceNow instance")
+
+        self.client_secret_label = make_field_label("Client Secret")
+        self.client_secret_input = PasswordBox()
+
         self.server_form.addRow(make_field_label("Instance URL"), self.instance_url_input)
-        self.server_form.addRow(make_field_label("User"), self.user_input)
-        self.server_form.addRow(make_field_label("Password"), self.password_input)
+        self.server_form.addRow(make_field_label("Auth Method"), self.auth_type_combo)
+        self.server_form.addRow(self.user_label, self.user_input)
+        self.server_form.addRow(self.password_label, self.password_input)
+        self.server_form.addRow(self.client_id_label, self.client_id_input)
+        self.server_form.addRow(self.client_secret_label, self.client_secret_input)
 
         self.main_layout.addLayout(self.server_form)
 
+        # Initialize field visibility based on default auth type
+        self._on_auth_type_changed()
+
+    def _format_instance_url(self) -> None:
+        raw = self.instance_url_input.text().strip()
+        if raw:
+            from db.servicenow_metadata import _normalize_instance_url
+            self.instance_url_input.setText(_normalize_instance_url(raw))
+
+    def _on_auth_type_changed(self) -> None:
+        is_oauth = self.auth_type_combo.currentData() == "oauth"
+        self.user_label.setVisible(not is_oauth)
+        self.user_input.setVisible(not is_oauth)
+        self.password_label.setVisible(not is_oauth)
+        self.password_input.setVisible(not is_oauth)
+        self.client_id_label.setVisible(is_oauth)
+        self.client_id_input.setVisible(is_oauth)
+        self.client_secret_label.setVisible(is_oauth)
+        self.client_secret_input.setVisible(is_oauth)
+
     def get_data(self) -> dict[str, Any]:
         data = super().get_data()
+        from db.servicenow_metadata import _normalize_instance_url
+        auth_type = self.auth_type_combo.currentData() or "basic"
         data.update({
-            "instance_url": self.instance_url_input.text().strip(),
+            "instance_url": _normalize_instance_url(self.instance_url_input.text().strip()),
+            "auth_type": auth_type,
             "user": self.user_input.text().strip(),
             "password": self.password_input.text(),
+            "client_id": self.client_id_input.text().strip(),
+            "client_secret": self.client_secret_input.text(),
         })
         return data
 
     def load_data(self, data: dict[str, Any]) -> None:
         super().load_data(data)
         self.instance_url_input.setText(data.get("instance_url", ""))
+        auth_type = (data.get("auth_type") or "basic").lower()
+        idx = self.auth_type_combo.findData(auth_type)
+        if idx >= 0:
+            self.auth_type_combo.setCurrentIndex(idx)
+        else:
+            self.auth_type_combo.setCurrentIndex(0)
         self.user_input.setText(data.get("user", ""))
         self.password_input.setText(data.get("password", ""))
+        self.client_id_input.setText(data.get("client_id", ""))
+        self.client_secret_input.setText(data.get("client_secret", ""))
+        self._on_auth_type_changed()
 
     def validate_inputs(self) -> tuple[bool, str]:
         ok, msg = super().validate_inputs()
         if not ok:
             return ok, msg
-        if not self.instance_url_input.text().strip():
+        url = self.instance_url_input.text().strip()
+        if not url:
             return False, "Instance URL is required."
+        auth_type = self.auth_type_combo.currentData() or "basic"
+        if auth_type == "oauth":
+            if not self.client_id_input.text().strip():
+                return False, "OAuth Client ID is required."
+            if not self.client_secret_input.text():
+                return False, "OAuth Client Secret is required."
+        else:
+            if not self.user_input.text().strip():
+                return False, "ServiceNow User is required."
         return True, ""
 
     def test_connection(self) -> tuple[bool, str]:
         try:
-            conn = db.create_servicenow_connection(self.get_data())
-            if conn:
-                return True, "Connected successfully to ServiceNow!"
-            return False, "Failed to connect to ServiceNow."
+            from db.servicenow_metadata import test_servicenow_connection
+            return test_servicenow_connection(self.get_data())
         except Exception as e:
             return False, str(e)
 
@@ -1084,8 +1147,8 @@ class CSVEngineForm(BaseEngineForm):
     """Configuration form for CSV DataStore."""
 
     code = "CSV"
-    title_text = "CSV / Flat Files"
-    subtitle_text = "Local directory of CSV, TSV or text files"
+    title_text = "CSV"
+    subtitle_text = "Query .csv files in a local directory"
     icon_path = "assets/csv.svg"
 
     def setup_fields(self) -> None:

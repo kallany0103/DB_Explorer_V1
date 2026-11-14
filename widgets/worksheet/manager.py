@@ -213,9 +213,14 @@ class WorksheetManager(QWidget):
                     if getattr(self.tab_widget.widget(i), 'is_worksheet', False)
                 )
                 if worksheet_count <= 1:
-                    return
+                    return False
 
             if widget:
+                results_mgr = getattr(widget, "_results_manager", None) or self.results_manager
+                if results_mgr and hasattr(results_mgr, "check_unsaved_changes_before_action"):
+                    if not results_mgr.check_unsaved_changes_before_action(widget, "closing this worksheet"):
+                        return False
+
                 if widget in self.running_queries:
                     self.running_queries[widget].cancel()
                     del self.running_queries[widget]
@@ -248,6 +253,8 @@ class WorksheetManager(QWidget):
 
             self.renumber_tabs()
             self._update_transaction_button_states()
+            return True
+        return False
 
 
     def add_tab(self):
@@ -724,12 +731,14 @@ class WorksheetManager(QWidget):
             i for i in range(self.tab_widget.count()) if i != keep_index
         ]
         for i in reversed(indices_to_close):
-            self.close_tab(i)
+            if not self.close_tab(i):
+                break
 
     def _close_all_tabs(self) -> None:
         """Close all tabs (the last worksheet is protected by close_tab)."""
         for i in reversed(range(self.tab_widget.count())):
-            self.close_tab(i)
+            if not self.close_tab(i):
+                break
 
     def eventFilter(self, obj, event):
         if handle_event_filter(obj, event):

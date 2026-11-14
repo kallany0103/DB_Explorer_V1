@@ -6,13 +6,13 @@ Package-native implementation used as the primary ConnectionManager entrypoint.
 import traceback
 import qtawesome as qta
 from PySide6.QtCore import Qt, QModelIndex, QTimer
-from PySide6.QtGui import QStandardItem, QColor
+from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (
     QWidget,
-    QMessageBox,
     QApplication,
 )
 from ui.components import ToastNotification
+from ui.feature_flags import is_connection_type_enabled
 
 import db
 from widgets.erd.widget import ERDWidget
@@ -33,7 +33,6 @@ from workers.connection_workers import (
     SQLiteSchemaWorker,
     ERDSchemaFetchWorker,
     UDSSchemaWorker,
-    UDSDataSourceSchemaWorker,
 )
 
 
@@ -203,9 +202,9 @@ class ConnectionManager(QWidget):
             ToastNotification.show_toast(self, "Please select a schema or table in the Database Schema tree first.", kind="warning")
 
     def _query_tool_from_menu(self):
-        _, item_data, name = self._get_current_schema_item_data()
+        _, item_data, _name = self._get_current_schema_item_data()
         if item_data:
-            self.connection_actions.open_query_tool_for_table(item_data, name)
+            self.connection_actions.open_query_tool(item_data)
         else:
             self.add_tab()
 
@@ -443,8 +442,23 @@ class ConnectionManager(QWidget):
     def toggle_explorer_search(self):
         self.tree_helpers.toggle_explorer_search()
 
+    def hide_explorer_search(self):
+        self.tree_helpers.hide_explorer_search()
+
     def filter_object_explorer(self, text):
         self.tree_helpers.filter_object_explorer(text)
+
+    def filter_schema_tree(self, text: str):
+        self.tree_helpers.filter_schema_tree(text)
+
+    def toggle_schema_search(self):
+        self.tree_helpers.toggle_schema_search()
+
+    def show_schema_search(self):
+        self.tree_helpers.show_schema_search()
+
+    def hide_schema_search(self):
+        self.tree_helpers.hide_schema_search()
 
     def load_data(self, hierarchical_data=None):
         # Detach the proxy model for the entire build so zero proxy events fire
@@ -462,6 +476,8 @@ class ConnectionManager(QWidget):
             root_items = []
             for connection_type_data in hierarchical_data:
                 code = connection_type_data["code"]
+                if not is_connection_type_enabled(self.main_window, code):
+                    continue
                 connection_type_item = QStandardItem(connection_type_data["name"])
                 connection_type_item.setData(code, Qt.ItemDataRole.UserRole)
                 connection_type_item.setData(connection_type_data["id"], Qt.ItemDataRole.UserRole + 1)
@@ -575,6 +591,9 @@ class ConnectionManager(QWidget):
         
         self.schema_model.clear()
         self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+        if hasattr(self, "schema_status_label"):
+            self.schema_status_label.setText("")
+        self._default_schema_status = ""
         if depth != 3:
             self._current_conn_id = None
             return
@@ -645,6 +664,9 @@ class ConnectionManager(QWidget):
 
         self.schema_model.clear()
         self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+        if hasattr(self, "schema_status_label"):
+            self.schema_status_label.setText("")
+        self._default_schema_status = ""
         loading_item = QStandardItem("Loading schema...")
         loading_item.setEditable(False)
         self.schema_model.appendRow(loading_item)

@@ -94,7 +94,10 @@ class DashboardWidget(QWidget):
     def cleanup(self):
         if hasattr(self, 'refresh_timer'):
             self.refresh_timer.stop()
-        
+
+        if hasattr(self, 'logs_widget') and hasattr(self.logs_widget, 'cleanup'):
+            self.logs_widget.cleanup()
+
         # Stop active worker and wait for it to exit cleanly
         if hasattr(self, 'dashboard_worker') and self.dashboard_worker is not None and self.dashboard_worker.isRunning():
             self.dashboard_worker.stop()
@@ -647,6 +650,7 @@ class DashboardWorker(QThread):
 
     def __init__(self, conn_data, current_db_only, parent=None):
         super().__init__(parent)
+        self.setObjectName("DashboardWorker")
         self.conn_data = conn_data
         self.current_db_only = current_db_only
         self._is_running = True
@@ -662,17 +666,22 @@ class DashboardWorker(QThread):
     def stop(self):
         self._is_running = False
 
+    @staticmethod
+    def _close_connection(conn):
+        if conn is None:
+            return
+        try:
+            conn.close()
+        except Exception:
+            pass
+
     def run(self):
         conn = None
         while self._is_running:
             try:
                 # If parameters changed, force a reconnection
                 if self._needs_reconnect:
-                    if conn:
-                        try:
-                            db.return_pooled_postgres_connection(self.conn_data, conn=conn)
-                        except Exception:
-                            pass
+                    self._close_connection(conn)
                     conn = None
                     self._needs_reconnect = False
 
@@ -680,14 +689,13 @@ class DashboardWorker(QThread):
                 if "sqlite" in db_type:
                     stats = db.get_sqlite_session_stats(self.conn_data)
                 else:
-                    
                     if conn is None:
                         db_name = self.conn_data.get("database", "postgres")
                         app_name = f"Universal SQL Client (Dashboard) - {db_name}"
                         conn = db.get_pooled_postgres_connection(
                             self.conn_data,
                             application_name=app_name,
-                            use_pool=True
+                            use_pool=False,
                         )
                         if conn:
                             try:
@@ -712,11 +720,7 @@ class DashboardWorker(QThread):
                 err_msg = str(e).lower()
                 # If connection dropped, clear conn so it reconnects on next loop.
                 if "closed" in err_msg or "connection" in err_msg or "timeout" in err_msg or "terminated" in err_msg:
-                    if conn:
-                        try:
-                            db.return_pooled_postgres_connection(self.conn_data, conn=conn)
-                        except Exception:
-                            pass
+                    self._close_connection(conn)
                     conn = None
 
                 if self._is_running and not self._needs_reconnect:
@@ -729,12 +733,8 @@ class DashboardWorker(QThread):
                     break
                 self.msleep(100)
 
-        # Cleanup connection on thread exit
-        if conn:
-            try:
-                db.return_pooled_postgres_connection(self.conn_data, conn=conn)
-            except Exception:
-                pass
+        # Cleanup dedicated connection on thread exit
+        self._close_connection(conn)
 
 class LiveChartView(QChartView):
     def __init__(self, series_names, colors, parent=None):

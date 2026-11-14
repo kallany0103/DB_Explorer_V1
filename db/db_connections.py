@@ -5,11 +5,19 @@ from psycopg2 import OperationalError
 import sys
 import os
 import time
-import cdata.servicenow as sn_driver
-import cdata.csv as csv_driver
+try:
+    import cdata.servicenow as sn_driver
+except ImportError:
+    sn_driver = None
+
+try:
+    import cdata.csv as csv_driver
+except ImportError:
+    csv_driver = None
 import urllib.parse
 import logging
 from typing import Any
+
 from db.connection_pool import (
     get_or_create_pool,
     get_or_create_oracle_pool,
@@ -17,6 +25,8 @@ from db.connection_pool import (
     invalidate_pool,
     invalidate_oracle_pool,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "create_sqlite_connection",
@@ -328,42 +338,30 @@ def get_pooled_oracle_connection(host=None, port=None, service_name=None, user=N
             raise ConnectionError(err_msg) from e
         raise
 def create_servicenow_connection(conn_data):
+    """Establishes a connection to the local DuckDB database backing ServiceNow."""
     try:
         if not conn_data.get("instance_url"):
             raise ValueError("Missing instance_url in conn_data")
 
-        conn_str = (
-            f"User={conn_data['user']};"
-            f"Password={conn_data['password']};"
-            f"URL={conn_data['instance_url']};"
-            f"AuthScheme=Basic;"
-        )
-
-        # DEBUG-START
-        t0 = time.time()
-        # DEBUG-END
-        conn = sn_driver.connect(conn_str)
-        # DEBUG-START
-        t1 = time.time()
-        print(f"[SN-DEBUG] sn_driver.connect() took {t1-t0:.2f}s")
-        # DEBUG-END
-        return conn
-
+        conn_id = conn_data.get("id") or conn_data.get("connection_id") or "default"
+        resolve_val = conn_data.get("resolve_display_values")
+        use_display = True if resolve_val is None else bool(resolve_val)
+        from db.duckdb_manager import DuckDBManager
+        return DuckDBManager.create_servicenow_session(conn_id, use_display_values=use_display)
     except Exception as e:
-        print(f"ServiceNow connection error: {e}")
+        logger.error(f"ServiceNow DuckDB connection error: {e}")
         return None
 
 def create_csv_connection(conn_data):
-    """Establishes a connection to a CSV file using CData CSV driver."""
+    """Establishes an in-process DuckDB session mounting CSV files as SQL views."""
     try:
-        if not conn_data.get("db_path"):
+        path = conn_data.get("db_path") or conn_data.get("file_path") or conn_data.get("folder_path")
+        if not path:
             raise ValueError("Missing db_path in conn_data")
-        path = conn_data['db_path']
-        conn_str = f"URI={path};TypeDetectionScheme=RowScan;RowScanDepth=100;"
-        conn = csv_driver.connect(conn_str)
-        return conn
+        from db.duckdb_manager import DuckDBManager
+        return DuckDBManager.create_csv_session(path)
     except Exception as e:
-        print(f"CSV connection error: {e}")
+        logger.error(f"DuckDB CSV connection error: {e}")
         return None
 
 

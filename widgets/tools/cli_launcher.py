@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ui.feature_flags import is_feature_enabled
 from widgets.worksheet.query.query_preparation import get_query_editor, get_tab_connection_data
 from widgets.psql_tool.discovery import find_psql
 from widgets.sqlplus_tool.discovery import admin_dir, find_sqlplus, instantclient_dir
@@ -83,6 +84,13 @@ def update_cli_action_states(main_window: "MainWindow", index: object = None) ->
         index: Ignored; accepted so this can be connected to Qt index-changed signals.
     """
     if not hasattr(main_window, "execute_usql_action") or not hasattr(main_window, "execute_sqlplus_action"):
+        return
+
+    if not is_feature_enabled(main_window, "native_terminals"):
+        main_window.execute_usql_action.setVisible(False)
+        main_window.execute_usql_action.setEnabled(False)
+        main_window.execute_sqlplus_action.setVisible(False)
+        main_window.execute_sqlplus_action.setEnabled(False)
         return
 
     current_tab = main_window.tab_widget.currentWidget()

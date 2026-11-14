@@ -1,21 +1,32 @@
 # workers.py
 import os
 import time
-import multiprocessing as mp
+import logging
 import pandas as pd
 import re
 import shutil
+import sqlglot
+from sqlglot import expressions as sqlglot_exp
 import sqlparse
-# import cdata.csv as mod # Removed direct import, use db.create_csv_connection instead
 from PySide6.QtCore import QRunnable, QThread, Qt, Signal
 import db
+from db.duckdb_manager import DuckDBManager
 from db.result_metadata import resolve_column_specs
+from db.query_context import (
+    resolve_object_writability,
+    resolve_writable_table_context,
+    strip_identifier_quotes,
+    strip_sql_comments,
+)
+from db.servicenow_dlt import get_synced_tables, sync_servicenow_table
 from workers.signals import (
     emit_process_error,
     emit_process_finished,
     emit_query_error,
     emit_query_finished,
 )
+
+logger = logging.getLogger(__name__)
 
 def transform_csv_query(query, folder_path):
     """
@@ -53,6 +64,75 @@ def _normalize_rows(rows):
     return normalized
 
 
+def _extract_servicenow_table_names(query: str) -> list[str]:
+    """Return unique lowercase ServiceNow table names referenced in *query*."""
+    cleaned = strip_sql_comments(query or "").strip()
+    if not cleaned:
+        return []
+    try:
+        parsed = sqlglot.parse(cleaned, read="duckdb")
+        cte_names = {
+            cte.alias_or_name.lower()
+            for tree in parsed
+            if tree is not None
+            for cte in tree.find_all(sqlglot_exp.CTE)
+            if cte.alias_or_name
+        }
+        tables = []
+        for tree in parsed:
+            if tree is None:
+                continue
+            for tbl in tree.find_all(sqlglot_exp.Table):
+                schema = (tbl.db or "").strip().lower()
+                name = (tbl.name or "").strip().lower()
+                if not name or schema == "information_schema" or name in cte_names or name.startswith("information_schema"):
+                    continue
+                tables.append(name)
+        return list(dict.fromkeys(tables))
+    except Exception:
+        pass
+
+    pattern = re.compile(
+        r'\b(?:from|join)\s+(?:(["`\[]?[a-zA-Z0-9_]+["`\]]?)\s*\.\s*)?("[^"]+"|`[^`]+`|\[[^\]]+\]|[a-zA-Z_][a-zA-Z0-9_]*)',
+        re.IGNORECASE,
+    )
+    fallback = []
+    for match in pattern.finditer(cleaned):
+        schema = strip_identifier_quotes(match.group(1) or "").strip().lower()
+        name = strip_identifier_quotes(match.group(2)).strip().lower()
+        if name and schema != "information_schema" and not name.startswith("information_schema"):
+            fallback.append(name)
+    return list(dict.fromkeys(fallback))
+
+
+def _ensure_servicenow_tables_synced(
+    conn_data: dict,
+    table_names: list[str],
+    limit: int = 5000,
+    force_resync: bool = False,
+) -> None:
+    """Sync any uncached (or forced) ServiceNow tables into local DuckDB."""
+    targets = [t.strip().lower() for t in table_names if t and t.strip()]
+    if not targets:
+        return
+
+    conn_id = conn_data.get("id") or conn_data.get("connection_id") or "default"
+    db_path = DuckDBManager.get_servicenow_duckdb_path(conn_id)
+    resolve_val = conn_data.get("resolve_display_values")
+    target_schema = "main" if (resolve_val is None or bool(resolve_val)) else "_sn_raw_vals"
+    synced = set() if force_resync else {t.lower() for t in get_synced_tables(db_path, schema_name=target_schema)}
+
+    for tbl_name in targets:
+        if tbl_name not in synced and not tbl_name.startswith("information_schema"):
+            try:
+                sync_servicenow_table(conn_data, tbl_name, limit=limit)
+                synced.add(tbl_name)
+            except Exception as sync_err:
+                logger.warning("ServiceNow auto-sync notice for %s: %s", tbl_name, sync_err)
+                if force_resync:
+                    raise
+
+
 def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
     conn = None
     cursor = None
@@ -67,14 +147,14 @@ def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
         t0 = time.time()
         # DEBUG-END
         if code == "SERVICENOW":
+            _ensure_servicenow_tables_synced(conn_data, _extract_servicenow_table_names(query))
             conn = db.create_servicenow_connection(conn_data)
             if not conn:
-                raise ConnectionError("Failed to connect to ServiceNow")
+                raise ConnectionError("Failed to connect to ServiceNow DuckDB data store")
         elif code == "CSV":
-            effective_query = transform_csv_query(query, conn_data.get("db_path"))
             conn = db.create_csv_connection(conn_data)
             if not conn:
-                raise ConnectionError("Failed to connect to CSV data source")
+                raise ConnectionError("Failed to connect to CSV DuckDB data source")
         else:
             raise ValueError(f"Unsupported CData process execution type: {code}")
         # DEBUG-START
@@ -128,6 +208,11 @@ def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
         # DEBUG-END
 
         row_count = len(rows) if cursor.description else (cursor.rowcount if hasattr(cursor, "rowcount") else 0)
+        table_writability = {
+            "is_writable": False,
+            "reason": "ServiceNow results cannot be modified through the result grid" if code == "SERVICENOW" else "CSV data source is a static file snapshot",
+            "reason_code": "servicenow" if code == "SERVICENOW" else "csv",
+        }
         out_queue.put({
             "ok": True,
             "query": effective_query,
@@ -136,6 +221,7 @@ def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
             "column_specs": column_specs,
             "row_count": int(row_count or 0),
             "is_returning_results": bool(columns),
+            "table_writability": table_writability,
         })
     except Exception as exc:
         out_queue.put({"ok": False, "error": str(exc)})
@@ -182,7 +268,12 @@ class RunnableExport(QRunnable):
                 query = f'SELECT * FROM "{schema_name}"."{self.table_name}"'
             elif code == 'CSV':
                  conn = db.create_csv_connection(conn_data)
-                 query = f'SELECT * FROM [{self.table_name}]'
+                 clean_tbl = os.path.splitext(self.table_name)[0]
+                 query = f'SELECT * FROM "{clean_tbl}"'
+            elif code == 'SERVICENOW':
+                 _ensure_servicenow_tables_synced(conn_data, [self.table_name])
+                 conn = db.create_servicenow_connection(conn_data)
+                 query = f'SELECT * FROM "{self.table_name}"'
             elif code in ('ORACLE', 'ORACLE_DB'):
                  conn = db.get_pooled_oracle_connection(conn_data=conn_data)
                  query = f'SELECT * FROM {self.table_name}'
@@ -412,36 +503,33 @@ class RunnableQuery(QRunnable):
                     code = "POSTGRES"
                 elif "db_path" in self.conn_data:
                     code = "SQLITE"
+            elif code in ("POSTGRESQL", "PGSQL"):
+                code = "POSTGRES"
 
             is_oracle = code in ("ORACLE", "ORACLE_DB")
             enable_dbms = bool(self.conn_data.get("enable_dbms_output", True)) if isinstance(self.conn_data, dict) else True
             should_handle_dbms = False
+            is_oracle_explain = False
+            oracle_explain_json = None
 
             # DB Execution
-            if code in ("SERVICENOW", "CSV"):
-                ctx = mp.get_context("spawn")
-                result_queue = ctx.Queue(maxsize=1)
-                self._child_process = ctx.Process(
-                    target=_run_cdata_query_subprocess,
-                    args=(code, self.conn_data, self.query, result_queue),
+            if code == "CSV":
+                self._conn = db.create_csv_connection(self.conn_data)
+                if not self._conn:
+                    raise ConnectionError("Failed to connect to CSV DuckDB data source")
+                cursor = self._conn.cursor()
+                cursor.execute(self.query)
+            elif code == "SERVICENOW":
+                _ensure_servicenow_tables_synced(
+                    self.conn_data,
+                    _extract_servicenow_table_names(self.query),
+                    force_resync=bool(self.conn_data.get("force_servicenow_resync")),
                 )
-                self._child_process.start()
-                while self._child_process.is_alive():
-                    if self._is_cancelled:
-                        self._child_process.terminate()
-                        return
-                    self._child_process.join(timeout=0.1)
-                if self._is_cancelled:
-                    return
-                payload = result_queue.get() if not result_queue.empty() else {"ok": False, "error": f"{code} query process ended unexpectedly."}
-                if not payload.get("ok"):
-                    raise RuntimeError(payload.get("error") or f"{code} query failed")
-                self.query = payload.get("query", self.query)
-                results = payload.get("results", [])
-                columns = payload.get("columns", [])
-                column_specs = payload.get("column_specs", [])
-                row_count = int(payload.get("row_count", 0))
-                is_returning_results = bool(payload.get("is_returning_results", False))
+                self._conn = db.create_servicenow_connection(self.conn_data)
+                if not self._conn:
+                    raise ConnectionError("Failed to connect to ServiceNow DuckDB data store")
+                cursor = self._conn.cursor()
+                cursor.execute(self.query)
             elif code == "SQLITE":
                 db_path = self.conn_data.get("db_path")
                 if not db_path:
@@ -479,15 +567,26 @@ class RunnableQuery(QRunnable):
                 if not self._conn:
                     raise ConnectionError("Failed to connect to Oracle database")
                 cursor = self._conn.cursor()
-                oracle_query, is_plsql, query_handles_dbms = db.prepare_oracle_query(self.query)
-                should_handle_dbms = is_oracle and query_handles_dbms and enable_dbms
-                buffer_size = self.conn_data.get("dbms_buffer_size") if isinstance(self.conn_data, dict) else None
-                if should_handle_dbms:
-                    db.enable_dbms_output(cursor, buffer_size=buffer_size)
-                elif not enable_dbms:
-                    db.disable_dbms_output(cursor)
-                
-                cursor.execute(oracle_query)
+
+                from db.oracle_utils import is_oracle_explain_query, execute_oracle_explain
+                is_expl, is_anlz, clean_expl_sql = is_oracle_explain_query(self.query)
+                if is_expl:
+                    results, columns, column_specs, oracle_explain_json, expl_elapsed = execute_oracle_explain(
+                        cursor, self._conn, clean_expl_sql, is_analyze=is_anlz
+                    )
+                    row_count = len(results)
+                    is_returning_results = True
+                    elapsed_time = expl_elapsed
+                    is_oracle_explain = True
+                else:
+                    oracle_query, is_plsql, query_handles_dbms = db.prepare_oracle_query(self.query)
+                    should_handle_dbms = is_oracle and query_handles_dbms and enable_dbms
+                    buffer_size = self.conn_data.get("dbms_buffer_size") if isinstance(self.conn_data, dict) else None
+                    if should_handle_dbms:
+                        db.enable_dbms_output(cursor, buffer_size=buffer_size)
+                    elif not enable_dbms:
+                        db.disable_dbms_output(cursor)
+                    cursor.execute(oracle_query)
             else:
                 if self.conn_data.get("db_path"):
                     self._conn = db.create_sqlite_connection(self.conn_data["db_path"])
@@ -502,7 +601,7 @@ class RunnableQuery(QRunnable):
                 return
 
             # Handle Results FIRST so the active cursor result set is read before any other call
-            if code not in ("SERVICENOW", "CSV"):
+            if not is_oracle_explain:
                 results = cursor.fetchall() if cursor.description else []
                 columns = []
                 column_specs = []
@@ -532,6 +631,37 @@ class RunnableQuery(QRunnable):
                 self._conn.commit()
 
             conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
+            conn_payload.pop("force_servicenow_resync", None)
+            if is_oracle_explain:
+                conn_payload["is_explain"] = True
+                if oracle_explain_json:
+                    conn_payload["explain_json"] = oracle_explain_json
+                conn_payload["table_writability"] = {
+                    "is_writable": False,
+                    "reason": "Execution plans cannot be edited directly",
+                    "reason_code": "explain",
+                }
+            elif code in ("SERVICENOW", "CSV"):
+                conn_payload["table_writability"] = {
+                    "is_writable": False,
+                    "reason": "ServiceNow results cannot be modified through the result grid" if code == "SERVICENOW" else "CSV data source is a static file snapshot",
+                    "reason_code": "servicenow" if code == "SERVICENOW" else "csv",
+                }
+            elif is_returning_results:
+                table_ctx = resolve_writable_table_context(self.query)
+                if table_ctx:
+                    conn_payload["table_writability"] = resolve_object_writability(
+                        table_ctx.get("schema_name"),
+                        table_ctx.get("real_table_name"),
+                        code,
+                        self._conn,
+                    )
+                else:
+                    conn_payload["table_writability"] = {
+                        "is_writable": False,
+                        "reason": "Complex queries (with JOINs, CTEs, or functions) cannot be edited directly",
+                        "reason_code": "complex_query",
+                    }
             if code == "POSTGRES" and self._conn and getattr(self._conn, "notices", None):
                 conn_payload["pg_notices"] = list(self._conn.notices)
             if dbms_output:
@@ -568,6 +698,7 @@ class RunnableQuery(QRunnable):
                         pass
                 elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
                 conn_payload = dict(self.conn_data) if isinstance(self.conn_data, dict) else {}
+                conn_payload.pop("force_servicenow_resync", None)
                 if dbms_output:
                     conn_payload["dbms_output"] = dbms_output
                 if 'is_oracle' in locals() and is_oracle and cursor:
@@ -643,22 +774,36 @@ class RunnableTransactionQuery(QRunnable):
             enable_dbms = bool(self._conn_data.get("enable_dbms_output", True)) if isinstance(self._conn_data, dict) else True
             should_handle_dbms = False
 
+            is_oracle_explain = False
+            oracle_explain_json = None
             if is_oracle:
-                oracle_query, is_plsql, query_handles_dbms = db.prepare_oracle_query(self._query)
-                should_handle_dbms = is_oracle and query_handles_dbms and enable_dbms
-                buffer_size = self._conn_data.get("dbms_buffer_size") if isinstance(self._conn_data, dict) else None
-                if should_handle_dbms:
-                    db.enable_dbms_output(cursor, buffer_size=buffer_size)
-                elif not enable_dbms:
-                    db.disable_dbms_output(cursor)
-                cursor.execute(oracle_query)
+                from db.oracle_utils import is_oracle_explain_query, execute_oracle_explain
+                is_expl, is_anlz, clean_expl_sql = is_oracle_explain_query(self._query)
+                if is_expl:
+                    results, columns, column_specs, oracle_explain_json, expl_elapsed = execute_oracle_explain(
+                        cursor, self._conn, clean_expl_sql, is_analyze=is_anlz
+                    )
+                    row_count = len(results)
+                    is_returning_results = True
+                    elapsed_time = expl_elapsed
+                    is_oracle_explain = True
+                else:
+                    oracle_query, is_plsql, query_handles_dbms = db.prepare_oracle_query(self._query)
+                    should_handle_dbms = is_oracle and query_handles_dbms and enable_dbms
+                    buffer_size = self._conn_data.get("dbms_buffer_size") if isinstance(self._conn_data, dict) else None
+                    if should_handle_dbms:
+                        db.enable_dbms_output(cursor, buffer_size=buffer_size)
+                    elif not enable_dbms:
+                        db.disable_dbms_output(cursor)
+                    cursor.execute(oracle_query)
             else:
                 cursor.execute(self._query)
 
             if self._is_cancelled:
                 return
 
-            results = cursor.fetchall() if cursor.description else []
+            if not is_oracle_explain:
+                results = cursor.fetchall() if cursor.description else []
             columns: list = []
             column_specs: list = []
             if cursor.description:
@@ -691,6 +836,30 @@ class RunnableTransactionQuery(QRunnable):
                     self._session.has_pending_changes = True
 
             conn_payload = dict(self._conn_data) if isinstance(self._conn_data, dict) else {}
+            if is_oracle_explain:
+                conn_payload["is_explain"] = True
+                if oracle_explain_json:
+                    conn_payload["explain_json"] = oracle_explain_json
+                conn_payload["table_writability"] = {
+                    "is_writable": False,
+                    "reason": "Execution plans cannot be edited directly",
+                    "reason_code": "explain",
+                }
+            elif is_returning_results:
+                table_ctx = resolve_writable_table_context(self._query)
+                if table_ctx:
+                    conn_payload["table_writability"] = resolve_object_writability(
+                        table_ctx.get("schema_name"),
+                        table_ctx.get("real_table_name"),
+                        code,
+                        self._conn,
+                    )
+                else:
+                    conn_payload["table_writability"] = {
+                        "is_writable": False,
+                        "reason": "Complex queries (with JOINs, CTEs, or functions) cannot be edited directly",
+                        "reason_code": "complex_query",
+                    }
             if code == "POSTGRES" and self._conn and getattr(self._conn, "notices", None):
                 conn_payload["pg_notices"] = list(self._conn.notices)
             if dbms_output:

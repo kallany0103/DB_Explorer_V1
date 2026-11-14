@@ -36,7 +36,7 @@ class PostgresConnectionPool:
     
     def __init__(self, 
                  min_connections: int = 2,
-                 max_connections: int = 5,
+                 max_connections: int = 10,
                  idle_timeout: int = 300,
                  recycle_interval: int = 3600,
                  connection_timeout: int = 5):
@@ -45,7 +45,7 @@ class PostgresConnectionPool:
         
         Args:
             min_connections: Minimum connections to maintain (default: 2)
-            max_connections: Maximum connections allowed (default: 5)
+            max_connections: Maximum connections allowed (default: 10)
             idle_timeout: Close idle connections after this many seconds (default: 300)
             recycle_interval: Recycle connections after this many seconds (default: 3600)
             connection_timeout: Timeout for establishing new connections (default: 5)
@@ -58,8 +58,10 @@ class PostgresConnectionPool:
         
         self._pool: list = []  # Available connections
         self._in_use: set = set()  # In-use connection ids
+        self._creating: int = 0  # Connections currently being established outside the lock
         self._conn_params: Dict = {}  # Connection parameters
         self._lock = threading.RLock()
+        self._cond = threading.Condition(self._lock)
         self._connection_counter = 0
         self._last_recycle = time.time()
         self._closed = False
@@ -129,7 +131,7 @@ class PostgresConnectionPool:
         new_conn = self._create_connection()
         return new_conn
     
-    def get_connection(self, timeout: int = 5):
+    def get_connection(self, timeout: float = 10):
         """
         Get a connection from the pool.
         
@@ -139,31 +141,27 @@ class PostgresConnectionPool:
         Returns:
             Database connection or None if unavailable
         """
-        if self._closed:
-            raise RuntimeError("Connection pool is closed")
-        
-        if not self._conn_params:
-            raise RuntimeError("Pool not initialized")
-        
-        start_time = time.time()
-        
+        deadline = time.monotonic() + timeout
+
         while True:
-            with self._lock:
-                # Check if we need to recycle connections
+            should_create = False
+            with self._cond:
+                if self._closed:
+                    raise RuntimeError("Connection pool is closed")
+                if not self._conn_params:
+                    raise RuntimeError("Pool not initialized")
+
                 current_time = time.time()
                 if current_time - self._last_recycle > self.recycle_interval:
                     self._recycle_all_connections()
                     self._last_recycle = current_time
-                
-                # Clean up idle connections
+
                 self._cleanup_idle_connections()
-                
+
                 # Try to get an available connection from the pool
                 while self._pool:
                     conn, created_time, conn_id = self._pool.pop(0)
-                    
                     if self._is_connection_alive(conn):
-                        # Only rollback if there is actually an open transaction.
                         try:
                             if conn.status == psycopg2.extensions.STATUS_BEGIN:
                                 conn.rollback()
@@ -171,31 +169,49 @@ class PostgresConnectionPool:
                             pass
                         self._in_use.add(id(conn))  # use id(conn) as the tracking key
                         return conn
-                    else:
-                        # Connection is dead, discard it
-                        self._in_use.discard(id(conn))
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
-                
-                # If we're below max, create a new one
-                if len(self._in_use) < self.max_connections:
-                    conn = self._create_connection()
-                    if conn:
-                        self._in_use.add(id(conn))  # use id(conn) as the tracking key
-                        return conn
-                    else:
-                        # Failed to create connection (host unreachable etc.)
+                    self._in_use.discard(id(conn))
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+                # Reserve a slot under lock, then connect outside lock so concurrent
+                # callers never stall on another thread's TCP/TLS handshake.
+                if len(self._in_use) + self._creating < self.max_connections:
+                    self._creating += 1
+                    should_create = True
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        elapsed = timeout - remaining
+                        logger.error(f"Timeout waiting for connection (waited {elapsed:.2f}s)")
                         return None
-            
-            # All connections are in use and we're at max — wait a bit before retry
-            elapsed = time.time() - start_time
-            if elapsed > timeout:
-                logger.error(f"Timeout waiting for connection (waited {elapsed:.2f}s)")
-                return None
-            
-            time.sleep(0.1)
+                    self._cond.wait(timeout=remaining)
+
+            if should_create:
+                conn = None
+                closed_during_create = False
+                try:
+                    conn = self._create_connection()
+                finally:
+                    with self._cond:
+                        self._creating = max(0, self._creating - 1)
+                        if self._closed:
+                            closed_during_create = True
+                            if conn:
+                                try:
+                                    conn.close()
+                                except Exception:
+                                    pass
+                                conn = None
+                            self._cond.notify_all()
+                        elif conn:
+                            self._in_use.add(id(conn))  # use id(conn) as the tracking key
+                        else:
+                            self._cond.notify_all()
+                if closed_during_create:
+                    raise RuntimeError("Connection pool is closed")
+                return conn
     
     def return_connection(self, conn):
         """
@@ -211,7 +227,7 @@ class PostgresConnectionPool:
                 pass
             return
         
-        with self._lock:
+        with self._cond:
             conn_id = id(conn)  # consistent with get_connection
             
             # Remove from in-use set
@@ -238,6 +254,7 @@ class PostgresConnectionPool:
                     conn.close()
                 except Exception:
                     pass
+            self._cond.notify_all()
     
     def _cleanup_idle_connections(self):
         """Remove idle connections that have exceeded timeout."""
@@ -290,7 +307,7 @@ class PostgresConnectionPool:
     
     def close_all(self):
         """Close all connections in the pool."""
-        with self._lock:
+        with self._cond:
             self._closed = True
             
             # Close available connections
@@ -302,6 +319,7 @@ class PostgresConnectionPool:
             
             self._pool = []
             self._in_use = set()
+            self._cond.notify_all()
             logger.info("Connection pool closed")
 
 
@@ -315,7 +333,7 @@ _oracle_pools_lock = threading.Lock()
 
 def get_or_create_pool(conn_params: Dict, 
                        min_connections: int = 2,
-                       max_connections: int = 5,
+                       max_connections: int = 10,
                        idle_timeout: int = 300,
                        recycle_interval: int = 3600) -> PostgresConnectionPool:
     """
