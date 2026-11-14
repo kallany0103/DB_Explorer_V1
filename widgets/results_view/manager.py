@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QTableView, QMenu, QComboBox, QStackedWidget, QTreeView
 )
 from PySide6.QtCore import (
-    Qt, QObject, QEvent, QTimer
+    Qt, QObject, QEvent, QTimer, QSortFilterProxyModel
 )
 from PySide6.QtGui import (
     QAction
@@ -33,6 +33,12 @@ from ui.menu_style import apply_menu_style
 from widgets.results_view.summary_calculator import (
     calculate_cell_summary,
     format_summary_for_statusbar,
+)
+from widgets.results_view.value_state import (
+    display_cell_text,
+    editor_text_from_raw,
+    editor_text_to_db_value,
+    get_grid_null_text,
 )
 from workers import RunnableExportFromModel, ProcessSignals
 from workers.signals import emit_process_started
@@ -204,13 +210,118 @@ class ResultsManager(QObject):
 
         table_view = self._get_result_table_for_tab(target_tab)
         output_state = table_view.property("output_state") if table_view else {}
-        is_enabled = bool((output_state or {}).get("is_editable"))
+        is_table_editable = bool((output_state or {}).get("is_editable"))
+        has_changes = is_table_editable and (
+            bool((output_state or {}).get("modified_coords"))
+            or (output_state or {}).get("new_row_index") is not None
+        )
 
-        for object_name in ("add_row_btn", "save_row_btn", "delete_row_btn"):
+        for object_name in ("add_row_btn", "delete_row_btn"):
             button = target_tab.findChild(QWidget, object_name)
             if button:
-                button.setEnabled(is_enabled)
+                button.setEnabled(is_table_editable)
+
+        save_btn = target_tab.findChild(QWidget, "save_row_btn")
+        if save_btn:
+            save_btn.setEnabled(has_changes)
+            save_btn.setProperty("has_changes", has_changes)
+            if has_changes:
+                count = len(output_state.get("modified_coords", set()))
+                if output_state.get("new_row_index") is not None:
+                    count += 1
+                save_btn.setToolTip(f"Save changes ({count} pending)")
+                if hasattr(save_btn, "setIcon"):
+                    save_btn.setIcon(qta.icon("fa5s.save", color="#2563EB", color_disabled="#CBD5E1"))
+            else:
+                save_btn.setToolTip("Save changes (No unsaved changes)")
+                if hasattr(save_btn, "setIcon"):
+                    save_btn.setIcon(qta.icon("fa5s.save", color="#475569", color_disabled="#CBD5E1"))
+            if hasattr(save_btn, "style"):
+                save_btn.style().unpolish(save_btn)
+                save_btn.style().polish(save_btn)
+
+        discard_btn = target_tab.findChild(QWidget, "discard_row_btn")
+        if discard_btn:
+            discard_btn.setEnabled(has_changes)
+
+        sn_btn = target_tab.findChild(QWidget, "sn_display_values_btn")
+        sn_resync_btn = target_tab.findChild(QWidget, "sn_resync_btn")
+        conn_data = (output_state or {}).get("conn_data") or {}
+        code = str(conn_data.get("code") or conn_data.get("db_type") or "").upper()
+        is_sn = code == "SERVICENOW"
+
+        if sn_btn:
+            sn_btn.setVisible(is_sn)
+            if is_sn:
+                resolved = conn_data.get("resolve_display_values")
+                if resolved is None:
+                    resolved = getattr(target_tab, "_sn_display_values", True)
+                is_checked = bool(resolved)
+                sn_btn.blockSignals(True)
+                sn_btn.setChecked(is_checked)
+                self._apply_sn_display_btn_visuals(sn_btn, is_checked)
+                sn_btn.blockSignals(False)
+
+        if sn_resync_btn:
+            sn_resync_btn.setVisible(is_sn)
+
         self.sync_selection_summary(target_tab)
+
+    @staticmethod
+    def _apply_sn_display_btn_visuals(sn_btn: QWidget, is_checked: bool) -> None:
+        """Update the ServiceNow display-label icon and tooltip for ON/OFF state."""
+        if hasattr(sn_btn, "setIcon"):
+            if is_checked:
+                sn_btn.setIcon(qta.icon("mdi.label", color="#0284C7", color_disabled="#CBD5E1"))
+            else:
+                sn_btn.setIcon(qta.icon("mdi.label-off-outline", color="#475569", color_disabled="#CBD5E1"))
+        sn_btn.setToolTip(
+            "ServiceNow Display Labels: ON (showing readable names — click for raw sys_id/codes)"
+            if is_checked
+            else "ServiceNow Display Labels: OFF (showing raw sys_id/codes — click for readable names)"
+        )
+
+    def _rerun_servicenow_output(
+        self, tab_content, *, resolve_display_values: bool | None = None, force_resync: bool = False
+    ) -> None:
+        """Re-execute the active ServiceNow output query with updated display/sync flags."""
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+        table_view = self._get_result_table_for_tab(target_tab)
+        output_state = table_view.property("output_state") if table_view else {}
+        conn_data = dict((output_state or {}).get("conn_data") or {})
+        query = (output_state or {}).get("query")
+        if not conn_data or not query:
+            return
+
+        if resolve_display_values is not None:
+            conn_data["resolve_display_values"] = bool(resolve_display_values)
+        if force_resync:
+            conn_data["force_servicenow_resync"] = True
+
+        ws_mgr = getattr(self.main_window, "worksheet_manager", None)
+        if ws_mgr and hasattr(ws_mgr, "execute_query"):
+            ws_mgr.execute_query(conn_data=conn_data, query=query, preserve_pagination=True)
+
+    def toggle_servicenow_display_values(self, tab_content, checked: bool) -> None:
+        """Switch locally between ServiceNow display labels and raw values without re-syncing."""
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+        target_tab._sn_display_values = bool(checked)
+        sn_btn = target_tab.findChild(QWidget, "sn_display_values_btn")
+        if sn_btn:
+            self._apply_sn_display_btn_visuals(sn_btn, bool(checked))
+        self._rerun_servicenow_output(target_tab, resolve_display_values=bool(checked), force_resync=False)
+
+    def resync_servicenow_results(self, tab_content) -> None:
+        """Force a fresh re-sync from ServiceNow and re-run the active query."""
+        target_tab = tab_content or self.tab_widget.currentWidget()
+        if not target_tab:
+            return
+        resolved = getattr(target_tab, "_sn_display_values", None)
+        self._rerun_servicenow_output(target_tab, resolve_display_values=resolved, force_resync=True)
 
     def attach_selection_summary_listener(self, table_view: QTableView, target_tab: QWidget):
         sel_model = table_view.selectionModel()
@@ -314,6 +425,88 @@ class ResultsManager(QObject):
         if table_view:
             self.show_cell_summary_dialog(table_view)
 
+    def open_cell_value_viewer(self, table_view: QTableView):
+        """Open the Cell Value Viewer Dialog for the selected or current cell."""
+        if not table_view or not table_view.model():
+            return
+
+        index = table_view.currentIndex()
+        if not index.isValid():
+            selected = table_view.selectedIndexes()
+            if selected:
+                index = selected[0]
+            else:
+                return
+
+        display_model = table_view.model()
+        if isinstance(display_model, QSortFilterProxyModel):
+            source_model = display_model.sourceModel()
+            source_index = display_model.mapToSource(index)
+        else:
+            source_model = display_model
+            source_index = index
+
+        col = index.column()
+        row = index.row()
+
+        header_text = str(display_model.headerData(col, Qt.Orientation.Horizontal) or f"Column {col + 1}")
+        col_name = header_text.split("\n")[0].split(" [")[0].rstrip(" *")
+
+        output_state = table_view.property("output_state") or {}
+        is_table_editable = bool(output_state.get("is_editable", False))
+        readonly_reason = output_state.get("readonly_reason")
+        column_specs = output_state.get("column_specs") or []
+        is_col_readonly = False
+        if 0 <= col < len(column_specs):
+            is_col_readonly = bool(column_specs[col].get("read_only"))
+
+        item_flags = display_model.flags(index)
+        is_cell_editable = is_table_editable and not is_col_readonly and bool(item_flags & Qt.ItemFlag.ItemIsEditable)
+
+        raw_val = index.data(Qt.ItemDataRole.EditRole)
+        if raw_val is None:
+            raw_val = index.data(Qt.ItemDataRole.DisplayRole)
+        if raw_val == "NULL":
+            raw_val = None
+
+        if not is_table_editable:
+            reason = readonly_reason or "Result set is read-only"
+        elif is_col_readonly:
+            reason = "Column is computed or generated"
+        else:
+            reason = None
+
+        from widgets.results_view.cell_viewer import CellValueViewerDialog
+
+        dialog = CellValueViewerDialog(
+            raw_value=raw_val,
+            col_name=col_name,
+            row_num=row + 1,
+            is_read_only=not is_cell_editable,
+            readonly_reason=reason,
+            parent=self.main_window,
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted and is_cell_editable:
+            new_text = dialog.get_value()
+            current_text = editor_text_from_raw(raw_val)
+            if new_text != current_text:
+                db_val = editor_text_to_db_value(new_text)
+                null_text = get_grid_null_text(self)
+                if hasattr(source_model, "item"):
+                    item = source_model.item(source_index.row(), source_index.column())
+                    if item:
+                        item.setData(new_text, Qt.ItemDataRole.EditRole)
+                        item.setData(display_cell_text(db_val, null_text=null_text), Qt.ItemDataRole.DisplayRole)
+                        edit_data = item.data(Qt.ItemDataRole.UserRole) or {}
+                        edit_data["raw_val"] = db_val
+                        edit_data["is_db_null"] = db_val is None
+                        item.setData(edit_data, Qt.ItemDataRole.UserRole)
+                else:
+                    display_model.setData(index, new_text, Qt.ItemDataRole.EditRole)
+                    display_model.setData(index, display_cell_text(db_val, null_text=null_text), Qt.ItemDataRole.DisplayRole)
+                self.sync_row_action_state()
+
     def _get_process_status_meta(self, status_text):
         return processes.get_process_status_meta(self, status_text)
 
@@ -371,6 +564,12 @@ class ResultsManager(QObject):
     
     def save_new_row(self):
         row_crud.save_new_row(self)
+
+    def discard_changes(self, tab_content=None):
+        row_crud.discard_changes(self, tab_content)
+
+    def check_unsaved_changes_before_action(self, tab_content=None, action_description="proceeding"):
+        return row_crud.check_unsaved_changes_before_action(self, tab_content, action_description)
 
     def toggle_table_search(self):
         query_handler.toggle_table_search(self)
@@ -467,6 +666,9 @@ class ResultsManager(QObject):
 
     def handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode="current", output_tab_index=None):
         query_handler.handle_query_result(self, target_tab, conn_data, query, results, columns, column_specs, row_count, elapsed_time, is_select_query, output_mode, output_tab_index)
+
+    def handle_results_double_click(self, table_view, index, tab_content=None):
+        query_handler.handle_results_double_click(self, table_view, index, tab_content)
 
     def add_connection_notification(self, conn_name):
         target_tab = self.tab_widget.currentWidget()
@@ -582,6 +784,12 @@ class ResultsManager(QObject):
         apply_menu_style(menu)
         selected_indexes = results_table.selectedIndexes()
         if selected_indexes:
+            inspect_action = QAction("View / Edit Cell...", self.main_window)
+            inspect_action.setIcon(qta.icon("fa5s.search-plus", color="#2563EB"))
+            inspect_action.setShortcut("Space")
+            inspect_action.triggered.connect(lambda: self.open_cell_value_viewer(results_table))
+            menu.addAction(inspect_action)
+
             summarize_action = QAction("Summarize Selected Cells...", self.main_window)
             summarize_action.setIcon(qta.icon("fa5s.calculator", color="#2563EB"))
             summarize_action.triggered.connect(lambda: self.show_cell_summary_dialog(results_table))

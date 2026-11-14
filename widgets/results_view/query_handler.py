@@ -5,14 +5,19 @@ import re
 import sqlparse
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QTimer
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QAbstractItemView, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QWidget, QTabWidget, QTableView
+from PySide6.QtWidgets import QAbstractItemView, QFrame, QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit, QWidget, QTabWidget, QTableView
 
 from db.query_context import resolve_writable_table_context
 from ui.messages_style import format_elapsed_time_hms
 from widgets.results_view.dbms_output import append_dbms_output
 from widgets.results_view.explain import ExplainVisualizer
 from widgets.results_view.perf_metrics import perf_elapsed_ms, perf_record, perf_take, perf_now
-from widgets.results_view.value_state import display_cell_text, editor_text_from_raw, values_equal_for_editor
+from widgets.results_view.value_state import (
+    display_cell_text,
+    editor_text_from_raw,
+    get_grid_null_text,
+    values_equal_for_editor,
+)
 
 
 DEFAULT_CHUNK_PROFILES = [
@@ -100,7 +105,9 @@ def _stop_chunk_loader(output_state):
     output_state["chunk_loader"] = None
 
 
-def _make_row_items(row, columns, pk_indices):
+def _make_row_items(
+    row, columns, pk_indices, column_specs=None, is_table_editable=True, null_text="NULL"
+):
     pk_val = None
     pk_col_name = None
     if pk_indices:
@@ -111,7 +118,7 @@ def _make_row_items(row, columns, pk_indices):
     items = []
     for col_idx, cell in enumerate(row):
         item = QStandardItem()
-        item.setData(display_cell_text(cell), Qt.ItemDataRole.DisplayRole)
+        item.setData(display_cell_text(cell, null_text=null_text), Qt.ItemDataRole.DisplayRole)
         item.setData(editor_text_from_raw(cell), Qt.ItemDataRole.EditRole)
         edit_data = {
             "pk_col": pk_col_name,
@@ -122,13 +129,40 @@ def _make_row_items(row, columns, pk_indices):
             "col_name": columns[col_idx],
         }
         item.setData(edit_data, Qt.ItemDataRole.UserRole)
+
+        col_spec = column_specs[col_idx] if column_specs and col_idx < len(column_specs) else {}
+        is_col_readonly = bool(col_spec.get("read_only", False))
+        if is_table_editable and not is_col_readonly:
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+        else:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
         items.append(item)
     return items
 
 
-def _append_rows_batch(model, results, columns, pk_indices, start_index, end_index):
+def _append_rows_batch(
+    model,
+    results,
+    columns,
+    pk_indices,
+    start_index,
+    end_index,
+    column_specs=None,
+    is_table_editable=True,
+    null_text="NULL",
+):
     for row_index in range(start_index, end_index):
-        model.appendRow(_make_row_items(results[row_index], columns, pk_indices))
+        model.appendRow(
+            _make_row_items(
+                results[row_index],
+                columns,
+                pk_indices,
+                column_specs,
+                is_table_editable,
+                null_text=null_text,
+            )
+        )
 
 
 def _is_user_interacting_during_load(table_view, search_box):
@@ -167,18 +201,20 @@ def _is_table_visible_in_active_output_tab(table_view, target_tab):
     return active_table is table_view
 
 
-def _header_suffix_for_spec(spec):
+def _header_suffix_for_spec(spec, is_table_editable=True):
     if spec.get("pk"):
         return " [PK]"
     if spec.get("fk"):
         return " [FK]"
+    if is_table_editable and spec.get("read_only"):
+        return " [RO]"
     if spec.get("nullable") is False:
         return " *"
     return ""
 
 
-def _build_header_text(manager, column_name, spec):
-    suffix = _header_suffix_for_spec(spec)
+def _build_header_text(manager, column_name, spec, is_table_editable=True):
+    suffix = _header_suffix_for_spec(spec, is_table_editable=is_table_editable)
     data_type = spec.get("data_type") or ""
     compact_dtype = compact_data_type_label(manager, data_type)
     if compact_dtype:
@@ -309,37 +345,70 @@ def handle_query_result(
     msg = ""
     tab_status = "Ready"
 
-    if is_select_query:
-        if query.upper().strip().startswith("EXPLAIN (ANALYZE,"):
-            try:
-                if results and len(results) > 0 and len(results[0]) > 0:
-                    json_data = results[0][0]
-                    explain_visualizer = results_stack.findChild(ExplainVisualizer) if results_stack else None
-                    if explain_visualizer:
-                        explain_visualizer.load_plan(json_data)
+    query_upper = query.upper().strip()
+    explain_json = conn_data.get("explain_json") if isinstance(conn_data, dict) else None
+    is_explain_dispatch = (
+        explain_json is not None
+        or (isinstance(conn_data, dict) and conn_data.get("is_explain"))
+        or query_upper.startswith("EXPLAIN (ANALYZE,")
+        or (query_upper.startswith("EXPLAIN (") and "FORMAT JSON" in query_upper)
+    )
 
-                    manager.stop_spinner(target_tab, success=True, target_index=5)
+    if is_explain_dispatch:
+        try:
+            json_data = explain_json if explain_json is not None else (results[0][0] if results and len(results) > 0 and len(results[0]) > 0 else None)
+            if json_data:
+                explain_visualizer = results_stack.findChild(ExplainVisualizer) if results_stack else None
+                if explain_visualizer:
+                    explain_visualizer.load_plan(json_data)
 
-                    tab_status = f"Explain Analyze executed | Time: {elapsed_time:.2f} sec"
-                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    msg = f"[{timestamp}]  Explain Analyze executed successfully.\n\nTime: {elapsed_time:.2f} sec"
+                manager.stop_spinner(target_tab, success=True, target_index=5)
 
-                    if message_view:
-                        message_view.setPlainText(msg)
-                    if tab_status_label:
-                        tab_status_label.setText(tab_status)
-                    manager.status_message_label.setText("Ready")
+                action_title = "Explain Analyze" if "ANALYZE" in query_upper else "Explain Plan"
+                tab_status = f"{action_title} executed | Time: {elapsed_time:.2f} sec"
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                msg = f"[{timestamp}]  {action_title} executed successfully.\n\nTime: {elapsed_time:.2f} sec"
 
-                    if target_tab in manager.running_queries:
-                        del manager.running_queries[target_tab]
-                    if not manager.running_queries:
-                        manager.cancel_action.setEnabled(False)
-                    perf_record(manager, "result_render_ms", perf_elapsed_ms(render_start))
-                    execute_start = perf_take(manager, "query_execute_start")
-                    perf_record(manager, "query_execute_to_render_ms", perf_elapsed_ms(execute_start))
-                    return
-            except Exception as e:
-                print(f"Error parsing explain result: {e}")
+                if message_view:
+                    message_view.setPlainText(msg)
+                if tab_status_label:
+                    tab_status_label.setText(tab_status)
+                manager.status_message_label.setText("Ready")
+
+                if results and columns:
+                    manager._ensure_at_least_one_output_tab(target_tab)
+                    table_view, _ = manager._ensure_result_table_for_tab(target_tab, output_tab_index)
+                    if table_view:
+                        out_state = table_view.property("output_state") or {}
+                        out_state["column_names"] = list(columns)
+                        out_state["column_specs"] = list(column_specs)
+                        out_state["is_editable"] = False
+                        out_state["readonly_reason"] = "Execution plans cannot be edited directly"
+                        out_state["readonly_reason_code"] = "readonly"
+                        table_model = QStandardItemModel(table_view)
+                        table_model.setColumnCount(len(columns))
+                        for col_idx, col_name in enumerate(columns):
+                            table_model.setHeaderData(col_idx, Qt.Orientation.Horizontal, str(col_name))
+                        null_text = get_grid_null_text(manager)
+                        for row in results:
+                            items = [QStandardItem(display_cell_text(cell, null_text=null_text)) for cell in row]
+                            for it in items:
+                                it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            table_model.appendRow(items)
+                        table_view.setModel(table_model)
+                        table_view.setProperty("output_state", out_state)
+                        _adjust_results_column_widths(table_view)
+
+                if target_tab in manager.running_queries:
+                    del manager.running_queries[target_tab]
+                if not manager.running_queries:
+                    manager.cancel_action.setEnabled(False)
+                perf_record(manager, "result_render_ms", perf_elapsed_ms(render_start))
+                execute_start = perf_take(manager, "query_execute_start")
+                perf_record(manager, "query_execute_to_render_ms", perf_elapsed_ms(execute_start))
+                return
+        except Exception as e:
+            print(f"Error parsing explain result: {e}")
 
     if has_tabular_results:
         final_tab_index = 0
@@ -363,6 +432,8 @@ def handle_query_result(
 
         output_state = table_view.property("output_state") or {}
         _stop_chunk_loader(output_state)
+        output_state["conn_data"] = dict(conn_data) if isinstance(conn_data, dict) else {}
+        output_state["query"] = query
         output_state["column_names"] = list(columns)
         output_state["column_specs"] = list(column_specs)
         output_state["modified_coords"] = set()
@@ -374,13 +445,33 @@ def handle_query_result(
         output_state["real_table_name"] = None
         output_state["schema_name"] = None
         output_state["is_editable"] = False
+        output_state["readonly_reason"] = None
+        output_state["readonly_reason_code"] = None
 
-        if table_context:
+        table_writability = (conn_data or {}).get("table_writability") if isinstance(conn_data, dict) else None
+
+        if table_context and (table_writability is None or table_writability.get("is_writable", True)):
             output_state["table_name"] = table_context["table_name"]
             output_state["qualified_table_name"] = table_context["qualified_table_name"]
             output_state["real_table_name"] = table_context["real_table_name"]
             output_state["schema_name"] = table_context["schema_name"]
             output_state["is_editable"] = True
+        else:
+            output_state["is_editable"] = False
+            if table_writability:
+                output_state["readonly_reason"] = table_writability.get("reason")
+                output_state["readonly_reason_code"] = table_writability.get("reason_code")
+            elif not table_context:
+                output_state["readonly_reason"] = "Complex queries with JOINs, CTEs, or functions cannot be edited directly"
+                output_state["readonly_reason_code"] = "complex_query"
+            else:
+                output_state["readonly_reason"] = "This table or object cannot be edited directly"
+                output_state["readonly_reason_code"] = "readonly"
+            if table_context:
+                output_state["table_name"] = table_context["table_name"]
+                output_state["qualified_table_name"] = table_context["qualified_table_name"]
+                output_state["real_table_name"] = table_context["real_table_name"]
+                output_state["schema_name"] = table_context["schema_name"]
 
         current_offset = getattr(target_tab, "current_offset", 0)
         if rows_info_label:
@@ -402,18 +493,27 @@ def handle_query_result(
         if not pk_indices and columns and any(x in columns[0].lower() for x in ["id", "uuid", "pk"]):
             pk_indices.append(0)
 
+        is_table_editable = bool(output_state.get("is_editable"))
         for col_idx, col_name in enumerate(columns):
             spec = column_specs[col_idx] if col_idx < len(column_specs) else {}
             dtype = spec.get("data_type") or ""
-            header_text = _build_header_text(manager, str(col_name), spec)
+            header_text = _build_header_text(
+                manager, str(col_name), spec, is_table_editable=is_table_editable
+            )
             model.setHeaderData(col_idx, Qt.Orientation.Horizontal, header_text)
             if dtype:
                 model.setHeaderData(col_idx, Qt.Orientation.Horizontal, str(dtype), Qt.ItemDataRole.ToolTipRole)
 
         total_rows = len(results)
+        null_text = get_grid_null_text(manager)
         profile_initial_rows, profile_batch_rows = _resolve_chunk_profile(total_rows, manager)
         initial_rows = min(total_rows, profile_initial_rows)
-        _append_rows_batch(model, results, columns, pk_indices, 0, initial_rows)
+        _append_rows_batch(
+            model, results, columns, pk_indices, 0, initial_rows,
+            column_specs=column_specs,
+            is_table_editable=output_state["is_editable"],
+            null_text=null_text,
+        )
 
         proxy_model = output_state.get("cached_proxy_model")
         if proxy_model is None:
@@ -426,16 +526,25 @@ def handle_query_result(
         table_view.setModel(proxy_model)
         _adjust_results_column_widths(table_view)
         manager.attach_selection_summary_listener(table_view, target_tab)
-        if output_state["is_editable"]:
-            table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
-        else:
-            table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        # Double-click opens Cell Value Inspector; in-cell editing is triggered via F2/Enter.
+        table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         search_box = target_tab.findChild(QLineEdit, "table_search_box")
         if search_box and search_box.text():
             proxy_model.setFilterFixedString(search_box.text())
 
         table_view.setProperty("output_state", output_state)
-        _set_row_action_state(target_tab, output_state["is_editable"])
+        manager.sync_row_action_state(target_tab)
+
+        output_container = table_view.parentWidget()
+        banner = output_container.findChild(QFrame, "readonly_banner") if output_container else None
+        if banner:
+            if not output_state["is_editable"] and output_state.get("readonly_reason"):
+                label = banner.findChild(QLabel, "readonly_banner_label")
+                if label:
+                    label.setText(f"Read-Only: {output_state['readonly_reason']}. Editing is disabled.")
+                banner.show()
+            else:
+                banner.hide()
         current_output_index = output_tab_index
         if current_output_index is None:
             current_output_index = resolved_output_index
@@ -484,7 +593,12 @@ def handle_query_result(
 
                 start_index = chunk_state["next_index"]
                 end_index = min(start_index + profile_batch_rows, chunk_state["total_rows"])
-                _append_rows_batch(model, results, columns, pk_indices, start_index, end_index)
+                _append_rows_batch(
+                    model, results, columns, pk_indices, start_index, end_index,
+                    column_specs=column_specs,
+                    is_table_editable=output_state["is_editable"],
+                    null_text=null_text,
+                )
                 chunk_state["next_index"] = end_index
                 chunk_state["batch_count"] += 1
 
@@ -678,6 +792,7 @@ def handle_cell_edit(manager, item, tab, table_view=None):
             modified_coords.remove((row, col))
 
     table_view.setProperty("output_state", output_state)
+    manager.sync_row_action_state(tab)
 
 
 def compact_data_type_label(manager, data_type):
@@ -708,3 +823,13 @@ def compact_data_type_label(manager, data_type):
         compact = f"{compact[:19]}…"
 
     return compact
+
+
+def handle_results_double_click(manager, table_view, index, tab_content=None):
+    """Handle double click on result table by opening the Cell Value Inspector."""
+    if not index or not index.isValid():
+        return
+    if table_view and hasattr(table_view, "setCurrentIndex"):
+        table_view.setCurrentIndex(index)
+    if manager and hasattr(manager, "open_cell_value_viewer"):
+        manager.open_cell_value_viewer(table_view)

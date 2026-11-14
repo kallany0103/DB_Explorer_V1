@@ -1,9 +1,16 @@
 from collections import Counter
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QSize, Qt
 from PySide6.QtGui import QColor, QPalette
+import qtawesome as qta
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QAbstractItemView,
+    QFrame,
+    QHeaderView,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QPushButton,
     QStackedWidget,
     QStyle,
     QStyledItemDelegate,
@@ -45,17 +52,29 @@ def _stop_chunk_loader_for_container(output_container):
 class FlatSelectionDelegate(QStyledItemDelegate):
     """Paints result-table selection with a soft, eye-friendly light blue."""
 
+    ROW_HEIGHT: int = 28
+
     def __init__(
         self,
         selection_color="#D4E0EE",
         hover_color="#EBF3FA",
         text_color="#0F172A",
         parent=None,
+        row_height: int = ROW_HEIGHT,
     ):
+        if isinstance(selection_color, QObject) and parent is None:
+            parent = selection_color
+            selection_color = "#D4E0EE"
         super().__init__(parent)
         self.selection_color = QColor(selection_color)
         self.hover_color = QColor(hover_color)
         self.text_color = QColor(text_color)
+        self.row_height = row_height
+
+    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
+        """Enforces uniform 28px row height across all cells while preserving column width calculation."""
+        hint = super().sizeHint(option, index)
+        return QSize(hint.width(), self.row_height)
 
     def paint(self, painter, option, index):
         is_item_selected = bool(option.state & QStyle.StateFlag.State_Selected)
@@ -103,11 +122,41 @@ class FlatSelectionDelegate(QStyledItemDelegate):
         editor = super().createEditor(parent, option, index)
         if isinstance(editor, QLineEdit):
             editor.setFrame(False)
-            editor.setStyleSheet("QLineEdit { border: 1px solid #a9a9a9; outline: none; border-radius: 0px; background-color: #ffffff; padding: 0 2px; }")
+            editor.setObjectName("results_table_delegate_editor")
         return editor
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
+
+
+def create_readonly_banner(parent=None):
+    banner = QFrame(parent)
+    banner.setObjectName("readonly_banner")
+    layout = QHBoxLayout(banner)
+    layout.setContentsMargins(8, 2, 8, 2)
+    layout.setSpacing(8)
+
+    icon_label = QLabel()
+    icon_label.setObjectName("readonly_banner_icon")
+    icon_label.setPixmap(qta.icon("fa5s.lock", color="#B45309").pixmap(12, 12))
+    layout.addWidget(icon_label)
+
+    msg_label = QLabel("")
+    msg_label.setObjectName("readonly_banner_label")
+    layout.addWidget(msg_label, 1)
+
+    close_btn = QPushButton()
+    close_btn.setObjectName("readonly_banner_close")
+    close_btn.setFixedSize(18, 18)
+    close_btn.setIcon(qta.icon("fa5s.times", color="#B45309"))
+    close_btn.setIconSize(QSize(10, 10))
+    close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    close_btn.setToolTip("Dismiss notice")
+    close_btn.clicked.connect(banner.hide)
+    layout.addWidget(close_btn)
+
+    banner.hide()
+    return banner
 
 
 def create_output_tabs_view(manager, tab_content):
@@ -156,6 +205,9 @@ def ensure_output_tabs_widget(manager, tab_content):
     output_layout = QVBoxLayout(output_container)
     output_layout.setContentsMargins(0, 0, 0, 0)
     output_layout.setSpacing(0)
+
+    banner = create_readonly_banner(output_container)
+    output_layout.addWidget(banner)
 
     existing_table = old_page_zero.findChild(QTableView, "results_table") if old_page_zero else None
     if existing_table:
@@ -217,14 +269,201 @@ def ensure_result_table_for_tab(manager, tab_content, output_tab_index=None):
             output_layout = QVBoxLayout(output_container)
             output_layout.setContentsMargins(0, 0, 0, 0)
             output_layout.setSpacing(0)
+        if not output_container.findChild(QFrame, "readonly_banner"):
+            output_layout.addWidget(create_readonly_banner(output_container))
         table_view = create_output_table_view(manager, tab_content)
         output_layout.addWidget(table_view)
 
     return table_view, output_tabs.currentIndex()
 
 
+class ResultsTableView(QTableView):
+    """QTableView subclass with keyboard shortcuts for cell inspection and editing."""
+
+    ROW_HEIGHT: int = 28
+
+    def __init__(self, manager=None, tab_content=None, parent=None):
+        super().__init__(parent)
+        self._results_manager = manager
+        self._tab_content = tab_content
+
+    def sizeHintForRow(self, row: int) -> int:
+        """Enforces uniform 28px row height hint to prevent view engines from expanding rows."""
+        return self.ROW_HEIGHT
+
+    def _is_cell_editable(self, index) -> bool:
+        """Determines if a given model index can be edited in place."""
+        if not index.isValid():
+            return False
+        output_state = self.property("output_state") or {}
+        if not output_state.get("is_editable", False):
+            return False
+        col = index.column()
+        column_specs = output_state.get("column_specs") or []
+        if 0 <= col < len(column_specs) and column_specs[col].get("read_only"):
+            return False
+        model = self.model()
+        if not model:
+            return False
+        return bool(model.flags(index) & Qt.ItemFlag.ItemIsEditable)
+
+    def _is_content_larger_than_cell(self, index) -> bool:
+        """Returns True only if the content is larger, wider, or taller than the cell boundaries."""
+        if not index.isValid():
+            return False
+
+        col = index.column()
+        output_state = self.property("output_state") or {}
+        column_specs = output_state.get("column_specs") or []
+        if 0 <= col < len(column_specs):
+            data_type = str(column_specs[col].get("data_type") or "").lower()
+            if any(k in data_type for k in ("json", "xml", "clob", "blob", "bytea")):
+                return True
+
+        raw_val = index.data(Qt.ItemDataRole.EditRole)
+        if raw_val is None:
+            raw_val = index.data(Qt.ItemDataRole.DisplayRole)
+        if raw_val is None or raw_val == "NULL":
+            return False
+
+        text = str(raw_val)
+        if not text:
+            return False
+
+        # Multiline text is taller than a single 28px row
+        if "\n" in text or "\r" in text:
+            return True
+
+        # Check if text pixel width exceeds visible column width
+        col_width = self.columnWidth(col)
+        if col_width <= 0 and self.horizontalHeader():
+            col_width = self.horizontalHeader().defaultSectionSize()
+        if col_width <= 0:
+            col_width = 100
+
+        text_pixel_width = self.fontMetrics().horizontalAdvance(text)
+        if text_pixel_width + 16 > col_width:
+            return True
+
+        # Structured JSON or XML blocks
+        s = text.strip()
+        if (
+            (s.startswith("{") and s.endswith("}"))
+            or (s.startswith("[") and s.endswith("]"))
+            or (s.startswith("<") and s.endswith(">"))
+        ):
+            return True
+
+        if len(text) > 80:
+            return True
+
+        return False
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+            index = self.indexAt(pos)
+            if index.isValid():
+                if self.state() == QAbstractItemView.State.EditingState:
+                    active_editors = [w for w in self.findChildren(QLineEdit) if w.isVisible()]
+                    if not active_editors:
+                        viewport = self.viewport()
+                        if viewport:
+                            active_editors = [
+                                w for w in viewport.children()
+                                if isinstance(w, QWidget) and w.isVisible()
+                            ]
+                            if not active_editors:
+                                active_editors = [
+                                    w for w in viewport.findChildren(QWidget)
+                                    if w.isVisible() and w is not viewport
+                                ]
+                    if active_editors:
+                        for editor in active_editors:
+                            try:
+                                self.commitData(editor)
+                            finally:
+                                try:
+                                    self.closeEditor(editor, QAbstractItemDelegate.EndEditHint.SubmitModelCache)
+                                finally:
+                                    try:
+                                        editor.hide()
+                                    except Exception:
+                                        pass
+                    if self.state() == QAbstractItemView.State.EditingState:
+                        self.setState(QAbstractItemView.State.NoState)
+
+                self.setCurrentIndex(index)
+                is_larger = self._is_content_larger_than_cell(index)
+                is_editable = self._is_cell_editable(index)
+
+                if is_larger:
+                    # Content is larger/wider than cell -> pop up the editor/viewer dialog
+                    if self._results_manager and hasattr(self._results_manager, "open_cell_value_viewer"):
+                        self._results_manager.open_cell_value_viewer(self)
+                elif is_editable:
+                    # Small, single-line editable value (e.g. 1 number, short word) -> edit in-cell
+                    self.edit(index)
+                else:
+                    # Small value in a read-only table that fits in the cell:
+                    # Content is already fully visible, do not open an unnecessary dialog.
+                    pass
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
+
+    def keyPressEvent(self, event):
+        if self.state() != QAbstractItemView.State.EditingState:
+            key = event.key()
+            modifiers = event.modifiers()
+            cmd_alt_meta = (
+                Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.AltModifier
+                | Qt.KeyboardModifier.MetaModifier
+            )
+            is_space = (
+                key == Qt.Key.Key_Space
+                and not bool(modifiers & (Qt.KeyboardModifier.ShiftModifier | cmd_alt_meta))
+            )
+            is_shift_enter = (
+                key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+                and not bool(modifiers & cmd_alt_meta)
+            )
+            is_f7 = key == Qt.Key.Key_F7
+            if is_space or is_shift_enter or is_f7:
+                if self._results_manager and hasattr(self._results_manager, "open_cell_value_viewer"):
+                    self._results_manager.open_cell_value_viewer(self)
+                    event.accept()
+                    return
+
+            no_mods = not bool(modifiers & (Qt.KeyboardModifier.ShiftModifier | cmd_alt_meta))
+            is_plain_enter = key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and no_mods
+            is_f2 = key == Qt.Key.Key_F2 and no_mods
+            if is_plain_enter or is_f2:
+                curr = self.currentIndex()
+                if not curr.isValid():
+                    selected = self.selectedIndexes()
+                    if selected:
+                        curr = selected[0]
+                        self.setCurrentIndex(curr)
+                if curr.isValid():
+                    if bool(curr.flags() & Qt.ItemFlag.ItemIsEditable):
+                        self.edit(curr)
+                    elif (
+                        self._results_manager
+                        and hasattr(self._results_manager, "status")
+                        and self._results_manager.status
+                    ):
+                        self._results_manager.status.showMessage("Cell is read-only", 3000)
+                    event.accept()
+                    return
+
+        super().keyPressEvent(event)
+
+
 def create_output_table_view(manager, tab_content):
-    table_view = QTableView()
+    table_view = ResultsTableView(manager, tab_content)
     table_view.setObjectName("results_table")
     table_view.setAlternatingRowColors(True)
     table_view.setMouseTracking(True)
@@ -236,10 +475,15 @@ def create_output_table_view(manager, tab_content):
     table_view.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     table_view.verticalHeader().setSectionsClickable(True)
     table_view.verticalHeader().setDefaultSectionSize(28)
+    table_view.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+    show_row_numbers = bool(
+        getattr(getattr(manager, "main_window", None), "grid_show_row_numbers", True)
+    )
+    table_view.verticalHeader().setVisible(show_row_numbers)
     table_view.setItemDelegate(FlatSelectionDelegate(parent=table_view))
     table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     table_view.customContextMenuRequested.connect(manager.show_results_context_menu)
-    table_view.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
+    table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
     output_state = {
         "table_name": None,
@@ -247,12 +491,19 @@ def create_output_table_view(manager, tab_content):
         "real_table_name": None,
         "schema_name": None,
         "is_editable": False,
+        "readonly_reason": None,
+        "readonly_reason_code": None,
         "column_names": [],
         "modified_coords": set(),
         "new_row_index": None,
         "cached_proxy_model": None,
     }
     table_view.setProperty("output_state", output_state)
+    table_view.doubleClicked.connect(
+        lambda index: manager.handle_results_double_click(table_view, index, tab_content)
+        if hasattr(manager, "handle_results_double_click")
+        else None
+    )
     return table_view
 
 
@@ -282,6 +533,9 @@ def create_output_tab(manager, tab_content, title=None, activate=True):
     output_layout = QVBoxLayout(output_container)
     output_layout.setContentsMargins(0, 0, 0, 0)
     output_layout.setSpacing(0)
+
+    banner = create_readonly_banner(output_container)
+    output_layout.addWidget(banner)
 
     table_view = create_output_table_view(manager, tab_content)
     output_layout.addWidget(table_view)
@@ -316,6 +570,8 @@ def ensure_at_least_one_output_tab(manager, tab_content):
         output_layout = QVBoxLayout(output_container)
         output_layout.setContentsMargins(0, 0, 0, 0)
         output_layout.setSpacing(0)
+        banner = create_readonly_banner(output_container)
+        output_layout.addWidget(banner)
         table_view = create_output_table_view(manager, tab_content)
         output_layout.addWidget(table_view)
         output_container.setProperty("tab_base_name", "Result")
@@ -348,6 +604,14 @@ def handle_output_tab_close(manager, tab_content, index):
     if output_tabs.count() <= 1:
         return
     output_container = output_tabs.widget(index)
+    if output_container:
+        table = output_container.findChild(QTableView, "results_table")
+        if table:
+            output_state = table.property("output_state") or {}
+            if output_state.get("modified_coords") or output_state.get("new_row_index") is not None:
+                if hasattr(manager, "check_unsaved_changes_before_action"):
+                    if not manager.check_unsaved_changes_before_action(tab_content, "closing this result tab"):
+                        return
     _stop_chunk_loader_for_container(output_container)
     output_tabs.removeTab(index)
     if output_tabs.count() == 0:
