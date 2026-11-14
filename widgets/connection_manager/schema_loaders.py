@@ -51,9 +51,12 @@ class SchemaLoader:
     def _prepare_schema_tree(self):
         self.manager.schema_model.clear()
         self.manager.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-        self.manager.schema_tree.setColumnWidth(0, 200)
+        self.manager.schema_tree.setColumnWidth(0, 145)
         self.manager.schema_tree.setColumnWidth(1, 100)
         self.manager.schema_tree.setItemDelegateForColumn(1, TypeColumnDelegate(self.manager.schema_tree))
+        if hasattr(self.manager, "schema_status_label"):
+            self.manager.schema_status_label.setText("")
+        self.manager._default_schema_status = ""
 
         header = self.manager.schema_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
@@ -75,6 +78,10 @@ class SchemaLoader:
         rows = data.get("rows", [])
 
         self._prepare_schema_tree()
+        status_text = f"{len(rows):,} tables/views"
+        if hasattr(self.manager, "schema_status_label"):
+            self.manager.schema_status_label.setText(status_text)
+        self.manager._default_schema_status = status_text
 
         for name, type_str in rows:
             name_item = QStandardItem(name)
@@ -129,6 +136,10 @@ class SchemaLoader:
         schemas = data.get("schemas", [])
 
         self._prepare_schema_tree()
+        status_text = f"{len(schemas):,} schemas"
+        if hasattr(self.manager, "schema_status_label"):
+            self.manager.schema_status_label.setText(status_text)
+        self.manager._default_schema_status = status_text
 
         if hasattr(self.manager, "pg_conn") and self.manager.pg_conn and not self.manager.pg_conn.closed:
             try:
@@ -139,7 +150,7 @@ class SchemaLoader:
         self.manager.pg_conn = db.get_pooled_postgres_connection(
             conn_data,
             application_name=f"Universal SQL Client (Object Explorer) - {conn_data.get('database', 'postgres')}",
-            use_pool=True
+            use_pool=False,
         )
         if self.manager.pg_conn:
             self.manager.pg_conn.autocommit = True
@@ -204,6 +215,10 @@ class SchemaLoader:
         data_sources = data.get("data_sources", [])
 
         self._prepare_schema_tree()
+        status_text = f"{len(data_sources):,} data sources"
+        if hasattr(self.manager, "schema_status_label"):
+            self.manager.schema_status_label.setText(status_text)
+        self.manager._default_schema_status = status_text
 
         if hasattr(self.manager, "pg_conn") and self.manager.pg_conn and not self.manager.pg_conn.closed:
             try:
@@ -215,7 +230,7 @@ class SchemaLoader:
             self.manager.pg_conn = db.get_pooled_postgres_connection(
                 conn_data,
                 application_name=f"Universal SQL Client (UDS Schema) - {conn_data.get('database', 'postgres')}",
-                use_pool=True
+                use_pool=False,
             )
             if self.manager.pg_conn:
                 self.manager.pg_conn.autocommit = True
@@ -409,7 +424,7 @@ class SchemaLoader:
             cursor.execute(
                 "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%%' AND nspname != 'information_schema' ORDER BY nspname;")
             schemas = [row[0] for row in cursor.fetchall()]
-            db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
+            cursor.close()
             self.populate_postgres_schema({
                 "conn_data": conn_data,
                 "schemas": schemas,
@@ -421,7 +436,7 @@ class SchemaLoader:
         finally:
             if pg_conn:
                 try:
-                    pg_conn.close()
+                    db.return_pooled_postgres_connection(conn_data, conn=pg_conn)
                 except Exception:
                     pass
 
@@ -469,6 +484,10 @@ class SchemaLoader:
         csv_files = data.get("files", [])
 
         self._prepare_schema_tree()
+        status_text = f"{len(csv_files):,} CSV files"
+        if hasattr(self.manager, "schema_status_label"):
+            self.manager.schema_status_label.setText(status_text)
+        self.manager._default_schema_status = status_text
 
         for file_name in csv_files:
             display_name, _ = os.path.splitext(file_name)
@@ -493,27 +512,138 @@ class SchemaLoader:
     def populate_servicenow_schema(self, data, skip_restore=False):
         """UI-only: render the ServiceNow table list emitted by ServiceNowSchemaWorker."""
         try:
+            self.manager._last_servicenow_schema_data = data
             conn_data = data.get("conn_data", {})
             tables = data.get("tables", [])
+            table_entries = data.get("table_entries", [])
+            label_map = {
+                entry.get("name"): entry.get("label")
+                for entry in table_entries
+                if isinstance(entry, dict) and entry.get("name")
+            }
 
             if not tables:
                 self.manager.status.showMessage("No tables found or access restricted.", 5000)
                 return
 
-            self._prepare_schema_tree()
-            for table_name in tables:
-                table_item = QStandardItem(qta.icon("mdi.table", color="#4CAF50"), table_name)
-                table_item.setEditable(False)
-                table_item.setData({
-                    'db_type': 'servicenow',
-                    'table_name': table_name,
-                    'conn_data': conn_data,
-                }, Qt.ItemDataRole.UserRole)
-                table_item.appendRow(_create_loading_item(self.manager))
+            conn_id = conn_data.get("id") or conn_data.get("connection_id") or "default"
+            from widgets.connection_manager.favorites import get_favorite_tables
+            favs = get_favorite_tables(conn_id)
 
-                type_item = QStandardItem("Table")
-                type_item.setEditable(False)
-                self.manager.schema_model.appendRow([table_item, type_item])
+            from db.duckdb_manager import DuckDBManager
+            from db.servicenow_dlt import get_synced_tables
+            db_path = DuckDBManager.get_servicenow_duckdb_path(conn_id)
+            cached_tables = set(t.lower() for t in get_synced_tables(db_path))
+
+            core_names = {
+                "incident", "incident_task", "problem", "problem_task",
+                "change_request", "change_task", "task", "sys_user",
+                "sys_user_group", "cmdb_ci", "cmdb_ci_server", "sc_request",
+                "sc_req_item", "sc_task", "kb_knowledge",
+            }
+
+            # Categories
+            fav_tables = [t for t in tables if t.lower() in favs]
+            itsm_tables = [t for t in tables if t.lower() in core_names]
+            cmdb_tables = [t for t in tables if any(t.lower().startswith(p) for p in ("cmdb_", "alm_", "ast_"))]
+            user_tables = [t for t in tables if any(t.lower().startswith(p) for p in ("sys_user", "sys_group"))]
+            custom_tables = [t for t in tables if t.lower().startswith("u_") or t.lower().startswith("x_")]
+            all_sorted = sorted(tables, key=lambda x: x.lower())
+
+            self._prepare_schema_tree()
+            status_text = f"{len(tables):,} tables"
+            if hasattr(self.manager, "schema_status_label"):
+                self.manager.schema_status_label.setText(status_text)
+            self.manager._default_schema_status = status_text
+
+            def _create_table_pair(t_name):
+                t_lower = t_name.lower()
+                is_fav = t_lower in favs
+                is_cached = t_lower in cached_tables
+                is_core = t_lower in core_names
+
+                if is_core:
+                    icon = qta.icon("mdi.table", color="#1E88E5")
+                else:
+                    icon = qta.icon("mdi.table", color="#4CAF50")
+
+                t_item = QStandardItem(icon, t_name)
+                t_item.setEditable(False)
+
+                lbl = label_map.get(t_name, "")
+                tag = " • Cached" if is_cached else ""
+                if lbl and lbl.lower() != t_name.lower():
+                    t_type_text = f"Table ({lbl}){tag}"
+                else:
+                    t_type_text = f"Table{tag}"
+
+                tip_lines = [f"ServiceNow Table: {t_name}"]
+                if lbl and lbl.lower() != t_name.lower():
+                    tip_lines.append(f"Label: {lbl}")
+                if is_fav:
+                    tip_lines.append("In Favorites")
+                if is_cached:
+                    tip_lines.append("Cached locally in DuckDB (Fast offline queries)")
+                t_item.setToolTip("\n".join(tip_lines))
+
+                t_item.setData({
+                    'db_type': 'servicenow',
+                    'table_name': t_name,
+                    'conn_data': conn_data,
+                    'label': lbl,
+                    'is_fav': is_fav,
+                    'is_cached': is_cached,
+                }, Qt.ItemDataRole.UserRole)
+
+                tp_item = QStandardItem(t_type_text)
+                tp_item.setEditable(False)
+                return t_item, tp_item
+
+            def _append_category(cat_name, cat_icon, cat_color, table_list, default_expanded=False, allow_empty=False):
+                if not table_list and not allow_empty:
+                    return None
+                folder_item = QStandardItem(qta.icon(cat_icon, color=cat_color), f"{cat_name} ({len(table_list)})")
+                folder_item.setEditable(False)
+                folder_item.setData({"type": "category", "name": cat_name}, Qt.ItemDataRole.UserRole)
+                folder_type = QStandardItem("Category")
+                folder_type.setEditable(False)
+
+                if table_list:
+                    for t_name in table_list:
+                        t_item, tp_item = _create_table_pair(t_name)
+                        folder_item.appendRow([t_item, tp_item])
+                elif allow_empty:
+                    empty_item = QStandardItem("No custom tables found (u_*, x_*)")
+                    empty_item.setEditable(False)
+                    empty_item.setData({"type": "info"}, Qt.ItemDataRole.UserRole)
+                    empty_type = QStandardItem("Info")
+                    empty_type.setEditable(False)
+                    folder_item.appendRow([empty_item, empty_type])
+
+                self.manager.schema_model.appendRow([folder_item, folder_type])
+                if default_expanded:
+                    folder_idx = self.manager.schema_model.indexFromItem(folder_item)
+                    self.manager.schema_tree.expand(folder_idx)
+                return folder_item
+
+            # 1. Favorites (if any)
+            if fav_tables:
+                _append_category("Favorites", "mdi.star", "#FFC107", sorted(fav_tables, key=lambda x: x.lower()), default_expanded=True)
+
+            # 2. IT Service Management
+            _append_category("IT Service Management", "mdi.clipboard-text-outline", "#1E88E5", sorted(itsm_tables, key=lambda x: x.lower()), default_expanded=True)
+
+            # 3. CMDB & Infrastructure
+            _append_category("CMDB & Infrastructure", "mdi.server-network", "#43A047", sorted(cmdb_tables, key=lambda x: x.lower()), default_expanded=False)
+
+            # 4. User Administration
+            _append_category("User Administration", "mdi.account-group", "#8E24AA", sorted(user_tables, key=lambda x: x.lower()), default_expanded=False)
+
+            # 5. Custom Tables (u_*, x_*)
+            _append_category("Custom Tables", "mdi.domain", "#E65100", sorted(custom_tables, key=lambda x: x.lower()), default_expanded=False, allow_empty=True)
+
+            # 6. All Tables (A-Z)
+            _append_category("All Tables", "mdi.database", "#78909C", all_sorted, default_expanded=False)
 
             self._connect_expand_handler()
             if not skip_restore:
@@ -542,6 +672,10 @@ class SchemaLoader:
             conn_data = data.get("conn_data", {})
             schemas = data.get("schemas", [])
             self._prepare_schema_tree()
+            status_text = f"{len(schemas):,} schemas"
+            if hasattr(self.manager, "schema_status_label"):
+                self.manager.schema_status_label.setText(status_text)
+            self.manager._default_schema_status = status_text
 
             schemas_root = QStandardItem("Schemas")
             schemas_root.setEditable(False)

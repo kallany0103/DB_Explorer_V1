@@ -1,4 +1,5 @@
 import re
+import qtawesome as qta
 
 import db
 from PySide6.QtCore import Qt
@@ -217,7 +218,7 @@ class TableDetailsLoader:
                             self.manager.pg_conn = db.get_pooled_postgres_connection(
                                 conn_data,
                                 application_name=f"Universal SQL Client (Table Details) - {conn_data.get('database', 'postgres')}",
-                                use_pool=True
+                                use_pool=False,
                             )
                             if not self.manager.pg_conn:
                                 raise Exception("Failed to establish database connection")
@@ -402,17 +403,45 @@ class TableDetailsLoader:
 
             table_item.removeRows(0, table_item.rowCount())
             columns = data.get("columns", [])
+            col_details = data.get("column_details", [])
+            if not col_details and columns:
+                col_details = [{"name": c, "label": c, "type": "STRING"} for c in columns]
 
-            columns_folder = QStandardItem(f"Columns ({len(columns)})")
+            columns_folder = QStandardItem(f"Columns ({len(col_details)})")
             columns_folder.setEditable(False)
 
-            if not columns:
+            if not col_details:
                 columns_folder.appendRow(QStandardItem("No columns found"))
             else:
-                for col_name in columns:
-                    col_item = QStandardItem(col_name)
+                for col in col_details:
+                    col_name = col.get("name", "")
+                    col_label = col.get("label", col_name)
+                    col_type = col.get("type", "STRING")
+                    is_pk = col.get("pk", False)
+                    ref = col.get("reference", "")
+
+                    if is_pk:
+                        desc = f"{col_name} [PK] ({col_type})"
+                        icon = qta.icon("mdi.key", color="#FFC107")
+                    elif ref:
+                        desc = f"{col_name} ({col_type}) -> {ref}"
+                        icon = qta.icon("mdi.link-variant", color="#2196F3")
+                    else:
+                        desc = f"{col_name} ({col_type})"
+                        icon = qta.icon("mdi.table-column", color="#78909C")
+
+                    col_item = QStandardItem(icon, desc)
                     col_item.setEditable(False)
-                    columns_folder.appendRow(col_item)
+                    tooltip_lines = [f"Column: {col_name}", f"Type: {col_type}"]
+                    if col_label and col_label.lower() != col_name.lower():
+                        tooltip_lines.append(f"Label: {col_label}")
+                    if ref:
+                        tooltip_lines.append(f"References: {ref}")
+                    col_item.setToolTip("\n".join(tooltip_lines))
+
+                    type_item = QStandardItem(f"FK -> {ref}" if ref else col_type)
+                    type_item.setEditable(False)
+                    columns_folder.appendRow([col_item, type_item])
 
             table_item.appendRow(columns_folder)
 
@@ -1279,6 +1308,6 @@ class TableDetailsLoader:
             table_item.appendRow(policies_folder)
         except Exception as e:
             # Append error row quietly for policies
-            policies_folder = QStandardItem(f"Policies (Error)")
+            policies_folder = QStandardItem("Policies (Error)")
             policies_folder.appendRow(QStandardItem(f"Error: {e}"))
             table_item.appendRow(policies_folder)

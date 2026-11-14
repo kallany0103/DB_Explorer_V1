@@ -3,6 +3,7 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu
+from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.context_menus._helpers import action, add_properties_statistics_actions, submenu
 from widgets.connection_manager.menu_style import apply_menu_style
 
@@ -201,18 +202,19 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
 
-        # Terminal submenu — only the matching terminal is enabled
-        term_sub = submenu(menu, "Terminal", "mdi.console")
+        # Terminal submenu — only shown when Integrated CLI Terminals feature is enabled
+        if is_feature_enabled(self.manager, "native_terminals"):
+            term_sub = submenu(menu, "Terminal", "mdi.console")
 
-        psql_act = action(self.manager, "PSQL Tool", "mdi.console")
-        psql_act.setEnabled(code == "POSTGRES")
-        psql_act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
-        term_sub.addAction(psql_act)
+            psql_act = action(self.manager, "PSQL Tool", "mdi.console")
+            psql_act.setEnabled(code == "POSTGRES")
+            psql_act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
+            term_sub.addAction(psql_act)
 
-        sqlplus_act = action(self.manager, "SQL*Plus Tool", "mdi.database-cog")
-        sqlplus_act.setEnabled(code in ("ORACLE_DB", "ORACLE_FA"))
-        sqlplus_act.triggered.connect(lambda: self.manager.connection_actions.open_sqlplus_tool(conn_data))
-        term_sub.addAction(sqlplus_act)
+            sqlplus_act = action(self.manager, "SQL*Plus Tool", "mdi.database-cog")
+            sqlplus_act.setEnabled(code in ("ORACLE_DB", "ORACLE_FA"))
+            sqlplus_act.triggered.connect(lambda: self.manager.connection_actions.open_sqlplus_tool(conn_data))
+            term_sub.addAction(sqlplus_act)
         
         # parent_item = item.parent()
         # grandparent_item = parent_item.parent() if parent_item else None
@@ -236,13 +238,15 @@ class ExplorerMenuBuilder:
             act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
             menu.addAction(act)
 
-            act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
-            act.triggered.connect(lambda _, it=connection_item: self.manager.connection_actions.open_uds_virtual_view_dialog(it.data(Qt.ItemDataRole.UserRole)))
-            menu.addAction(act)
+            if is_feature_enabled(self.manager, "data_virtualization"):
+                act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
+                act.triggered.connect(lambda _, it=connection_item: self.manager.connection_actions.open_uds_virtual_view_dialog(it.data(Qt.ItemDataRole.UserRole)))
+                menu.addAction(act)
 
-            act = action(self.manager, "USQL Tool", "mdi.console")
-            act.triggered.connect(lambda: self.manager.connection_actions.open_usql_tool(conn_data))
-            menu.addAction(act)
+            if is_feature_enabled(self.manager, "native_terminals"):
+                act = action(self.manager, "USQL Tool", "mdi.console")
+                act.triggered.connect(lambda: self.manager.connection_actions.open_usql_tool(conn_data))
+                menu.addAction(act)
 
             menu.addSeparator()
 
@@ -269,11 +273,11 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_actions.open_search_objects_dialog(conn_data))
         menu.addAction(act)
         
-        menu.addSeparator()
-        
-        act = action(self.manager, "ERD for Database", "fa6s.sitemap")
-        act.triggered.connect(lambda: self.manager.generate_erd(item))
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "erd_designer"):
+            menu.addSeparator()
+            act = action(self.manager, "ERD for Database", "fa6s.sitemap")
+            act.triggered.connect(lambda: self.manager.generate_erd(item))
+            menu.addAction(act)
         
         menu.addSeparator()
         conn_inspector = dict(conn_data) if conn_data else {}
@@ -281,14 +285,15 @@ class ExplorerMenuBuilder:
         conn_inspector.setdefault("name", item.text())
         add_properties_statistics_actions(menu, self.manager, conn_inspector, item.text())
 
-        menu.addSeparator()
-        act = action(self.manager, "Backup...", "mdi.backup-restore")
-        act.triggered.connect(lambda: self.manager.connection_actions.open_backup_dialog(conn_data))
-        menu.addAction(act)
+        if is_feature_enabled(self.manager, "backup_restore"):
+            menu.addSeparator()
+            act = action(self.manager, "Backup...", "mdi.backup-restore")
+            act.triggered.connect(lambda: self.manager.connection_actions.open_backup_dialog(conn_data))
+            menu.addAction(act)
 
-        act = action(self.manager, "Restore...", "mdi.database-import")
-        act.triggered.connect(lambda: self.manager.connection_actions.open_restore_dialog(conn_data))
-        menu.addAction(act)
+            act = action(self.manager, "Restore...", "mdi.database-import")
+            act.triggered.connect(lambda: self.manager.connection_actions.open_restore_dialog(conn_data))
+            menu.addAction(act)
 
         parent_item = item.parent()
         grandparent_item = parent_item.parent() if parent_item else None
@@ -369,7 +374,7 @@ class ExplorerMenuBuilder:
 
         menu.addSeparator()
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool_for_table(item_data, display_name))
+        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item_data))
         menu.addAction(act)
 
         menu.addSeparator()
@@ -406,10 +411,9 @@ class ExplorerMenuBuilder:
 
     def _data_source_menu(self, menu, item, index):
         ds_data = item.data(Qt.ItemDataRole.UserRole) or {}
-        ds_name = item.text()
 
         act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
-        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool_for_table(ds_data, ds_name))
+        act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(ds_data))
         menu.addAction(act)
 
         act = action(self.manager, "Edit Data Source", "mdi.pencil-outline")

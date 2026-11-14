@@ -4,9 +4,11 @@ import time
 import uuid
 
 import db
+import qtawesome as qta
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -72,7 +74,6 @@ from widgets.sqlplus_tool.terminal_widget import open_sqlplus_tool
 from workers.connection_workers import DataSourcePingWorker
 from ui.components import LoadingOverlay, PrimaryButton, SecondaryButton
 from workers.workers import WorkerThread
-import db
         
 
 class ConnectionActions:
@@ -141,8 +142,15 @@ class ConnectionActions:
         self.manager.status_message_label.setText("Failed to count rows.")
 
     def open_query_tool(self, item):
-        conn_data = item.data(Qt.ItemDataRole.UserRole) if hasattr(item, 'data') else item
-        if not conn_data:
+        raw_data = item.data(Qt.ItemDataRole.UserRole) if hasattr(item, 'data') else item
+        if not raw_data:
+            return
+        conn_data = (
+            raw_data.get("conn_data")
+            if isinstance(raw_data, dict) and isinstance(raw_data.get("conn_data"), dict)
+            else raw_data
+        )
+        if not isinstance(conn_data, dict):
             return
 
         new_tab = self.manager.add_tab()
@@ -176,10 +184,18 @@ class ConnectionActions:
                 db_combo_box.setCurrentIndex(i)
                 break
 
-        schema = item_data.get("schema_name", "public")
-        schema_quoted = f'"{schema}"'
-        new_tab.table_name = f'{schema_quoted}.{table_name}'
-        query = f'SELECT * FROM {schema_quoted}."{table_name}";'
+        db_type = str(item_data.get("db_type") or conn_data.get("code") or "").lower()
+        schema = item_data.get("schema_name")
+        if db_type in ("postgres", "postgresql", "uds") and not schema:
+            schema = "public"
+
+        if schema:
+            schema_quoted = f'"{schema}"'
+            new_tab.table_name = f'{schema_quoted}.{table_name}'
+            query = f'SELECT * FROM {schema_quoted}."{table_name}";'
+        else:
+            new_tab.table_name = table_name
+            query = f'SELECT * FROM "{table_name}";'
         query_editor.setPlainText(query)
 
         self.manager.tab_widget.setCurrentWidget(new_tab)
@@ -294,6 +310,203 @@ class ConnectionActions:
         worker.signals.error.connect(lambda err: _on_ping_error(err, worker))
         self.manager.thread_pool.start(worker)
 
+    def resync_servicenow_table(self, item_data, table_name):
+        """Asynchronously syncs/re-syncs a ServiceNow table into local DuckDB cache."""
+        if not item_data or not table_name:
+            return
+        conn_data = item_data.get("conn_data")
+        if not conn_data:
+            return
+
+        self.manager.status.showMessage(f"Re-syncing '{table_name}' from ServiceNow...", 15000)
+        from workers.connection_workers import ServiceNowSyncWorker
+        worker = ServiceNowSyncWorker(conn_data, table_name)
+
+        def _on_sync_finished(res):
+            self.manager.status.showMessage(f"Successfully re-synced '{table_name}' into DuckDB!", 5000)
+            last_data = getattr(self.manager, "_last_servicenow_schema_data", None)
+            if last_data and hasattr(self.manager, "schema_loader"):
+                self.manager.schema_loader.populate_servicenow_schema(last_data)
+
+        def _on_sync_error(err):
+            self.manager.status.showMessage(f"Failed to re-sync '{table_name}': {err}", 8000)
+
+        worker.signals.finished.connect(_on_sync_finished)
+        worker.signals.error.connect(_on_sync_error)
+        self.manager.thread_pool.start(worker)
+
+    def toggle_table_pin(self, item_data, table_name):
+        """Toggles favorite pin for a table with instant in-place DOM update and visual loading feedback."""
+        if not item_data or not table_name:
+            return
+        conn_id = item_data.get("conn_data", {}).get("id") or "default"
+        from widgets.connection_manager.favorites import toggle_favorite_table
+
+        if QApplication.instance():
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.manager.status.showMessage(f"Updating Favorites for '{table_name}'...", 1000)
+        if QApplication.instance():
+            QApplication.processEvents()
+
+        try:
+            is_fav = toggle_favorite_table(conn_id, table_name)
+            item_data["is_fav"] = is_fav
+            msg = f"Added '{table_name}' to Favorites!" if is_fav else f"Removed '{table_name}' from Favorites."
+
+            # Fast in-place tree update: add/remove directly in Favorites folder
+            model = getattr(self.manager, "schema_model", None)
+            tree = getattr(self.manager, "schema_tree", None)
+
+            if model and tree:
+                fav_folder = None
+                for r in range(model.rowCount()):
+                    it = model.item(r, 0)
+                    if it and (it.data(Qt.ItemDataRole.UserRole) or {}).get("name") == "Favorites":
+                        fav_folder = it
+                        break
+
+                if is_fav:
+                    # If Favorites folder does not exist, create it at row 0
+                    if not fav_folder:
+                        fav_folder = QStandardItem(qta.icon("mdi.star", color="#FFC107"), "Favorites (0)")
+                        fav_folder.setEditable(False)
+                        fav_folder.setData({"type": "category", "name": "Favorites"}, Qt.ItemDataRole.UserRole)
+                        fav_type = QStandardItem("Category")
+                        fav_type.setEditable(False)
+                        model.insertRow(0, [fav_folder, fav_type])
+
+                    # Check if table is already in Favorites folder
+                    already_in = False
+                    for c in range(fav_folder.rowCount()):
+                        ch = fav_folder.child(c, 0)
+                        if ch and ch.text() == table_name:
+                            already_in = True
+                            break
+
+                    if not already_in:
+                        # Create table pair
+                        lbl = item_data.get("label", "")
+                        is_cached = item_data.get("is_cached", False)
+                        core_names = {
+                            "task", "incident", "problem", "change_request", "change_task",
+                            "sys_user", "sys_user_group", "cmdb_ci", "cmdb_ci_server",
+                            "sc_request", "sc_req_item", "sc_task", "kb_knowledge",
+                        }
+                        is_core = table_name.lower() in core_names
+                        icon = qta.icon("mdi.table", color="#1E88E5" if is_core else "#4CAF50")
+                        t_item = QStandardItem(icon, table_name)
+                        t_item.setEditable(False)
+
+                        tag = " • Cached" if is_cached else ""
+                        if lbl and lbl.lower() != table_name.lower():
+                            t_type_text = f"Table ({lbl}){tag}"
+                        else:
+                            t_type_text = f"Table{tag}"
+
+                        tip_lines = [f"ServiceNow Table: {table_name}"]
+                        if lbl and lbl.lower() != table_name.lower():
+                            tip_lines.append(f"Label: {lbl}")
+                        tip_lines.append("In Favorites")
+                        if is_cached:
+                            tip_lines.append("Cached locally in DuckDB (Fast offline queries)")
+                        t_item.setToolTip("\n".join(tip_lines))
+                        t_item.setData({
+                            'db_type': 'servicenow',
+                            'table_name': table_name,
+                            'conn_data': item_data.get("conn_data", {}),
+                            'label': lbl,
+                            'is_fav': True,
+                            'is_cached': is_cached,
+                        }, Qt.ItemDataRole.UserRole)
+
+                        tp_item = QStandardItem(t_type_text)
+                        tp_item.setEditable(False)
+                        fav_folder.appendRow([t_item, tp_item])
+
+                    fav_folder.setText(f"Favorites ({fav_folder.rowCount()})")
+                    tree.expand(fav_folder.index())
+                else:
+                    # Remove from Favorites folder
+                    if fav_folder:
+                        for c in range(fav_folder.rowCount()):
+                            ch = fav_folder.child(c, 0)
+                            if ch and ch.text() == table_name:
+                                fav_folder.removeRow(c)
+                                break
+
+                        if fav_folder.rowCount() == 0:
+                            model.removeRow(fav_folder.row())
+                        else:
+                            fav_folder.setText(f"Favorites ({fav_folder.rowCount()})")
+
+            self.manager.status.showMessage(msg, 3000)
+
+        except Exception as e:
+            # Fallback to full reload if anything fails
+            last_data = getattr(self.manager, "_last_servicenow_schema_data", None)
+            if last_data and hasattr(self.manager, "schema_loader"):
+                self.manager.schema_loader.populate_servicenow_schema(last_data)
+            self.manager.status.showMessage(f"Favorites updated ({e})", 3000)
+        finally:
+            if QApplication.instance():
+                QApplication.restoreOverrideCursor()
+
+    def generate_select_template(self, item_data, table_name):
+        """Opens a new worksheet and populates a curated SELECT query for the table."""
+        if not item_data or not table_name:
+            return
+
+        db_type = (item_data.get("db_type") or "").lower()
+        if db_type == "servicenow":
+            common_cols = {
+                "incident": ["number", "short_description", "state", "priority", "caller_id", "assigned_to", "sys_created_on"],
+                "problem": ["number", "short_description", "state", "priority", "assigned_to", "sys_created_on"],
+                "change_request": ["number", "short_description", "type", "state", "priority", "assigned_to", "sys_created_on"],
+                "task": ["number", "short_description", "state", "priority", "assigned_to", "sys_created_on"],
+                "sys_user": ["user_name", "first_name", "last_name", "email", "active", "sys_created_on"],
+                "sys_user_group": ["name", "description", "active"],
+                "cmdb_ci": ["name", "ip_address", "operational_status", "sys_class_name", "sys_created_on"],
+            }
+            cols = common_cols.get(table_name.lower())
+            if not cols:
+                cols = ["sys_id", "number", "short_description", "sys_created_on"] if any(k in table_name.lower() for k in ("task", "incident", "request")) else ["*"]
+            col_str = ",\n    ".join(cols) if cols != ["*"] else "*"
+            query = f"SELECT\n    {col_str}\nFROM {table_name}\nLIMIT 100;\n"
+        else:
+            query = f"SELECT *\nFROM {table_name}\nLIMIT 100;\n"
+
+        new_tab = self.manager.add_tab()
+        conn_data = item_data.get("conn_data")
+        if conn_data:
+            db_combo = new_tab.findChild(QComboBox, "db_combo_box")
+            if db_combo:
+                for i in range(db_combo.count()):
+                    d = db_combo.itemData(i)
+                    if d and d.get("id") == conn_data.get("id"):
+                        db_combo.setCurrentIndex(i)
+                        break
+        query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+        if query_editor:
+            query_editor.setPlainText(query)
+
+    def generate_select_all_template(self, item_data, table_name):
+        """Opens a new worksheet and populates a SELECT * query."""
+        if not item_data or not table_name:
+            return
+        query = f"SELECT *\nFROM {table_name}\nLIMIT 100;\n"
+        new_tab = self.manager.add_tab()
+        conn_data = item_data.get("conn_data")
+        if conn_data:
+            db_combo = new_tab.findChild(QComboBox, "db_combo_box")
+            if db_combo:
+                for i in range(db_combo.count()):
+                    d = db_combo.itemData(i)
+                    if d and d.get("id") == conn_data.get("id"):
+                        db_combo.setCurrentIndex(i)
+                        break
+        query_editor = new_tab.findChild(QPlainTextEdit, "query_editor")
+        if query_editor:
+            query_editor.setPlainText(query)
 
     def query_table_rows(self, item_data, table_name, limit=None, execute_now=True, order=None):
         if not item_data:

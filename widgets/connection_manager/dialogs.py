@@ -18,6 +18,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize
 
 from ui.components import PrimaryButton, SecondaryButton, ToastNotification, ConfirmDialog, PasswordBox
+from ui.feature_flags import is_connection_type_enabled
 import db
 from dialogs.connections import (
     CSVConnectionDialog,
@@ -113,7 +114,10 @@ class ConnectionTypeSelectorDialog(QDialog):
         self.grid_layout.setContentsMargins(12, 12, 12, 12)
 
         self.type_buttons = []
-        types = get_connection_types()
+        types = [
+            t for t in get_connection_types()
+            if is_connection_type_enabled(self.parent(), t.get("code"))
+        ]
         
         row, col = 0, 0
         for t in types:

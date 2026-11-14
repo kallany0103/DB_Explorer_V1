@@ -14,17 +14,113 @@ class TreeHelpers:
         self.manager = manager
 
     def handle_event_filter(self, obj, event):
-        if obj == self.manager.explorer_search_box and event.type() == QEvent.Type.FocusOut:
-            if not self.manager.explorer_search_box.text().strip():
-                self.manager.explorer_search_box.hide()
-                self.manager.explorer_search_btn.show()
+        tree = getattr(self.manager, "schema_tree", None)
+        header = tree.header() if tree else None
+        if header and obj == header and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            btn = getattr(self.manager, "schema_search_btn", None)
+            if btn:
+                x = max(4, header.width() - btn.width() - 6)
+                y = max(0, (header.height() - btn.height()) // 2)
+                btn.move(x, y)
+                btn.raise_()
+            return False
+        if obj == self.manager.explorer_search_box:
+            if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+                self.hide_explorer_search()
+                return True
+            if event.type() == QEvent.Type.FocusOut and not self.manager.explorer_search_box.text().strip():
+                self.hide_explorer_search()
+                return True
+        if obj == getattr(self.manager, "schema_search_box", None) and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Escape:
+                self.hide_schema_search()
+                return True
+            if event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                tree = getattr(self.manager, "schema_tree", None)
+                if tree:
+                    tree.setFocus()
                 return True
         return False
 
+    def toggle_schema_search(self):
+        container = getattr(self.manager, "schema_search_container", None)
+        if not container:
+            return
+        if container.isVisible():
+            self.hide_schema_search()
+        else:
+            self.show_schema_search()
+
+    def show_schema_search(self):
+        tree = getattr(self.manager, "schema_tree", None)
+        corner = getattr(self.manager, "schema_header_corner", None)
+        container = getattr(self.manager, "schema_search_container", None)
+        box = getattr(self.manager, "schema_search_box", None)
+        if tree:
+            tree.setHeaderHidden(True)
+        if corner:
+            corner.hide()
+        if container:
+            container.show()
+        if box:
+            box.setFocus()
+            box.selectAll()
+            if box.text():
+                self.filter_schema_tree(box.text())
+
+    def hide_schema_search(self):
+        tree = getattr(self.manager, "schema_tree", None)
+        corner = getattr(self.manager, "schema_header_corner", None)
+        container = getattr(self.manager, "schema_search_container", None)
+        box = getattr(self.manager, "schema_search_box", None)
+        if box:
+            box.clear()
+        if container:
+            container.hide()
+        if tree:
+            tree.setHeaderHidden(False)
+        if corner:
+            corner.show()
+        if tree:
+            tree.setFocus()
+
     def toggle_explorer_search(self):
+        if self.manager.explorer_search_box.isVisible():
+            self.hide_explorer_search()
+        else:
+            self.show_explorer_search()
+
+    def show_explorer_search(self):
+        label = getattr(self.manager, "explorer_label", None)
+        add_btn = getattr(self.manager, "explorer_add_btn", None)
+        close_btn = getattr(self.manager, "explorer_search_close_btn", None)
+        if label:
+            label.hide()
+        if add_btn:
+            add_btn.hide()
         self.manager.explorer_search_btn.hide()
         self.manager.explorer_search_box.show()
+        if close_btn:
+            close_btn.show()
         self.manager.explorer_search_box.setFocus()
+        self.manager.explorer_search_box.selectAll()
+
+    def hide_explorer_search(self):
+        label = getattr(self.manager, "explorer_label", None)
+        add_btn = getattr(self.manager, "explorer_add_btn", None)
+        close_btn = getattr(self.manager, "explorer_search_close_btn", None)
+        self.manager.explorer_search_box.clear()
+        self.manager.explorer_search_box.hide()
+        if close_btn:
+            close_btn.hide()
+        if label:
+            label.show()
+        if add_btn:
+            add_btn.show()
+        self.manager.explorer_search_btn.show()
+        tree = getattr(self.manager, "tree", None)
+        if tree:
+            tree.setFocus()
 
     def filter_object_explorer(self, text):
         self.manager.proxy_model.setFilterFixedString(text)
@@ -32,6 +128,91 @@ class TreeHelpers:
             self.manager.tree.expandAll()
         else:
             self.manager.tree.collapseAll()
+
+    def filter_schema_tree(self, text: str):
+        text_lower = text.strip().lower()
+        model = self.manager.schema_model
+        tree = self.manager.schema_tree
+
+        tree.setUpdatesEnabled(False)
+        match_count = 0
+        try:
+            if not text_lower:
+                def unhide_all(item):
+                    p_idx = item.parent().index() if item.parent() else QModelIndex()
+                    tree.setRowHidden(item.row(), p_idx, False)
+                    for c in range(item.rowCount()):
+                        child = item.child(c, 0)
+                        if child:
+                            unhide_all(child)
+
+                for r in range(model.rowCount()):
+                    root = model.item(r, 0)
+                    if root:
+                        unhide_all(root)
+
+                if hasattr(self.manager, "schema_status_label"):
+                    default_status = getattr(self.manager, "_default_schema_status", "")
+                    self.manager.schema_status_label.setText(default_status)
+                return
+
+            def filter_node(item):
+                nonlocal match_count
+                if not item:
+                    return False
+
+                item_text = item.text().lower()
+                item_data = item.data(Qt.ItemDataRole.UserRole)
+                if not isinstance(item_data, dict):
+                    item_data = {}
+
+                label = (item_data.get("label") or "").lower()
+                tbl_name = (item_data.get("table_name") or "").lower()
+                sch_name = (item_data.get("schema_name") or "").lower()
+
+                is_placeholder = item_text in ("loading...", "loading schema...", "no tables found")
+
+                self_matches = not is_placeholder and (
+                    (text_lower in item_text)
+                    or (text_lower in label)
+                    or (text_lower in tbl_name)
+                    or (text_lower in sch_name)
+                )
+
+                has_matching_child = False
+                for c in range(item.rowCount()):
+                    child_item = item.child(c, 0)
+                    if child_item:
+                        if filter_node(child_item):
+                            has_matching_child = True
+
+                visible = self_matches or has_matching_child
+                p_idx = item.parent().index() if item.parent() else QModelIndex()
+                tree.setRowHidden(item.row(), p_idx, not visible)
+
+                if visible:
+                    if has_matching_child:
+                        tree.expand(item.index())
+                    if self_matches:
+                        match_count += 1
+
+                return visible
+
+            for r in range(model.rowCount()):
+                root_item = model.item(r, 0)
+                if root_item:
+                    filter_node(root_item)
+
+            if hasattr(self.manager, "schema_status_label"):
+                if match_count == 0:
+                    self.manager.schema_status_label.setText("No matches")
+                elif match_count == 1:
+                    self.manager.schema_status_label.setText("1 match")
+                else:
+                    self.manager.schema_status_label.setText(f"{match_count:,} matches")
+
+        finally:
+            tree.setUpdatesEnabled(True)
 
     def set_tree_item_icon(self, item, level, code=""):
         cache_key = (level, code)
