@@ -48,6 +48,19 @@ def close_tab(main_window, index):
         if not results_mgr.check_unsaved_changes_before_action(tab, "closing this worksheet"):
             return False
 
+    # Check confirm_tab_close preference
+    if getattr(main_window, "confirm_tab_close", False):
+        tab_title = main_window.tab_widget.tabText(index) or "this tab"
+        confirm = QMessageBox.question(
+            main_window,
+            "Close Tab",
+            f"Are you sure you want to close '{tab_title}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return False
+
     if tab in wm.running_queries:
         wm.running_queries[tab].cancel()
         del wm.running_queries[tab]
@@ -187,6 +200,8 @@ def toggle_maximize(main_window):
         main_window.setGeometry(avail)
         main_window._is_maximized = True
         main_window.maximize_action.setText("Restore")
+    if hasattr(main_window, "_title_bar"):
+        main_window._title_bar.update_maximize_button()
     # Icon update is handled by title_bar.update_maximize_button() using
     # pre-cached icons — do not call qta.icon() here to avoid stutter.
 
