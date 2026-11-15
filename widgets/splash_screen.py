@@ -1,9 +1,27 @@
 import pathlib
+from typing import Callable
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QHBoxLayout
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QHBoxLayout,
+    QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, QPoint, QRect
-from PySide6.QtGui import QPainter, QBrush, QColor, QPainterPath, QMouseEvent
+from PySide6.QtCore import (
+    Qt,
+    QPoint,
+    QRect,
+    QTimer,
+    QPropertyAnimation,
+    QEasingCurve,
+)
+from PySide6.QtGui import (
+    QPainter,
+    QBrush,
+    QColor,
+    QPainterPath,
+    QMouseEvent,
+)
 
 _PROGRESS_BAR_H = 3
 
@@ -19,14 +37,23 @@ class SplashScreen(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.setFixedSize(520, 320)
-        qss_path = pathlib.Path(__file__).parent.parent / "ui" / "style.qss"
+        qss_path = pathlib.Path(__file__).parent.parent / "ui" / "splash.qss"
         if qss_path.exists():
-            with open(qss_path, "r") as f:
+            with open(qss_path, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())
         self._drag_offset: QPoint | None = None
 
-        # Progress value stored as state; drawn in paintEvent inside the clip path
-        self._progress: int = 0
+        # Progress values: current (animated float) and target (set by callers)
+        self._current_progress: float = 0.0
+        self._target_progress: float = 0.0
+
+        # Animation timer for fluid 60 FPS progress bar easing
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(16)
+        self._anim_timer.timeout.connect(self._step_animation)
+        self._anim_timer.start()
+
+        self._fade_anim: QPropertyAnimation | None = None
 
         # Reserve bottom pixels for the hand-drawn progress bar
         _BOTTOM_PADDING = _PROGRESS_BAR_H + 20   # breathing room above bar
@@ -83,6 +110,18 @@ class SplashScreen(QDialog):
         main_layout.addStretch()
         main_layout.addLayout(bottom_layout)
 
+    # ── Animation Step 
+
+    def _step_animation(self) -> None:
+        if self._current_progress < self._target_progress:
+            diff = self._target_progress - self._current_progress
+            step = max(0.4, diff * 0.15)
+            self._current_progress = min(self._target_progress, self._current_progress + step)
+            self.update()
+        elif self._current_progress > self._target_progress:
+            self._current_progress = self._target_progress
+            self.update()
+
     # ── Drawing 
 
     def paintEvent(self, event):
@@ -119,8 +158,8 @@ class SplashScreen(QDialog):
         painter.setBrush(QColor("#F1F3F4"))
         painter.drawRect(QRect(0, bar_y, w, bar_h))
 
-        # Fill (Blue)
-        filled_w = int(w * self._progress / 100)
+        # Fill (Blue) with animated progress value
+        filled_w = int(w * self._current_progress / 100.0)
         if filled_w > 0:
             painter.setBrush(QColor("#1A73E8"))
             painter.drawRect(QRect(0, bar_y, filled_w, bar_h))
@@ -132,16 +171,41 @@ class SplashScreen(QDialog):
 
     # ── Public API 
 
-    def set_status(self, message: str):
+    def set_status(self, message: str) -> None:
         self.status_label.setText(message)
 
-    def set_progress(self, value: int):
-        self._progress = max(0, min(100, value))
-        self.update()   # trigger repaint
+    def set_progress(self, value: int | float) -> None:
+        self._target_progress = max(0.0, min(100.0, float(value)))
+        if not self._anim_timer.isActive():
+            self._anim_timer.start()
 
-    def advance(self, message: str, value: int):
+    def advance(self, message: str, value: int | float) -> None:
         self.set_status(message)
         self.set_progress(value)
+
+    def fade_close(
+        self,
+        on_finished: Callable[[], None] | None = None,
+        duration: int = 200
+    ) -> None:
+        """Smoothly fades out the splash window before closing."""
+        self._anim_timer.stop()
+        effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(effect)
+
+        self._fade_anim = QPropertyAnimation(effect, b"opacity", self)
+        self._fade_anim.setDuration(duration)
+        self._fade_anim.setStartValue(1.0)
+        self._fade_anim.setEndValue(0.0)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def _on_anim_finished() -> None:
+            self.close()
+            if on_finished is not None:
+                on_finished()
+
+        self._fade_anim.finished.connect(_on_anim_finished)
+        self._fade_anim.start()
 
     # ── Drag support 
 

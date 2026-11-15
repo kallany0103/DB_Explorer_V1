@@ -1,0 +1,36 @@
+/* Splash Screen Styles */
+QLabel#splashTitle { 
+    color: #202124; 
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif; 
+    font-size: 32px; 
+    font-weight: 600; 
+    background: transparent; 
+}
+
+QLabel#splashSubtitle { 
+    color: #5F6368; 
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif; 
+    font-size: 16px; 
+    background: transparent; 
+}
+
+QLabel#splashStatus { 
+    color: #5F6368; 
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif; 
+    font-size: 13px; 
+    background: transparent; 
+}
+
+QLabel#splashVersion { 
+    color: #9AA0A6; 
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif; 
+    font-size: 12px; 
+    background: transparent; 
+}
+
+QLabel#splashCopyright { 
+    color: #9AA0A6; 
+    font-family: "Segoe UI Variable", "Segoe UI", sans-serif; 
+    font-size: 11px; 
+    background: transparent; 
+}

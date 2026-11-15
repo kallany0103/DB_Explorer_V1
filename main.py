@@ -14,11 +14,12 @@ from ui.theme import setup_theme
 from main_window import MainWindow
 
 os.environ["QT_QPA_PLATFORM"] = "windows:darkmode=0"
-# Suppress harmless Qt DirectWrite warnings for legacy Windows bitmap fonts (e.g. Fixedsys, Terminal, 8514oem)
+# Suppress harmless Qt font warnings (legacy bitmap fonts and OpenType script fallbacks for Segoe UI Variable)
+_FONT_LOGGING_RULES = "qt.qpa.fonts.warning=false;qt.text.font.db=false;qt.text.font.db.warning=false"
 if "QT_LOGGING_RULES" in os.environ:
-    os.environ["QT_LOGGING_RULES"] += ";qt.qpa.fonts.warning=false"
+    os.environ["QT_LOGGING_RULES"] += f";{_FONT_LOGGING_RULES}"
 else:
-    os.environ["QT_LOGGING_RULES"] = "qt.qpa.fonts.warning=false"
+    os.environ["QT_LOGGING_RULES"] = _FONT_LOGGING_RULES
 
 # The AppMutex name must match the AppMutex directive in Universal_SQL_Client.iss.
 # Holding this mutex lets the installer/uninstaller detect a running instance.
@@ -46,7 +47,7 @@ class _StartupWorker(QThread):
 
     def run(self) -> None:
         try:
-            self.progress.emit("Bootstrapping database...", 10)
+            self.progress.emit("Bootstrapping database...", 25)
             ensure_hierarchy_db()
         except Exception:
             self.failed.emit(traceback.format_exc())
@@ -93,15 +94,19 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # theme and window construction must stay on the main (GUI) thread
-    splash.advance("Applying theme...", 50)
+    splash.advance("Applying theme...", 45)
     setup_theme(app)
+    app.processEvents()
 
-    splash.advance("Loading main window...", 75)
+    splash.advance("Initializing main window...", 55)
+    app.processEvents()
+
     try:
-        window = MainWindow()
+        window = MainWindow(splash=splash)
         splash.advance("Ready...", 100)
+        app.processEvents()
         window.show()
-        splash.close()
+        splash.fade_close(duration=250)
         sys.exit(app.exec())
     except Exception:
         if splash.isVisible():
