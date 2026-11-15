@@ -289,6 +289,24 @@ def _strip_sql_literals_and_comments(sql: str) -> str:
     )
 
 
+def is_oracle_connection(conn_data_or_tab) -> bool:
+    """Check if the provided connection data or tab corresponds to an Oracle database."""
+    if not conn_data_or_tab:
+        return False
+    if isinstance(conn_data_or_tab, dict):
+        code = str(conn_data_or_tab.get("code") or conn_data_or_tab.get("db_type") or "").upper()
+        return code in ("ORACLE", "ORACLE_DB", "ORACLE_FA")
+    conn_data = getattr(conn_data_or_tab, "_conn_data", None)
+    if not conn_data and hasattr(conn_data_or_tab, "findChild"):
+        combo = conn_data_or_tab.findChild(QComboBox, "db_combo_box")
+        if combo:
+            conn_data = combo.currentData()
+    if isinstance(conn_data, dict):
+        code = str(conn_data.get("code") or conn_data.get("db_type") or "").upper()
+        return code in ("ORACLE", "ORACLE_DB", "ORACLE_FA")
+    return False
+
+
 def apply_select_pagination(query: str, current_tab, preserve_pagination: bool = False) -> str:
     if not query:
         return query
@@ -307,14 +325,26 @@ def apply_select_pagination(query: str, current_tab, preserve_pagination: bool =
 
     limit = getattr(current_tab, "current_limit", 0) if current_tab else 0
     offset = getattr(current_tab, "current_offset", 0) if current_tab else 0
+    is_oracle = is_oracle_connection(current_tab)
 
     if is_select_like:
         has_limit = bool(re.search(r"\bLIMIT\b|\bFETCH\s+(?:FIRST|NEXT)\b", token_sql, re.IGNORECASE))
         has_offset = bool(re.search(r"\bOFFSET\b", token_sql, re.IGNORECASE))
         if limit > 0 and not has_limit:
-            normalized_query += f" LIMIT {limit}"
-        if offset > 0 and not has_offset:
-            normalized_query += f" OFFSET {offset}"
+            if is_oracle:
+                if offset > 0 and not has_offset:
+                    normalized_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+                else:
+                    normalized_query += f" FETCH FIRST {limit} ROWS ONLY"
+            else:
+                normalized_query += f" LIMIT {limit}"
+                if offset > 0 and not has_offset:
+                    normalized_query += f" OFFSET {offset}"
+        elif offset > 0 and not has_offset:
+            if is_oracle:
+                normalized_query += f" OFFSET {offset} ROWS"
+            else:
+                normalized_query += f" OFFSET {offset}"
         return normalized_query + ";"
 
     if had_trailing_semicolon and not raw.endswith("/;"):
@@ -322,16 +352,19 @@ def apply_select_pagination(query: str, current_tab, preserve_pagination: bool =
     return normalized_query
 
 
-_TRAILING_LIMIT_RE = re.compile(
-    r"(\s+)LIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$",
+_TRAILING_PAGINATION_RE = re.compile(
+    r"(\s+)(?:LIMIT\s+\d+(?:\s+OFFSET\s+\d+)?|(?:OFFSET\s+\d+\s+ROWS?\s+)?FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY)\s*$",
     re.IGNORECASE,
 )
 
 
 def apply_limit_to_sql_statement(
-    sql: str, limit: int, overwrite_existing: bool = True
+    sql: str,
+    limit: int,
+    overwrite_existing: bool = True,
+    is_oracle: bool = False,
 ) -> str:
-    """Insert, update, or remove a trailing LIMIT clause in a SELECT/WITH statement."""
+    """Insert, update, or remove a trailing LIMIT / FETCH FIRST clause in a SELECT/WITH statement."""
     if not sql or not sql.strip():
         return sql
 
@@ -344,30 +377,33 @@ def apply_limit_to_sql_statement(
     if not re.match(r"^\(?\s*(?:SELECT|WITH)\b", leading_sql, re.IGNORECASE):
         return sql
 
-    match = _TRAILING_LIMIT_RE.search(body)
+    match = _TRAILING_PAGINATION_RE.search(body)
+    clause = f"FETCH FIRST {limit} ROWS ONLY" if is_oracle else f"LIMIT {limit}"
+
     if limit > 0:
         if match:
             if not overwrite_existing:
                 return sql
             sep = match.group(1)
-            offset_part = match.group(2) or ""
-            new_body = f"{body[:match.start()]}{sep}LIMIT {limit}{offset_part}"
+            new_body = f"{body[:match.start()]}{sep}{clause}"
         else:
-            token_sql = _strip_sql_literals_and_comments(body)
-            if re.search(r"\bFETCH\s+(?:FIRST|NEXT)\b", token_sql, re.IGNORECASE):
-                return sql
             sep = "\n" if "\n" in body else " "
-            new_body = f"{body}{sep}LIMIT {limit}"
+            new_body = f"{body}{sep}{clause}"
     else:
         if not (match and overwrite_existing):
             return sql
-        offset_part = match.group(2) or ""
-        new_body = f"{body[:match.start()]}{offset_part}".rstrip()
+        new_body = body[:match.start()].rstrip()
 
-    return f"{new_body}{';' if had_semi else ''}{trailing_ws}"
+    semi_str = ";" if had_semi else ""
+    return f"{new_body}{semi_str}{trailing_ws}"
 
 
-def sync_editor_limit(editor, limit: int, overwrite_existing: bool = True) -> bool:
+def sync_editor_limit(
+    editor,
+    limit: int,
+    overwrite_existing: bool = True,
+    is_oracle: bool = False,
+) -> bool:
     """Update the active SQL statement in the editor to reflect the selected row limit."""
     if editor is None:
         return False
@@ -392,7 +428,7 @@ def sync_editor_limit(editor, limit: int, overwrite_existing: bool = True) -> bo
     slice_end = end + 1 if end < len(text) and text[end] == ";" else end
     raw_slice = text[start:slice_end]
     updated = apply_limit_to_sql_statement(
-        raw_slice, limit, overwrite_existing=overwrite_existing
+        raw_slice, limit, overwrite_existing=overwrite_existing, is_oracle=is_oracle
     )
     if updated == raw_slice:
         return False

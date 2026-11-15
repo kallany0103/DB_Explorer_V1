@@ -160,7 +160,11 @@ def add_tab(manager):
         tab_content.current_page = 1
         tab_content.current_offset = 0
 
-        sync_editor_limit(text_edit, tab_content.current_limit, overwrite_existing=manual)
+        conn_data = db_combo_box.currentData() if db_combo_box else getattr(text_edit, "_conn_data", None)
+        code = str((conn_data or {}).get("code") or (conn_data or {}).get("db_type") or "").upper()
+        is_oracle = code in ("ORACLE", "ORACLE_DB", "ORACLE_FA")
+
+        sync_editor_limit(text_edit, tab_content.current_limit, overwrite_existing=manual, is_oracle=is_oracle)
 
         results_info_bar = tab_content.findChild(QWidget, "resultsInfoBar")
         if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
@@ -337,6 +341,9 @@ def add_tab(manager):
             elif limit_btn.currentText() == "1000" and default_limit != "1000":
                 limit_btn.setCurrentText(default_limit)
                 on_limit_change(default_limit, manual=False)
+        elif limit_btn and getattr(tab_content, "current_limit", 0) > 0:
+            is_oracle = code in ("ORACLE", "ORACLE_DB", "ORACLE_FA")
+            sync_editor_limit(text_edit, tab_content.current_limit, overwrite_existing=True, is_oracle=is_oracle)
 
     db_combo_box.currentIndexChanged.connect(lambda: _refresh_engine(skip_slow=False))
     QTimer.singleShot(300, lambda: _refresh_engine(skip_slow=True))

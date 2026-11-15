@@ -17,7 +17,6 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction, QDesktopServices
 from PySide6.QtCore import QUrl
 import qtawesome as qta
-from ui.components import SecondaryButton
 from ui.title_bar import TitleBarWidget
 from ui.resize_filter import ResizeFilter
 from widgets.erd.widget import ERDWidget
@@ -70,8 +69,9 @@ import subprocess
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
-    def __init__(self):
+    def __init__(self, splash=None):
         super().__init__()
+        self._splash = splash
         self.SESSION_FILE = "session_state.json"
 
         self.setWindowTitle("Universal SQL Client")
@@ -138,6 +138,9 @@ class MainWindow(QMainWindow):
         self._title_bar.set_user_state(self.auth_session)
 
         # 4 Initialize Managers
+        if self._splash:
+            self._splash.advance("Loading workspace managers...", 65)
+            QApplication.processEvents()
 
         self.connection_manager = ConnectionManager(self)
         self.results_manager = ResultsManager(self)
@@ -260,6 +263,10 @@ class MainWindow(QMainWindow):
         self.thread_monitor_timer.timeout.connect(self.update_thread_pool_status)
         self.thread_monitor_timer.start(1000)
 
+        if self._splash:
+            self._splash.advance("Restoring workspace session...", 80)
+            QApplication.processEvents()
+
         self.restore_session_state()
 
         screen = QApplication.primaryScreen().availableGeometry()
@@ -292,6 +299,10 @@ class MainWindow(QMainWindow):
 
         self._resize_filter = ResizeFilter(self)
         QApplication.instance().installEventFilter(self._resize_filter)
+
+        if self._splash:
+            self._splash.advance("Finalizing interface layout...", 95)
+            QApplication.processEvents()
 
         QApplication.processEvents()
 
