@@ -10,13 +10,20 @@ from auth import config
 class ApiClient:
     def __init__(self, base_url: str | None = None) -> None:
         self.base_url = base_url or config.API_BASE_URL
-        self._client = httpx.Client(base_url=self.base_url, timeout=30)
+        self._client: httpx.Client | None = None
+
+    @property
+    def client(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(base_url=self.base_url, timeout=30)
+        return self._client
 
     def close(self) -> None:
-        self._client.close()
+        if self._client is not None and not self._client.is_closed:
+            self._client.close()
 
     def get_me(self, access_token: str) -> dict:
-        resp = self._client.get(
+        resp = self.client.get(
             "/auth/me", headers={"Authorization": f"Bearer {access_token}"}
         )
         resp.raise_for_status()
@@ -24,7 +31,7 @@ class ApiClient:
 
     def userinfo_picture(self, access_token: str) -> str | None:
         """Read the profile picture straight from Google using the access token."""
-        resp = self._client.get(
+        resp = self.client.get(
             "https://www.googleapis.com/oauth2/v3/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
         )
@@ -32,7 +39,7 @@ class ApiClient:
         return resp.json().get("picture")
 
     def fetch_avatar(self, url: str) -> bytes:
-        resp = self._client.get(self._upsize_google_avatar(url))
+        resp = self.client.get(self._upsize_google_avatar(url))
         resp.raise_for_status()
         return resp.content
 
@@ -44,7 +51,7 @@ class ApiClient:
         return url
 
     def refresh(self, refresh_token: str) -> dict:
-        resp = self._client.post(
+        resp = self.client.post(
             "/auth/refresh", params={"refresh_token": refresh_token}
         )
         resp.raise_for_status()
@@ -52,7 +59,7 @@ class ApiClient:
 
     def logout(self, refresh_token: str) -> None:
         try:
-            self._client.post(
+            self.client.post(
                 "/auth/logout", params={"refresh_token": refresh_token}
             )
         except httpx.HTTPError:
