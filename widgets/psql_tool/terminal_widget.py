@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -54,10 +55,11 @@ class PSQLToolWidget(QWidget):
     _output_received = Signal(str)
     terminal_closed = Signal()
 
-    def __init__(self, conn: dict, pg_bin_path: str = "") -> None:
+    def __init__(self, conn: dict, pg_bin_path: str = "", manager=None) -> None:
         super().__init__()
         self._conn: dict = conn or {}
         self._pg_bin_path = pg_bin_path
+        self._manager = manager
         self._psql_exe_path: str = ""
 
         self._history: list[str] = []
@@ -185,12 +187,42 @@ class PSQLToolWidget(QWidget):
         self._err_frame.setObjectName("term_err_frame")
         self._err_frame.setVisible(False)
         layout = QHBoxLayout(self._err_frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 4, 10, 4)
+        layout.setSpacing(10)
         self._err_lbl = QLabel()
         self._err_lbl.setObjectName("term_err_lbl")
         self._err_lbl.setWordWrap(True)
-        layout.addWidget(self._err_lbl)
+        layout.addWidget(self._err_lbl, 1)
+
+        self._err_settings_btn = QPushButton("Configure in Settings")
+        self._err_settings_btn.setObjectName("term_err_settings_btn")
+        self._err_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._err_settings_btn.setStyleSheet("""
+            QPushButton#term_err_settings_btn {
+                background-color: #ef4444;
+                color: #ffffff;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 9pt;
+            }
+            QPushButton#term_err_settings_btn:hover {
+                background-color: #dc2626;
+            }
+        """)
+        self._err_settings_btn.clicked.connect(self._open_settings)
+        self._err_settings_btn.hide()
+        layout.addWidget(self._err_settings_btn)
         return self._err_frame
+
+    def _open_settings(self) -> None:
+        main_win = getattr(self._manager, "main_window", None) or self._manager
+        if main_win and hasattr(main_win, "open_preferences"):
+            main_win.open_preferences()
+            pref_dlg = getattr(main_win, "_preferences_dialog", None)
+            if pref_dlg and hasattr(pref_dlg, "category_list"):
+                pref_dlg.category_list.setCurrentRow(4)
 
     def _conn_label_text(self) -> str:
         c = self._conn
@@ -209,11 +241,19 @@ class PSQLToolWidget(QWidget):
         self._hide_error()
         self._show_spinner()
 
-        psql_path = self._pg_bin_path or find_psql()
+        psql_path = find_psql(self._pg_bin_path)
         if not psql_path:
             self._hide_spinner()
-            self._show_error("Could not locate psql executable.")
-            self._term.append_output("\nERROR: Could not locate psql executable.\n")
+            err_msg = (
+                "Could not locate PostgreSQL client (psql.exe). "
+                "Please install PostgreSQL or configure the binary path in Settings → Database Tools."
+            )
+            self._show_error(err_msg, show_settings=True)
+            self._term.append_output(
+                "\nERROR: psql.exe not found.\n"
+                "To use the embedded PSQL terminal, please install PostgreSQL or\n"
+                "set the PostgreSQL Binary Path in Settings → Database Tools.\n"
+            )
             return
         self._psql_exe_path = psql_path
 
@@ -354,12 +394,16 @@ class PSQLToolWidget(QWidget):
         self._start_session(reset_ui=True)
         self._term.setFocus()
 
-    def _show_error(self, msg: str) -> None:
+    def _show_error(self, msg: str, show_settings: bool = False) -> None:
         self._err_lbl.setText(msg)
+        if hasattr(self, "_err_settings_btn"):
+            self._err_settings_btn.setVisible(show_settings)
         self._err_frame.setVisible(True)
 
     def _hide_error(self) -> None:
         self._err_frame.setVisible(False)
+        if hasattr(self, "_err_settings_btn"):
+            self._err_settings_btn.setVisible(False)
 
     # ---------------------------------------------------------- resize --
 
@@ -423,7 +467,7 @@ def open_psql_tool(conn: dict, manager=None) -> PSQLToolWidget:
             pg_bin_path = getattr(main_win, "pg_bin_path", "") or ""
             tab_widget = getattr(main_win, "tab_widget", None)
 
-    widget = PSQLToolWidget(conn, pg_bin_path=pg_bin_path)
+    widget = PSQLToolWidget(conn, pg_bin_path=pg_bin_path, manager=manager)
 
     if tab_widget is not None:
         try:

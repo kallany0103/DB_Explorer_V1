@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -59,9 +60,11 @@ class SQLPlusToolWidget(QWidget):
     _output_received = Signal(str)
     terminal_closed = Signal()
 
-    def __init__(self, conn: dict) -> None:
+    def __init__(self, conn: dict, oracle_bin_path: str = "", manager=None) -> None:
         super().__init__()
         self._conn: dict = conn or {}
+        self._oracle_bin_path = oracle_bin_path
+        self._manager = manager
         self._sqlplus_exe_path: str = ""
 
         self._history: list[str] = []
@@ -186,12 +189,42 @@ class SQLPlusToolWidget(QWidget):
         self._err_frame.setObjectName("term_err_frame")
         self._err_frame.setVisible(False)
         layout = QHBoxLayout(self._err_frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 4, 10, 4)
+        layout.setSpacing(10)
         self._err_lbl = QLabel()
         self._err_lbl.setObjectName("term_err_lbl")
         self._err_lbl.setWordWrap(True)
-        layout.addWidget(self._err_lbl)
+        layout.addWidget(self._err_lbl, 1)
+
+        self._err_settings_btn = QPushButton("Configure in Settings")
+        self._err_settings_btn.setObjectName("term_err_settings_btn")
+        self._err_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._err_settings_btn.setStyleSheet("""
+            QPushButton#term_err_settings_btn {
+                background-color: #ef4444;
+                color: #ffffff;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 9pt;
+            }
+            QPushButton#term_err_settings_btn:hover {
+                background-color: #dc2626;
+            }
+        """)
+        self._err_settings_btn.clicked.connect(self._open_settings)
+        self._err_settings_btn.hide()
+        layout.addWidget(self._err_settings_btn)
         return self._err_frame
+
+    def _open_settings(self) -> None:
+        main_win = getattr(self._manager, "main_window", None) or self._manager
+        if main_win and hasattr(main_win, "open_preferences"):
+            main_win.open_preferences()
+            pref_dlg = getattr(main_win, "_preferences_dialog", None)
+            if pref_dlg and hasattr(pref_dlg, "category_list"):
+                pref_dlg.category_list.setCurrentRow(4)
 
     def _conn_label_text(self) -> str:
         c = self._conn
@@ -225,21 +258,24 @@ class SQLPlusToolWidget(QWidget):
         self._hide_error()
         self._show_spinner()
 
-        sqlplus_path = find_sqlplus()
+        sqlplus_path = find_sqlplus(self._oracle_bin_path)
         if not sqlplus_path:
-            self._show_error(
-                "Could not locate sqlplus.exe. "
-                "Place Oracle Instant Client files in resources/oracle/instantclient/."
+            self._hide_spinner()
+            err_msg = (
+                "Could not locate Oracle client (sqlplus.exe). "
+                "Please install Oracle Instant Client or configure the binary path in Settings → Database Tools."
             )
+            self._show_error(err_msg, show_settings=True)
             self._term.append_output(
                 "\nERROR: sqlplus.exe not found.\n"
-                "Copy Oracle Instant Client (Basic + SQL*Plus ZIPs) into:\n"
-                "  resources/oracle/instantclient/\n"
+                "To use the embedded SQL*Plus terminal, please install Oracle Instant Client or\n"
+                "set the Oracle Binary Path in Settings → Database Tools.\n"
             )
             return
         self._sqlplus_exe_path = sqlplus_path
 
         if PTY is None:
+            self._hide_spinner()
             self._show_error("winpty module is not installed.")
             self._term.append_output(
                 "\nERROR: winpty module is not installed. PTY support unavailable.\n"
@@ -252,22 +288,16 @@ class SQLPlusToolWidget(QWidget):
         usable_w = self._term.viewport().width() - vbar_w
         term_cols = max(80, usable_w // char_w) if char_w > 0 and usable_w > 0 else 80
 
-        # Inject instantclient dir into PATH so OCI DLLs are found by sqlplus.exe
-        ic_dir = instantclient_dir()
+        # Inject client dir into PATH so OCI DLLs are found by sqlplus.exe
+        ic_dir = instantclient_dir(self._oracle_bin_path)
         env_path = os.environ.get("PATH", "")
         if ic_dir and ic_dir not in env_path:
             os.environ["PATH"] = ic_dir + os.pathsep + env_path
 
-        # Always override TNS_ADMIN to point at the bundled sqlnet.ora so that
-        # the Oracle 23c client picks up our auth-protocol settings (ORA-28041
-        # fix). A system-level TNS_ADMIN from an existing Oracle home must not
-        # take precedence over our bundled configuration. admin_dir()
-        # resolves the frozen (installed/dist) and dev layouts.
-        _bundled_admin = admin_dir()
-        if ic_dir:
-            os.environ["TNS_ADMIN"] = os.path.join(ic_dir, "network", "admin")
-        elif _bundled_admin:
-            os.environ["TNS_ADMIN"] = _bundled_admin
+        # Set TNS_ADMIN if network/admin is found
+        _admin = admin_dir(self._oracle_bin_path)
+        if _admin and os.path.isdir(_admin):
+            os.environ["TNS_ADMIN"] = _admin
 
         easy_connect = self._build_easy_connect()
 
@@ -369,12 +399,16 @@ class SQLPlusToolWidget(QWidget):
         self.close_process()
         self._start_session(reset_ui=True)
 
-    def _show_error(self, msg: str) -> None:
+    def _show_error(self, msg: str, show_settings: bool = False) -> None:
         self._err_lbl.setText(msg)
+        if hasattr(self, "_err_settings_btn"):
+            self._err_settings_btn.setVisible(show_settings)
         self._err_frame.setVisible(True)
 
     def _hide_error(self) -> None:
         self._err_frame.setVisible(False)
+        if hasattr(self, "_err_settings_btn"):
+            self._err_settings_btn.setVisible(False)
 
     # ---------------------------------------------------------- resize --
 
@@ -416,6 +450,7 @@ class SQLPlusToolWidget(QWidget):
 
 def open_sqlplus_tool(conn: dict, manager=None) -> SQLPlusToolWidget:
     """Create a SQLPlusToolWidget and open it in the main tab widget."""
+    oracle_bin_path = ""
     tab_widget = None
 
     if manager is not None:
@@ -423,9 +458,10 @@ def open_sqlplus_tool(conn: dict, manager=None) -> SQLPlusToolWidget:
             manager if hasattr(manager, "tab_widget") else None
         )
         if main_win:
+            oracle_bin_path = getattr(main_win, "oracle_bin_path", "") or ""
             tab_widget = getattr(main_win, "tab_widget", None)
 
-    widget = SQLPlusToolWidget(conn)
+    widget = SQLPlusToolWidget(conn, oracle_bin_path=oracle_bin_path, manager=manager)
 
     if tab_widget is not None:
         try:
