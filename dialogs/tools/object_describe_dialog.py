@@ -5,7 +5,7 @@ views, and schemas. Displays columns, indexes, constraints, sample data preview,
 and DDL script with real-time filtering and copying.
 """
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor
 from PySide6.QtWidgets import (
     QDialog,
@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QToolButton,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
     QAbstractItemView,
     QTabWidget,
     QWidget,
@@ -30,6 +29,7 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 from ui.components import LoadingOverlay, SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 from workers.workers import WorkerThread
 from db.object_describe import describe_database_object
 from dialogs.tools.query_describe_dialog import DescribeHighlighter
@@ -48,8 +48,7 @@ class ObjectDescribeDialog(QDialog):
         self._worker = None
 
         self.setWindowTitle(f"Describe - {self.target}")
-        self.resize(850, 580)
-        self.setMinimumSize(600, 420)
+        fit_dialog_to_screen(self, ideal_width=850, ideal_height=580, min_width=580, min_height=380)
         self.setSizeGripEnabled(True)
 
         self._init_ui()

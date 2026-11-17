@@ -29,6 +29,7 @@ from db.optimizer.batch import (
     analyze_batch_workload,
 )
 from ui.components import PrimaryButton, SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 from ui.optimize_style import OPTIMIZE_DIALOG_STYLE
 from widgets.worksheet.optimize_dialog import OptimizeSqlDialog
 from workers.optimizer_worker import BatchOptimizerWorker
@@ -48,8 +49,7 @@ class BatchOptimizerDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("batchOptimizerDialog")
         self.setWindowTitle("Workload & Batch SQL Optimizer")
-        self.resize(1100, 720)
-        self.setMinimumSize(920, 560)
+        fit_dialog_to_screen(self, ideal_width=1100, ideal_height=720, min_width=640, min_height=420)
 
         self.script_text = script_text
         self.dialect = dialect
@@ -83,6 +83,7 @@ class BatchOptimizerDialog(QDialog):
         # 3. Splitter Body
         splitter = QSplitter(Qt.Orientation.Vertical, self)
         splitter.setHandleWidth(4)
+        splitter.setChildrenCollapsible(False)
 
         # Top: Workload Statements Leaderboard Table
         top_pane = self._create_leaderboard_pane()
@@ -114,6 +115,7 @@ class BatchOptimizerDialog(QDialog):
             header_frame,
         )
         subtitle_label.setObjectName("optimizerSubtitle")
+        subtitle_label.setWordWrap(True)
         title_block.addWidget(title_label)
         title_block.addWidget(subtitle_label)
         h_layout.addLayout(title_block, 1)
@@ -250,6 +252,7 @@ class BatchOptimizerDialog(QDialog):
 
         splitter = QSplitter(Qt.Orientation.Horizontal, container)
         splitter.setHandleWidth(4)
+        splitter.setChildrenCollapsible(False)
 
         # Left: Original Statement
         orig_widget = QWidget(splitter)

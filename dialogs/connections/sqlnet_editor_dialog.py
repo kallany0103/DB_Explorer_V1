@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.components import PrimaryButton, SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 
 _DEFAULT_SQLNET_CONTENT = """\
 # sqlnet.ora - Oracle Net Configuration
@@ -39,8 +40,7 @@ class SqlnetEditorDialog(QDialog):
         self._sqlnet_path = sqlnet_path
 
         self.setWindowTitle("SQLNET Editor")
-        self.setMinimumSize(620, 480)
-        self.resize(660, 520)
+        fit_dialog_to_screen(self, ideal_width=660, ideal_height=520, min_width=500, min_height=360)
         self.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.WindowTitleHint

@@ -33,6 +33,7 @@ from ui.components import (
     SettingsCategoryDelegate,
     ToggleSwitch,
 )
+from ui.dialog_utils import fit_dialog_to_screen
 from ui.feature_flags import (
     FEATURE_CATALOG,
     FEATURE_SPEC_BY_KEY,
@@ -69,8 +70,7 @@ class PreferencesDialog(QDialog):
         self.setWindowTitle("Settings")
         self.setModal(False)
         self.setWindowModality(Qt.WindowModality.NonModal)
-        self.resize(920, 680)
-        self.setMinimumSize(800, 560)
+        fit_dialog_to_screen(self, ideal_width=920, ideal_height=680, min_width=640, min_height=420)
 
         self._search_entries: list[dict] = []
         self._page_cards: dict[int, list[dict]] = {}
@@ -114,9 +114,9 @@ class PreferencesDialog(QDialog):
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("settingsSidebar")
-        sidebar.setFixedWidth(235)
+        sidebar.setFixedWidth(210)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(14, 16, 14, 14)
+        layout.setContentsMargins(12, 14, 12, 12)
         layout.setSpacing(10)
 
         title = QLabel("Settings")
@@ -219,8 +219,8 @@ class PreferencesDialog(QDialog):
         container = QWidget()
         container.setObjectName("settingsScrollContainer")
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(26, 20, 26, 24)
-        layout.setSpacing(14)
+        layout.setContentsMargins(20, 16, 20, 20)
+        layout.setSpacing(12)
 
         header = QWidget()
         header_layout = QVBoxLayout(header)
@@ -289,8 +289,8 @@ class PreferencesDialog(QDialog):
         row_widget = QWidget()
         row_widget.setObjectName("settingsRow")
         row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(16, 11, 16, 11)
-        row_layout.setSpacing(16)
+        row_layout.setContentsMargins(14, 10, 14, 10)
+        row_layout.setSpacing(14)
 
         text_box = QWidget()
         text_layout = QVBoxLayout(text_box)
@@ -299,6 +299,7 @@ class PreferencesDialog(QDialog):
 
         title_lbl = QLabel(title)
         title_lbl.setObjectName("settingsRowTitle")
+        title_lbl.setWordWrap(True)
         text_layout.addWidget(title_lbl)
 
         if description:
@@ -310,7 +311,8 @@ class PreferencesDialog(QDialog):
         row_layout.addWidget(text_box, stretch=1)
 
         if control_width is not None and not isinstance(control, ToggleSwitch):
-            control.setFixedWidth(control_width)
+            control.setMaximumWidth(control_width)
+            control.setMinimumWidth(min(140, control_width))
         row_layout.addWidget(control, alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         card_layout.addWidget(row_widget)

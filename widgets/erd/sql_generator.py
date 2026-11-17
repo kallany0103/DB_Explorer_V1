@@ -13,6 +13,7 @@ import qtawesome as qta
 
 from db.db_connections import get_downloads_dir
 from ui.components import PrimaryButton, SecondaryButton, ToastNotification
+from ui.dialog_utils import fit_dialog_to_screen
 from widgets.erd.model import DEFAULT_SCHEMA, normalize_entity
 
 
@@ -27,7 +28,7 @@ class SQLPreviewDialog(QDialog):
             Qt.WindowType.CustomizeWindowHint
         )
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        self.resize(840, 640)
+        fit_dialog_to_screen(self, ideal_width=840, ideal_height=640, min_width=560, min_height=400)
         self.setStyleSheet("""
             QDialog {
                 background-color: #f6f8fb;

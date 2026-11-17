@@ -1,14 +1,15 @@
-﻿# dialogs/release_notes_dialog.py
+# dialogs/release_notes_dialog.py
 """Release Notes dialog – renders RELEASE_NOTES.md as rich in-app documentation."""
 
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QTextBrowser, QWidget, QFrame
+    QTextBrowser, QWidget
 )
 from PySide6.QtCore import Qt
 import qtawesome as qta
 from ui.components import SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 
 
 class ReleaseNotesDialog(QDialog):
@@ -24,8 +25,7 @@ class ReleaseNotesDialog(QDialog):
             | Qt.WindowType.CustomizeWindowHint
         )
         self.setModal(True)
-        self.setMinimumSize(720, 600)
-        self.resize(800, 680)
+        fit_dialog_to_screen(self, ideal_width=800, ideal_height=680, min_width=580, min_height=420)
 
         self._build_ui()
         self._load_content()

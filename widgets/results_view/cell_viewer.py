@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 from ui.components import PrimaryButton, SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 
 
 def try_parse_json(text: str) -> tuple[bool, Optional[object]]:
@@ -453,8 +454,7 @@ class CellValueViewerDialog(QDialog):
         action_prefix = "View" if self.is_read_only else "Edit"
         self.setWindowTitle(f"{action_prefix}: {self.col_name}{row_str}")
         self.setWindowIcon(QIcon())
-        self.resize(720, 560)
-        self.setMinimumSize(480, 360)
+        fit_dialog_to_screen(self, ideal_width=720, ideal_height=560, min_width=480, min_height=360)
         self.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.WindowTitleHint

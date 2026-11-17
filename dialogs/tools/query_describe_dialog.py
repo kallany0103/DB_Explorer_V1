@@ -14,8 +14,6 @@ from PySide6.QtGui import (
     QPainter,
     QTextCharFormat,
     QSyntaxHighlighter,
-    QTextCursor,
-    QIcon,
 )
 from PySide6.QtWidgets import (
     QDialog,
@@ -39,6 +37,7 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 from ui.components import SecondaryButton, LoadingOverlay
+from ui.dialog_utils import fit_dialog_to_screen
 from workers.workers import WorkerThread
 from db.query_describe import describe_select_query, format_describe_text
 
@@ -235,8 +234,7 @@ class QueryDescribeDialog(QDialog):
             self.setWindowTitle(f"Describe: {self.object_name}")
         else:
             self.setWindowTitle("Query Describe")
-        self.resize(750, 520)
-        self.setMinimumSize(520, 360)
+        fit_dialog_to_screen(self, ideal_width=750, ideal_height=520, min_width=520, min_height=360)
         self.setSizeGripEnabled(True)
 
         self._init_ui()
