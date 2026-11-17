@@ -168,6 +168,28 @@ class PSQLToolWidget(QWidget):
         self._conn_lbl = QLabel(self._conn_label_text())
         self._conn_lbl.setObjectName("term_conn_lbl")
         layout.addWidget(self._conn_lbl)
+
+        self._path_badge = QLabel()
+        self._path_badge.setObjectName("term_path_badge")
+        self._path_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._path_badge.setStyleSheet("""
+            QLabel#term_path_badge {
+                color: #64748b;
+                font-family: 'Segoe UI', system-ui, sans-serif;
+                font-size: 8.5pt;
+                padding: 2px 8px;
+                background-color: #f1f5f9;
+                border: 1px solid #e2e8f0;
+                border-radius: 4px;
+            }
+            QLabel#term_path_badge:hover {
+                color: #1e293b;
+                background-color: #e2e8f0;
+            }
+        """)
+        self._path_badge.hide()
+        layout.addWidget(self._path_badge)
+
         layout.addStretch()
 
         for icon_key, label, slot in (
@@ -256,6 +278,14 @@ class PSQLToolWidget(QWidget):
             )
             return
         self._psql_exe_path = psql_path
+        if hasattr(self, "_path_badge"):
+            short_path = psql_path if len(psql_path) <= 45 else ("…" + psql_path[-42:])
+            self._path_badge.setText(f"CLI: {short_path}")
+            self._path_badge.setToolTip(f"PostgreSQL Client Executable:\n{psql_path}\n\nClick to change in Settings.")
+            self._path_badge.mousePressEvent = lambda _e: self._open_settings()
+            self._path_badge.show()
+
+        self._term.append_output(f"-- Using client: {psql_path}\n")
 
         if PTY is None:
             self._hide_spinner()

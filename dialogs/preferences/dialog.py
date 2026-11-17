@@ -40,6 +40,8 @@ from ui.feature_flags import (
     is_connection_type_enabled,
     normalize_feature_flags,
 )
+from widgets.psql_tool.discovery import find_psql
+from widgets.sqlplus_tool.discovery import find_sqlplus
 
 
 class FontPreviewDelegate(QStyledItemDelegate):
@@ -712,19 +714,35 @@ class PreferencesDialog(QDialog):
         )
 
         binaries = self._create_card(idx, layout, "External CLI Binaries")
+        pg_detected = find_psql(getattr(self.main_window, "pg_bin_path", ""))
+        pg_hint = f"Detected: {pg_detected}" if pg_detected else "Detected: Not found on system"
         pg_picker, self.pg_bin_edit = self._create_path_picker(
             getattr(self.main_window, "pg_bin_path", ""),
             "e.g. C:\\Program Files\\PostgreSQL\\16\\bin",
             self.browse_pg_bin,
         )
-        self._add_row(binaries, "PostgreSQL Binary Path", "Directory containing psql, pg_dump, and pg_restore executables.", pg_picker, 290)
+        self._add_row(
+            binaries,
+            "PostgreSQL Binary Path",
+            f"Directory containing psql, pg_dump, and pg_restore executables.\n{pg_hint}",
+            pg_picker,
+            290,
+        )
 
+        ora_detected = find_sqlplus(getattr(self.main_window, "oracle_bin_path", ""))
+        ora_hint = f"Detected: {ora_detected}" if ora_detected else "Detected: Not found on system"
         ora_picker, self.oracle_bin_edit = self._create_path_picker(
             getattr(self.main_window, "oracle_bin_path", ""),
             "e.g. C:\\oracle\\instantclient_21_12",
             self.browse_oracle_bin,
         )
-        self._add_row(binaries, "Oracle Binary Path", "Directory containing sqlplus and Oracle Instant Client libraries.", ora_picker, 290)
+        self._add_row(
+            binaries,
+            "Oracle Binary Path",
+            f"Directory containing sqlplus and Oracle Instant Client libraries.\n{ora_hint}",
+            ora_picker,
+            290,
+        )
 
         self.use_wsl_check = ToggleSwitch()
         self.use_wsl_check.setChecked(getattr(self.main_window, "use_wsl", False))
