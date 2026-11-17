@@ -367,7 +367,7 @@ class TableDetailsLoader:
         elif db_type == 'sqlite':
             self.load_sqlite_table_details(item, item_data)
         elif db_type == 'csv':
-            self.load_cdata_table_details(item, item_data)
+            self.load_csv_table_details(item, item_data)
         elif db_type == 'servicenow':
             self.load_servicenow_table_details(item, item_data)
         elif db_type == 'oracle':
@@ -1219,7 +1219,7 @@ class TableDetailsLoader:
             table_item.appendRow(QStandardItem(f"Error: {e}"))
             self.manager.status.showMessage(f"Error loading table details: {e}", 5000)
 
-    def load_cdata_table_details(self, item, item_data):
+    def load_csv_table_details(self, item, item_data):
         if item.rowCount() > 0 and item.child(0).text() != "Loading...":
             return
 
@@ -1230,10 +1230,10 @@ class TableDetailsLoader:
         table_name = item_data.get('table_name')
 
         if not conn_data or not table_name:
-            self.manager.status.showMessage("Connection or table data is missing for CData.", 5000)
+            self.manager.status.showMessage("Connection or table data is missing for CSV.", 5000)
             return
 
-        self.manager.status.showMessage(f"CData table details not yet supported for: {table_name}", 3000)
+        self.manager.status.showMessage(f"CSV table details not yet supported for: {table_name}", 3000)
 
     def _load_table_policies(self, table_item, item_data, cursor, schema_name, table_name):
         try:
