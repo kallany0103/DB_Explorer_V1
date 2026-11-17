@@ -2,9 +2,11 @@ from PySide6.QtWidgets import (
     QApplication, QAbstractScrollArea, QCheckBox, QComboBox,
     QPushButton, QLineEdit, QToolButton, QMenu,
     QTableView, QHeaderView, QAbstractItemView, QWidget, QHBoxLayout, QLabel,
-    QDialog, QVBoxLayout, QProgressBar, QStyle, QStyledItemDelegate
+    QDialog, QVBoxLayout, QProgressBar, QStyle, QStyledItemDelegate, QSizePolicy
 )
-from PySide6.QtGui import QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QPixmap, QPen
+from PySide6.QtGui import (
+    QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QPixmap, QPen, QGuiApplication
+)
 from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QRectF, QSize, QEvent
 from typing import Optional
 import qtawesome as qta
@@ -785,6 +787,7 @@ _TOAST_DURATION = 3000  # ms before auto-dismiss
 
 
 class ToastNotification(QWidget):
+    _active_toasts: list["ToastNotification"] = []
 
     def __init__(self, parent: QWidget, message: str,
                  kind: str = "success", duration: int = _TOAST_DURATION):
@@ -793,66 +796,149 @@ class ToastNotification(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        ToastNotification._active_toasts.append(self)
 
         style = _TOAST_STYLES.get(kind, _TOAST_STYLES["info"])
         self._bg     = style["bg"]
         self._border = style["border"]
+        effective_duration = 5000 if (kind == "error" and duration == _TOAST_DURATION) else duration
+
+        # Constrain width so toast never stretches indefinitely or overflows the parent window
+        parent_w = top.width() if top else 600
+        max_toast_w = min(480, max(280, parent_w - (2 * _TOAST_MARGIN)))
+        self.setMaximumWidth(max_toast_w)
 
         # Layout
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 10, 18, 10)
+        layout.setContentsMargins(14, 10, 10, 10)
         layout.setSpacing(10)
 
         icon_lbl = QLabel()
         icon_lbl.setStyleSheet("background: transparent;")
         icon_lbl.setPixmap(qta.icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
         icon_lbl.setFixedWidth(20)
-        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
         msg_lbl = QLabel(message)
         msg_lbl.setFont(QFont("Segoe UI Variable", 10))
-        msg_lbl.setStyleSheet("color: #1f2937; background: transparent;")
-        msg_lbl.setWordWrap(False)
+        msg_lbl.setStyleSheet("color: #1f2937; background: transparent; line-height: 1.3;")
+        msg_lbl.setWordWrap(True)
+        msg_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        msg_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(18, 18)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background: transparent;
+                color: #94a3b8;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 0;
+                margin: 0;
+            }
+            QPushButton:hover {
+                color: #1e293b;
+                background: #e2e8f0;
+                border-radius: 9px;
+            }
+        """)
+        close_btn.clicked.connect(self.close)
 
         layout.addWidget(icon_lbl)
-        layout.addWidget(msg_lbl)
+        layout.addWidget(msg_lbl, 1)
+        layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignTop)
 
         self.adjustSize()
         if self.width() < 260:
-            self.setFixedWidth(260)
+            self.setMinimumWidth(260)
 
         self._reposition()
 
-        # Slide-in animation
+        # Follow parent moves/resizes
+        if top:
+            top.installEventFilter(self)
+
+        # Slide-in animation within bottom margin
+        anim_offset = max(6, _TOAST_MARGIN - 6)
         self._anim_in = QPropertyAnimation(self, b"pos", self)
-        self._anim_in.setDuration(280)
+        self._anim_in.setDuration(240)
         self._anim_in.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._anim_in.setStartValue(QPoint(self.x(), self.y() + 40))
+        self._anim_in.setStartValue(QPoint(self.x(), self.y() + anim_offset))
         self._anim_in.setEndValue(self.pos())
 
         # Auto-dismiss
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
-        self._timer.setInterval(duration)
+        self._timer.setInterval(effective_duration)
         self._timer.timeout.connect(self._slide_out)
 
         self.show()
         self._anim_in.start()
         self._timer.start()
 
-    def _reposition(self):
+    def eventFilter(self, obj, event):
+        if obj == self.parent() and event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
+            self._reposition()
+        return super().eventFilter(obj, event)
+
+    def closeEvent(self, event):
+        if self in ToastNotification._active_toasts:
+            ToastNotification._active_toasts.remove(self)
         parent = self.parent()
         if parent:
-            tl = parent.mapToGlobal(parent.rect().topLeft())
-            x = tl.x() + parent.width()  - self.width()  - _TOAST_MARGIN
-            y = tl.y() + parent.height() - self.height() - _TOAST_MARGIN
-            self.move(x, y)
+            try:
+                parent.removeEventFilter(self)
+            except Exception:
+                pass
+        super().closeEvent(event)
+
+    def _reposition(self):
+        parent = self.parent()
+        if not parent:
+            return
+
+        tl = parent.mapToGlobal(parent.rect().topLeft())
+        parent_x = tl.x()
+        parent_y = tl.y()
+        parent_w = parent.width()
+        parent_h = parent.height()
+
+        target_x = parent_x + parent_w - self.width() - _TOAST_MARGIN
+        target_y = parent_y + parent_h - self.height() - _TOAST_MARGIN
+
+        # Strictly clamp within parent window bounds
+        min_x = parent_x + _TOAST_MARGIN
+        max_x = max(min_x, parent_x + parent_w - self.width() - _TOAST_MARGIN)
+        min_y = parent_y + _TOAST_MARGIN
+        max_y = max(min_y, parent_y + parent_h - self.height() - _TOAST_MARGIN)
+
+        clamped_x = max(min_x, min(target_x, max_x))
+        clamped_y = max(min_y, min(target_y, max_y))
+
+        # Strictly clamp within screen boundaries as well
+        screen = parent.screen() or QGuiApplication.primaryScreen()
+        if screen:
+            screen_geo = screen.availableGeometry()
+            clamped_x = max(
+                screen_geo.left() + _TOAST_MARGIN,
+                min(clamped_x, screen_geo.right() - self.width() - _TOAST_MARGIN),
+            )
+            clamped_y = max(
+                screen_geo.top() + _TOAST_MARGIN,
+                min(clamped_y, screen_geo.bottom() - self.height() - _TOAST_MARGIN),
+            )
+
+        self.move(int(clamped_x), int(clamped_y))
 
     def _slide_out(self):
+        anim_offset = max(6, _TOAST_MARGIN - 6)
         self._anim_out = QPropertyAnimation(self, b"pos", self)
-        self._anim_out.setDuration(250)
+        self._anim_out.setDuration(200)
         self._anim_out.setEasingCurve(QEasingCurve.Type.InCubic)
-        self._anim_out.setEndValue(QPoint(self.x(), self.y() + 40))
+        self._anim_out.setEndValue(QPoint(self.x(), self.y() + anim_offset))
         self._anim_out.finished.connect(self.close)
         self._anim_out.start()
 
@@ -860,9 +946,9 @@ class ToastNotification(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
-        path.addRoundedRect(self.rect(), 10, 10)
+        path.addRoundedRect(self.rect().adjusted(1, 1, -1, -1), 10, 10)
         painter.fillPath(path, QColor(self._bg))
-        painter.setPen(QColor(self._border))
+        painter.setPen(QPen(QColor(self._border), 1))
         painter.drawPath(path)
 
     @classmethod
@@ -870,6 +956,16 @@ class ToastNotification(QWidget):
                    kind: str = "success", duration: int = _TOAST_DURATION):
         """Create and show a toast. Returns the widget instance."""
         return cls(parent, message, kind=kind, duration=duration)
+
+    @classmethod
+    def dismiss_all(cls):
+        """Dismiss all currently active toast notifications immediately."""
+        for toast in list(cls._active_toasts):
+            try:
+                toast.close()
+            except Exception:
+                pass
+        cls._active_toasts.clear()
 
 
 # ── Confirmation Dialog ───────────────────────────────────────────────────────
