@@ -1,30 +1,36 @@
+import re
+
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QSplitter,
+    QAbstractItemView,
+    QApplication,
     QComboBox,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListView,
+    QSplitter,
     QStackedWidget,
     QTextEdit,
-    QLabel,
-    QAbstractItemView,
     QTreeView,
-    QGroupBox,
-    QFrame,
-    QListView,
-    QApplication,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QFont
 import qtawesome as qta
-from widgets.worksheet.connections import get_connection_icon
-from ui.toolbars import WorksheetToolbar, NavigationHeader
+
 from ui.components import SecondaryButton
-from widgets.worksheet.code_editor import CodeEditor
-from widgets.worksheet.autocomplete import CompletionEngine
+from ui.toolbars import NavigationHeader, WorksheetToolbar
 from widgets.ai_assistant import AIChatPanel
-from widgets.worksheet.query.query_preparation import sync_editor_limit
-from PySide6.QtCore import QTimer
+from widgets.worksheet.autocomplete import CompletionEngine
+from widgets.worksheet.code_editor import CodeEditor
+from widgets.worksheet.connections import get_connection_icon
+from widgets.worksheet.query.query_preparation import (
+    _strip_leading_sql_comments,
+    extract_query_under_cursor,
+    sync_editor_limit,
+)
 
 def add_tab(manager):
     tab_content = QWidget(manager.tab_widget)
@@ -164,7 +170,13 @@ def add_tab(manager):
         code = str((conn_data or {}).get("code") or (conn_data or {}).get("db_type") or "").upper()
         is_oracle = code in ("ORACLE", "ORACLE_DB", "ORACLE_FA")
 
-        sync_editor_limit(text_edit, tab_content.current_limit, overwrite_existing=manual, is_oracle=is_oracle)
+        sync_editor_limit(
+            text_edit,
+            tab_content.current_limit,
+            offset=tab_content.current_offset,
+            overwrite_existing=manual,
+            is_oracle=is_oracle,
+        )
 
         results_info_bar = tab_content.findChild(QWidget, "resultsInfoBar")
         if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
@@ -183,6 +195,18 @@ def add_tab(manager):
                     rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
                 else:
                     rows_info_label.setText("No Limit")
+
+        # Like pgAdmin, automatically execute the query when the user changes the limit
+        if manual and hasattr(manager, "execute_query"):
+            conn_data = db_combo_box.currentData() if db_combo_box else getattr(text_edit, "_conn_data", None)
+            is_active_tab = (manager.tab_widget.currentWidget() == tab_content)
+            is_running = bool(getattr(manager, "running_queries", {}).get(tab_content))
+            if conn_data and is_active_tab and not is_running and text_edit:
+                active_query = extract_query_under_cursor(text_edit)
+                if active_query:
+                    leading_sql = _strip_leading_sql_comments(active_query)
+                    if re.match(r"^\(?\s*(?:SELECT|WITH)\b", leading_sql, re.IGNORECASE):
+                        QTimer.singleShot(0, lambda: manager.execute_query(preserve_pagination=True))
 
     toolbar_widget.limit_changed.connect(lambda text: on_limit_change(text, manual=True))
     default_limit = str(getattr(manager.main_window, "default_row_limit", "No Limit") or "No Limit")
@@ -343,7 +367,13 @@ def add_tab(manager):
                 on_limit_change(default_limit, manual=False)
         elif limit_btn and getattr(tab_content, "current_limit", 0) > 0:
             is_oracle = code in ("ORACLE", "ORACLE_DB", "ORACLE_FA")
-            sync_editor_limit(text_edit, tab_content.current_limit, overwrite_existing=True, is_oracle=is_oracle)
+            sync_editor_limit(
+                text_edit,
+                tab_content.current_limit,
+                offset=getattr(tab_content, "current_offset", 0),
+                overwrite_existing=True,
+                is_oracle=is_oracle,
+            )
 
     db_combo_box.currentIndexChanged.connect(lambda: _refresh_engine(skip_slow=False))
     QTimer.singleShot(300, lambda: _refresh_engine(skip_slow=True))

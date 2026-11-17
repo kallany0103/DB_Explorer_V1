@@ -105,15 +105,14 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTabWidget, QWidget, QFormL
 from PySide6.QtCore import Qt
 import os 
 from ui.components import PrimaryButton, SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 
 class ExportDialog(QDialog):
     def __init__(self, parent=None, default_filename="export.csv"):
         super().__init__(parent)
         self.setWindowTitle("Export Data")
-        self.resize(550, 350)
-        
         self.setSizeGripEnabled(True)
-        self.setFixedSize(700, 500)
+        fit_dialog_to_screen(self, ideal_width=680, ideal_height=480, min_width=500, min_height=350)
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 

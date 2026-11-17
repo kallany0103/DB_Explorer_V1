@@ -36,7 +36,6 @@ from ui.feature_flags import (
     normalize_feature_flags,
 )
 import db
-from PySide6.QtWidgets import QSpacerItem
 from widgets.app_shell import (
     build_main_window_actions,
     build_main_window_menu,
@@ -849,6 +848,9 @@ class MainWindow(QMainWindow):
             # ── COLLAPSE ──────────────────────────────────────────────────
             self._last_left_panel_width = self.main_splitter.sizes()[0]
 
+            if hasattr(cm, 'hide_explorer_search'):
+                cm.hide_explorer_search()
+
             # Hide tree content
             cm.vertical_splitter.hide()
             if hasattr(cm, 'empty_space'):
@@ -864,14 +866,13 @@ class MainWindow(QMainWindow):
             if hasattr(cm, 'explorer_add_btn'):
                 cm.explorer_add_btn.hide()
 
-            # Remove the stretch spacer so the button sits at the top-left
+            # Clean up any lingering spacer items so the button sits at the top-left
             if hasattr(cm, 'explorer_header_layout'):
                 layout = cm.explorer_header_layout
-                for i in range(layout.count()):
+                for i in reversed(range(layout.count())):
                     item = layout.itemAt(i)
-                    if item and isinstance(item.spacerItem(), QSpacerItem):
+                    if item and item.spacerItem():
                         layout.takeAt(i)
-                        break
                 # Tight margins: just enough room for the button
                 layout.setContentsMargins(2, 6, 2, 0)
                 layout.setSpacing(0)
@@ -893,13 +894,16 @@ class MainWindow(QMainWindow):
             self._sidebar_collapsed = True
 
         else:
-            
+            # ── EXPAND ────────────────────────────────────────────────────
             if hasattr(cm, 'explorer_header_layout'):
                 layout = cm.explorer_header_layout
                 layout.setContentsMargins(8, 2, 8, 6)
                 layout.setSpacing(10)
-                # Re-insert stretch before search_container (index 1)
-                layout.insertStretch(1, 1)
+                # Ensure no lingering QSpacerItem pushes the search box
+                for i in reversed(range(layout.count())):
+                    item = layout.itemAt(i)
+                    if item and item.spacerItem():
+                        layout.takeAt(i)
 
             # Show tree content
             if hasattr(cm, 'empty_space'):

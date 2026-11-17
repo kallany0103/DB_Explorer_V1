@@ -5,15 +5,6 @@ from psycopg2 import OperationalError
 import sys
 import os
 import time
-try:
-    import cdata.servicenow as sn_driver
-except ImportError:
-    sn_driver = None
-
-try:
-    import cdata.csv as csv_driver
-except ImportError:
-    csv_driver = None
 import urllib.parse
 import logging
 from typing import Any

@@ -221,6 +221,8 @@ def sync_servicenow_table(
         str: Absolute path to the DuckDB database file.
     """
     import dlt
+    logging.getLogger("dlt.normalize").setLevel(logging.ERROR)
+    logging.getLogger("dlt.schema").setLevel(logging.ERROR)
 
     conn_id = conn_data.get("id") or conn_data.get("connection_id") or "default"
     db_path = DuckDBManager.get_servicenow_duckdb_path(conn_id)
@@ -243,6 +245,17 @@ def sync_servicenow_table(
     from db.servicenow_metadata import fetch_servicenow_columns
     cols = fetch_servicenow_columns(conn_data, table_name)
     column_hints: Dict[str, Dict[str, str]] = {}
+    if not cols:
+        fallback_cols = [
+            "sys_id", "number", "short_description", "description", "state",
+            "priority", "urgency", "impact", "contact_type", "assigned_to",
+            "assignment_group", "sys_created_on", "sys_updated_on", "opened_at",
+            "closed_at", "active",
+        ]
+        for col_name in fallback_cols:
+            column_hints[col_name] = {"data_type": "text"}
+            column_hints[f"{col_name}__display_value"] = {"data_type": "text"}
+            column_hints[f"{col_name}__value"] = {"data_type": "text"}
     for col in cols or []:
         col_name = col.get("name")
         if col_name:

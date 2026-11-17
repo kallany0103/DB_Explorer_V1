@@ -69,8 +69,6 @@ Source: "databases\*"; DestDir: "{app}\databases"; Flags: ignoreversion recurses
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Oracle Instant Client — shipped via installer to keep PyInstaller bundle lean
 Source: "resources\oracle\instantclient\*"; DestDir: "{app}\resources\oracle\instantclient"; Flags: ignoreversion recursesubdirs createallsubdirs
-; CData connector wheels (ServiceNow, CSV) — large binaries kept outside PyInstaller bundle
-Source: "drivers\*"; DestDir: "{app}\drivers"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app_icon.ico"

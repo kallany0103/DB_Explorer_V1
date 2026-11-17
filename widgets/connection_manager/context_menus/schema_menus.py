@@ -8,15 +8,21 @@ FDW nodes, foreign servers, and user mappings.
 
 from functools import partial
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMenu
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QApplication, QMenu
 
 from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.menu_style import apply_menu_style
 from widgets.connection_manager.context_menus._helpers import (
     action,
     add_properties_statistics_actions,
+    calculate_smart_menu_pos,
+    standalone_menu,
     stub,
     submenu,
+)
+from widgets.connection_manager.context_menus.scrollable_menu import (
+    create_scrollable_action_widget,
 )
 from widgets.connection_manager.context_menus.mview_menus import MaterializedViewMenuBuilder
 from widgets.connection_manager.context_menus.trigger_menus import TriggerMenuBuilder
@@ -47,7 +53,7 @@ class SchemaMenuBuilder:
 
     # Entry point
 
-    def show(self, position):
+    def show(self, position, full_menu: bool = False, anchor_global=None):
         index = self.manager.schema_tree.indexAt(position)
         if not index.isValid():
             return
@@ -87,7 +93,16 @@ class SchemaMenuBuilder:
         elif table_type == "MATERIALIZED VIEW":
             self.mview_builder.build_menu(menu, item, item_data)
         elif is_table_or_view:
-            self._table_menu(menu, item, item_data, db_type, index)
+            self._table_menu(
+                menu,
+                item,
+                item_data,
+                db_type,
+                index,
+                full_menu=full_menu,
+                position=position,
+                anchor_global=anchor_global,
+            )
         elif is_sequence:
             self._sequence_menu(menu, item, item_data, index)
         elif is_function or is_trigger_function:
@@ -135,7 +150,18 @@ class SchemaMenuBuilder:
             menu.addAction(action(self.manager, f"Properties for {item.text()}"))
 
         if not menu.isEmpty():
-            menu.exec(self.manager.schema_tree.viewport().mapToGlobal(position))
+            if anchor_global is not None:
+                target_global = anchor_global
+            else:
+                cursor_p = QCursor.pos()
+                viewport_global = self.manager.schema_tree.viewport().mapToGlobal(position)
+                if (cursor_p - viewport_global).manhattanLength() < 500:
+                    target_global = cursor_p
+                else:
+                    target_global = viewport_global
+
+            smart_pos = calculate_smart_menu_pos(target_global, menu.sizeHint())
+            menu.exec(smart_pos)
 
 
     # Shared helpers
@@ -243,8 +269,102 @@ class SchemaMenuBuilder:
 
     # Table / View
 
+    def _create_security_submenu(self, parent_menu, item_data):
+        security_sub = standalone_menu(parent_menu, "Security", "mdi.shield-lock-outline")
+        act = action(self.manager, "Enable Row Level Security", "mdi.shield-check-outline")
+        act.triggered.connect(lambda: self.manager.connection_actions.enable_rls(item_data, True))
+        security_sub.addAction(act)
 
-    def _table_menu(self, menu, item, item_data, db_type, index):
+        act = action(self.manager, "Disable Row Level Security", "mdi.shield-remove-outline")
+        act.triggered.connect(lambda: self.manager.connection_actions.enable_rls(item_data, False))
+        security_sub.addAction(act)
+
+        security_sub.addSeparator()
+
+        act = action(self.manager, "Force Row Level Security", "mdi.shield-alert-outline")
+        act.triggered.connect(lambda: self.manager.connection_actions.force_rls(item_data, True))
+        security_sub.addAction(act)
+
+        act = action(self.manager, "No Force Row Level Security", "mdi.shield-outline")
+        act.triggered.connect(lambda: self.manager.connection_actions.force_rls(item_data, False))
+        security_sub.addAction(act)
+        return security_sub
+
+    def _create_view_data_submenu(self, parent_menu, item_data, display_name: str, is_servicenow: bool):
+        view_label = "View Data" if is_servicenow else "View/Edit Data"
+        view_sub = standalone_menu(parent_menu, view_label, "mdi.table-eye")
+        act_all = action(self.manager, "All Rows", "mdi.table-row")
+        act_all.triggered.connect(
+            lambda: self.manager.connection_actions.query_table_rows(
+                item_data, display_name, limit=None, execute_now=True
+            )
+        )
+        view_sub.addAction(act_all)
+
+        act_100 = action(self.manager, "First 100 Rows", "mdi.table-row")
+        act_100.triggered.connect(
+            lambda: self.manager.connection_actions.query_table_rows(
+                item_data, display_name, limit=100, execute_now=True
+            )
+        )
+        view_sub.addAction(act_100)
+
+        act_last = action(self.manager, "Last 100 Rows", "mdi.table-row")
+        act_last.triggered.connect(
+            lambda: self.manager.connection_actions.query_table_rows(
+                item_data, display_name, limit=100, order="desc", execute_now=True
+            )
+        )
+        view_sub.addAction(act_last)
+
+        act_count = action(self.manager, "Count Rows", "mdi.counter")
+        act_count.triggered.connect(
+            lambda: self.manager.connection_actions.count_table_rows(item_data, display_name)
+        )
+        view_sub.addAction(act_count)
+        return view_sub
+
+    def _create_sql_submenu(self, parent_menu, item_data, display_name: str):
+        sql_sub = standalone_menu(parent_menu, "Generate SQL", "mdi.code-tags")
+        target_name = item_data.get("table_name", display_name)
+        act_sel = action(self.manager, "SELECT (Top Columns)", "mdi.table-search")
+        act_sel.triggered.connect(
+            lambda: self.manager.connection_actions.generate_select_template(item_data, target_name)
+        )
+        sql_sub.addAction(act_sel)
+
+        act_sel_all = action(self.manager, "SELECT *", "mdi.asterisk")
+        act_sel_all.triggered.connect(
+            lambda: self.manager.connection_actions.generate_select_all_template(item_data, target_name)
+        )
+        sql_sub.addAction(act_sel_all)
+        return sql_sub
+
+    def _create_scripts_submenu(self, parent_menu, item_data, display_name: str):
+        scripts_sub = standalone_menu(parent_menu, "Scripts", "mdi.script-text-outline")
+        for lbl, fn in [
+            ("CREATE Script", lambda: self.manager.script_generator.script_table_as_create(item_data, display_name)),
+            ("INSERT Script", lambda: self.manager.script_generator.script_table_as_insert(item_data, display_name)),
+            ("UPDATE Script", lambda: self.manager.script_generator.script_table_as_update(item_data, display_name)),
+            ("DELETE Script", lambda: self.manager.script_generator.script_table_as_delete(item_data, display_name)),
+            ("SELECT Script", lambda: self.manager.script_generator.script_table_as_select(item_data, display_name)),
+        ]:
+            a = action(self.manager, lbl, "mdi.script-text-outline")
+            a.triggered.connect(fn)
+            scripts_sub.addAction(a)
+        return scripts_sub
+
+    def _table_menu(
+        self,
+        menu,
+        item,
+        item_data,
+        db_type,
+        index,
+        full_menu: bool = False,
+        position=None,
+        anchor_global=None,
+    ):
         display_name = item.text()
         table_type   = item_data.get("table_type", "TABLE").upper()
         is_view      = "VIEW" in table_type
@@ -253,76 +373,115 @@ class SchemaMenuBuilder:
         is_servicenow = db_type_lower == "servicenow"
         hide_pg_style_actions = db_type_lower in ("csv", "servicenow")
 
-        # View/Edit Data submenu (read-only label for ServiceNow)
-        view_label = "View Data" if is_servicenow else "View/Edit Data"
-        view_sub = submenu(menu, view_label, "mdi.table-eye")
-        act = action(self.manager, "All Rows", "mdi.table-row")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.query_table_rows(
-                item_data, display_name, limit=None, execute_now=True
-            )
-        )
-        view_sub.addAction(act)
+        view_sub = self._create_view_data_submenu(menu, item_data, display_name, is_servicenow)
+        query_act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        query_act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item_data))
 
-        act = action(self.manager, "First 100 Rows", "mdi.table-row")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.query_table_rows(
-                item_data, display_name, limit=100, execute_now=True
-            )
-        )
-        view_sub.addAction(act)
-
-        act = action(self.manager, "Last 100 Rows", "mdi.table-row")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.query_table_rows(
-                item_data, display_name, limit=100, order="desc", execute_now=True
-            )
-        )
-        view_sub.addAction(act)
-
-        act = action(self.manager, "Count Rows", "mdi.counter")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.count_table_rows(item_data, display_name)
-        )
-        view_sub.addAction(act)
-
-        menu.addSeparator()
-        self._add_query_tool_action(menu, item_data)
-
-        if not is_servicenow and is_feature_enabled(self.manager, "data_virtualization"):
-            act = action(self.manager, "Cross-Source Join Helper...", "mdi.transit-connection-variant")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data, display_name)
-            )
-            menu.addAction(act)
-
-        menu.addSeparator()
-        act = action(self.manager, "Export Rows...", "mdi.export")
-        act.triggered.connect(
+        export_act = action(self.manager, "Export Rows...", "mdi.export")
+        export_act.triggered.connect(
             lambda: self.manager.connection_actions.export_schema_table_rows(item_data, display_name)
         )
-        menu.addAction(act)
 
-        # Generate SQL submenu
-        sql_sub = submenu(menu, "Generate SQL", "mdi.code-tags")
-        act_sel = action(self.manager, "SELECT (Top Columns)", "mdi.table-search")
-        act_sel.triggered.connect(
-            lambda: self.manager.connection_actions.generate_select_template(
-                item_data, item_data.get("table_name", display_name)
+        sql_sub = self._create_sql_submenu(menu, item_data, display_name)
+
+        if not hide_pg_style_actions:
+            desc_act = action(self.manager, "Describe...", "mdi.information-outline", shortcut="F4")
+            desc_act.triggered.connect(
+                lambda _checked=False, data=item_data, name=display_name: self.manager.describe_object(data, name)
             )
-        )
-        sql_sub.addAction(act_sel)
-
-        act_sel_all = action(self.manager, "SELECT *", "mdi.asterisk")
-        act_sel_all.triggered.connect(
-            lambda: self.manager.connection_actions.generate_select_all_template(
-                item_data, item_data.get("table_name", display_name)
+            quick_desc_act = action(self.manager, "Quick Describe...", "fa5s.search-plus", shortcut="Ctrl+D")
+            quick_desc_act.triggered.connect(
+                lambda _checked=False, data=item_data, name=display_name: self.manager.quick_describe_object(data, name)
             )
-        )
-        sql_sub.addAction(act_sel_all)
+            if is_feature_enabled(self.manager, "object_inspector"):
+                prop_act = action(self.manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+                prop_act.triggered.connect(
+                    lambda _checked=False, data=item_data, name=display_name: self.manager.open_properties_workbench(data, name)
+                )
+                stat_act = action(self.manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
+                stat_act.triggered.connect(
+                    lambda _checked=False, data=item_data, name=display_name: self.manager.open_statistics_workbench(data, name)
+                )
+            else:
+                prop_act = None
+                stat_act = None
 
-        if str(db_type or "").lower() == "servicenow":
+            scripts_sub = self._create_scripts_submenu(menu, item_data, display_name)
+
+            if is_feature_enabled(self.manager, "erd_designer"):
+                erd_act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
+                erd_act.triggered.connect(
+                    lambda: self.manager.generate_erd_for_item(item_data, display_name)
+                )
+            else:
+                erd_act = None
+
+            if is_feature_enabled(self.manager, "data_virtualization"):
+                cross_source_act = action(self.manager, "Cross-Source Join Helper...", "mdi.transit-connection-variant")
+                cross_source_act.triggered.connect(
+                    lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data, display_name)
+                )
+            else:
+                cross_source_act = None
+
+            if is_feature_enabled(self.manager, "backup_restore"):
+                backup_act = action(self.manager, "Backup...", "mdi.backup-restore")
+                backup_act.triggered.connect(
+                    lambda: self.manager.connection_actions.open_backup_dialog(item_data)
+                )
+                restore_act = action(self.manager, "Restore...", "mdi.database-import")
+                restore_act.triggered.connect(
+                    lambda: self.manager.connection_actions.open_restore_dialog(item_data)
+                )
+            else:
+                backup_act = None
+                restore_act = None
+
+            security_sub = self._create_security_submenu(menu, item_data)
+
+            if not is_view:
+                truncate_act = action(self.manager, "Truncate", "mdi.eraser")
+                truncate_act.triggered.connect(
+                    lambda: self.manager.connection_actions.truncate_table(item_data, display_name)
+                )
+                truncate_cascade_act = action(self.manager, "Truncate (Cascade)", "mdi.eraser-variant")
+                truncate_cascade_act.triggered.connect(
+                    lambda: self.manager.connection_actions.truncate_table(item_data, display_name, cascade=True)
+                )
+            else:
+                truncate_act = None
+                truncate_cascade_act = None
+
+            drop_act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
+            drop_act.triggered.connect(
+                lambda: self.manager.connection_actions.delete_table(item_data, display_name)
+            )
+            drop_cascade_act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
+            drop_cascade_act.triggered.connect(
+                lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
+            )
+        else:
+            desc_act = quick_desc_act = prop_act = stat_act = scripts_sub = erd_act = None
+            cross_source_act = backup_act = restore_act = security_sub = None
+            truncate_act = truncate_cascade_act = drop_act = drop_cascade_act = None
+
+        refresh_act = action(self.manager, "Refresh", "mdi.refresh", shortcut="F5")
+        if index is not None:
+            refresh_act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, False))
+        reset_act = action(self.manager, "Reset Tree", "mdi.arrow-collapse-all")
+        if index is not None:
+            reset_act.triggered.connect(partial(self.manager.refresh_schema_tree_item, index, True))
+
+        # ServiceNow specific actions
+        if is_servicenow:
+            menu.addAction(view_sub.menuAction())
             menu.addSeparator()
+            menu.addAction(query_act)
+            menu.addSeparator()
+            menu.addAction(export_act)
+            menu.addAction(sql_sub.menuAction())
+            menu.addSeparator()
+
             conn_id = (item_data.get("conn_data") or {}).get("id") or "default"
             target_name = item_data.get("table_name", display_name)
             from widgets.connection_manager.favorites import is_table_favorite
@@ -342,87 +501,119 @@ class SchemaMenuBuilder:
                 )
             )
             menu.addAction(act_sync)
+            self._add_refresh_actions(menu, index)
+            return
 
-        if not hide_pg_style_actions:
-            self._add_backup_restore_actions(menu, item_data)
-
+        # Simple sources (e.g. CSV)
+        if hide_pg_style_actions:
+            menu.addAction(view_sub.menuAction())
             menu.addSeparator()
-            security_sub = submenu(menu, "Security", "mdi.shield-lock-outline")
-            
-            act = action(self.manager, "Enable Row Level Security", "mdi.shield-check-outline")
-            act.triggered.connect(lambda: self.manager.connection_actions.enable_rls(item_data, True))
-            security_sub.addAction(act)
-
-            act = action(self.manager, "Disable Row Level Security", "mdi.shield-remove-outline")
-            act.triggered.connect(lambda: self.manager.connection_actions.enable_rls(item_data, False))
-            security_sub.addAction(act)
-
-            security_sub.addSeparator()
-
-            act = action(self.manager, "Force Row Level Security", "mdi.shield-alert-outline")
-            act.triggered.connect(lambda: self.manager.connection_actions.force_rls(item_data, True))
-            security_sub.addAction(act)
-
-            act = action(self.manager, "No Force Row Level Security", "mdi.shield-outline")
-            act.triggered.connect(lambda: self.manager.connection_actions.force_rls(item_data, False))
-            security_sub.addAction(act)
-
+            menu.addAction(query_act)
             menu.addSeparator()
-            add_properties_statistics_actions(menu, self.manager, item_data, display_name)
+            menu.addAction(export_act)
+            menu.addAction(sql_sub.menuAction())
+            self._add_refresh_actions(menu, index)
+            return
 
-            if is_feature_enabled(self.manager, "erd_designer"):
-                menu.addSeparator()
-                act = action(self.manager, f"ERD for {label}", "fa6s.sitemap")
-                act.triggered.connect(
-                    lambda: self.manager.generate_erd_for_item(item_data, display_name)
-                )
-                menu.addAction(act)
+        # Full menu mode -> Compact Scrollable Action Container
+        if full_menu:
+            full_actions = [
+                view_sub.menuAction(),
+                None,
+                query_act,
+                desc_act,
+                quick_desc_act,
+            ]
+            if prop_act:
+                full_actions.append(prop_act)
+            if stat_act:
+                full_actions.append(stat_act)
+            full_actions.append(None)
+            full_actions.append(export_act)
+            full_actions.append(sql_sub.menuAction())
+            if scripts_sub:
+                full_actions.append(scripts_sub.menuAction())
+            if erd_act:
+                full_actions.append(erd_act)
+            full_actions.append(None)
+            if cross_source_act:
+                full_actions.append(cross_source_act)
+            if backup_act:
+                full_actions.append(backup_act)
+            if restore_act:
+                full_actions.append(restore_act)
+            if security_sub:
+                full_actions.append(security_sub.menuAction())
+            full_actions.append(None)
+            if truncate_act:
+                full_actions.append(truncate_act)
+            if truncate_cascade_act:
+                full_actions.append(truncate_cascade_act)
+            if drop_act:
+                full_actions.append(drop_act)
+            if drop_cascade_act:
+                full_actions.append(drop_cascade_act)
+            full_actions.append(None)
+            full_actions.append(refresh_act)
+            full_actions.append(reset_act)
 
-            menu.addSeparator()
-            scripts_sub = submenu(menu, "Scripts", "mdi.script-text-outline")
-            for lbl, fn in [
-                ("CREATE Script", lambda: self.manager.script_generator.script_table_as_create(item_data, display_name)),
-                ("INSERT Script", lambda: self.manager.script_generator.script_table_as_insert(item_data, display_name)),
-                ("UPDATE Script", lambda: self.manager.script_generator.script_table_as_update(item_data, display_name)),
-                ("DELETE Script", lambda: self.manager.script_generator.script_table_as_delete(item_data, display_name)),
-                ("SELECT Script", lambda: self.manager.script_generator.script_table_as_select(item_data, display_name)),
-            ]:
-                a = action(self.manager, lbl, "mdi.script-text-outline")
-                a.triggered.connect(fn)
-                scripts_sub.addAction(a)
+            # Adaptive max height based on screen (compact, never overflows)
+            screen = QApplication.primaryScreen()
+            avail_h = screen.availableGeometry().height() if screen else 800
+            max_scroll_h = max(200, min(250, int(avail_h * 0.35)))
 
-        if not is_servicenow:
-            if not is_view:
-                menu.addSeparator()
-                act = action(self.manager, "Truncate", "mdi.eraser")
-                act.triggered.connect(
-                    lambda: self.manager.connection_actions.truncate_table(item_data, display_name)
-                )
-                menu.addAction(act)
-
-                act = action(self.manager, "Truncate (Cascade)", "mdi.eraser-variant")
-                act.triggered.connect(
-                    lambda: self.manager.connection_actions.truncate_table(item_data, display_name, cascade=True)
-                )
-                menu.addAction(act)
-
-            act = action(self.manager, f"Drop {label}", "mdi.delete-outline", shortcut="Alt+Shift+D")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.delete_table(item_data, display_name)
+            scroll_widget = create_scrollable_action_widget(
+                menu, full_actions, max_height=max_scroll_h, min_width=260
             )
-            menu.addAction(act)
+            menu.addAction(scroll_widget)
+            menu.inner_actions = full_actions  # type: ignore[attr-defined]
 
-            act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
-            act.triggered.connect(
-                lambda: self.manager.connection_actions.delete_table(item_data, display_name, cascade=True)
-            )
-            menu.addAction(act)
-
-            if hide_pg_style_actions:
+            if position is not None:
                 menu.addSeparator()
-                add_properties_statistics_actions(menu, self.manager, item_data, display_name)
+                show_less_act = action(
+                    self.manager,
+                    "Show fewer options",
+                    "mdi.unfold-less-horizontal",
+                    shortcut="Shift+F10",
+                )
+                show_less_act.triggered.connect(
+                    lambda _=False, m=menu: self.show(position, full_menu=False, anchor_global=m.pos())
+                )
+                menu.addAction(show_less_act)
 
-        self._add_refresh_actions(menu, index)
+        else:
+            # Compact Progressive Disclosure: top-level primary actions
+            menu.addAction(view_sub.menuAction())
+            menu.addSeparator()
+            menu.addAction(query_act)
+            if desc_act:
+                menu.addAction(desc_act)
+            if quick_desc_act:
+                menu.addAction(quick_desc_act)
+            if prop_act:
+                menu.addAction(prop_act)
+            menu.addSeparator()
+            menu.addAction(export_act)
+            menu.addAction(sql_sub.menuAction())
+            if scripts_sub:
+                menu.addAction(scripts_sub.menuAction())
+            if erd_act:
+                menu.addAction(erd_act)
+            menu.addSeparator()
+            menu.addAction(refresh_act)
+
+            if position is not None:
+                menu.addSeparator()
+                see_all_act = action(
+                    self.manager,
+                    "Show more options",
+                    "mdi.unfold-more-horizontal",
+                    shortcut="Shift+F10",
+                )
+                see_all_act.triggered.connect(
+                    lambda _=False, m=menu: self.show(position, full_menu=True, anchor_global=m.pos())
+                )
+                menu.addAction(see_all_act)
 
 
     # Schema node  (e.g. "public")

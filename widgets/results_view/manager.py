@@ -42,6 +42,11 @@ from widgets.results_view.value_state import (
 )
 from workers import RunnableExportFromModel, ProcessSignals
 from workers.signals import emit_process_started
+from widgets.worksheet.query.query_preparation import (
+    get_query_editor,
+    is_oracle_connection,
+    sync_editor_limit,
+)
 
 class ResultsManager(QObject):
     PROCESS_STATUS_META = {
@@ -889,6 +894,19 @@ class ResultsManager(QObject):
     def get_current_tab_processes_model(self):
         return processes.get_current_tab_processes_model(self)
 
+    def sync_tab_pagination(self, tab_content, limit: int, offset: int = 0) -> None:
+        """Sync current limit and offset to worksheet SQL editor."""
+        editor = get_query_editor(tab_content)
+        is_oracle = is_oracle_connection(tab_content)
+        if editor:
+            sync_editor_limit(
+                editor,
+                limit,
+                offset=offset,
+                overwrite_existing=True,
+                is_oracle=is_oracle,
+            )
+
     def open_limit_offset_dialog(self, tab_content):
         """Opens a dialog to set Limit and Offset like pgAdmin."""
         dialog = QDialog(self.main_window)
@@ -966,6 +984,18 @@ class ResultsManager(QObject):
             # Reset has_more_pages — will be recalculated once the query returns
             tab_content.has_more_pages = False
 
+            # Sync to Editor
+            editor = get_query_editor(tab_content)
+            is_oracle = is_oracle_connection(tab_content)
+            if editor:
+                sync_editor_limit(
+                    editor,
+                    tab_content.current_limit,
+                    offset=tab_content.current_offset,
+                    overwrite_existing=True,
+                    is_oracle=is_oracle,
+                )
+
             # Sync to Worksheet Limit Dropdown
             rows_limit_combo = tab_content.findChild(QComboBox, "rows_limit_combo")
             if rows_limit_combo:
@@ -991,8 +1021,23 @@ class ResultsManager(QObject):
             if results_info_bar and hasattr(results_info_bar, 'update_page_ui'):
                 results_info_bar.update_page_ui(tab_content)
 
+            rows_info_label = tab_content.findChild(QLabel, "rows_info_label")
+            if rows_info_label:
+                limit = tab_content.current_limit
+                offset = tab_content.current_offset
+                if limit > 0:
+                    rows_info_label.setText(f"Limit: {limit} | Offset: {offset}")
+                else:
+                    rows_info_label.setText("No Limit")
+
+            page_label_widget = tab_content.findChild(QLabel, "page_label")
+            if page_label_widget:
+                page_label_widget.setText(f"Page {tab_content.current_page}")
+
             # Re-execute the query with the new limit/offset
-            self.main_window.worksheet_manager.execute_query(preserve_pagination=True)
+            ws_mgr = getattr(self.main_window, "worksheet_manager", None)
+            if ws_mgr and hasattr(ws_mgr, "execute_query"):
+                ws_mgr.execute_query(preserve_pagination=True)
 
     def eventFilter(self, watched, event):
         if watched.objectName() == "table_search_box":

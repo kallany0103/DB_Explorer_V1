@@ -692,15 +692,15 @@ QTabBar::close-button:pressed {
     font-weight: bold; 
     font-size: 11px;
 }
-.sidebar-tool-btn {
+.sidebar-tool-btn, #schemaSearchBtn {
     border: none;
     border-radius: 4px;
     background-color: transparent;
 }
-.sidebar-tool-btn:hover {
+.sidebar-tool-btn:hover, #schemaSearchBtn:hover {
     background-color: #C9CFD8;
 }
-.sidebar-tool-btn:pressed {
+.sidebar-tool-btn:pressed, #schemaSearchBtn:pressed {
     background-color: #B8BEC6;
 }
 #connectionTree { 

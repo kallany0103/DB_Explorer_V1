@@ -1,4 +1,4 @@
-﻿# Technical Documentation — Universal SQL Client
+# Technical Documentation — Universal SQL Client
 
 ## 1. System Overview
 Universal SQL Client is a desktop multi-database client and management workstation built with Python and PySide6 (Qt6). It delivers a unified interface for connecting to, exploring, querying, and visualizing data across diverse relational and non-relational database sources.
@@ -12,7 +12,6 @@ DB_Explorer_V1/
 ├── auth/                   # Authentication handlers and session storage
 ├── databases/              # Local SQLite stores (connections, history, state)
 ├── dialogs/                # Modal dialogs, wizards, and properties editors
-├── drivers/                # CData connector wheels for external engines
 ├── db/                     # DB abstraction layer, connection pool, metadata
 ├── ui/                     # Design system: QSS stylesheet, themes, title bar
 ├── widgets/                # Modular UI components:

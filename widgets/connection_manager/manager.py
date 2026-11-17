@@ -581,6 +581,28 @@ class ConnectionManager(QWidget):
             ToastNotification.show_toast(self, f"Failed to delete connection: {exc}", kind="error")
 
     def item_clicked(self, proxy_index, skip_restore=False):
+        self._schema_load_token += 1
+        ToastNotification.dismiss_all()
+
+        # Cancel all in-flight schema workers.  Deactivate the guard flag so
+        # any signals already sitting in Qt's event queue are silently dropped
+        # at delivery time (disconnect() alone does not remove queued signals).
+        for old_worker in list(self._active_schema_workers):
+            if hasattr(old_worker, "_signal_guard"):
+                old_worker._signal_guard[0] = False
+            if hasattr(old_worker, "cancel"):
+                old_worker.cancel()
+            setattr(old_worker, "_canceled", True)
+            try:
+                old_worker.signals.finished.disconnect()
+            except Exception:
+                pass
+            try:
+                old_worker.signals.error.disconnect()
+            except Exception:
+                pass
+        self._active_schema_workers.clear()
+
         source_index = self.proxy_model.mapToSource(proxy_index)
         item = self.model.itemFromIndex(source_index)
         depth = self.get_item_depth(item)
@@ -619,34 +641,35 @@ class ConnectionManager(QWidget):
         if not connection_type:
             return
 
-        connection_type_name = connection_type.text().lower()
+        connection_type_name = connection_type.text().lower() if connection_type else ""
+        db_type = str(conn_data.get("db_type") or "").lower()
         conn_name = item.text()
         if hasattr(self.main_window, "results_manager"):
             self.main_window.results_manager.add_connection_notification(conn_name)
 
-        if "unified" in connection_type_name or "uds" in connection_type_name:
+        if "unified" in connection_type_name or "uds" in connection_type_name or db_type == "uds":
             self.active_postgres_conn = conn_data
             self.status.showMessage(f"Loading Unified Data Sources for {conn_name}...", 3000)
             worker = UDSSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_uds_schema, skip_restore=skip_restore)
-        elif "postgres" in connection_type_name and (conn_data.get("host") or conn_data.get("dsn")):
+        elif ("postgres" in connection_type_name or db_type in ("postgres", "postgresql")) and (conn_data.get("host") or conn_data.get("dsn")):
             self.active_postgres_conn = conn_data
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
             worker = PostgresSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_postgres_schema, skip_restore=skip_restore)
-        elif "sqlite" in connection_type_name and conn_data.get("db_path"):
+        elif ("sqlite" in connection_type_name or db_type == "sqlite") and conn_data.get("db_path"):
             self.status.showMessage(f"Loading schema for {conn_data.get('name')}...", 3000)
             worker = SQLiteSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_sqlite_schema, skip_restore=skip_restore)
-        elif "csv" in connection_type_name and conn_data.get("db_path"):
-            self.status.showMessage(f"Loading CSV folder for {conn_data.get('name')}...", 3000)
+        elif ("csv" in connection_type_name or db_type == "csv") and conn_data.get("db_path"):
+            self.status.showMessage(f"Loading CSV folder for {conn_name}...", 3000)
             worker = CsvSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_csv_schema, skip_restore=skip_restore)
-        elif "servicenow" in connection_type_name:
+        elif "servicenow" in connection_type_name or db_type == "servicenow":
             self.status.showMessage(f"Loading ServiceNow schema for {conn_name}...", 3000)
             worker = ServiceNowSchemaWorker(conn_data)
             self._start_schema_load(item, worker, self.schema_loader.populate_servicenow_schema, skip_restore=skip_restore)
-        elif "oracle" in connection_type_name and conn_data.get("dsn"):
+        elif "oracle" in connection_type_name or "oracle" in db_type:
             self.status.showMessage(f"Loading Oracle schema for {conn_name}...", 3000)
             worker = OracleSchemaWorker(conn_data)
             self._start_schema_load(
@@ -659,8 +682,14 @@ class ConnectionManager(QWidget):
     def _start_schema_load(self, item, worker, populate_fn, skip_restore=False):
         self._schema_load_token += 1
         current_token = self._schema_load_token
+        target_conn_id = self._current_conn_id
         self._spinner.start(item)
         self._active_schema_workers.append(worker)
+
+        # Guard flag checked at delivery time — survives already-queued signals
+        # because Qt QueuedConnection delivers even after disconnect() is called.
+        guard = [True]  # list cell so inner lambdas can mutate it
+        worker._signal_guard = guard
 
         self.schema_model.clear()
         self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
@@ -677,32 +706,48 @@ class ConnectionManager(QWidget):
                 self._active_schema_workers.remove(worker)
 
         def on_finished(data):
+            if not guard[0]:
+                return  # cancelled — drop even if already in Qt event queue
             _remove_worker()
-            if current_token == self._schema_load_token:
-                self._spinner.stop()
-                self._schema_spinner.stop()
-                self.schema_tree.repaint()
-                try:
-                    populate_fn(data, skip_restore=skip_restore)
-                    if skip_restore:
-                        self.schema_tree.collapseAll()
-                except Exception as exc:
-                    self.status.showMessage(f"Error populating schema: {exc}", 5000)
-                    self.show_error_popup(f"Failed to populate schema:\n{exc}")
-                finally:
-                    # Always clear the skip flag once the async work is done.
-                    self._skip_expansion_restore = False
+            if current_token != self._schema_load_token or (
+                target_conn_id and self._current_conn_id != target_conn_id
+            ):
+                return
+            self._spinner.stop()
+            self._schema_spinner.stop()
+            self.schema_tree.repaint()
+            try:
+                populate_fn(data, skip_restore=skip_restore)
+                if skip_restore:
+                    self.schema_tree.collapseAll()
+            except Exception as exc:
+                self.status.showMessage(f"Error populating schema: {exc}", 5000)
+                self.show_error_popup(f"Failed to populate schema:\n{exc}")
+            finally:
+                self._skip_expansion_restore = False
 
         def on_error(message):
+            if not guard[0]:
+                return  # cancelled — drop even if already in Qt event queue
             _remove_worker()
-            if current_token == self._schema_load_token:
-                self._spinner.stop()
-                self._schema_spinner.stop()
-                # Clear the "Loading schema..." placeholder so it doesn't get stuck
-                self.schema_model.clear()
-                self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+            if current_token != self._schema_load_token or (
+                target_conn_id and self._current_conn_id != target_conn_id
+            ):
+                return  # Drop stale errors from previous connection attempts
+            self._spinner.stop()
+            self._schema_spinner.stop()
+            self.schema_model.clear()
+            self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
+            err_icon = qta.icon("mdi.cloud-off-outline", color="#EF4444")
+            err_item = QStandardItem(err_icon, "Cannot connect to instance")
+            err_item.setToolTip(message)
+            err_item.setEditable(False)
+            type_item = QStandardItem("Offline / Error")
+            type_item.setEditable(False)
+            self.schema_model.appendRow([err_item, type_item])
+            if hasattr(self, "schema_status_label"):
+                self.schema_status_label.setText("Disconnected")
             self.status.showMessage(f"Error loading schema: {message}", 5000)
-            self.show_error_popup(f"Failed to load schema:\n{message}")
 
         worker.signals.finished.connect(on_finished)
         worker.signals.error.connect(on_error)
@@ -750,6 +795,25 @@ class ConnectionManager(QWidget):
         self.schema_loader.load_csv_schema(conn_data)
 
     def load_servicenow_schema(self, conn_data):
+        ToastNotification.dismiss_all()
+        # Cancel any in-flight workers before starting a new load
+        for old_worker in list(self._active_schema_workers):
+            if hasattr(old_worker, "_signal_guard"):
+                old_worker._signal_guard[0] = False
+            if hasattr(old_worker, "cancel"):
+                old_worker.cancel()
+            setattr(old_worker, "_canceled", True)
+            try:
+                old_worker.signals.finished.disconnect()
+            except Exception:
+                pass
+            try:
+                old_worker.signals.error.disconnect()
+            except Exception:
+                pass
+        self._active_schema_workers.clear()
+        if conn_data:
+            self._current_conn_id = conn_data.get("id")
         worker = ServiceNowSchemaWorker(conn_data)
         self._start_schema_load(None, worker, self.schema_loader.populate_servicenow_schema)
 

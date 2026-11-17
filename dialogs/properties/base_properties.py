@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 import db
 from ui.components import PrimaryButton, SecondaryButton
+from ui.dialog_utils import fit_dialog_to_screen
 
 class BasePropertiesDialog(QDialog):
     def __init__(self, item_data, object_name, parent=None):
@@ -18,7 +19,7 @@ class BasePropertiesDialog(QDialog):
         self.schema_name = self.item_data.get('schema_name')
 
         self.setWindowTitle(f"Properties - {self.object_name}")
-        self.setMinimumSize(850, 600)
+        fit_dialog_to_screen(self, ideal_width=850, ideal_height=600, min_width=580, min_height=400)
         self.setWindowFlags(
             Qt.WindowType.Dialog | 
             Qt.WindowType.WindowTitleHint | 

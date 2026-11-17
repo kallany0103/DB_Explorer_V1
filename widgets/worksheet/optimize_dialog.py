@@ -7,7 +7,7 @@ empirical runtime benchmarking, and risk-free virtual index simulation.
 from typing import Callable, List, Optional
 
 from PySide6.QtCore import QRect, QSize, QThreadPool, Qt
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QPainter, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -33,6 +33,7 @@ import qtawesome as qta
 from db.optimizer.cost_evaluator import evaluate_variant_costs
 from db.optimizer.engine import OptimizationResult, analyze_query
 from db.optimizer.variants import QueryVariant, generate_query_variants
+from ui.dialog_utils import fit_dialog_to_screen
 from db.optimizer.virtual_index import VirtualIndexResult
 from ui.components import PrimaryButton, SecondaryButton
 from ui.optimize_style import OPTIMIZE_DIALOG_STYLE
@@ -106,8 +107,7 @@ class OptimizeSqlDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("optimizeSqlDialog")
         self.setWindowTitle("SQL Optimizer")
-        self.resize(1080, 700)
-        self.setMinimumSize(900, 540)
+        fit_dialog_to_screen(self, ideal_width=1080, ideal_height=700, min_width=640, min_height=420)
 
         self.original_sql = sql
         self.dialect = dialect
@@ -141,23 +141,24 @@ class OptimizeSqlDialog(QDialog):
         main_layout.addWidget(kpi_strip)
 
         # 3. Main Splitter Body
-        body_splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        body_splitter.setHandleWidth(4)
+        self.body_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.body_splitter.setHandleWidth(4)
+        self.body_splitter.setChildrenCollapsible(False)
 
         # Left: Leaderboard & SQL Diff Viewer
-        left_pane = self._create_left_pane()
-        left_pane.setMinimumWidth(500)
-        body_splitter.addWidget(left_pane)
+        self.left_pane = self._create_left_pane()
+        self.left_pane.setMinimumWidth(320)
+        self.body_splitter.addWidget(self.left_pane)
 
         # Right: Findings & Index Recommendations
-        right_pane = self._create_findings_pane()
-        right_pane.setMinimumWidth(320)
-        body_splitter.addWidget(right_pane)
+        self.right_pane = self._create_findings_pane()
+        self.right_pane.setMinimumWidth(240)
+        self.body_splitter.addWidget(self.right_pane)
 
-        body_splitter.setSizes([640, 440])
-        body_splitter.setStretchFactor(0, 3)
-        body_splitter.setStretchFactor(1, 2)
-        main_layout.addWidget(body_splitter, 1)
+        self.body_splitter.setSizes([640, 440])
+        self.body_splitter.setStretchFactor(0, 3)
+        self.body_splitter.setStretchFactor(1, 2)
+        main_layout.addWidget(self.body_splitter, 1)
 
         # 4. Footer Bar
         footer = self._create_footer()
@@ -178,6 +179,7 @@ class OptimizeSqlDialog(QDialog):
             header_frame,
         )
         subtitle_label.setObjectName("optimizerSubtitle")
+        subtitle_label.setWordWrap(True)
         title_block.addWidget(title_label)
         title_block.addWidget(subtitle_label)
         h_layout.addLayout(title_block, 1)
@@ -337,15 +339,11 @@ class OptimizeSqlDialog(QDialog):
 
         header = self.variant_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-
-        self.variant_table.setColumnWidth(1, 55)
-        self.variant_table.setColumnWidth(2, 85)
-        self.variant_table.setColumnWidth(3, 110)
-        self.variant_table.setColumnWidth(4, 125)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setMinimumSectionSize(48)
 
         self.variant_table.itemSelectionChanged.connect(self._on_variant_selected)
         layout.addWidget(self.variant_table)
@@ -868,3 +866,48 @@ class OptimizeSqlDialog(QDialog):
             )
             self.on_apply(target_sql)
         self.accept()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._adapt_responsive_layout(event.size().width())
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._adapt_responsive_layout(self.width())
+
+    def _adapt_responsive_layout(self, width: int) -> None:
+        """Dynamically adapt splitter orientation based on available dialog width.
+
+        When width < 860px (smaller displays, half-screen snapping, or small windows),
+        switches splitter from Horizontal to Vertical orientation so the leaderboard
+        table, diff viewer, and diagnostics cards each receive 100% of the dialog width
+        without clipping or overlapping controls.
+        """
+        if not hasattr(self, "body_splitter") or not hasattr(self, "left_pane") or not hasattr(self, "right_pane"):
+            return
+
+        BREAKPOINT = 860
+        if width < BREAKPOINT:
+            if self.body_splitter.orientation() != Qt.Orientation.Vertical:
+                self.body_splitter.setOrientation(Qt.Orientation.Vertical)
+                self.left_pane.setMinimumWidth(0)
+                self.right_pane.setMinimumWidth(0)
+                self.left_pane.setMinimumHeight(220)
+                self.right_pane.setMinimumHeight(150)
+                curr_h = self.body_splitter.height()
+                if curr_h > 0:
+                    self.body_splitter.setSizes([int(curr_h * 0.58), int(curr_h * 0.42)])
+                else:
+                    self.body_splitter.setSizes([380, 240])
+        else:
+            if self.body_splitter.orientation() != Qt.Orientation.Horizontal:
+                self.body_splitter.setOrientation(Qt.Orientation.Horizontal)
+                self.left_pane.setMinimumHeight(0)
+                self.right_pane.setMinimumHeight(0)
+                self.left_pane.setMinimumWidth(320)
+                self.right_pane.setMinimumWidth(240)
+                curr_w = self.body_splitter.width()
+                if curr_w > 0:
+                    self.body_splitter.setSizes([int(curr_w * 0.62), int(curr_w * 0.38)])
+                else:
+                    self.body_splitter.setSizes([640, 440])

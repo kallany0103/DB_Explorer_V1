@@ -50,7 +50,6 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full system design.
 | `assets/` | Icons and UI resources |
 | `databases/` | Local SQLite app metadata — connections, hierarchy, session state, and process history |
 | `docs/` | Architecture deep-dives, performance plans, ERD guides, and implementation notes |
-| `drivers/` | CData connector wheels for CSV and ServiceNow |
 
 ## Setup
 
@@ -66,8 +65,6 @@ venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
-
-> **Note:** `requirements.txt` includes CData connector wheels from the `drivers/` directory. Ensure the wheel files are present before running `pip install`.
 
 3. Run the application:
 
@@ -100,5 +97,5 @@ python main.py
 | sqlparse | SQL formatting |
 | qtawesome ≥ 1.4.0 | Icon library |
 | pywinpty | Terminal emulation (USQL tool) |
-| CData CSV connector | CSV data source (wheel in `drivers/`) |
-| CData ServiceNow connector | ServiceNow data source (wheel in `drivers/`) |
+| duckdb | In-process SQL analytics engine for CSV and ServiceNow data cache |
+| dlt | Data loading tool for ServiceNow REST API ingestion |

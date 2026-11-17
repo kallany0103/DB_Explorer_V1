@@ -623,6 +623,8 @@ class ResultsInfoToolbar(QWidget):
         tab.current_page -= 1
         tab.current_offset = (tab.current_page - 1) * getattr(tab, "current_limit", 0)
         self.update_page_ui(tab)
+        if hasattr(self.manager, "sync_tab_pagination"):
+            self.manager.sync_tab_pagination(tab, getattr(tab, "current_limit", 0), offset=tab.current_offset)
         self.manager.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
     def _go_next(self):
@@ -632,6 +634,8 @@ class ResultsInfoToolbar(QWidget):
         tab.current_page = getattr(tab, "current_page", 1) + 1
         tab.current_offset = (tab.current_page - 1) * getattr(tab, "current_limit", 0)
         self.update_page_ui(tab)
+        if hasattr(self.manager, "sync_tab_pagination"):
+            self.manager.sync_tab_pagination(tab, getattr(tab, "current_limit", 0), offset=tab.current_offset)
         self.manager.main_window.worksheet_manager.execute_query(preserve_pagination=True)
 
     def update_page_ui(self, tab=None):
