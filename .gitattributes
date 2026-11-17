@@ -1,2 +1,0 @@
-resources/oracle/instantclient/*.dll filter=lfs diff=lfs merge=lfs -text
-resources/oracle/instantclient/*.exe filter=lfs diff=lfs merge=lfs -text
