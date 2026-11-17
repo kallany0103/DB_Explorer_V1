@@ -1,8 +1,10 @@
 import os
 
+import db
 from PySide6.QtWidgets import (
     QVBoxLayout, QWidget, QHBoxLayout, QLabel, QToolButton,
-    QSplitter, QTreeView, QFrame, QAbstractItemView, QHeaderView
+    QSplitter, QTreeView, QFrame, QAbstractItemView, QHeaderView,
+    QSizePolicy
 )
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QStandardItemModel
 from PySide6.QtCore import Qt, QSize, QSortFilterProxyModel
@@ -50,6 +52,9 @@ class ConnectionUI:
         self.manager.explorer_search_box.hide()
 
         search_icon_path = "assets/search.svg"
+        if not os.path.exists(search_icon_path) and hasattr(db, "resource_path"):
+            search_icon_path = db.resource_path("assets/search.svg")
+        search_icon = QIcon(search_icon_path if os.path.exists(search_icon_path) else "")
         self.manager.explorer_search_box.textChanged.connect(self.manager.filter_object_explorer)
         self.manager.explorer_search_box.installEventFilter(self.manager)
 
@@ -64,14 +69,19 @@ class ConnectionUI:
         self.manager.explorer_search_close_btn.hide()
 
         self.manager.explorer_search_btn = QToolButton()
-        self.manager.explorer_search_btn.setIcon(QIcon(search_icon_path if os.path.exists(search_icon_path) else ""))
+        self.manager.explorer_search_btn.setIcon(search_icon)
         self.manager.explorer_search_btn.setFixedSize(24, 24)
         self.manager.explorer_search_btn.setIconSize(QSize(16, 16))
         self.manager.explorer_search_btn.setToolTip("Search Connections")
         self.manager.explorer_search_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.explorer_search_btn.clicked.connect(self.manager.toggle_explorer_search)
 
-        self.manager.explorer_search_layout.addStretch()
+        self.manager.explorer_search_spacer = QWidget()
+        self.manager.explorer_search_spacer.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_spacer)
         self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_box, 1)
         self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_close_btn)
         self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_btn)
@@ -177,22 +187,12 @@ class ConnectionUI:
 
         self.manager.schema_search_btn = QToolButton(self.manager.schema_tree.header())
         self.manager.schema_search_btn.setObjectName("schemaSearchBtn")
-        self.manager.schema_search_btn.setIcon(qta.icon("fa5s.search", color="#4b5563"))
+        self.manager.schema_search_btn.setIcon(search_icon)
         self.manager.schema_search_btn.setFixedSize(24, 24)
-        self.manager.schema_search_btn.setIconSize(QSize(12, 12))
+        self.manager.schema_search_btn.setIconSize(QSize(16, 16))
         self.manager.schema_search_btn.setToolTip("Filter tables (Ctrl+F)")
         self.manager.schema_search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.manager.schema_search_btn.setStyleSheet("""
-            QToolButton {
-                border: none;
-                background-color: #E4E8ED;
-                border-radius: 4px;
-                padding: 0px;
-            }
-            QToolButton:hover {
-                background-color: #D5DBE3;
-            }
-        """)
+        self.manager.schema_search_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.schema_search_btn.clicked.connect(self.manager.show_schema_search)
         self.manager.schema_tree.header().installEventFilter(self.manager)
 

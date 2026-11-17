@@ -1,8 +1,9 @@
 # widgets/connection_manager/context_menus/_helpers.py
 """Shared helper functions for all context menu builders."""
 
+from PySide6.QtCore import QPoint, QSize
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QApplication, QMenu
 import qtawesome as qta
 
 from ui.feature_flags import is_feature_enabled
@@ -60,14 +61,62 @@ def add_properties_statistics_actions(menu, manager, item_data, obj_name):
         menu.addAction(act)
 
 
-def submenu(parent_menu, label, icon_key=None):
-    """Create and attach a styled sub-menu, returning it."""
-    sub = QMenu(label, parent_menu)
+def standalone_menu(parent, label, icon_key=None):
+    """Create a styled QMenu without attaching it to parent's action list."""
+    sub = QMenu(label, parent)
     apply_menu_style(sub)
     if icon_key:
         try:
             sub.setIcon(qta.icon(icon_key, color="#4b5563"))
         except Exception:
             pass
+    return sub
+
+
+def submenu(parent_menu, label, icon_key=None):
+    """Create and attach a styled sub-menu, returning it."""
+    sub = standalone_menu(parent_menu, label, icon_key)
     parent_menu.addMenu(sub)
     return sub
+
+
+def calculate_smart_menu_pos(anchor_global: QPoint, menu_size: QSize) -> QPoint:
+    """Calculate the optimal global position for a context menu to prevent screen overflow.
+
+    Follows OS context menu interaction guidelines:
+    - Anchors to the click point / cursor position.
+    - If opening downward overflows the screen, flips upward from the anchor point.
+    - Clamps horizontally and vertically within available screen bounds with a safe margin.
+    """
+    screen = QApplication.screenAt(anchor_global) or QApplication.primaryScreen()
+    if not screen:
+        return anchor_global
+
+    avail = screen.availableGeometry()  # Excludes Windows taskbar
+    w, h = menu_size.width(), menu_size.height()
+    x, y = anchor_global.x(), anchor_global.y()
+
+    # Vertical collision check
+    if y + h > avail.bottom() - 6:
+        space_above = anchor_global.y() - avail.top()
+        space_below = avail.bottom() - anchor_global.y()
+        if space_above >= h:
+            # Flip completely upwards so bottom of menu aligns with anchor
+            y = anchor_global.y() - h
+        elif space_above > space_below:
+            # Shift upwards so it stays within top of screen
+            y = max(avail.top() + 6, anchor_global.y() - h)
+        else:
+            # Shift up just enough to stay on screen
+            y = avail.bottom() - h - 6
+
+    # Clamp vertically within safe margins
+    y = max(avail.top() + 6, min(y, avail.bottom() - h - 6))
+
+    # Horizontal collision check
+    if x + w > avail.right() - 6:
+        x = max(avail.left() + 6, anchor_global.x() - w)
+    else:
+        x = max(avail.left() + 6, min(x, avail.right() - w - 6))
+
+    return QPoint(x, y)

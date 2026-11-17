@@ -56,10 +56,13 @@ class TreeHelpers:
         corner = getattr(self.manager, "schema_header_corner", None)
         container = getattr(self.manager, "schema_search_container", None)
         box = getattr(self.manager, "schema_search_box", None)
+        bar = getattr(self.manager, "schema_bottom_bar", None)
         if tree:
             tree.setHeaderHidden(True)
         if corner:
             corner.hide()
+        if bar:
+            bar.hide()
         if container:
             container.show()
         if box:
@@ -73,10 +76,13 @@ class TreeHelpers:
         corner = getattr(self.manager, "schema_header_corner", None)
         container = getattr(self.manager, "schema_search_container", None)
         box = getattr(self.manager, "schema_search_box", None)
+        bar = getattr(self.manager, "schema_bottom_bar", None)
         if box:
             box.clear()
         if container:
             container.hide()
+        if bar:
+            bar.show()
         if tree:
             tree.setHeaderHidden(False)
         if corner:
@@ -94,10 +100,13 @@ class TreeHelpers:
         label = getattr(self.manager, "explorer_label", None)
         add_btn = getattr(self.manager, "explorer_add_btn", None)
         close_btn = getattr(self.manager, "explorer_search_close_btn", None)
+        spacer = getattr(self.manager, "explorer_search_spacer", None)
         if label:
             label.hide()
         if add_btn:
             add_btn.hide()
+        if spacer:
+            spacer.hide()
         self.manager.explorer_search_btn.hide()
         self.manager.explorer_search_box.show()
         if close_btn:
@@ -109,10 +118,13 @@ class TreeHelpers:
         label = getattr(self.manager, "explorer_label", None)
         add_btn = getattr(self.manager, "explorer_add_btn", None)
         close_btn = getattr(self.manager, "explorer_search_close_btn", None)
+        spacer = getattr(self.manager, "explorer_search_spacer", None)
         self.manager.explorer_search_box.clear()
         self.manager.explorer_search_box.hide()
         if close_btn:
             close_btn.hide()
+        if spacer:
+            spacer.show()
         if label:
             label.show()
         if add_btn:
