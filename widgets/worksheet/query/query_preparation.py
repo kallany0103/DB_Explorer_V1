@@ -2,8 +2,6 @@ import re
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox, QPlainTextEdit, QTabWidget
 
-from widgets.worksheet.code_editor import CodeEditor
-
 IDENT_SEG_PAT = r'(?:"[^"]+"|\`[^\`]+\`|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_#$]*)'
 IDENT_FIND_PAT = re.compile(rf'{IDENT_SEG_PAT}(?:\s*\.\s*{IDENT_SEG_PAT})*')
 
@@ -188,7 +186,7 @@ def split_sql_statements(text: str) -> list[tuple[int, int, str]]:
 
 
 def get_query_editor(current_tab):
-    query_editor = current_tab.findChild(CodeEditor, "query_editor")
+    query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
     if not query_editor:
         query_editor = current_tab.findChild(QPlainTextEdit, "query_editor")
     return query_editor
@@ -328,24 +326,16 @@ def apply_select_pagination(query: str, current_tab, preserve_pagination: bool =
     is_oracle = is_oracle_connection(current_tab)
 
     if is_select_like:
-        has_limit = bool(re.search(r"\bLIMIT\b|\bFETCH\s+(?:FIRST|NEXT)\b", token_sql, re.IGNORECASE))
-        has_offset = bool(re.search(r"\bOFFSET\b", token_sql, re.IGNORECASE))
-        if limit > 0 and not has_limit:
-            if is_oracle:
-                if offset > 0 and not has_offset:
-                    normalized_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
-                else:
-                    normalized_query += f" FETCH FIRST {limit} ROWS ONLY"
-            else:
-                normalized_query += f" LIMIT {limit}"
-                if offset > 0 and not has_offset:
-                    normalized_query += f" OFFSET {offset}"
-        elif offset > 0 and not has_offset:
-            if is_oracle:
-                normalized_query += f" OFFSET {offset} ROWS"
-            else:
-                normalized_query += f" OFFSET {offset}"
-        return normalized_query + ";"
+        paginated = apply_limit_to_sql_statement(
+            normalized_query,
+            limit=limit,
+            offset=offset,
+            overwrite_existing=False,
+            is_oracle=is_oracle,
+        )
+        if not paginated.endswith(";"):
+            paginated += ";"
+        return paginated
 
     if had_trailing_semicolon and not raw.endswith("/;"):
         return normalized_query + ";"
@@ -353,7 +343,12 @@ def apply_select_pagination(query: str, current_tab, preserve_pagination: bool =
 
 
 _TRAILING_PAGINATION_RE = re.compile(
-    r"(\s+)(?:LIMIT\s+\d+(?:\s+OFFSET\s+\d+)?|(?:OFFSET\s+\d+\s+ROWS?\s+)?FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY)\s*$",
+    r"(\s+)(?:"
+    r"LIMIT\s+\d+(?:\s+OFFSET\s+\d+)?"
+    r"|OFFSET\s+\d+(?:\s+LIMIT\s+\d+)?"
+    r"|(?:OFFSET\s+\d+\s+ROWS?\s+)?FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY"
+    r"|OFFSET\s+\d+\s+ROWS?"
+    r")\s*$",
     re.IGNORECASE,
 )
 
@@ -361,10 +356,11 @@ _TRAILING_PAGINATION_RE = re.compile(
 def apply_limit_to_sql_statement(
     sql: str,
     limit: int,
+    offset: int = 0,
     overwrite_existing: bool = True,
     is_oracle: bool = False,
 ) -> str:
-    """Insert, update, or remove a trailing LIMIT / FETCH FIRST clause in a SELECT/WITH statement."""
+    """Insert, update, or remove a trailing LIMIT / OFFSET / FETCH clause in a SELECT/WITH statement."""
     if not sql or not sql.strip():
         return sql
 
@@ -378,16 +374,34 @@ def apply_limit_to_sql_statement(
         return sql
 
     match = _TRAILING_PAGINATION_RE.search(body)
-    clause = f"FETCH FIRST {limit} ROWS ONLY" if is_oracle else f"LIMIT {limit}"
 
-    if limit > 0:
+    if is_oracle:
+        if limit > 0 and offset > 0:
+            clause = f"OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+        elif limit > 0:
+            clause = f"FETCH FIRST {limit} ROWS ONLY"
+        elif offset > 0:
+            clause = f"OFFSET {offset} ROWS"
+        else:
+            clause = ""
+    else:
+        if limit > 0 and offset > 0:
+            clause = f"LIMIT {limit} OFFSET {offset}"
+        elif limit > 0:
+            clause = f"LIMIT {limit}"
+        elif offset > 0:
+            clause = f"OFFSET {offset}"
+        else:
+            clause = ""
+
+    if clause:
         if match:
             if not overwrite_existing:
                 return sql
             sep = match.group(1)
             new_body = f"{body[:match.start()]}{sep}{clause}"
         else:
-            sep = "\n" if "\n" in body else " "
+            sep = "\n" if "\n" in leading_sql else " "
             new_body = f"{body}{sep}{clause}"
     else:
         if not (match and overwrite_existing):
@@ -401,10 +415,11 @@ def apply_limit_to_sql_statement(
 def sync_editor_limit(
     editor,
     limit: int,
+    offset: int = 0,
     overwrite_existing: bool = True,
     is_oracle: bool = False,
 ) -> bool:
-    """Update the active SQL statement in the editor to reflect the selected row limit."""
+    """Update the active SQL statement in the editor to reflect the selected row limit and offset."""
     if editor is None:
         return False
     text = editor.toPlainText()
@@ -423,12 +438,14 @@ def sync_editor_limit(
             break
 
     start, end, _stmt = target
-    raw_slice = text[start:end]
-    # Include trailing semicolon if right after statement end
     slice_end = end + 1 if end < len(text) and text[end] == ";" else end
     raw_slice = text[start:slice_end]
     updated = apply_limit_to_sql_statement(
-        raw_slice, limit, overwrite_existing=overwrite_existing, is_oracle=is_oracle
+        raw_slice,
+        limit,
+        offset=offset,
+        overwrite_existing=overwrite_existing,
+        is_oracle=is_oracle,
     )
     if updated == raw_slice:
         return False
