@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any, Dict, List, Tuple
 import httpx
 
@@ -206,6 +208,43 @@ def _build_client(conn_data: Dict[str, Any], timeout: float = 15.0) -> Tuple[htt
     return client, instance_url, api_path
 
 
+def _format_servicenow_error_message(base_url: str, status_code: int, response_text: str) -> str:
+    """Format a clean, user-friendly error message from ServiceNow HTTP error responses."""
+    text_lower = (response_text or "").lower()
+    if "snow_adc" in text_lower or status_code in (500, 502, 503, 504):
+        if "snow_adc" in text_lower or "internal server error" in text_lower:
+            return (
+                f"ServiceNow instance {base_url} is currently offline or hibernating "
+                f"(HTTP {status_code} from snow_adc). If this is a Personal Developer Instance, "
+                "please log in to developer.servicenow.com and wake up your instance."
+            )
+        return (
+            f"ServiceNow instance {base_url} is temporarily unavailable (HTTP {status_code}). "
+            "The instance may be restarting or undergoing maintenance."
+        )
+    if status_code == 401:
+        return f"Authentication failed (HTTP 401): Invalid ServiceNow credentials for {base_url}."
+    if status_code == 403:
+        return f"Access forbidden (HTTP 403): User does not have permission to access ServiceNow tables on {base_url}."
+
+    try:
+        data = json.loads(response_text)
+        if isinstance(data, dict):
+            err = data.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                detail = err.get("detail") or ""
+                msg = err["message"]
+                return f"ServiceNow error (HTTP {status_code}): {msg}" + (f" - {detail}" if detail else "")
+            elif isinstance(data.get("message"), str):
+                return f"ServiceNow error (HTTP {status_code}): {data['message']}"
+    except Exception:
+        pass
+
+    clean_text = re.sub(r"<[^>]+>", " ", response_text).strip()
+    clean_text = " ".join(clean_text.split())[:150]
+    return f"ServiceNow returned HTTP {status_code}: {clean_text or 'Unknown server error'}"
+
+
 def test_servicenow_connection(conn_data: Dict[str, Any]) -> Tuple[bool, str]:
     """Validate ServiceNow credentials and connectivity via standard probe tables."""
     try:
@@ -229,7 +268,7 @@ def test_servicenow_connection(conn_data: Dict[str, Any]) -> Tuple[bool, str]:
                 cred_type = "OAuth credentials" if "oauth" in auth_type else "username or password"
                 return False, f"Authentication failed ({last_resp.status_code}): Invalid {cred_type}."
             if last_resp is not None:
-                return False, f"ServiceNow returned HTTP {last_resp.status_code}: {last_resp.text[:200]}"
+                return False, _format_servicenow_error_message(instance_url, last_resp.status_code, last_resp.text)
             return False, "ServiceNow connection test received no response."
     except Exception as exc:
         return False, f"Connection error: {exc}"
@@ -249,10 +288,13 @@ def _get_table_hierarchy(table_name: str) -> List[str]:
 
 def fetch_servicenow_tables(conn_data: Dict[str, Any], limit: int = 5000) -> List[Tuple[str, str]]:
     """Retrieve available table names and labels from ServiceNow sys_db_object."""
-    table_map: Dict[str, str] = {name: label for name, label in CORE_SERVICENOW_TABLES}
-
     try:
-        client, base_url, api_path = _build_client(conn_data, timeout=25.0)
+        client, base_url, api_path = _build_client(conn_data, timeout=12.0)
+    except Exception as exc:
+        raise ConnectionError(f"Cannot initialize ServiceNow client: {exc}") from exc
+
+    table_map: Dict[str, str] = {}
+    try:
         with client:
             url = build_table_api_url(base_url, SERVICENOW_CATALOG_TABLE, api_path=api_path)
             params = _table_query_params(
@@ -261,20 +303,51 @@ def fetch_servicenow_tables(conn_data: Dict[str, Any], limit: int = 5000) -> Lis
                 query="nameISNOTEMPTY^ORDERBYname",
             )
             resp = client.get(url, params=params)
-            if resp.status_code != 200:
-                logger.warning(
-                    "ServiceNow table catalog returned HTTP %s: %s",
-                    resp.status_code,
-                    resp.text[:200],
-                )
-            else:
+            if resp.status_code != 200 and resp.status_code != 401:
+                import time
+                time.sleep(1.0)
+                try:
+                    resp = client.get(url, params=params)
+                except Exception:
+                    pass
+
+            if resp.status_code == 200:
                 for item in resp.json().get("result", []):
                     name = _extract_str(item.get("name")).strip()
                     label = _extract_str(item.get("label"), default=name).strip()
                     if name:
                         table_map[name] = label
+                if not table_map:
+                    table_map = {name: label for name, label in CORE_SERVICENOW_TABLES}
+            else:
+                # sys_db_object catalog may be restricted or warming up; probe incident to see if instance is alive
+                probe_url = build_table_api_url(base_url, "incident", api_path=api_path)
+                try:
+                    probe_resp = client.get(probe_url, params=_table_query_params(limit=1))
+                    if probe_resp.status_code == 200:
+                        logger.info(
+                            "sys_db_object unavailable (%s), using core ServiceNow table set for %s",
+                            resp.status_code,
+                            base_url,
+                        )
+                        table_map = {name: label for name, label in CORE_SERVICENOW_TABLES}
+                    else:
+                        raise ConnectionError(
+                            _format_servicenow_error_message(base_url, resp.status_code, resp.text)
+                        )
+                except ConnectionError:
+                    raise
+                except Exception:
+                    raise ConnectionError(
+                        _format_servicenow_error_message(base_url, resp.status_code, resp.text)
+                    )
+    except ConnectionError:
+        raise
     except Exception as exc:
-        logger.warning("Could not fetch tables from %s: %s", SERVICENOW_CATALOG_TABLE, exc)
+        raise ConnectionError(
+            f"Cannot connect to ServiceNow instance ({base_url}): {exc}. "
+            "Ensure the instance is online and reachable."
+        ) from exc
 
     return sorted(table_map.items(), key=lambda x: x[0].lower())
 
@@ -336,12 +409,8 @@ def fetch_servicenow_columns(conn_data: Dict[str, Any], table_name: str) -> List
                 )
                 resp = client.get(url, params=params)
                 if resp.status_code != 200:
-                    logger.warning(
-                        "ServiceNow column dictionary for %s returned HTTP %s: %s",
-                        table_name,
-                        resp.status_code,
-                        resp.text[:200],
-                    )
+                    clean_msg = _format_servicenow_error_message(base_url, resp.status_code, resp.text)
+                    logger.warning("ServiceNow column dictionary for %s: %s", table_name, clean_msg)
                     break
 
                 batch = resp.json().get("result", [])

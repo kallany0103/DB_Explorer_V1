@@ -128,114 +128,17 @@ def _ensure_servicenow_tables_synced(
                 sync_servicenow_table(conn_data, tbl_name, limit=limit)
                 synced.add(tbl_name)
             except Exception as sync_err:
-                logger.warning("ServiceNow auto-sync notice for %s: %s", tbl_name, sync_err)
+                err_str = str(sync_err).strip()
+                first_line = err_str.split("\n")[0][:150]
+                logger.warning("ServiceNow auto-sync notice for %s: %s", tbl_name, first_line)
                 if force_resync:
                     raise
-
-
-def _run_cdata_query_subprocess(code, conn_data, query, out_queue):
-    conn = None
-    cursor = None
-    try:
-        code = (code or "").upper()
-        effective_query = query
-        # DEBUG-START
-        t_total_start = time.time()
-        # DEBUG-END
-
-        # DEBUG-START
-        t0 = time.time()
-        # DEBUG-END
-        if code == "SERVICENOW":
-            _ensure_servicenow_tables_synced(conn_data, _extract_servicenow_table_names(query))
-            conn = db.create_servicenow_connection(conn_data)
-            if not conn:
-                raise ConnectionError("Failed to connect to ServiceNow DuckDB data store")
-        elif code == "CSV":
-            conn = db.create_csv_connection(conn_data)
-            if not conn:
-                raise ConnectionError("Failed to connect to CSV DuckDB data source")
-        else:
-            raise ValueError(f"Unsupported CData process execution type: {code}")
-        # DEBUG-START
-        t1 = time.time()
-        print(f"[CDATA-DEBUG] connect() took {t1-t0:.2f}s")
-        # DEBUG-END
-
-        cursor = conn.cursor()
-        # DEBUG-START
-        t2 = time.time()
-        print(f"[CDATA-DEBUG] query sent to driver: {effective_query!r}")
-        # DEBUG-END
-        cursor.execute(effective_query)
-        # DEBUG-START
-        t3 = time.time()
-        print(f"[CDATA-DEBUG] cursor.execute() took {t3-t2:.2f}s")
-        # DEBUG-END
-
-        # DEBUG-START
-        t4 = time.time()
-        # DEBUG-END
-        rows = cursor.fetchall() if cursor.description else []
-        # DEBUG-START
-        t5 = time.time()
-        print(f"[CDATA-DEBUG] cursor.fetchall() took {t5-t4:.2f}s ({len(rows)} rows)")
-        # DEBUG-END
-
-        rows = _normalize_rows(rows)
-
-        columns = []
-        column_specs = []
-        if cursor.description:
-            # DEBUG-START
-            t6 = time.time()
-            # DEBUG-END
-            columns, column_specs = resolve_column_specs(
-                code,
-                conn,
-                conn_data,
-                effective_query,
-                cursor.description,
-            )
-            # DEBUG-START
-            t7 = time.time()
-            print(f"[CDATA-DEBUG] resolve_column_specs() took {t7-t6:.2f}s")
-            # DEBUG-END
-            columns = [str(col) for col in columns]
-
-        # DEBUG-START
-        print(f"[CDATA-DEBUG] TOTAL subprocess time: {time.time()-t_total_start:.2f}s")
-        # DEBUG-END
-
-        row_count = len(rows) if cursor.description else (cursor.rowcount if hasattr(cursor, "rowcount") else 0)
-        table_writability = {
-            "is_writable": False,
-            "reason": "ServiceNow results cannot be modified through the result grid" if code == "SERVICENOW" else "CSV data source is a static file snapshot",
-            "reason_code": "servicenow" if code == "SERVICENOW" else "csv",
-        }
-        out_queue.put({
-            "ok": True,
-            "query": effective_query,
-            "results": rows,
-            "columns": columns,
-            "column_specs": column_specs,
-            "row_count": int(row_count or 0),
-            "is_returning_results": bool(columns),
-            "table_writability": table_writability,
-        })
-    except Exception as exc:
-        out_queue.put({"ok": False, "error": str(exc)})
-    finally:
-        if cursor:
-            try:
-                cursor.close()
-            except Exception:
-                pass
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
+                if "500" in err_str or "snow_adc" in err_str:
+                    inst = conn_data.get("instance_url", "")
+                    raise ConnectionError(
+                        f"ServiceNow instance {inst} is currently offline or hibernating. "
+                        "Please wake up your instance at developer.servicenow.com."
+                    ) from sync_err
 
 
 # 1. RunnableExport (For Large Data / Direct Export)

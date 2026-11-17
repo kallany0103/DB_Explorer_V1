@@ -135,37 +135,45 @@ class CsvSchemaWorker(QRunnable):
 class ServiceNowSchemaWorker(QRunnable):
     """Loads the ServiceNow table list off the GUI thread using REST metadata."""
 
-    DEFAULT_TABLES = ["incident", "task", "change_request", "problem", "sys_user", "cmdb_ci"]
-
     def __init__(self, conn_data):
         super().__init__()
         self.conn_data = conn_data
         self.signals = SchemaWorkerSignals()
+        self._canceled = False
+
+    def cancel(self):
+        self._canceled = True
 
     def run(self):
+        if self._canceled:
+            return
         try:
             from db.servicenow_metadata import fetch_servicenow_tables
             raw_tables = fetch_servicenow_tables(self.conn_data)
-            tables = [t[0] for t in raw_tables] if raw_tables else list(self.DEFAULT_TABLES)
-            table_entries = [
-                {"name": t[0], "label": t[1]} for t in raw_tables
-            ] if raw_tables else [{"name": t, "label": t.title()} for t in self.DEFAULT_TABLES]
+            if self._canceled:
+                return
+            if not raw_tables:
+                raise ConnectionError("No tables found or access restricted on ServiceNow instance.")
+            tables = [t[0] for t in raw_tables]
+            table_entries = [{"name": t[0], "label": t[1]} for t in raw_tables]
 
-            try:
-                self.signals.finished.emit(
-                    {
-                        "conn_data": self.conn_data,
-                        "tables": tables,
-                        "table_entries": table_entries,
-                    }
-                )
-            except RuntimeError:
-                pass
+            if not self._canceled:
+                try:
+                    self.signals.finished.emit(
+                        {
+                            "conn_data": self.conn_data,
+                            "tables": tables,
+                            "table_entries": table_entries,
+                        }
+                    )
+                except RuntimeError:
+                    pass
         except Exception as exc:
-            try:
-                self.signals.error.emit(str(exc))
-            except RuntimeError:
-                pass
+            if not self._canceled:
+                try:
+                    self.signals.error.emit(str(exc))
+                except RuntimeError:
+                    pass
 
 
 class ERDSchemaFetchWorker(QRunnable):
