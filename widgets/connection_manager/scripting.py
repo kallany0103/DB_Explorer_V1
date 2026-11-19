@@ -7,6 +7,7 @@ from workers.connection_workers import TableScriptWorker
 import db
 from db.oracle_utils import (
     generate_oracle_table_ddl,
+    generate_oracle_object_source,
     generate_oracle_insert_script,
     generate_oracle_update_script,
 )
@@ -267,7 +268,50 @@ class ScriptGenerator:
             sql = f'SELECT * FROM {table_name};'
         self.open_script_in_editor(item_data, sql)
 
+    def script_object_source(self, item_data, obj_name, obj_type):
+        """Asynchronously generate and display DDL/source for programmable objects, sequences, or synonyms."""
+        if not item_data:
+            return
+
+        db_type = item_data.get("db_type")
+        conn_data = item_data.get("conn_data")
+        upper_type = (obj_type or "PACKAGE").upper()
+
+        if db_type == "oracle":
+            schema_name = item_data.get("schema_name") or (conn_data.get("user", "") if conn_data else "")
+            self._run_script_task_async(
+                item_data,
+                f"{upper_type.title()} DDL",
+                obj_name,
+                generate_oracle_object_source,
+                conn_data,
+                schema_name=schema_name,
+                obj_name=obj_name,
+                obj_type=upper_type,
+            )
+            return
+
+        if db_type == "postgres":
+            if upper_type in ("FUNCTION", "TRIGGER FUNCTION"):
+                self.script_function_as_create(item_data, obj_name)
+                return
+            elif upper_type == "SEQUENCE":
+                self.script_sequence_as_create(item_data, obj_name)
+                return
+            elif upper_type == "TRIGGER":
+                self.script_trigger_as_create(item_data, obj_name)
+                return
+
+        # Default fallback
+        self.script_table_as_create(item_data, obj_name)
+
     def script_sequence_as_create(self, item_data, seq_name):
+        if not item_data:
+            return
+        db_type = item_data.get("db_type")
+        if db_type == "oracle":
+            self.script_object_source(item_data, seq_name, "SEQUENCE")
+            return
         conn_data = item_data.get('conn_data')
         try:
             conn = db.get_pooled_postgres_connection(
@@ -291,6 +335,13 @@ class ScriptGenerator:
             ToastNotification.show_toast(self.manager, f"Failed to script sequence: {e}", kind="error")
 
     def script_function_as_create(self, item_data, func_name):
+        if not item_data:
+            return
+        db_type = item_data.get("db_type")
+        if db_type == "oracle":
+            obj_type = item_data.get("table_type") or item_data.get("type") or "FUNCTION"
+            self.script_object_source(item_data, func_name, obj_type)
+            return
         conn_data = item_data.get('conn_data')
         try:
             conn = db.get_pooled_postgres_connection(

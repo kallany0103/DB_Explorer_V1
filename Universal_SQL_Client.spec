@@ -5,7 +5,6 @@ datas = [
     ('assets', 'assets'),
     ('databases', 'databases'),
     ('ui', 'ui'),
-    ("resources/pg_client/win64/*", "resources/pg_client/win64"),
 ]
 binaries = []
 hiddenimports = [

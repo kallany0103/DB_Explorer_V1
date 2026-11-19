@@ -456,6 +456,12 @@ def sync_editor_limit(
     edit_cursor.setPosition(slice_end, QTextCursor.MoveMode.KeepAnchor)
     edit_cursor.insertText(updated)
     edit_cursor.endEditBlock()
+
+    cur = editor.textCursor()
+    if cur.hasSelection():
+        cur.clearSelection()
+        editor.setTextCursor(cur)
+
     return True
 
 

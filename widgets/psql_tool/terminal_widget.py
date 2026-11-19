@@ -8,7 +8,9 @@ but targets a direct POSTGRES connection instead of a UDS session.
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import threading
 import time
 
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -54,14 +57,24 @@ class PSQLToolWidget(QWidget):
     _output_received = Signal(str)
     terminal_closed = Signal()
 
-    def __init__(self, conn: dict, pg_bin_path: str = "") -> None:
+    def __init__(
+        self,
+        conn: dict,
+        pg_bin_path: str = "",
+        use_wsl: bool = False,
+        wsl_distro: str | None = None,
+        manager=None,
+    ) -> None:
         super().__init__()
         self._conn: dict = conn or {}
         self._pg_bin_path = pg_bin_path
+        self._use_wsl = use_wsl
+        self._wsl_distro = wsl_distro
+        self._manager = manager
         self._psql_exe_path: str = ""
 
-        self._history: list[str] = []
-        self._history_index: int = 0
+        self._history: list[str] = self._load_history()
+        self._history_index: int = len(self._history)
         self._current_db: str = (
             self._conn.get("database") or self._conn.get("db") or "postgres"
         )
@@ -158,16 +171,46 @@ class PSQLToolWidget(QWidget):
     def _make_header(self) -> QWidget:
         header = QWidget()
         header.setObjectName("term_header")
-        header.setFixedHeight(36)
+        header.setFixedHeight(38)
+        header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #e2e8f0;")
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(10, 4, 8, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 4, 12, 4)
+        layout.setSpacing(10)
 
-        self._conn_lbl = QLabel(self._conn_label_text())
+        # 1. Connection & DB identity
+        self._conn_lbl = QLabel()
         self._conn_lbl.setObjectName("term_conn_lbl")
+        self._conn_lbl.setTextFormat(Qt.TextFormat.RichText)
+        self._update_conn_label()
         layout.addWidget(self._conn_lbl)
+
+        # 2. CLI origin pill badge (clean desktop style, no emojis)
+        self._path_badge = QLabel()
+        self._path_badge.setObjectName("term_path_badge")
+        self._path_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._path_badge.setStyleSheet("""
+            QLabel#term_path_badge {
+                color: #475569;
+                font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+                font-size: 8.5pt;
+                font-weight: 500;
+                padding: 3px 10px;
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 4px;
+            }
+            QLabel#term_path_badge:hover {
+                color: #0f172a;
+                background-color: #f1f5f9;
+                border-color: #cbd5e1;
+            }
+        """)
+        self._path_badge.hide()
+        layout.addWidget(self._path_badge)
+
         layout.addStretch()
 
+        # 3. Action buttons
         for icon_key, label, slot in (
             ("fa5s.copy", "Copy Output", self._copy_output),
             ("fa5s.trash-alt", "Clear", self._clear),
@@ -180,17 +223,81 @@ class PSQLToolWidget(QWidget):
 
         return header
 
+    def _update_conn_label(self) -> None:
+        c = self._conn
+        name = (c.get("name") or c.get("connection_name") or "").strip()
+        host = c.get("host") or "localhost"
+        port = c.get("port") or 5432
+        user = c.get("user") or "postgres"
+        db = (
+            c.get("database")
+            or c.get("dbname")
+            or c.get("db_name")
+            or c.get("db")
+            or getattr(self, "_current_db", "")
+            or "postgres"
+        )
+
+        target_str = f"{user}@{host}:{port}/{db}"
+        is_raw_host = (
+            not name
+            or name == host
+            or ("." in name and (name.endswith((".com", ".net", ".org", ".io", ".cloud")) or any(ch.isdigit() for ch in name)))
+        )
+
+        if is_raw_host:
+            self._conn_lbl.setText(
+                f'<span style="font-family: \'Cascadia Code\', \'Consolas\', monospace; font-size: 9pt; font-weight: 600; color: #0f172a;">{target_str}</span>'
+            )
+        else:
+            self._conn_lbl.setText(
+                f'<span style="font-weight: 600; color: #0f172a; font-size: 9.5pt;">{name}</span> '
+                f'<span style="font-family: \'Cascadia Code\', \'Consolas\', monospace; font-size: 8.5pt; color: #64748b;">({target_str})</span>'
+            )
+
+        self._conn_lbl.setToolTip(f"User: {user}\nHost: {host}:{port}\nDatabase: {db}")
+
     def _make_error_banner(self) -> QFrame:
         self._err_frame = QFrame()
         self._err_frame.setObjectName("term_err_frame")
         self._err_frame.setVisible(False)
         layout = QHBoxLayout(self._err_frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 4, 10, 4)
+        layout.setSpacing(10)
         self._err_lbl = QLabel()
         self._err_lbl.setObjectName("term_err_lbl")
         self._err_lbl.setWordWrap(True)
-        layout.addWidget(self._err_lbl)
+        layout.addWidget(self._err_lbl, 1)
+
+        self._err_settings_btn = QPushButton("Configure in Settings")
+        self._err_settings_btn.setObjectName("term_err_settings_btn")
+        self._err_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._err_settings_btn.setStyleSheet("""
+            QPushButton#term_err_settings_btn {
+                background-color: #ef4444;
+                color: #ffffff;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 9pt;
+            }
+            QPushButton#term_err_settings_btn:hover {
+                background-color: #dc2626;
+            }
+        """)
+        self._err_settings_btn.clicked.connect(self._open_settings)
+        self._err_settings_btn.hide()
+        layout.addWidget(self._err_settings_btn)
         return self._err_frame
+
+    def _open_settings(self) -> None:
+        main_win = getattr(self._manager, "main_window", None) or self._manager
+        if main_win and hasattr(main_win, "open_preferences"):
+            main_win.open_preferences()
+            pref_dlg = getattr(main_win, "_preferences_dialog", None)
+            if pref_dlg and hasattr(pref_dlg, "category_list"):
+                pref_dlg.category_list.setCurrentRow(4)
 
     def _conn_label_text(self) -> str:
         c = self._conn
@@ -209,13 +316,120 @@ class PSQLToolWidget(QWidget):
         self._hide_error()
         self._show_spinner()
 
-        psql_path = self._pg_bin_path or find_psql()
+        if self._use_wsl:
+            wsl_bin = shutil.which("wsl") or "wsl.exe"
+            distro_label = f"WSL: {self._wsl_distro}" if self._wsl_distro else "WSL"
+            self._psql_exe_path = f"wsl psql ({self._wsl_distro})" if self._wsl_distro else "wsl psql"
+            if hasattr(self, "_path_badge"):
+                self._path_badge.setText(f"psql ({distro_label})")
+                self._path_badge.setToolTip(
+                    f"PostgreSQL Client: {distro_label}\n"
+                    f"Running inside Windows Subsystem for Linux ({self._wsl_distro or 'Default'})\n\n"
+                    "Click to configure in Settings → Database Tools."
+                )
+                self._path_badge.mousePressEvent = lambda _e: self._open_settings()
+                self._path_badge.show()
+
+            self._term.append_output(f"-- Using client: WSL psql (Linux Subsystem - {self._wsl_distro or 'Default'})\n")
+
+            from widgets.psql_tool.wsl_discovery import check_wsl_postgres
+            wsl_info = check_wsl_postgres(self._wsl_distro)
+            if not wsl_info.get("available"):
+                self._hide_spinner()
+                distro_name = self._wsl_distro or "WSL"
+                install_cmd = wsl_info.get("install_cmd") or "sudo apt install postgresql-client"
+                err_msg = (
+                    f"psql is not installed inside WSL ({distro_name}).\n"
+                    f"Install it with: {install_cmd}"
+                )
+                self._show_error(err_msg, show_settings=True)
+                self._term.append_output(
+                    f"\nERROR: psql not found in WSL ({distro_name}).\n"
+                    "To install it, run this command inside your WSL terminal:\n"
+                    f"  {install_cmd}\n\n"
+                    "Or select a different WSL distribution in Settings → Database Tools.\n"
+                )
+                return
+
+            if PTY is None:
+                self._hide_spinner()
+                self._show_error("winpty module is not installed.")
+                self._term.append_output(
+                    "\nERROR: winpty module is not installed. PTY support unavailable.\n"
+                )
+                return
+
+            fm = QFontMetrics(self._term.font())
+            char_w = fm.horizontalAdvance("W")
+            vbar_w = self._term.verticalScrollBar().sizeHint().width()
+            usable_w = self._term.viewport().width() - vbar_w
+            term_cols = max(80, usable_w // char_w) if char_w > 0 and usable_w > 0 else 80
+
+            c = self._conn
+            args = ["-P", "pager=off", "-P", "columns=0", "-P", "expanded=auto"]
+            if c.get("host"):
+                args.extend(["-h", str(c["host"])])
+            if c.get("port"):
+                args.extend(["-p", str(c["port"])])
+            if c.get("user"):
+                args.extend(["-U", c["user"]])
+            args.append(f'"{self._current_db}"')
+
+            password = c.get("password") or ""
+            escaped_pw = password.replace("'", "'\\''")
+            distro_arg = f"-d {self._wsl_distro} " if self._wsl_distro else ""
+            cmd_line = f'{wsl_bin} {distro_arg}-e sh -c "PGPASSWORD=\'{escaped_pw}\' psql ' + " ".join(args) + '"'
+
+            try:
+                self._pty = PTY(term_cols, 40)
+                self._pty.spawn(cmd_line)
+                self._running = True
+                self._spawn_time = time.time()
+                self._reader_thread = threading.Thread(target=self._pty_reader, daemon=True)
+                self._reader_thread.start()
+            except Exception as e:
+                self._hide_spinner()
+                self._show_error(f"Failed to start WSL psql: {e}")
+                self._term.append_output(f"\nERROR: Failed to start WSL psql: {e}\n")
+            return
+
+        psql_path = find_psql(self._pg_bin_path)
         if not psql_path:
             self._hide_spinner()
-            self._show_error("Could not locate psql executable.")
-            self._term.append_output("\nERROR: Could not locate psql executable.\n")
+            err_msg = (
+                "Could not locate PostgreSQL client (psql.exe). "
+                "Please install PostgreSQL or configure the binary path in Settings → Database Tools."
+            )
+            self._show_error(err_msg, show_settings=True)
+            self._term.append_output(
+                "\nERROR: psql.exe not found.\n"
+                "To use the embedded PSQL terminal, please install PostgreSQL or\n"
+                "set the PostgreSQL Binary Path in Settings → Database Tools.\n"
+            )
             return
         self._psql_exe_path = psql_path
+        if hasattr(self, "_path_badge"):
+            is_custom = bool(self._pg_bin_path)
+            p_lower = psql_path.lower()
+            if is_custom:
+                origin = "Custom"
+            elif "pgadmin" in p_lower:
+                origin = "pgAdmin 4"
+            elif "program files" in p_lower:
+                origin = "Standard"
+            else:
+                origin = "System PATH"
+
+            self._path_badge.setText(f"psql ({origin})")
+            self._path_badge.setToolTip(
+                f"PostgreSQL Client Executable:\n{psql_path}\n"
+                f"Detected via: {origin}\n\n"
+                f"Click to configure in Settings → Database Tools."
+            )
+            self._path_badge.mousePressEvent = lambda _e: self._open_settings()
+            self._path_badge.show()
+
+        self._term.append_output(f"-- Using client: {psql_path}\n")
 
         if PTY is None:
             self._hide_spinner()
@@ -297,10 +511,30 @@ class PSQLToolWidget(QWidget):
 
     def _on_command_entered(self, cmd: str) -> None:
         if self._pty and self._running:
-            self._pty.write(cmd + "\n")
+            self._pty.write(cmd.rstrip("\n").replace("\n", "\r\n") + "\r\n")
         if cmd.strip():
             self._history.append(cmd)
             self._history_index = len(self._history)
+            self._save_history()
+
+    def _load_history(self) -> list[str]:
+        try:
+            if _PSQL_HISTORY_FILE.exists():
+                with open(_PSQL_HISTORY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        return [str(x) for x in data][-1000:]
+        except Exception:
+            pass
+        return []
+
+    def _save_history(self) -> None:
+        try:
+            _PSQL_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(_PSQL_HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(self._history[-1000:], f, indent=2)
+        except Exception:
+            pass
 
     def _on_history_up(self) -> None:
         if self._history and self._history_index > 0:
@@ -354,12 +588,16 @@ class PSQLToolWidget(QWidget):
         self._start_session(reset_ui=True)
         self._term.setFocus()
 
-    def _show_error(self, msg: str) -> None:
+    def _show_error(self, msg: str, show_settings: bool = False) -> None:
         self._err_lbl.setText(msg)
+        if hasattr(self, "_err_settings_btn"):
+            self._err_settings_btn.setVisible(show_settings)
         self._err_frame.setVisible(True)
 
     def _hide_error(self) -> None:
         self._err_frame.setVisible(False)
+        if hasattr(self, "_err_settings_btn"):
+            self._err_settings_btn.setVisible(False)
 
     # ---------------------------------------------------------- resize --
 
@@ -413,6 +651,8 @@ class PSQLToolWidget(QWidget):
 def open_psql_tool(conn: dict, manager=None) -> PSQLToolWidget:
     """Create a PSQLToolWidget and open it in the main tab widget."""
     pg_bin_path = ""
+    use_wsl = False
+    wsl_distro = None
     tab_widget = None
 
     if manager is not None:
@@ -421,9 +661,17 @@ def open_psql_tool(conn: dict, manager=None) -> PSQLToolWidget:
         )
         if main_win:
             pg_bin_path = getattr(main_win, "pg_bin_path", "") or ""
+            use_wsl = bool(getattr(main_win, "use_wsl", False))
+            wsl_distro = getattr(main_win, "wsl_distro", None)
             tab_widget = getattr(main_win, "tab_widget", None)
 
-    widget = PSQLToolWidget(conn, pg_bin_path=pg_bin_path)
+    widget = PSQLToolWidget(
+        conn,
+        pg_bin_path=pg_bin_path,
+        use_wsl=use_wsl,
+        wsl_distro=wsl_distro,
+        manager=manager,
+    )
 
     if tab_widget is not None:
         try:

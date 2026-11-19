@@ -404,7 +404,10 @@ def handle_query_result(
 
                 if target_tab in manager.running_queries:
                     del manager.running_queries[target_tab]
-                if not manager.running_queries:
+                ws_mgr = getattr(getattr(manager, "main_window", None), "worksheet_manager", None)
+                if ws_mgr and hasattr(ws_mgr, "running_queries") and target_tab in ws_mgr.running_queries:
+                    del ws_mgr.running_queries[target_tab]
+                if not manager.running_queries and hasattr(manager, "cancel_action") and manager.cancel_action:
                     manager.cancel_action.setEnabled(False)
                 perf_record(manager, "result_render_ms", perf_elapsed_ms(render_start))
                 execute_start = perf_take(manager, "query_execute_start")
@@ -761,7 +764,10 @@ def handle_query_result(
 
     if target_tab in manager.running_queries:
         del manager.running_queries[target_tab]
-    if not manager.running_queries:
+    ws_mgr = getattr(getattr(manager, "main_window", None), "worksheet_manager", None)
+    if ws_mgr and hasattr(ws_mgr, "running_queries") and target_tab in ws_mgr.running_queries:
+        del ws_mgr.running_queries[target_tab]
+    if not manager.running_queries and hasattr(manager, "cancel_action") and manager.cancel_action:
         manager.cancel_action.setEnabled(False)
 
 

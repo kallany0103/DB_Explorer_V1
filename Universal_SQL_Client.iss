@@ -1,5 +1,5 @@
 #define MyAppName "Universal SQL Client"
-#define MyAppVersion "1.44.5"
+#define MyAppVersion "1.44.7"
 #define MyAppPublisher "Datafluent BD"
 #define MyAppURL "https://www.datafluent.team"
 #define MyAppExeName "Universal SQL Client.exe"
@@ -67,8 +67,6 @@ Source: "dist\Universal SQL Client\*"; DestDir: "{app}"; Flags: ignoreversion re
 Source: "databases\*"; DestDir: "{app}\databases"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Assets folder (icons, images; kept separate so icon paths resolve correctly at install time)
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Oracle Instant Client — shipped via installer to keep PyInstaller bundle lean
-Source: "resources\oracle\instantclient\*"; DestDir: "{app}\resources\oracle\instantclient"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\app_icon.ico"

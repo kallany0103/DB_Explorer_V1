@@ -563,7 +563,29 @@ class TableDetailsLoader:
                 self.manager._set_tree_item_icon(obj_item, level=icon_level)
 
                 obj_data = item_data.copy()
-                obj_data['type'] = 'table'
+                normalized_type = (obj_actual_type or "").upper()
+                if normalized_type in ('TABLE', 'VIEW', 'MATERIALIZED VIEW'):
+                    obj_data['type'] = 'table'
+                elif normalized_type in ('PACKAGE', 'PACKAGE BODY'):
+                    obj_data['type'] = 'package'
+                elif normalized_type == 'PROCEDURE':
+                    obj_data['type'] = 'procedure'
+                elif normalized_type == 'FUNCTION':
+                    obj_data['type'] = 'function'
+                elif normalized_type == 'SEQUENCE':
+                    obj_data['type'] = 'sequence'
+                elif normalized_type == 'TRIGGER':
+                    obj_data['type'] = 'trigger'
+                elif normalized_type in ('TYPE', 'TYPE BODY'):
+                    obj_data['type'] = 'type'
+                elif normalized_type == 'SYNONYM':
+                    obj_data['type'] = 'synonym'
+                elif normalized_type == 'DATABASE LINK':
+                    obj_data['type'] = 'oracle_dblink'
+                elif normalized_type.startswith('JAVA'):
+                    obj_data['type'] = 'java'
+                else:
+                    obj_data['type'] = normalized_type.lower()
                 obj_data['table_name'] = obj_name
                 obj_data['table_type'] = obj_actual_type
                 # Keep schema_name (owner) so load_oracle_table_details can use ALL_* views

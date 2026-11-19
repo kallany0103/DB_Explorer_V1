@@ -766,12 +766,71 @@ class ConnectionManager(QWidget):
         if not item:
             return
         item_data = item.data(Qt.ItemDataRole.UserRole)
-        if not item_data:
+        if not item_data or not isinstance(item_data, dict):
+            if item.rowCount() > 0:
+                if self.schema_tree.isExpanded(index):
+                    self.schema_tree.collapse(index)
+                else:
+                    self.schema_tree.expand(index)
             return
 
         table_name = item_data.get("table_name")
-        if table_name:
+        table_type = (item_data.get("table_type") or "").upper()
+        node_type = (item_data.get("type") or "").lower()
+        obj_name = table_name or item.text()
+
+        # Programmable objects (Packages, Procedures, Functions, Triggers, Types)
+        programmable_types = {
+            "PACKAGE",
+            "PACKAGE BODY",
+            "PROCEDURE",
+            "FUNCTION",
+            "TRIGGER",
+            "TRIGGER FUNCTION",
+            "TYPE",
+            "TYPE BODY",
+            "JAVA SOURCE",
+            "JAVA CLASS",
+        }
+        if table_type in programmable_types or node_type in (
+            "package",
+            "procedure",
+            "function",
+            "trigger",
+            "type",
+            "java",
+        ):
+            eff_type = table_type if table_type in programmable_types else node_type.upper()
+            self.script_generator.script_object_source(item_data, obj_name, eff_type)
+            return
+
+        # Sequences: generate CREATE SEQUENCE script
+        if table_type == "SEQUENCE" or node_type == "sequence":
+            self.script_generator.script_sequence_as_create(item_data, obj_name)
+            return
+
+        # Tabular objects (Table, View, Materialized View, etc.)
+        tabular_types = {
+            "TABLE",
+            "VIEW",
+            "MATERIALIZED VIEW",
+            "EXTERNAL TABLE",
+            "FOREIGN TABLE",
+            "SYSTEM TABLE",
+            "LOCAL TEMPORARY",
+            "GLOBAL TEMPORARY",
+            "SYNONYM",
+        }
+        if table_name and (table_type in tabular_types or not table_type or node_type in ("table", "view")):
             self.connection_actions.query_table_rows(item_data, item.text(), limit=None, execute_now=True)
+            return
+
+        # Folder / Group / Schema / Expandable container nodes: toggle expand / collapse
+        if item.rowCount() > 0:
+            if self.schema_tree.isExpanded(index):
+                self.schema_tree.collapse(index)
+            else:
+                self.schema_tree.expand(index)
 
     def get_item_depth(self, item):
         return self.tree_helpers.get_item_depth(item)

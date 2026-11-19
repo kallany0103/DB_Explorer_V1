@@ -74,13 +74,14 @@ class SchemaMenuBuilder:
 
         is_trigger          = node_type == "trigger"
         is_triggers_group   = node_type == "triggers_group"
-        is_table_or_view    = table_name is not None and not is_trigger and not is_triggers_group
-        is_schema           = schema_name is not None and not is_table_or_view and not is_trigger and not is_triggers_group
-        is_sequence         = table_type == "SEQUENCE"
-        is_function         = table_type == "FUNCTION"
+        is_sequence         = table_type == "SEQUENCE" or node_type == "sequence"
+        is_function         = table_type in ("FUNCTION", "PROCEDURE", "PACKAGE", "PACKAGE BODY", "TYPE", "TYPE BODY") or node_type in ("function", "procedure", "package", "package_body", "type")
         is_trigger_function = table_type == "TRIGGER FUNCTION"
-        is_language         = table_type == "LANGUAGE"
-        is_extension        = table_type == "EXTENSION"
+        is_language         = table_type == "LANGUAGE" or node_type == "language"
+        is_extension        = table_type == "EXTENSION" or node_type == "extension"
+        is_programmable     = is_trigger or is_triggers_group or is_sequence or is_function or is_trigger_function or is_language or is_extension
+        is_table_or_view    = table_name is not None and not is_programmable
+        is_schema           = schema_name is not None and not is_table_or_view and not is_programmable
 
         if node_type == "data_source":
             self._data_source_menu(menu, item, item_data, index)
@@ -92,6 +93,10 @@ class SchemaMenuBuilder:
             self.trigger_builder.build_group_menu(menu, item, item_data, index)
         elif table_type == "MATERIALIZED VIEW":
             self.mview_builder.build_menu(menu, item, item_data)
+        elif is_sequence:
+            self._sequence_menu(menu, item, item_data, index)
+        elif is_function or is_trigger_function:
+            self._function_menu(menu, item, item_data, table_type or node_type, index)
         elif is_table_or_view:
             self._table_menu(
                 menu,
@@ -103,10 +108,6 @@ class SchemaMenuBuilder:
                 position=position,
                 anchor_global=anchor_global,
             )
-        elif is_sequence:
-            self._sequence_menu(menu, item, item_data, index)
-        elif is_function or is_trigger_function:
-            self._function_menu(menu, item, item_data, table_type, index)
         elif is_language:
             self._language_menu(menu, item, item_data, index)
         elif is_extension:
@@ -841,11 +842,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, "Drop Sequence (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_sequence(item_data, display_name, cascade=True)
-        )
-        menu.addAction(act)
+        if item_data.get("db_type") != "oracle":
+            act = action(self.manager, "Drop Sequence (Cascade)", "mdi.delete-sweep-outline")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.delete_sequence(item_data, display_name, cascade=True)
+            )
+            menu.addAction(act)
 
         self._add_refresh_actions(menu, index)
 
@@ -853,12 +855,12 @@ class SchemaMenuBuilder:
         add_properties_statistics_actions(menu, self.manager, item_data, display_name)
 
 
-    # Function / Trigger Function
+    # Function / Trigger Function / Procedure / Package / Type
 
 
     def _function_menu(self, menu, item, item_data, table_type, index):
         display_name = item.text()
-        label = table_type.lower().capitalize()
+        label = (table_type or "Function").replace("_", " ").lower().title()
 
         self._add_query_tool_action(menu, item_data)
 
@@ -877,11 +879,12 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
-        act.triggered.connect(
-            lambda: self.manager.connection_actions.delete_function(item_data, display_name, cascade=True)
-        )
-        menu.addAction(act)
+        if item_data.get("db_type") != "oracle":
+            act = action(self.manager, f"Drop {label} (Cascade)", "mdi.delete-sweep-outline")
+            act.triggered.connect(
+                lambda: self.manager.connection_actions.delete_function(item_data, display_name, cascade=True)
+            )
+            menu.addAction(act)
 
         self._add_refresh_actions(menu, index)
 

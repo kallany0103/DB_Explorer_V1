@@ -471,7 +471,7 @@ class ConnectionActions:
             if not cols:
                 cols = ["sys_id", "number", "short_description", "sys_created_on"] if any(k in table_name.lower() for k in ("task", "incident", "request")) else ["*"]
             col_str = ",\n    ".join(cols) if cols != ["*"] else "*"
-            query = f"SELECT\n    {col_str}\nFROM {table_name}\nLIMIT 100;\n"
+            query = f"SELECT\n    {col_str}\nFROM {table_name}\nLIMIT 1000;\n"
         else:
             query = f"SELECT *\nFROM {table_name}\nLIMIT 100;\n"
 
@@ -493,7 +493,9 @@ class ConnectionActions:
         """Opens a new worksheet and populates a SELECT * query."""
         if not item_data or not table_name:
             return
-        query = f"SELECT *\nFROM {table_name}\nLIMIT 100;\n"
+        code = ((item_data.get("conn_data") or {}).get("code") or item_data.get("db_type") or "").upper()
+        limit_val = 1000 if code == "SERVICENOW" else 100
+        query = f"SELECT *\nFROM {table_name}\nLIMIT {limit_val};\n"
         new_tab = self.manager.add_tab()
         conn_data = item_data.get("conn_data")
         if conn_data:
@@ -524,6 +526,19 @@ class ConnectionActions:
             if data and data.get('id') == conn_data.get('id'):
                 db_combo_box.setCurrentIndex(i)
                 break
+
+        toolbar_widget = getattr(new_tab, "toolbar_widget", None)
+        limit_btn = getattr(toolbar_widget, "rows_limit_combo", None) if toolbar_widget else None
+        limit_str = "No Limit" if limit is None else str(limit)
+        if toolbar_widget and hasattr(toolbar_widget, "limit_changed"):
+            if limit_btn:
+                limit_btn.setCurrentText(limit_str)
+            toolbar_widget.limit_changed.emit(limit_str)
+        else:
+            new_tab.current_limit = 0 if limit is None else limit
+            new_tab._limit_manually_set = True
+            if limit_btn:
+                limit_btn.setCurrentText(limit_str)
 
         conn_data = dict(conn_data)
         if item_data.get('db_type') == 'csv':
@@ -877,15 +892,26 @@ class ConnectionActions:
             return
 
         try:
-            schema_quoted = f'"{schema_name}"' if schema_name else ""
-            full_name = f'{schema_quoted}."{sequence_name}"' if schema_quoted else f'"{sequence_name}"'
-            sql = f'DROP SEQUENCE {full_name}{" CASCADE" if cascade else ""};'
-            
-            conn = db.create_postgres_connection(conn_data)
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            conn.commit()
-            conn.close()
+            db_type = item_data.get('db_type')
+            if db_type == 'oracle':
+                owner = schema_name or conn_data.get('user', '')
+                full_name = f'"{owner}"."{sequence_name}"' if owner else f'"{sequence_name}"'
+                sql = f'DROP SEQUENCE {full_name}'
+                conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                schema_quoted = f'"{schema_name}"' if schema_name else ""
+                full_name = f'{schema_quoted}."{sequence_name}"' if schema_quoted else f'"{sequence_name}"'
+                sql = f'DROP SEQUENCE {full_name}{" CASCADE" if cascade else ""};'
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
 
             self._notify_deletion_success(sequence_name, "Sequence", sql, conn_data)
 
@@ -897,13 +923,14 @@ class ConnectionActions:
         if not item_data:
             return
 
+        db_type = item_data.get('db_type')
         conn_data = item_data.get('conn_data')
         schema_name = item_data.get('schema_name')
         table_type = item_data.get('table_type', 'FUNCTION').upper()
         label = table_type.lower().capitalize()
 
         confirm_msg = f"Are you sure you want to delete {label.lower()} '{function_name}'?"
-        if cascade:
+        if cascade and db_type != 'oracle':
             confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
         confirm_msg += "\n\nThis action cannot be undone."
 
@@ -918,15 +945,26 @@ class ConnectionActions:
             return
 
         try:
-            schema_quoted = f'"{schema_name}"' if schema_name else ""
-            full_name = f'{schema_quoted}."{function_name}"' if schema_quoted else f'"{function_name}"'
-            sql = f'DROP FUNCTION {full_name}{" CASCADE" if cascade else ""};'
-            
-            conn = db.create_postgres_connection(conn_data)
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            conn.commit()
-            conn.close()
+            if db_type == 'oracle':
+                owner = schema_name or conn_data.get('user', '')
+                full_name = f'"{owner}"."{function_name}"' if owner else f'"{function_name}"'
+                drop_verb = "PACKAGE" if "PACKAGE" in table_type else ("PROCEDURE" if "PROCEDURE" in table_type else "FUNCTION")
+                sql = f'DROP {drop_verb} {full_name}'
+                conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                schema_quoted = f'"{schema_name}"' if schema_name else ""
+                full_name = f'{schema_quoted}."{function_name}"' if schema_quoted else f'"{function_name}"'
+                sql = f'DROP FUNCTION {full_name}{" CASCADE" if cascade else ""};'
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
 
             self._notify_deletion_success(function_name, label, sql, conn_data)
 

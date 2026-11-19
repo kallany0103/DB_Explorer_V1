@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ui.feature_flags import is_feature_enabled
@@ -126,14 +125,10 @@ def _resolve_cli_path(main_window: "MainWindow", cli_type: str) -> str:
     that the OS PATH is used as a fallback."""
     if cli_type == "psql":
         pg_bin = getattr(main_window, "pg_bin_path", "")
-        if pg_bin:
-            return str(Path(pg_bin) / "psql.exe")
-        return find_psql() or "psql"
+        return find_psql(pg_bin) or "psql"
     if cli_type == "sqlplus":
         oracle_bin = getattr(main_window, "oracle_bin_path", "")
-        if oracle_bin:
-            return str(Path(oracle_bin) / "sqlplus.exe")
-        return find_sqlplus() or "sqlplus"
+        return find_sqlplus(oracle_bin) or "sqlplus"
     return cli_type
 
 

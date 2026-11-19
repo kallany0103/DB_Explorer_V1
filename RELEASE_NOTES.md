@@ -1,6 +1,22 @@
 # Release Notes — Universal SQL Client
 
-## [v1.44.4] — Latest Update
+## [v1.44.7] — Latest Update
+
+### 📅 Last Update
+November 19, 2026
+
+### Features & Fixes in Last Update
+- **ServiceNow Table Data Retrieval (View All Data)**: Resolved an issue where selecting "View Data → All Rows" enforced a 1000 row limit; viewing all rows now queries unconstrained while standard queries and templates maintain the default 1000 row limit.
+- **Oracle Sequence & Function Drop Support**: Added pooled connection handling and dialect-specific DROP syntax for Oracle sequences, functions, procedures, and packages.
+- **Worksheet Limit Auto-Execution Fix**: Resolved an issue where changing or selecting row limits from the worksheet toolbar button failed to execute the query due to stale query runtime state.
+- **External CLI Binary Detection & Selector**: Upgraded Preferences with smart discovery dropdowns for PostgreSQL (`psql.exe`, `pg_dump.exe`, `pg_restore.exe`) and Oracle (`sqlplus.exe`) with auto-detect, detected client suggestions, and live status badges.
+- **Terminal Session & History Persistence**: Native PSQL and SQL*Plus terminal sessions and multi-session command histories now persist and restore across application restarts.
+- **Terminal Enter Key Optimization**: Resolved Windows PTY linefeed stalls to ensure instantaneous prompt returns on terminal commands.
+- **Responsive Settings Dialog Sizing**: Proportionally constrained Preferences dialog dimensions to screen and parent window boundaries with automatic centering.
+
+---
+
+## [v1.44.4] — Previous Update
 
 ### 📅 Last Update
 October 31, 2026

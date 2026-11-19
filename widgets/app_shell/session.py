@@ -43,6 +43,7 @@ def save_main_window_session(main_window, session_file):
         "pg_bin_path": getattr(main_window, "pg_bin_path", ""),
         "oracle_bin_path": getattr(main_window, "oracle_bin_path", ""),
         "use_wsl": getattr(main_window, "use_wsl", False),
+        "wsl_distro": getattr(main_window, "wsl_distro", None),
         "theme": getattr(main_window, "theme", "Grey (Default)"),
         "default_connection_id": getattr(main_window, "default_connection_id", None),
         "confirm_tab_close": getattr(main_window, "confirm_tab_close", True),
@@ -89,6 +90,10 @@ def save_main_window_session(main_window, session_file):
                 tab_type = "erd"
             elif tab.__class__.__name__ == "DashboardWidget":
                 tab_type = "dashboard"
+            elif tab.__class__.__name__ == "PSQLToolWidget":
+                tab_type = "psql"
+            elif tab.__class__.__name__ == "SQLPlusToolWidget":
+                tab_type = "sqlplus"
 
             tab_data = {
                 "title": main_window.tab_widget.tabText(i),
@@ -106,14 +111,45 @@ def save_main_window_session(main_window, session_file):
                 # Try to save current object context
                 tab_data["item_data"] = getattr(tab, "item_data", None)
                 tab_data["obj_name"] = getattr(tab, "obj_name", None)
+            elif tab_type in ("psql", "sqlplus"):
+                c = getattr(tab, "_conn", {}) or {}
+                tab_data["conn_id"] = c.get("id")
+                tab_data["conn_name"] = c.get("name") or c.get("short_name") or ""
+                tab_data["conn_host"] = c.get("host") or ""
+                tab_data["database"] = (
+                    getattr(tab, "_current_db", "")
+                    or c.get("database")
+                    or c.get("service_name")
+                    or ""
+                )
 
             session_data["tabs"].append(tab_data)
+
+        session_data["active_tab_index"] = main_window.tab_widget.currentIndex()
 
     try:
         with open(session_file, "w") as f:
             json.dump(session_data, f, indent=4)
     except Exception as e:
         print(f"Error saving session: {e}")
+
+
+def _find_connection_for_restore(conn_id, name="", host=""):
+    try:
+        import db
+        hierarchical_data = db.get_hierarchy_data()
+        for ctype in hierarchical_data:
+            for group in ctype.get("usf_connection_groups", []):
+                for conn in group.get("usf_connections", []):
+                    if conn_id is not None and str(conn.get("id")) == str(conn_id):
+                        return conn
+                    if name and (conn.get("name") == name or conn.get("short_name") == name):
+                        return conn
+                    if host and conn.get("host") == host:
+                        return conn
+    except Exception as e:
+        print(f"Error finding connection for restore: {e}")
+    return None
 
 
 def restore_main_window_session(main_window, session_file):
@@ -214,6 +250,7 @@ def restore_main_window_session(main_window, session_file):
         main_window.pg_bin_path = session_data.get("pg_bin_path", "")
         main_window.oracle_bin_path = session_data.get("oracle_bin_path", "")
         main_window.use_wsl = session_data.get("use_wsl", False)
+        main_window.wsl_distro = session_data.get("wsl_distro", None)
         main_window.theme = session_data.get("theme", "Grey (Default)")
         main_window.default_connection_id = session_data.get("default_connection_id", None)
         main_window.confirm_tab_close = session_data.get("confirm_tab_close", True)
@@ -331,6 +368,36 @@ def restore_main_window_session(main_window, session_file):
                 if not is_feature_enabled(main_window, "workspace_dashboard"):
                     continue
                 main_window.add_dashboard_tab()
+            elif tab_type == "psql":
+                if not is_feature_enabled(main_window, "native_terminals"):
+                    continue
+                conn = _find_connection_for_restore(
+                    tab_data.get("conn_id"),
+                    tab_data.get("conn_name", ""),
+                    tab_data.get("conn_host", ""),
+                )
+                if conn:
+                    conn_copy = dict(conn)
+                    if tab_data.get("database"):
+                        conn_copy["database"] = tab_data["database"]
+                        conn_copy["db"] = tab_data["database"]
+                    from widgets.psql_tool.terminal_widget import open_psql_tool
+                    open_psql_tool(conn_copy, getattr(main_window, "connection_manager", None))
+            elif tab_type == "sqlplus":
+                if not is_feature_enabled(main_window, "native_terminals"):
+                    continue
+                conn = _find_connection_for_restore(
+                    tab_data.get("conn_id"),
+                    tab_data.get("conn_name", ""),
+                    tab_data.get("conn_host", ""),
+                )
+                if conn:
+                    conn_copy = dict(conn)
+                    if tab_data.get("database"):
+                        conn_copy["service_name"] = tab_data["database"]
+                        conn_copy["database"] = tab_data["database"]
+                    from widgets.sqlplus_tool.terminal_widget import open_sqlplus_tool
+                    open_sqlplus_tool(conn_copy, getattr(main_window, "connection_manager", None))
             else:
                 main_window.add_tab()
                 current_tab_index = main_window.tab_widget.count() - 1
@@ -378,6 +445,9 @@ def restore_main_window_session(main_window, session_file):
         if hasattr(main_window, "apply_feature_flags"):
             main_window.apply_feature_flags(refresh_connections=False)
 
+        active_idx = session_data.get("active_tab_index")
+        if active_idx is not None and 0 <= active_idx < main_window.tab_widget.count():
+            main_window.tab_widget.setCurrentIndex(active_idx)
 
     except Exception as e:
         print(f"Error restoring session: {e}")
