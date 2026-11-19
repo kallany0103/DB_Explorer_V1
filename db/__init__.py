@@ -64,6 +64,7 @@ from db.oracle_utils import (
     parse_oracle_ddl_target,
     fetch_oracle_compiler_errors,
     generate_oracle_table_ddl,
+    generate_oracle_object_source,
     generate_oracle_insert_script,
     generate_oracle_update_script,
 )
@@ -174,6 +175,7 @@ __all__ = [
     "parse_oracle_ddl_target",
     "fetch_oracle_compiler_errors",
     "generate_oracle_table_ddl",
+    "generate_oracle_object_source",
     "generate_oracle_insert_script",
     "generate_oracle_update_script",
     "generate_postgres_table_ddl",

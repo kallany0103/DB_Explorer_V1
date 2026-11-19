@@ -892,7 +892,7 @@ def fetch_dbms_output(cursor: Any, chunk_size: int = 100, on_chunk: Any = None) 
 
 _ORACLE_PLSQL_BLOCK_KEYWORDS: set[str] = {"BEGIN", "DECLARE"}
 _ORACLE_PLSQL_DDL_PATTERN: re.Pattern = re.compile(
-    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?(PROCEDURE|FUNCTION|PACKAGE(?:\s+BODY)?|TRIGGER|TYPE(?:\s+BODY)?)\b",
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?(?:AND\s+COMPILE\s+)?(PROCEDURE|FUNCTION|PACKAGE(?:\s+BODY)?|TRIGGER|TYPE(?:\s+BODY)?|JAVA(?:\s+(?:SOURCE|CLASS|RESOURCE))?)\b",
     re.IGNORECASE,
 )
 
@@ -946,7 +946,10 @@ def prepare_oracle_query(query: str) -> tuple[str, bool, bool]:
     should_handle_dbms = is_plsql or is_call
 
     if is_plsql:
-        prepared = cleaned if cleaned.endswith(";") else cleaned + ";"
+        if re.search(r"\bJAVA\s+(?:SOURCE|CLASS|RESOURCE)\b", cleaned, re.IGNORECASE):
+            prepared = cleaned.rstrip(";").rstrip()
+        else:
+            prepared = cleaned if cleaned.endswith(";") else cleaned + ";"
     else:
         prepared = cleaned[:-1].rstrip() if cleaned.endswith(";") else cleaned
 
@@ -1274,6 +1277,187 @@ def generate_oracle_table_ddl(
             logger.debug(f"DBMS_METADATA fallback failed: {e}")
 
         raise ValueError(f"Could not generate DDL for '{owner}.{tbl}'. Object not found or access denied.")
+    finally:
+        cursor.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def generate_oracle_object_source(
+    conn_data: dict[str, Any],
+    schema_name: str,
+    obj_name: str,
+    obj_type: str = "PACKAGE",
+) -> str:
+    """Fetch source code or DDL for an Oracle PL/SQL object, sequence, or synonym."""
+    from db.db_connections import get_pooled_oracle_connection
+
+    owner = (schema_name or conn_data.get("user") or "").strip()
+    name = obj_name.strip()
+    upper_owner = owner.upper()
+    upper_name = name.upper()
+    upper_type = (obj_type or "PACKAGE").upper()
+
+    conn = get_pooled_oracle_connection(conn_data=conn_data)
+    try:
+        conn.call_timeout = 10000
+    except Exception:
+        pass
+
+    cursor = conn.cursor()
+    try:
+        # 1. Sequences
+        if "SEQUENCE" in upper_type:
+            try:
+                cursor.execute(
+                    "SELECT DBMS_METADATA.GET_DDL('SEQUENCE', :name, :owner) FROM DUAL",
+                    {"name": upper_name, "owner": upper_owner or None},
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    val = row[0]
+                    ddl_str = val.read() if hasattr(val, "read") else str(val)
+                    ddl_str = ddl_str.strip()
+                    if not ddl_str.endswith(";"):
+                        ddl_str += ";"
+                    return f"-- Sequence: {upper_owner}.{upper_name}\n\n{ddl_str}"
+            except Exception as e:
+                logger.debug(f"DBMS_METADATA sequence fallback failed: {e}")
+
+            cursor.execute(
+                """
+                SELECT MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER
+                FROM ALL_SEQUENCES
+                WHERE SEQUENCE_OWNER = :owner AND SEQUENCE_NAME = :name
+                """,
+                {"owner": upper_owner, "name": upper_name},
+            )
+            srow = cursor.fetchone()
+            if srow:
+                min_v, max_v, inc_by, cycle, order, cache, last_num = srow
+                full_name = f"{_oracle_quote(upper_owner)}.{_oracle_quote(upper_name)}" if upper_owner else _oracle_quote(upper_name)
+                parts = [f"-- Sequence: {upper_owner}.{upper_name}\n", f"CREATE SEQUENCE {full_name}"]
+                if inc_by is not None:
+                    parts.append(f"  INCREMENT BY {inc_by}")
+                if min_v is not None:
+                    parts.append(f"  MINVALUE {min_v}")
+                if max_v is not None:
+                    parts.append(f"  MAXVALUE {max_v}")
+                if last_num is not None:
+                    parts.append(f"  START WITH {last_num}")
+                parts.append(f"  {'CACHE ' + str(cache) if cache and cache > 1 else 'NOCACHE'}")
+                parts.append(f"  {'ORDER' if order == 'Y' else 'NOORDER'}")
+                parts.append(f"  {'CYCLE' if cycle == 'Y' else 'NOCYCLE'};")
+                return "\n".join(parts)
+
+        # 2. Synonyms
+        if "SYNONYM" in upper_type:
+            cursor.execute(
+                """
+                SELECT TABLE_OWNER, TABLE_NAME, DB_LINK
+                FROM ALL_SYNONYMS
+                WHERE OWNER = :owner AND SYNONYM_NAME = :name
+                """,
+                {"owner": upper_owner, "name": upper_name},
+            )
+            syn_row = cursor.fetchone()
+            if syn_row:
+                t_owner, t_name, dblink = syn_row
+                target = f"{t_owner}.{t_name}" if t_owner else t_name
+                if dblink:
+                    target += f"@{dblink}"
+                pub = "PUBLIC " if upper_owner == "PUBLIC" else ""
+                full_name = _oracle_quote(upper_name) if upper_owner == "PUBLIC" else (f"{_oracle_quote(upper_owner)}.{_oracle_quote(upper_name)}" if upper_owner else _oracle_quote(upper_name))
+                return f"-- Synonym: {upper_owner}.{upper_name}\n\nCREATE OR REPLACE {pub}SYNONYM {full_name} FOR {target};"
+
+        # 3. PL/SQL objects (PACKAGE, PACKAGE BODY, PROCEDURE, FUNCTION, TRIGGER, TYPE) via ALL_SOURCE
+        types_to_fetch: list[str] = []
+        if upper_type == "PACKAGE":
+            types_to_fetch = ["PACKAGE", "PACKAGE BODY"]
+        elif upper_type in ("PACKAGE BODY", "PACKAGE_BODY"):
+            types_to_fetch = ["PACKAGE BODY"]
+        elif upper_type in ("TYPE BODY", "TYPE_BODY"):
+            types_to_fetch = ["TYPE BODY"]
+        elif upper_type == "TYPE":
+            types_to_fetch = ["TYPE", "TYPE BODY"]
+        else:
+            types_to_fetch = [upper_type]
+
+        sections: list[str] = []
+        for curr_type in types_to_fetch:
+            cursor.execute(
+                """
+                SELECT TEXT
+                FROM ALL_SOURCE
+                WHERE OWNER = :owner AND NAME = :name AND TYPE = :curr_type
+                ORDER BY LINE
+                """,
+                {"owner": upper_owner, "name": upper_name, "curr_type": curr_type},
+            )
+            rows = cursor.fetchall()
+            if not rows and (owner != upper_owner or name != upper_name):
+                cursor.execute(
+                    """
+                    SELECT TEXT
+                    FROM ALL_SOURCE
+                    WHERE OWNER = :owner AND NAME = :name AND TYPE = :curr_type
+                    ORDER BY LINE
+                    """,
+                    {"owner": owner, "name": name, "curr_type": curr_type},
+                )
+                rows = cursor.fetchall()
+
+            if rows:
+                code_lines = [str(r[0]) for r in rows if r and r[0] is not None]
+                raw_code = "".join(code_lines).strip()
+                if raw_code:
+                    if not raw_code.upper().startswith("CREATE"):
+                        raw_code = f"CREATE OR REPLACE {raw_code}"
+                    if not raw_code.endswith("/"):
+                        raw_code = f"{raw_code}\n/\n"
+                    else:
+                        raw_code = f"{raw_code}\n"
+                    sections.append(raw_code)
+
+        if sections:
+            header = f"-- DDL for {upper_type}: {upper_owner}.{upper_name}\n\n"
+            return header + "\n".join(sections)
+
+        # 4. Fallback to DBMS_METADATA.GET_DDL
+        metadata_map = {
+            "PACKAGE": "PACKAGE",
+            "PACKAGE BODY": "PACKAGE_BODY",
+            "PACKAGE_BODY": "PACKAGE_BODY",
+            "PROCEDURE": "PROCEDURE",
+            "FUNCTION": "FUNCTION",
+            "TRIGGER": "TRIGGER",
+            "TYPE": "TYPE",
+            "TYPE BODY": "TYPE_BODY",
+            "TYPE_BODY": "TYPE_BODY",
+            "SEQUENCE": "SEQUENCE",
+            "SYNONYM": "SYNONYM",
+        }
+        meta_type = metadata_map.get(upper_type, upper_type)
+        try:
+            cursor.execute(
+                "SELECT DBMS_METADATA.GET_DDL(:meta_type, :name, :owner) FROM DUAL",
+                {"meta_type": meta_type, "name": upper_name, "owner": upper_owner or None},
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                val = row[0]
+                ddl_str = val.read() if hasattr(val, "read") else str(val)
+                ddl_str = ddl_str.strip()
+                if ddl_str:
+                    if not ddl_str.endswith("/"):
+                        ddl_str += "\n/"
+                    return f"-- DDL for {upper_type}: {upper_owner}.{upper_name}\n\n{ddl_str}"
+        except Exception as e:
+            logger.debug(f"DBMS_METADATA fallback failed: {e}")
+
+        raise ValueError(f"Could not find source code or DDL for {upper_type} '{upper_owner}.{upper_name}'.")
     finally:
         cursor.close()
         try:

@@ -877,15 +877,26 @@ class ConnectionActions:
             return
 
         try:
-            schema_quoted = f'"{schema_name}"' if schema_name else ""
-            full_name = f'{schema_quoted}."{sequence_name}"' if schema_quoted else f'"{sequence_name}"'
-            sql = f'DROP SEQUENCE {full_name}{" CASCADE" if cascade else ""};'
-            
-            conn = db.create_postgres_connection(conn_data)
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            conn.commit()
-            conn.close()
+            db_type = item_data.get('db_type')
+            if db_type == 'oracle':
+                owner = schema_name or conn_data.get('user', '')
+                full_name = f'"{owner}"."{sequence_name}"' if owner else f'"{sequence_name}"'
+                sql = f'DROP SEQUENCE {full_name}'
+                conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                schema_quoted = f'"{schema_name}"' if schema_name else ""
+                full_name = f'{schema_quoted}."{sequence_name}"' if schema_quoted else f'"{sequence_name}"'
+                sql = f'DROP SEQUENCE {full_name}{" CASCADE" if cascade else ""};'
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
 
             self._notify_deletion_success(sequence_name, "Sequence", sql, conn_data)
 
@@ -897,13 +908,14 @@ class ConnectionActions:
         if not item_data:
             return
 
+        db_type = item_data.get('db_type')
         conn_data = item_data.get('conn_data')
         schema_name = item_data.get('schema_name')
         table_type = item_data.get('table_type', 'FUNCTION').upper()
         label = table_type.lower().capitalize()
 
         confirm_msg = f"Are you sure you want to delete {label.lower()} '{function_name}'?"
-        if cascade:
+        if cascade and db_type != 'oracle':
             confirm_msg += "\n\nThis will also delete ALL dependent objects (CASCADE)."
         confirm_msg += "\n\nThis action cannot be undone."
 
@@ -918,15 +930,26 @@ class ConnectionActions:
             return
 
         try:
-            schema_quoted = f'"{schema_name}"' if schema_name else ""
-            full_name = f'{schema_quoted}."{function_name}"' if schema_quoted else f'"{function_name}"'
-            sql = f'DROP FUNCTION {full_name}{" CASCADE" if cascade else ""};'
-            
-            conn = db.create_postgres_connection(conn_data)
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            conn.commit()
-            conn.close()
+            if db_type == 'oracle':
+                owner = schema_name or conn_data.get('user', '')
+                full_name = f'"{owner}"."{function_name}"' if owner else f'"{function_name}"'
+                drop_verb = "PACKAGE" if "PACKAGE" in table_type else ("PROCEDURE" if "PROCEDURE" in table_type else "FUNCTION")
+                sql = f'DROP {drop_verb} {full_name}'
+                conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                schema_quoted = f'"{schema_name}"' if schema_name else ""
+                full_name = f'{schema_quoted}."{function_name}"' if schema_quoted else f'"{function_name}"'
+                sql = f'DROP FUNCTION {full_name}{" CASCADE" if cascade else ""};'
+                conn = db.create_postgres_connection(conn_data)
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                conn.commit()
+                conn.close()
 
             self._notify_deletion_success(function_name, label, sql, conn_data)
 
