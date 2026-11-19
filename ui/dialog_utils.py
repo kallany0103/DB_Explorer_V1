@@ -40,14 +40,23 @@ def fit_dialog_to_screen(
     target_w = min(ideal_width, max_w)
     target_h = min(ideal_height, max_h)
 
+    # If parent window is visible and floating/restored, keep dialog proportional to parent
+    if parent and hasattr(parent, "geometry") and hasattr(parent, "isMinimized") and not parent.isMinimized() and parent.isVisible():
+        p_geom = parent.geometry()
+        if p_geom.width() > 100 and p_geom.height() > 100:
+            target_w = min(target_w, max(min_width, int(p_geom.width() * 0.90)))
+            target_h = min(target_h, max(min_height, int(p_geom.height() * 0.90)))
+        center_x = p_geom.x() + (p_geom.width() - target_w) // 2
+        center_y = p_geom.y() + (p_geom.height() - target_h) // 2
+    else:
+        center_x = avail.x() + (avail.width() - target_w) // 2
+        center_y = avail.y() + (avail.height() - target_h) // 2
+
     safe_min_w = min(min_width, target_w)
     safe_min_h = min(min_height, target_h)
     dialog.setMinimumSize(safe_min_w, safe_min_h)
     dialog.setMaximumSize(avail.width(), avail.height())
     dialog.resize(target_w, target_h)
-
-    center_x = avail.x() + (avail.width() - target_w) // 2
-    center_y = avail.y() + (avail.height() - target_h) // 2
 
     clamped_x = max(avail.left() + 8, min(center_x, avail.right() - target_w - 8))
     clamped_y = max(avail.top() + 8, min(center_y, avail.bottom() - target_h - 8))

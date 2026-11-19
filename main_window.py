@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         self._is_maximized: bool = False
         self.pg_bin_path = ""
         self.use_wsl = False
+        self.wsl_distro: str | None = None
         self.default_connection_id = None
         self.feature_flags: dict[str, bool] = default_feature_flags()
         self.editor_font_family = "Consolas"
@@ -984,6 +985,7 @@ class MainWindow(QMainWindow):
         self.pg_bin_path = settings.get("pg_bin_path", "")
         self.oracle_bin_path = settings.get("oracle_bin_path", "")
         self.use_wsl = settings.get("use_wsl", False)
+        self.wsl_distro = settings.get("wsl_distro", None)
         self.default_connection_id = settings.get("default_connection_id", None)
         self.confirm_tab_close = settings.get("confirm_tab_close", True)
         self.restore_session_on_startup = settings.get("restore_session_on_startup", True)

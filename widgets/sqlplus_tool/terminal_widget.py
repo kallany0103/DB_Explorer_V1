@@ -8,7 +8,9 @@ pywinpty, building an Easy Connect string from the Oracle conn_data.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import threading
 import time
 
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from ui.components import CompactButton
 from widgets.psql_tool.constants import (
+    _APP_DATA_DIR,
     _PTY_DRAIN_SLEEP_S,
     _PTY_DRAIN_TIMEOUT_S,
     _STYLE,
@@ -40,6 +43,8 @@ except ImportError:
     PTY = None
 
 _RESIZE_DEBOUNCE_MS = 350
+_SQLPLUS_HISTORY_FILE = _APP_DATA_DIR / "sqlplus_tool_history.json"
+_READY_DELIMITER = "__USQL_SQLPLUS_READY__"
 
 # Keep the hidden console's buffer wider than any plausible formatted row.
 # Windows consoles wrap output at the buffer width regardless of LINESIZE
@@ -67,14 +72,17 @@ class SQLPlusToolWidget(QWidget):
         self._manager = manager
         self._sqlplus_exe_path: str = ""
 
-        self._history: list[str] = []
-        self._history_index: int = 0
+        self._history: list[str] = self._load_history()
+        self._history_index: int = len(self._history)
 
         self._pty = None
         self._reader_thread = None
         self._running = False
         self._spawn_time: float = 0.0
         self._first_prompt_pos: int = 0
+        self._startup_in_progress: bool = True
+        self._startup_buffer: str = ""
+        self._startup_timeout: QTimer | None = None
         self._output_received.connect(self._on_output_received)
 
         self._resize_timer = QTimer(self)
@@ -162,31 +170,38 @@ class SQLPlusToolWidget(QWidget):
     def _make_header(self) -> QWidget:
         header = QWidget()
         header.setObjectName("term_header")
-        header.setFixedHeight(36)
+        header.setFixedHeight(38)
+        header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #e2e8f0;")
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(10, 4, 8, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 4, 12, 4)
+        layout.setSpacing(10)
 
-        self._conn_lbl = QLabel(self._conn_label_text())
+        # 1. Connection & Service identity
+        self._conn_lbl = QLabel()
         self._conn_lbl.setObjectName("term_conn_lbl")
+        self._conn_lbl.setTextFormat(Qt.TextFormat.RichText)
+        self._update_conn_label()
         layout.addWidget(self._conn_lbl)
 
+        # 2. CLI origin pill badge (clean desktop style, no emojis)
         self._path_badge = QLabel()
         self._path_badge.setObjectName("term_path_badge")
         self._path_badge.setCursor(Qt.CursorShape.PointingHandCursor)
         self._path_badge.setStyleSheet("""
             QLabel#term_path_badge {
-                color: #64748b;
-                font-family: 'Segoe UI', system-ui, sans-serif;
+                color: #475569;
+                font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
                 font-size: 8.5pt;
-                padding: 2px 8px;
-                background-color: #f1f5f9;
+                font-weight: 500;
+                padding: 3px 10px;
+                background-color: #f8fafc;
                 border: 1px solid #e2e8f0;
                 border-radius: 4px;
             }
             QLabel#term_path_badge:hover {
-                color: #1e293b;
-                background-color: #e2e8f0;
+                color: #0f172a;
+                background-color: #f1f5f9;
+                border-color: #cbd5e1;
             }
         """)
         self._path_badge.hide()
@@ -194,6 +209,7 @@ class SQLPlusToolWidget(QWidget):
 
         layout.addStretch()
 
+        # 3. Action buttons
         for icon_key, label, slot in (
             ("fa5s.copy", "Copy Output", self._copy_output),
             ("fa5s.trash-alt", "Clear", self._clear),
@@ -205,6 +221,33 @@ class SQLPlusToolWidget(QWidget):
             layout.addWidget(btn)
 
         return header
+
+    def _update_conn_label(self) -> None:
+        c = self._conn
+        name = (c.get("name") or c.get("connection_name") or "").strip()
+        host = c.get("host") or "localhost"
+        port = c.get("port") or 1521
+        service = c.get("service_name") or c.get("database") or "ORCL"
+        user = c.get("user") or c.get("username") or "oracle"
+
+        target_str = f"{user}@{host}:{port}/{service}"
+        is_raw_host = (
+            not name
+            or name == host
+            or ("." in name and (name.endswith((".com", ".net", ".org", ".io", ".cloud")) or any(ch.isdigit() for ch in name)))
+        )
+
+        if is_raw_host:
+            self._conn_lbl.setText(
+                f'<span style="font-family: \'Cascadia Code\', \'Consolas\', monospace; font-size: 9pt; font-weight: 600; color: #0f172a;">{target_str}</span>'
+            )
+        else:
+            self._conn_lbl.setText(
+                f'<span style="font-weight: 600; color: #0f172a; font-size: 9.5pt;">{name}</span> '
+                f'<span style="font-family: \'Cascadia Code\', \'Consolas\', monospace; font-size: 8.5pt; color: #64748b;">({target_str})</span>'
+            )
+
+        self._conn_lbl.setToolTip(f"User: {user}\nHost: {host}:{port}\nService: {service}")
 
     def _make_error_banner(self) -> QFrame:
         self._err_frame = QFrame()
@@ -275,6 +318,10 @@ class SQLPlusToolWidget(QWidget):
 
     def _start_session(self, reset_ui: bool = True) -> None:
         self._first_prompt_pos = 0
+        self._startup_in_progress = True
+        self._startup_buffer = ""
+        if hasattr(self, "_startup_timeout") and self._startup_timeout is not None:
+            self._startup_timeout.stop()
         if reset_ui:
             self._term.reset_input_start()
         self._hide_error()
@@ -296,9 +343,23 @@ class SQLPlusToolWidget(QWidget):
             return
         self._sqlplus_exe_path = sqlplus_path
         if hasattr(self, "_path_badge"):
-            short_path = sqlplus_path if len(sqlplus_path) <= 45 else ("…" + sqlplus_path[-42:])
-            self._path_badge.setText(f"CLI: {short_path}")
-            self._path_badge.setToolTip(f"Oracle Client Executable:\n{sqlplus_path}\n\nClick to change in Settings.")
+            is_custom = bool(self._oracle_bin_path)
+            p_lower = sqlplus_path.lower()
+            if is_custom:
+                origin = "Custom"
+            elif "instantclient" in p_lower:
+                origin = "Instant Client"
+            elif "program files" in p_lower:
+                origin = "Standard"
+            else:
+                origin = "System PATH"
+
+            self._path_badge.setText(f"sqlplus ({origin})")
+            self._path_badge.setToolTip(
+                f"Oracle Client Executable:\n{sqlplus_path}\n"
+                f"Detected via: {origin}\n\n"
+                f"Click to configure in Settings → Database Tools."
+            )
             self._path_badge.mousePressEvent = lambda _e: self._open_settings()
             self._path_badge.show()
 
@@ -357,7 +418,16 @@ class SQLPlusToolWidget(QWidget):
                 "SET TRIMOUT ON",
             ):
                 self._pty.write(f"{_fmt_cmd}\r\n")
+            self._pty.write(f"PROMPT {_READY_DELIMITER}\r\n")
+
+            self._startup_timeout = QTimer(self)
+            self._startup_timeout.setSingleShot(True)
+            self._startup_timeout.setInterval(6000)
+            self._startup_timeout.timeout.connect(self._flush_startup_buffer)
+            self._startup_timeout.start()
         except Exception as e:
+            self._startup_in_progress = False
+            self._hide_spinner()
             self._show_error(f"Failed to start SQL*Plus: {e}")
             self._term.append_output(f"\nERROR: Failed to start SQL*Plus: {e}\n")
 
@@ -384,10 +454,57 @@ class SQLPlusToolWidget(QWidget):
             except Exception:
                 break
         self._running = False
+        if self._startup_in_progress:
+            self._output_received.emit("")
 
     # ---------------------------------------------------------- Qt slots --
 
+    def _clean_startup_output(self, raw: str) -> str:
+        lines = raw.replace("\r\n", "\n").split("\n")
+        suppress_keywords = (
+            "CONNECT ",
+            "SET LINESIZE",
+            "SET PAGESIZE",
+            "SET TAB",
+            "SET TRIMSPOOL",
+            "SET TRIMOUT",
+            "SP2-0640",
+            _READY_DELIMITER,
+        )
+
+        cleaned_lines = []
+        for line in lines:
+            if any(kw in line for kw in suppress_keywords):
+                continue
+            cleaned_lines.append(line)
+
+        result = "\n".join(cleaned_lines)
+        result = re.sub(r"(SQL>\s*)+$", "SQL> ", result.strip())
+        if "Connected." in result:
+            result = result.replace("Connected.\nSQL>", "Connected.\n\nSQL>")
+            result = result.replace("Connected.SQL>", "Connected.\n\nSQL>")
+        return result
+
+    def _flush_startup_buffer(self) -> None:
+        if not self._startup_in_progress:
+            return
+        self._startup_in_progress = False
+        if hasattr(self, "_startup_timeout") and self._startup_timeout is not None:
+            self._startup_timeout.stop()
+        self._hide_spinner()
+        raw = self._startup_buffer
+        self._startup_buffer = ""
+        cleaned = self._clean_startup_output(raw)
+        if cleaned:
+            self._term.append_output(cleaned)
+
     def _on_output_received(self, text: str) -> None:
+        if self._startup_in_progress:
+            self._startup_buffer += text
+            if _READY_DELIMITER in self._startup_buffer:
+                self._flush_startup_buffer()
+            return
+
         self._hide_spinner()
         self._term.append_output(text)
 
@@ -397,19 +514,39 @@ class SQLPlusToolWidget(QWidget):
         if cmd.strip():
             self._history.append(cmd)
             self._history_index = len(self._history)
+            self._save_history()
+
+    def _load_history(self) -> list[str]:
+        try:
+            if _SQLPLUS_HISTORY_FILE.exists():
+                with open(_SQLPLUS_HISTORY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        return [str(x) for x in data][-1000:]
+        except Exception:
+            pass
+        return []
+
+    def _save_history(self) -> None:
+        try:
+            _SQLPLUS_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(_SQLPLUS_HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(self._history[-1000:], f, indent=2)
+        except Exception:
+            pass
 
     def _on_history_up(self) -> None:
         if self._history and self._history_index > 0:
             self._history_index -= 1
-            self._term.set_input(self._history[self._history_index])
+            self._term.set_input_text(self._history[self._history_index])
 
     def _on_history_down(self) -> None:
         if self._history_index < len(self._history) - 1:
             self._history_index += 1
-            self._term.set_input(self._history[self._history_index])
+            self._term.set_input_text(self._history[self._history_index])
         else:
             self._history_index = len(self._history)
-            self._term.set_input("")
+            self._term.set_input_text("")
 
     def _on_interrupt(self) -> None:
         if self._pty and self._running:

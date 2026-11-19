@@ -33,6 +33,9 @@ from ui.components import (
     SettingsCategoryDelegate,
     ToggleSwitch,
 )
+from pathlib import Path
+from typing import Any
+
 from ui.dialog_utils import fit_dialog_to_screen
 from ui.feature_flags import (
     FEATURE_CATALOG,
@@ -40,8 +43,288 @@ from ui.feature_flags import (
     is_connection_type_enabled,
     normalize_feature_flags,
 )
-from widgets.psql_tool.discovery import find_psql
-from widgets.sqlplus_tool.discovery import find_sqlplus
+from widgets.psql_tool.discovery import get_all_postgres_candidates
+from widgets.sqlplus_tool.discovery import get_sqlplus_candidates
+
+
+class BinaryPathSelector(QWidget):
+    """Dropdown selector for CLI client binaries with auto-detection and custom browse."""
+
+    path_changed = Signal(str)
+
+    def __init__(
+        self,
+        current_val: str,
+        candidates: list[dict[str, Any]],
+        dialog_title: str,
+        parent=None,
+        use_wsl: bool = False,
+        wsl_distro: str | None = None,
+    ):
+        super().__init__(parent)
+        self._current_val = (current_val or "").strip()
+        self._candidates = candidates
+        self._dialog_title = dialog_title
+        self._use_wsl = use_wsl
+        self._wsl_distro = wsl_distro
+        self._prev_index = 0
+        self._setup_ui()
+
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(3)
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+
+        self.combo = QComboBox()
+        self.combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.combo.setMinimumWidth(240)
+
+        if self._candidates:
+            for i, c in enumerate(self._candidates):
+                user_data = f"wsl:{c['distro']}" if c.get("kind") == "wsl" else ("" if i == 0 else c.get("dir", ""))
+                self.combo.addItem(c["name"], userData=user_data)
+        else:
+            self.combo.addItem("Not detected", userData="")
+
+        # Option to explicitly unselect / disable the binary path
+        self.combo.addItem("None (Disabled)", userData="none")
+
+        custom_idx = -1
+        matched_cand_idx = -1
+
+        if self._use_wsl:
+            for i, c in enumerate(self._candidates):
+                if c.get("kind") == "wsl":
+                    if self._wsl_distro and c.get("distro") == self._wsl_distro:
+                        matched_cand_idx = i
+                        break
+                    elif matched_cand_idx < 0:
+                        matched_cand_idx = i
+        elif self._current_val:
+            if self._current_val.lower() == "none":
+                none_idx = self.combo.findData("none")
+                if none_idx >= 0:
+                    matched_cand_idx = none_idx
+            else:
+                val_p = Path(self._current_val)
+                val_norm = str(val_p.resolve() if val_p.exists() else val_p).lower()
+                val_parent_norm = str(val_p.parent.resolve() if val_p.parent.exists() else val_p.parent).lower()
+
+                for i, c in enumerate(self._candidates):
+                    if c.get("kind") == "wsl":
+                        continue
+                    c_dir = str(Path(c["dir"]).resolve() if Path(c["dir"]).exists() else c["dir"]).lower()
+                    c_path = str(Path(c["path"]).resolve() if Path(c["path"]).exists() else c["path"]).lower()
+                    if val_norm in (c_dir, c_path) or (val_p.name.lower() in ("bin", "runtime") and val_parent_norm in (c_dir, c_path)):
+                        matched_cand_idx = i
+                        break
+
+                if matched_cand_idx < 0:
+                    folder_name = val_p.parent.name if val_p.name.lower() in ("bin", "runtime") else (val_p.name or self._current_val)
+                    self.combo.addItem(f"Custom: {folder_name}", userData=self._current_val)
+                    custom_idx = self.combo.count() - 1
+
+        self.combo.addItem("Browse custom path...", userData="__browse__")
+
+        if custom_idx >= 0:
+            self.combo.setCurrentIndex(custom_idx)
+            self._prev_index = custom_idx
+        elif matched_cand_idx >= 0:
+            self.combo.setCurrentIndex(matched_cand_idx)
+            self._prev_index = matched_cand_idx
+        else:
+            self.combo.setCurrentIndex(0)
+            self._prev_index = 0
+
+        row_layout.addWidget(self.combo, 1)
+
+        self.browse_btn = SecondaryButton("Browse...")
+        self.browse_btn.setAutoDefault(False)
+        self.browse_btn.clicked.connect(self._on_browse_clicked)
+        row_layout.addWidget(self.browse_btn)
+
+        root.addWidget(row)
+
+        self.status_lbl = QLabel()
+        self.status_lbl.setObjectName("settingsBinaryStatusLbl")
+        self.status_lbl.setStyleSheet("font-size: 8pt; padding-left: 2px;")
+        root.addWidget(self.status_lbl)
+
+        self.combo.currentIndexChanged.connect(self._on_combo_changed)
+        self._update_status()
+
+    def get_selected_candidate(self) -> dict[str, Any] | None:
+        idx = self.combo.currentIndex()
+        if 0 <= idx < len(self._candidates):
+            return self._candidates[idx]
+        return None
+
+    def get_selected_info(self) -> dict[str, Any]:
+        cand = self.get_selected_candidate()
+        if cand and cand.get("kind") == "wsl":
+            return {
+                "use_wsl": True,
+                "wsl_distro": cand.get("distro"),
+                "pg_bin_path": "",
+            }
+        val = self.get_value()
+        return {
+            "use_wsl": False,
+            "wsl_distro": None,
+            "pg_bin_path": val,
+        }
+
+    def set_selected_info(self, pg_bin_path: str = "", use_wsl: bool = False, wsl_distro: str | None = None) -> None:
+        if use_wsl:
+            for i, c in enumerate(self._candidates):
+                if c.get("kind") == "wsl":
+                    if wsl_distro and c.get("distro") == wsl_distro:
+                        self.combo.setCurrentIndex(i)
+                        self._prev_index = i
+                        self._update_status()
+                        return
+                    elif not wsl_distro:
+                        self.combo.setCurrentIndex(i)
+                        self._prev_index = i
+                        self._update_status()
+                        return
+        self.set_value(pg_bin_path)
+
+    def _on_combo_changed(self, index: int):
+        data = self.combo.itemData(index)
+        if data == "__browse__":
+            self._on_browse_clicked()
+        else:
+            self._prev_index = index
+            self._update_status()
+            self.path_changed.emit(self.get_value())
+
+    def _on_browse_clicked(self):
+        cur = self.get_value()
+        start_dir = cur if cur and not cur.startswith("wsl:") and cur != "none" else ""
+        directory = QFileDialog.getExistingDirectory(self, self._dialog_title, start_dir)
+        if directory:
+            self.set_custom_path(directory)
+            self.path_changed.emit(directory)
+        else:
+            if self.combo.currentData() == "__browse__":
+                self.combo.setCurrentIndex(self._prev_index)
+
+    def set_custom_path(self, path: str):
+        val_p = Path(path)
+        val_norm = str(val_p.resolve() if val_p.exists() else val_p).lower()
+        val_parent_norm = str(val_p.parent.resolve() if val_p.parent.exists() else val_p.parent).lower()
+
+        for i, c in enumerate(self._candidates):
+            if c.get("kind") == "wsl":
+                continue
+            c_dir = str(Path(c["dir"]).resolve() if Path(c["dir"]).exists() else c["dir"]).lower()
+            c_path = str(Path(c["path"]).resolve() if Path(c["path"]).exists() else c["path"]).lower()
+            if val_norm in (c_dir, c_path) or (val_p.name.lower() in ("bin", "runtime") and val_parent_norm in (c_dir, c_path)):
+                self.combo.setCurrentIndex(i)
+                self._prev_index = i
+                self._update_status()
+                return
+
+        for i in range(self.combo.count()):
+            item_val = str(self.combo.itemData(i) or "").lower()
+            if item_val in (val_norm, path.lower(), val_parent_norm):
+                self.combo.setCurrentIndex(i)
+                self._prev_index = i
+                self._update_status()
+                return
+
+        insert_idx = max(0, self.combo.count() - 1)
+        folder_name = val_p.parent.name if val_p.name.lower() in ("bin", "runtime") else (val_p.name or path)
+        self.combo.insertItem(insert_idx, f"Custom: {folder_name}", userData=path)
+        self.combo.setCurrentIndex(insert_idx)
+        self._prev_index = insert_idx
+        self._update_status()
+
+    def get_value(self) -> str:
+        cand = self.get_selected_candidate()
+        if cand and cand.get("kind") == "wsl":
+            return f"wsl:{cand.get('distro', '')}"
+        data = self.combo.currentData()
+        return "" if not data or data == "__browse__" else str(data)
+
+    def set_value(self, val: str):
+        if not val:
+            self.combo.setCurrentIndex(0)
+            self._prev_index = 0
+        elif str(val).lower() == "none":
+            none_idx = self.combo.findData("none")
+            if none_idx >= 0:
+                self.combo.setCurrentIndex(none_idx)
+                self._prev_index = none_idx
+        elif str(val).startswith("wsl:"):
+            target_distro = str(val).split(":", 1)[1]
+            for i, c in enumerate(self._candidates):
+                if c.get("kind") == "wsl" and c.get("distro") == target_distro:
+                    self.combo.setCurrentIndex(i)
+                    self._prev_index = i
+                    break
+        else:
+            self.set_custom_path(val)
+        self._update_status()
+
+    def _update_status(self):
+        cand = self.get_selected_candidate()
+        if cand and cand.get("kind") == "wsl":
+            distro = cand.get("distro", "WSL")
+            if cand.get("available", True):
+                path_str = cand.get("path") or "/usr/bin/psql"
+                self.status_lbl.setText(f"Active: WSL {distro} ({path_str})")
+                self.status_lbl.setToolTip(f"WSL distribution: {distro}\nDetected binary: {path_str}\n{cand.get('version', '')}")
+                self.status_lbl.setStyleSheet("color: #059669; font-size: 8pt;")
+            else:
+                self.status_lbl.setText(f"Not found: psql not installed in WSL {distro}")
+                self.status_lbl.setToolTip(f"PostgreSQL client binaries were not found inside {distro}.")
+                self.status_lbl.setStyleSheet("color: #dc2626; font-size: 8pt;")
+            return
+
+        val = self.get_value()
+        if str(val).lower() == "none":
+            self.status_lbl.setText("Disabled (No client selected)")
+            self.status_lbl.setToolTip("CLI binary execution is unselected / disabled.")
+            self.status_lbl.setStyleSheet("color: #64748b; font-size: 8pt;")
+            return
+
+        if not val and self._candidates:
+            active_p = self._candidates[0]["path"]
+            short_p = active_p if len(active_p) <= 50 else ("..." + active_p[-47:])
+            self.status_lbl.setText(f"Active: {short_p}")
+            self.status_lbl.setToolTip(f"Auto-detected client:\n{active_p}")
+            self.status_lbl.setStyleSheet("color: #059669; font-size: 8pt;")
+        elif val and not val.startswith("wsl:"):
+            val_p = Path(val)
+            val_norm = str(val_p.resolve() if val_p.exists() else val_p).lower()
+            val_parent_norm = str(val_p.parent.resolve() if val_p.parent.exists() else val_p.parent).lower()
+
+            matched_cand = None
+            for c in self._candidates:
+                if c.get("kind") == "wsl":
+                    continue
+                c_dir = str(Path(c["dir"]).resolve() if Path(c["dir"]).exists() else c["dir"]).lower()
+                c_path = str(Path(c["path"]).resolve() if Path(c["path"]).exists() else c["path"]).lower()
+                if val_norm in (c_dir, c_path) or (val_p.name.lower() in ("bin", "runtime") and val_parent_norm in (c_dir, c_path)):
+                    matched_cand = c
+                    break
+
+            display_p = matched_cand["path"] if matched_cand else val
+            short_val = display_p if len(display_p) <= 50 else ("..." + display_p[-47:])
+            self.status_lbl.setText(f"Using: {short_val}")
+            self.status_lbl.setToolTip(f"Configured client:\n{display_p}")
+            self.status_lbl.setStyleSheet("color: #2563eb; font-size: 8pt;")
+        else:
+            self.status_lbl.setText("Not found on system")
+            self.status_lbl.setToolTip("No executable detected. Please install client or browse for folder.")
+            self.status_lbl.setStyleSheet("color: #dc2626; font-size: 8pt;")
 
 
 class FontPreviewDelegate(QStyledItemDelegate):
@@ -72,7 +355,7 @@ class PreferencesDialog(QDialog):
         self.setWindowTitle("Settings")
         self.setModal(False)
         self.setWindowModality(Qt.WindowModality.NonModal)
-        fit_dialog_to_screen(self, ideal_width=920, ideal_height=680, min_width=640, min_height=420)
+        fit_dialog_to_screen(self, ideal_width=740, ideal_height=500, min_width=580, min_height=380)
 
         self._search_entries: list[dict] = []
         self._page_cards: dict[int, list[dict]] = {}
@@ -116,7 +399,7 @@ class PreferencesDialog(QDialog):
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("settingsSidebar")
-        sidebar.setFixedWidth(210)
+        sidebar.setFixedWidth(190)
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(12, 14, 12, 12)
         layout.setSpacing(10)
@@ -714,39 +997,40 @@ class PreferencesDialog(QDialog):
         )
 
         binaries = self._create_card(idx, layout, "External CLI Binaries")
-        pg_detected = find_psql(getattr(self.main_window, "pg_bin_path", ""))
-        pg_hint = f"Detected: {pg_detected}" if pg_detected else "Detected: Not found on system"
-        pg_picker, self.pg_bin_edit = self._create_path_picker(
-            getattr(self.main_window, "pg_bin_path", ""),
-            "e.g. C:\\Program Files\\PostgreSQL\\16\\bin",
-            self.browse_pg_bin,
+
+        # 1. PostgreSQL Binary Path (unified Windows + WSL dropdown)
+        self.pg_bin_picker = BinaryPathSelector(
+            current_val=getattr(self.main_window, "pg_bin_path", ""),
+            candidates=get_all_postgres_candidates(),
+            dialog_title="Select PostgreSQL Bin Directory",
+            parent=self,
+            use_wsl=bool(getattr(self.main_window, "use_wsl", False)),
+            wsl_distro=getattr(self.main_window, "wsl_distro", None),
         )
+        self.pg_bin_picker.path_changed.connect(lambda _p: self._mark_dirty())
         self._add_row(
             binaries,
             "PostgreSQL Binary Path",
-            f"Directory containing psql, pg_dump, and pg_restore executables.\n{pg_hint}",
-            pg_picker,
-            290,
+            "Directory containing psql, pg_dump, and pg_restore executables.",
+            self.pg_bin_picker,
+            330,
         )
 
-        ora_detected = find_sqlplus(getattr(self.main_window, "oracle_bin_path", ""))
-        ora_hint = f"Detected: {ora_detected}" if ora_detected else "Detected: Not found on system"
-        ora_picker, self.oracle_bin_edit = self._create_path_picker(
+        # 2. Oracle Binary Path
+        self.oracle_bin_picker = BinaryPathSelector(
             getattr(self.main_window, "oracle_bin_path", ""),
-            "e.g. C:\\oracle\\instantclient_21_12",
-            self.browse_oracle_bin,
+            get_sqlplus_candidates(),
+            "Select Oracle Bin Directory",
+            parent=self,
         )
+        self.oracle_bin_picker.path_changed.connect(lambda _p: self._mark_dirty())
         self._add_row(
             binaries,
             "Oracle Binary Path",
-            f"Directory containing sqlplus and Oracle Instant Client libraries.\n{ora_hint}",
-            ora_picker,
-            290,
+            "Directory containing sqlplus and Oracle Instant Client libraries.",
+            self.oracle_bin_picker,
+            330,
         )
-
-        self.use_wsl_check = ToggleSwitch()
-        self.use_wsl_check.setChecked(getattr(self.main_window, "use_wsl", False))
-        self._add_row(binaries, "Use WSL for PostgreSQL Tools", "Run PostgreSQL CLI tools from Windows Subsystem for Linux.", self.use_wsl_check)
 
         execution = self._create_card(idx, layout, "Query Execution Limits")
         self.query_timeout_spin = QSpinBox()
@@ -765,6 +1049,7 @@ class PreferencesDialog(QDialog):
             "pg_bin_path",
             "oracle_bin_path",
             "use_wsl",
+            "wsl_distro",
             "query_timeout_sec",
             "default_row_limit",
         )
@@ -841,14 +1126,10 @@ class PreferencesDialog(QDialog):
     # ── Browse Handlers ─────────────────────────────────────────────────
 
     def browse_pg_bin(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Select PostgreSQL Bin Directory", self.pg_bin_edit.text())
-        if directory:
-            self.pg_bin_edit.setText(directory)
+        self.pg_bin_picker._on_browse_clicked()
 
     def browse_oracle_bin(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Select Oracle Bin Directory", self.oracle_bin_edit.text())
-        if directory:
-            self.oracle_bin_edit.setText(directory)
+        self.oracle_bin_picker._on_browse_clicked()
 
     # ── Defaults & Values ───────────────────────────────────────────────
 
@@ -886,6 +1167,7 @@ class PreferencesDialog(QDialog):
             "pg_bin_path": "",
             "oracle_bin_path": "",
             "use_wsl": False,
+            "wsl_distro": None,
             "query_timeout_sec": 300,
             "default_row_limit": "No Limit",
             "ai_provider": "OpenAI",
@@ -922,9 +1204,12 @@ class PreferencesDialog(QDialog):
             self.grid_show_row_numbers_check.setChecked(defaults["grid_show_row_numbers"])
             self.grid_copy_headers_check.setChecked(defaults["grid_copy_headers"])
 
-            self.pg_bin_edit.setText(defaults["pg_bin_path"])
-            self.oracle_bin_edit.setText(defaults["oracle_bin_path"])
-            self.use_wsl_check.setChecked(defaults["use_wsl"])
+            self.pg_bin_picker.set_selected_info(
+                pg_bin_path=defaults["pg_bin_path"],
+                use_wsl=defaults.get("use_wsl", False),
+                wsl_distro=defaults.get("wsl_distro", None),
+            )
+            self.oracle_bin_picker.set_value(defaults["oracle_bin_path"])
             self.query_timeout_spin.setValue(defaults["query_timeout_sec"])
             self.default_row_limit_combo.setCurrentText(defaults["default_row_limit"])
 
@@ -941,6 +1226,7 @@ class PreferencesDialog(QDialog):
 
     def get_settings(self) -> dict:
         """Return dictionary of all current settings values."""
+        pg_info = self.pg_bin_picker.get_selected_info()
         return {
             "theme": self.theme_combo.currentText(),
             "default_connection_id": self.default_conn_combo.currentData(),
@@ -966,9 +1252,10 @@ class PreferencesDialog(QDialog):
             "grid_page_size": self.grid_page_size_combo.currentText(),
             "grid_show_row_numbers": self.grid_show_row_numbers_check.isChecked(),
             "grid_copy_headers": self.grid_copy_headers_check.isChecked(),
-            "pg_bin_path": self.pg_bin_edit.text().strip(),
-            "oracle_bin_path": self.oracle_bin_edit.text().strip(),
-            "use_wsl": self.use_wsl_check.isChecked(),
+            "pg_bin_path": pg_info["pg_bin_path"],
+            "oracle_bin_path": self.oracle_bin_picker.get_value(),
+            "use_wsl": pg_info["use_wsl"],
+            "wsl_distro": pg_info["wsl_distro"],
             "query_timeout_sec": self.query_timeout_spin.value(),
             "default_row_limit": self.default_row_limit_combo.currentText(),
             "ai_provider": self.ai_provider_combo.currentText(),

@@ -30,7 +30,8 @@ QPlainTextEdit#usql_term {
 
 /* ---- thin header bar ---- */
 QWidget#term_header {
-    border-bottom    : 1px solid palette(mid);
+    background-color : #ffffff;
+    border-bottom    : 1px solid #e2e8f0;
 }
 QLabel#term_conn_lbl {
     font-family : "Cascadia Code", "Consolas", monospace;
