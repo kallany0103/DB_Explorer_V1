@@ -471,7 +471,7 @@ class ConnectionActions:
             if not cols:
                 cols = ["sys_id", "number", "short_description", "sys_created_on"] if any(k in table_name.lower() for k in ("task", "incident", "request")) else ["*"]
             col_str = ",\n    ".join(cols) if cols != ["*"] else "*"
-            query = f"SELECT\n    {col_str}\nFROM {table_name}\nLIMIT 100;\n"
+            query = f"SELECT\n    {col_str}\nFROM {table_name}\nLIMIT 1000;\n"
         else:
             query = f"SELECT *\nFROM {table_name}\nLIMIT 100;\n"
 
@@ -493,7 +493,9 @@ class ConnectionActions:
         """Opens a new worksheet and populates a SELECT * query."""
         if not item_data or not table_name:
             return
-        query = f"SELECT *\nFROM {table_name}\nLIMIT 100;\n"
+        code = ((item_data.get("conn_data") or {}).get("code") or item_data.get("db_type") or "").upper()
+        limit_val = 1000 if code == "SERVICENOW" else 100
+        query = f"SELECT *\nFROM {table_name}\nLIMIT {limit_val};\n"
         new_tab = self.manager.add_tab()
         conn_data = item_data.get("conn_data")
         if conn_data:
@@ -524,6 +526,19 @@ class ConnectionActions:
             if data and data.get('id') == conn_data.get('id'):
                 db_combo_box.setCurrentIndex(i)
                 break
+
+        toolbar_widget = getattr(new_tab, "toolbar_widget", None)
+        limit_btn = getattr(toolbar_widget, "rows_limit_combo", None) if toolbar_widget else None
+        limit_str = "No Limit" if limit is None else str(limit)
+        if toolbar_widget and hasattr(toolbar_widget, "limit_changed"):
+            if limit_btn:
+                limit_btn.setCurrentText(limit_str)
+            toolbar_widget.limit_changed.emit(limit_str)
+        else:
+            new_tab.current_limit = 0 if limit is None else limit
+            new_tab._limit_manually_set = True
+            if limit_btn:
+                limit_btn.setCurrentText(limit_str)
 
         conn_data = dict(conn_data)
         if item_data.get('db_type') == 'csv':
