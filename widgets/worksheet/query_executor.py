@@ -24,6 +24,7 @@ from widgets.worksheet.query.query_preparation import (
     resolve_query_context,
 )
 from widgets.worksheet.query.query_runtime import (
+    clear_query_runtime,
     clear_query_timers,
     clear_running_query,
 )
@@ -75,6 +76,8 @@ def on_query_finished_signal(manager, conn_data, query, results, columns, column
     target_tab = getattr(signals, "_target_tab", manager.tab_widget.currentWidget())
     if _is_stale_query_signal(manager, signals, target_tab):
         return
+
+    clear_query_runtime(manager, target_tab, stop_timeout=True)
 
     dispatch_start = getattr(signals, "_perf_dispatch_start", None)
     perf_record(manager, "query_dispatch_to_finish_ms", perf_elapsed_ms(dispatch_start))

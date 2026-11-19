@@ -209,10 +209,6 @@ def add_tab(manager):
                         QTimer.singleShot(0, lambda: manager.execute_query(preserve_pagination=True))
 
     toolbar_widget.limit_changed.connect(lambda text: on_limit_change(text, manual=True))
-    default_limit = str(getattr(manager.main_window, "default_row_limit", "No Limit") or "No Limit")
-    if default_limit != "No Limit":
-        toolbar_widget.rows_limit_combo.setCurrentText(default_limit)
-        on_limit_change(default_limit, manual=False)
     layout.addWidget(toolbar_widget)
     layout.setStretchFactor(toolbar_widget, 0)
 
@@ -267,6 +263,11 @@ def add_tab(manager):
     _sql_engine = CompletionEngine()
     text_edit.set_engine(_sql_engine)
     tab_content._sql_engine = _sql_engine
+
+    default_limit = str(getattr(manager.main_window, "default_row_limit", "No Limit") or "No Limit")
+    if default_limit != "No Limit":
+        toolbar_widget.rows_limit_combo.setCurrentText(default_limit)
+        on_limit_change(default_limit, manual=False)
 
     history_widget = QSplitter(Qt.Orientation.Horizontal)
     history_widget.setHandleWidth(0)
