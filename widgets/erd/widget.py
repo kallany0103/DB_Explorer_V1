@@ -188,7 +188,7 @@ class ERDWidget(QWidget):
         self.show_types_action.setChecked(True)
         self.show_types_action.triggered.connect(self.toggle_types)
         self.toolbar.addAction(self.show_types_action)
-        self.show_panel_action = QAction(get_icon("msc.layout-sidebar-right", color='#555555'), "Toggle Panel", self)
+        self.show_panel_action = QAction(get_icon("msc.layout-panel-right", color='#555555'), "Toggle Panel", self)
         self.show_panel_action.setCheckable(True)
         self.show_panel_action.setChecked(False)
         self.show_panel_action.triggered.connect(self.toggle_panel)
@@ -196,7 +196,7 @@ class ERDWidget(QWidget):
 
     def _build_toolbar_advanced_group(self) -> None:
         """Add SQL generator and search toolbar buttons plus their keyboard shortcuts."""
-        self.sql_action = QAction(get_icon("msc.database", color='#555555'), "Generate SQL Script", self)
+        self.sql_action = QAction(get_icon("msc.file-code", color='#555555'), "Generate SQL Script", self)
         self.sql_action.setShortcut("Alt+Ctrl+S")
         self.sql_action.triggered.connect(self.generate_forward_sql)
         self.toolbar.addAction(self.sql_action)
