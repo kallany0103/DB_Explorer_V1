@@ -168,23 +168,24 @@ class WorksheetToolbar(QWidget):
             self.explain_ai_btn.setToolTip("Explain code using AI (Ctrl+Alt+E)")
             layout.addWidget(self.explain_ai_btn)
 
-        # Optimize Query
+        # Optimize Query (with Batch Workload Optimize in dropdown)
         if hasattr(manager, 'ws_optimize_action'):
             self.optimize_btn = ToolbarActionButton(icon=manager.ws_optimize_action.icon())
             self.optimize_btn.setDefaultAction(manager.ws_optimize_action)
             self.optimize_btn.setIconSize(QSize(16, 16))
-            self.optimize_btn.setMinimumWidth(32)
+            self.optimize_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            optimize_menu = QMenu(self.optimize_btn)
+            apply_menu_style(optimize_menu)
+            manager.ws_optimize_action.setIconVisibleInMenu(True)
+            optimize_menu.addAction(manager.ws_optimize_action)
+            if hasattr(manager, 'ws_optimize_batch_action'):
+                manager.ws_optimize_batch_action.setIconVisibleInMenu(True)
+                optimize_menu.addAction(manager.ws_optimize_batch_action)
+            self.optimize_btn.setMenu(optimize_menu)
+            self.optimize_btn.setFixedWidth(48)
             self.optimize_btn.setToolTip("Optimize SQL (Ctrl+Alt+O)")
             layout.addWidget(self.optimize_btn)
-
-        # Optimize Workload / Batch Script
-        if hasattr(manager, 'ws_optimize_batch_action'):
-            self.optimize_batch_btn = ToolbarActionButton(icon=manager.ws_optimize_batch_action.icon())
-            self.optimize_batch_btn.setDefaultAction(manager.ws_optimize_batch_action)
-            self.optimize_batch_btn.setIconSize(QSize(16, 16))
-            self.optimize_batch_btn.setMinimumWidth(32)
-            self.optimize_batch_btn.setToolTip("Optimize Entire Script Workload (Ctrl+Shift+O)")
-            layout.addWidget(self.optimize_batch_btn)
+            self.optimize_batch_btn = self.optimize_btn
 
         # Describe (F4) - table and schema
         if hasattr(manager, 'ws_describe_object_action'):
