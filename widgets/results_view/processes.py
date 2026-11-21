@@ -99,6 +99,7 @@ def create_processes_view(manager, tab_content):
     processes_view.horizontalHeader().setHighlightSections(False)
     processes_view.verticalHeader().setSectionsClickable(True)
     processes_view.verticalHeader().setDefaultSectionSize(28)
+    processes_view.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     processes_view.horizontalHeader().setStretchLastSection(True)
     processes_view.setItemDelegate(ProcessRowDelegate(manager.PROCESS_STATUS_META, parent=processes_view))
     processes_view.clicked.connect(lambda idx: manager._handle_process_cell_click(tab_content, idx))
@@ -240,6 +241,7 @@ def initialize_processes_model(manager, tab_content):
     tab_content.processes_model.setHorizontalHeaderLabels(
         ["PID", "Name", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Message / Command"]
     )
+    tab_content.processes_model.setHeaderData(3, Qt.Orientation.Horizontal, Qt.AlignmentFlag.AlignCenter, Qt.ItemDataRole.TextAlignmentRole)
     
     # Use proxy for filtering
     tab_content.processes_proxy = QSortFilterProxyModel()
@@ -429,6 +431,7 @@ def refresh_processes_view(manager):
     model.setHorizontalHeaderLabels(
         ["PID", "Name", "Type", "Status", "Server", "Object", "Time Taken (sec)", "Start Time", "End Time", "Message / Command"]
     )
+    model.setHeaderData(3, Qt.Orientation.Horizontal, Qt.AlignmentFlag.AlignCenter, Qt.ItemDataRole.TextAlignmentRole)
 
     for _, row in enumerate(filtered_data):
         items = [QStandardItem(str(col)) for col in row]

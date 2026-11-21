@@ -519,30 +519,55 @@ QTableWidget#cell_summary_table::item:selected {
 }
 
 #processFilterBar QPushButton {
-    border: 1px solid #B8BEC6;
-    border-radius: 4px;
-    background: #F9FAFB;
-    color: #1f2937;
-    padding: 2px 8px;
-    font-size: 9pt;
+    border: 1px solid #CBD5E1;
+    border-radius: 5px;
+    background-color: #FFFFFF;
+    color: #475569;
+    padding: 3px 10px;
+    font-size: 8.5pt;
     font-weight: 500;
 }
 #processFilterBar QPushButton:hover {
-    background: #E7EBF1;
-    border-color: #9FA6AF;
+    background-color: #F1F5F9;
+    border-color: #94A3B8;
+    color: #1E293B;
 }
 #processFilterBar QPushButton:pressed {
-    background: #D9DFE8;
+    background-color: #E2E8F0;
 }
 #processFilterBar QPushButton:checked {
-    background: #8E959E;
-    border-color: #7A828C;
-    color: #ffffff;
-    font-weight: 500;
+    background-color: #E2E8F0;
+    border-color: #94A3B8;
+    color: #0F172A;
+    font-weight: 600;
+}
+#processFilterBar QPushButton#filter_btn_RUNNING:checked {
+    background-color: #E0F2FE;
+    border-color: #38BDF8;
+    color: #0369A1;
+    font-weight: 600;
+}
+#processFilterBar QPushButton#filter_btn_SUCCESSFUL:checked {
+    background-color: #DCFCE7;
+    border-color: #4ADE80;
+    color: #15803D;
+    font-weight: 600;
+}
+#processFilterBar QPushButton#filter_btn_WARNING:checked {
+    background-color: #FEF3C7;
+    border-color: #FBBF24;
+    color: #B45309;
+    font-weight: 600;
+}
+#processFilterBar QPushButton#filter_btn_ERROR:checked {
+    background-color: #FEE2E2;
+    border-color: #F87171;
+    color: #B91C1C;
+    font-weight: 600;
 }
 #processFilterBar {
-    background: #ECEFF3; 
-    border-bottom: 1px solid #C9CFD8;
+    background-color: #F8FAFC; 
+    border-bottom: 1px solid #CBD5E1;
 }
 #processInfoBar {
     background: transparent; 
