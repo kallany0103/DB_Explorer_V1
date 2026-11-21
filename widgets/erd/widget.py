@@ -61,15 +61,17 @@ class ERDWidget(QWidget):
             background-color: #ECEFF3;
             border-bottom: 1px solid #C9CFD8;
             spacing: 6px;
-            padding: 3px 6px;
+            padding: 0px 6px;
         }
         QToolButton {
-            padding: 2px 8px;
+            padding: 0px;
             border: 1px solid #b9b9b9;
             background-color: #ffffff;
             border-radius: 4px;
-            min-width: 14px;
-            min-height: 24px;
+            min-width: 30px;
+            max-width: 30px;
+            min-height: 26px;
+            max-height: 26px;
         }
         QToolButton:hover { background-color: #e8e8e8; border-color: #9c9c9c; }
         QToolButton:pressed { background-color: #dcdcdc; }
@@ -81,6 +83,7 @@ class ERDWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self.toolbar = QToolBar()
+        self.toolbar.setFixedHeight(34)
         self.toolbar.setIconSize(QSize(16, 16))
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.toolbar.setStyleSheet(self._TOOLBAR_STYLE)
