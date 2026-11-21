@@ -47,7 +47,8 @@ class AppIcons:
     COPY = ("msc.copy", None)
     PASTE = ("msc.clippy", None)
     SELECT_ALL = ("msc.selection", None)
-    FIND = ("msc.search", None)
+    SEARCH = ("msc.search", None)
+    FIND = SEARCH
     REPLACE = ("msc.replace", None)
     GOTO_LINE = ("msc.go-to-file", None)
     COMMENT = ("msc.comment", None)
