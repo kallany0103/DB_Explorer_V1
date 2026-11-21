@@ -64,6 +64,8 @@ class AppIcons:
     AUTOCOMMIT = ("msc.unlock", None)
 
     # Database & Schema Tree Objects
+    NEW_CONNECTION = ("msc.plug", COLOR_PRIMARY_BLUE)
+    ADD_CONNECTION = NEW_CONNECTION
     DATABASE = ("msc.database", COLOR_PRIMARY_BLUE)
     SCHEMA = ("msc.folder-library", COLOR_AMBER)
     TABLE = ("msc.table", COLOR_EMERALD_GREEN)
