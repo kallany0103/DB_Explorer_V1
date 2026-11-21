@@ -100,7 +100,7 @@ def create_processes_view(manager, tab_content):
     processes_view.verticalHeader().setSectionsClickable(True)
     processes_view.verticalHeader().setDefaultSectionSize(28)
     processes_view.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-    processes_view.horizontalHeader().setStretchLastSection(False)
+    processes_view.horizontalHeader().setStretchLastSection(True)
     processes_view.setItemDelegate(ProcessRowDelegate(manager.PROCESS_STATUS_META, parent=processes_view))
     processes_view.clicked.connect(lambda idx: manager._handle_process_cell_click(tab_content, idx))
     processes_view.doubleClicked.connect(lambda idx: manager._handle_view_log(tab_content))
@@ -250,10 +250,10 @@ def initialize_processes_model(manager, tab_content):
     tab_content.processes_proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
     
     processes_view.setModel(tab_content.processes_proxy)
-    processes_view.horizontalHeader().setStretchLastSection(False)
-    default_widths = [55, 120, 80, 80, 100, 90, 115, 140, 140, 260]
-    for idx, w in enumerate(default_widths):
-        processes_view.setColumnWidth(idx, w)
+    min_widths = [50, 130, 80, 80, 110, 95, 115, 140, 140]
+    for idx, min_w in enumerate(min_widths):
+        processes_view.setColumnWidth(idx, min_w)
+    processes_view.horizontalHeader().setStretchLastSection(True)
 
 
 def switch_to_processes_view(manager):
@@ -450,10 +450,13 @@ def refresh_processes_view(manager):
     manager._update_process_summary_ui(current_tab, status_counts, len(data), len(filtered_data))
     processes_view.resizeColumnsToContents()
     
-    last_col = model.columnCount() - 1
-    if last_col >= 0:
-        current_w = processes_view.columnWidth(last_col)
-        processes_view.setColumnWidth(last_col, max(260, min(current_w + 24, 600)))
+    min_widths = [50, 130, 80, 80, 110, 95, 115, 140, 140]
+    for idx, min_w in enumerate(min_widths):
+        if idx < model.columnCount():
+            current_w = processes_view.columnWidth(idx)
+            processes_view.setColumnWidth(idx, max(current_w + 10, min_w))
+
+    processes_view.horizontalHeader().setStretchLastSection(True)
 
 
 def handle_view_log(manager, tab_content):

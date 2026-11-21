@@ -523,9 +523,9 @@ QTableWidget#cell_summary_table::item:selected {
     border-radius: 4px;
     background-color: #FFFFFF;
     color: #334155;
-    padding: 3px 8px;
+    padding: 3px 10px;
     font-size: 8.5pt;
-    font-weight: normal;
+    font-weight: 500;
 }
 #processFilterBar QPushButton:hover {
     background-color: #F1F5F9;
@@ -539,31 +539,31 @@ QTableWidget#cell_summary_table::item:selected {
     background-color: #E2E8F0;
     border-color: #94A3B8;
     color: #0F172A;
-    font-weight: bold;
+    font-weight: 500;
 }
 #processFilterBar QPushButton#filter_btn_RUNNING:checked {
     background-color: #E0F2FE;
     border-color: #38BDF8;
     color: #0369A1;
-    font-weight: bold;
+    font-weight: 500;
 }
 #processFilterBar QPushButton#filter_btn_SUCCESSFUL:checked {
     background-color: #DCFCE7;
     border-color: #4ADE80;
     color: #15803D;
-    font-weight: bold;
+    font-weight: 500;
 }
 #processFilterBar QPushButton#filter_btn_WARNING:checked {
     background-color: #FEF3C7;
     border-color: #FBBF24;
     color: #B45309;
-    font-weight: bold;
+    font-weight: 500;
 }
 #processFilterBar QPushButton#filter_btn_ERROR:checked {
     background-color: #FEE2E2;
     border-color: #F87171;
     color: #B91C1C;
-    font-weight: bold;
+    font-weight: 500;
 }
 #processFilterBar {
     background-color: #F8FAFC; 
