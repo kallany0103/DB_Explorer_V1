@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, QSize, QThreadPool, QTimer, QPoint, QEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon, QAction, QDesktopServices
 from PySide6.QtCore import QUrl
-import qtawesome as qta
+from ui.icons import get_icon
 from ui.title_bar import TitleBarWidget
 from ui.resize_filter import ResizeFilter
 from widgets.erd.widget import ERDWidget
@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         add_tab_btn.setObjectName("add_tab_btn")
         add_tab_btn.setIconSize(QSize(11, 11))
         add_tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_tab_btn.setIcon(qta.icon('fa5s.caret-down', color='#1f2937'))
+        add_tab_btn.setIcon(get_icon("msc.chevron-down", color='#1f2937'))
         add_tab_btn.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         add_tab_btn.setToolTip("New Tab Options")
 
@@ -193,12 +193,12 @@ class MainWindow(QMainWindow):
         new_tab_menu.setObjectName("new_tab_menu")
         new_tab_menu.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        action_new_worksheet = QAction(qta.icon('mdi.file-document-edit', scale_factor=1.3), "New Worksheet", self)
+        action_new_worksheet = QAction(get_icon("msc.file-code"), "New Worksheet", self)
         action_new_worksheet.setShortcut("Ctrl+N")
         action_new_worksheet.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action_new_worksheet.triggered.connect(self.add_tab)
 
-        self.action_new_erd = QAction(qta.icon('fa6s.sitemap'), "New ERD", self)
+        self.action_new_erd = QAction(get_icon("msc.type-hierarchy"), "New ERD", self)
         self.action_new_erd.setShortcut("Ctrl+Shift+E")
         self.action_new_erd.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self.action_new_erd.triggered.connect(self.add_erd_tab)
@@ -222,7 +222,7 @@ class MainWindow(QMainWindow):
         tab_list_btn = QPushButton("")
         tab_list_btn.setObjectName("tab_list_btn")
         tab_list_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        tab_list_btn.setIcon(qta.icon("mdi6.format-list-bulleted", color="#475569"))
+        tab_list_btn.setIcon(get_icon("msc.list-flat", color="#475569"))
         tab_list_btn.setIconSize(QSize(13, 13))
         tab_list_btn.setToolTip("Open Worksheets & Tabs")
 
@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
         erd_widget = ERDWidget({})
         erd_widget.is_empty_erd = True
         index = self.tab_widget.addTab(erd_widget, f"ERD {erd_number}")
-        self.tab_widget.setTabIcon(index, qta.icon('fa6s.sitemap'))
+        self.tab_widget.setTabIcon(index, get_icon("msc.type-hierarchy"))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
 
@@ -353,7 +353,7 @@ class MainWindow(QMainWindow):
         self.dashboard_widget = dashboard_widget
         tab_title = "Dashboard"
         index = self.tab_widget.addTab(dashboard_widget, tab_title)
-        self.tab_widget.setTabIcon(index, qta.icon('fa5s.th-large', color='#555555'))
+        self.tab_widget.setTabIcon(index, get_icon("msc.dashboard", color="#555555"))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
 
@@ -393,7 +393,7 @@ class MainWindow(QMainWindow):
             return widget
         widget = PropertiesWorkbench(self)
         index = self.tab_widget.addTab(widget, "Properties")
-        self.tab_widget.setTabIcon(index, qta.icon('mdi.tune'))
+        self.tab_widget.setTabIcon(index, get_icon("msc.settings"))
         return widget
 
     def _ensure_statistics_workbench(self):
@@ -402,7 +402,7 @@ class MainWindow(QMainWindow):
             return widget
         widget = StatisticsWorkbench(self)
         index = self.tab_widget.addTab(widget, "Statistics")
-        self.tab_widget.setTabIcon(index, qta.icon('mdi.chart-bar'))
+        self.tab_widget.setTabIcon(index, get_icon("msc.graph"))
         return widget
 
     def show_properties_workbench(self, item_data, obj_name):
@@ -888,7 +888,7 @@ class MainWindow(QMainWindow):
             if hasattr(cm, 'collapse_panel_btn'):
                 cm.collapse_panel_btn.setFixedSize(24, 24)
                 cm.collapse_panel_btn.setIcon(
-                    qta.icon('mdi.chevron-double-right', color='#6b7280')
+                    get_icon("msc.chevron-right", color='#6b7280')
                 )
                 cm.collapse_panel_btn.setToolTip("Expand Sidebar")
 
@@ -934,7 +934,7 @@ class MainWindow(QMainWindow):
             if hasattr(cm, 'collapse_panel_btn'):
                 cm.collapse_panel_btn.setFixedSize(24, 24)
                 cm.collapse_panel_btn.setIcon(
-                    qta.icon('mdi.chevron-double-left', color='#6b7280')
+                    get_icon("msc.chevron-left", color='#6b7280')
                 )
                 cm.collapse_panel_btn.setToolTip("Collapse Sidebar")
 

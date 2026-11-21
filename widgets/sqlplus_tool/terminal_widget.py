@@ -14,7 +14,7 @@ import re
 import threading
 import time
 
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
@@ -211,11 +211,11 @@ class SQLPlusToolWidget(QWidget):
 
         # 3. Action buttons
         for icon_key, label, slot in (
-            ("fa5s.copy", "Copy Output", self._copy_output),
-            ("fa5s.trash-alt", "Clear", self._clear),
-            ("fa5s.redo-alt", "Reconnect", self._reconnect),
+            ("msc.copy", "Copy Output", self._copy_output),
+            ("msc.trash", "Clear", self._clear),
+            ("msc.sync", "Reconnect", self._reconnect),
         ):
-            btn = CompactButton(qta.icon(icon_key, color="#4b5563"), label)
+            btn = CompactButton(get_icon(icon_key, color="#4b5563"), label)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
@@ -631,10 +631,7 @@ def open_sqlplus_tool(conn: dict, manager=None) -> SQLPlusToolWidget:
     widget = SQLPlusToolWidget(conn, oracle_bin_path=oracle_bin_path, manager=manager)
 
     if tab_widget is not None:
-        try:
-            icon = qta.icon("mdi.database-cog", color="#fab387")
-        except Exception:
-            icon = qta.icon("fa5s.terminal", color="#fab387")
+        icon = get_icon("msc.terminal", color="#fab387")
 
         service = (conn or {}).get("service_name") or (conn or {}).get("database") or "oracle"
         index = tab_widget.addTab(widget, icon, f"SQL*Plus – {service}")

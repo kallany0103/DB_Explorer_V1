@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import get_icon
 
 _AVATAR_SIZE = 20
 _RENDER_DPR = 2
@@ -56,7 +56,7 @@ class UserControl(QWidget):
             pixmap = photo if photo is not None else _letter_avatar_pixmap(initial, _AVATAR_SIZE)
             self.setToolTip(f"Signed in as {name}")
         else:
-            pixmap = qta.icon("mdi.account-circle-outline", color="#555555").pixmap(
+            pixmap = get_icon("msc.account", color="#555555").pixmap(
                 _AVATAR_SIZE * _RENDER_DPR, _AVATAR_SIZE * _RENDER_DPR
             )
             self.setToolTip("Sign in")
@@ -91,10 +91,10 @@ class TitleBarWidget(QWidget):
         self._drag_pos: QPoint | None = None
 
         # Keep window controls minimal and consistent with the app's icon style.
-        self._icon_minimize = qta.icon("msc.chrome-minimize", color="#333333")
-        self._icon_maximize = qta.icon("msc.chrome-maximize", color="#333333")
-        self._icon_restore = qta.icon("msc.chrome-restore", color="#333333")
-        self._icon_close = qta.icon("msc.close", color="#333333")
+        self._icon_minimize = get_icon("msc.chrome-minimize", color="#333333")
+        self._icon_maximize = get_icon("msc.chrome-maximize", color="#333333")
+        self._icon_restore = get_icon("msc.chrome-restore", color="#333333")
+        self._icon_close = get_icon("msc.close", color="#333333")
 
         self.setObjectName("titleBar")
         self.setFixedHeight(self._TITLE_BAR_HEIGHT)
@@ -132,7 +132,7 @@ class TitleBarWidget(QWidget):
 
         self._btn_settings = QPushButton()
         self._btn_settings.setObjectName("titleBarBtnSettings")
-        self._btn_settings.setIcon(qta.icon("mdi.cog-outline", color="#555555"))
+        self._btn_settings.setIcon(get_icon("msc.gear", color="#555555"))
         self._btn_settings.setIconSize(QSize(20, 20))
         self._btn_settings.setFixedSize(btn_size)
         self._btn_settings.setToolTip("Settings")
@@ -301,4 +301,4 @@ def _letter_avatar_pixmap(initial: str, size: int = 20) -> QPixmap:
 def _chevron_icon_pixmap(size: int = 12) -> QPixmap:
     """Render the dropdown chevron at 2x; the label scales it down to fit."""
     physical = size * _RENDER_DPR
-    return qta.icon("fa5s.chevron-down", color="#555555").pixmap(physical, physical)
+    return get_icon("msc.chevron-down", color="#555555").pixmap(physical, physical)
