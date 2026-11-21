@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from ui.menu_style import apply_menu_style
 from ui.messages_style import (
@@ -116,7 +116,7 @@ class MessageCard(QWidget):
         header_layout.addStretch()
 
         self.copy_btn = QToolButton()
-        self.copy_btn.setIcon(qta.icon("fa5.copy", color=COLOR_TIMESTAMP))
+        self.copy_btn.setIcon(get_icon(AppIcons.COPY))
         self.copy_btn.setIconSize(QSize(13, 13))
         self.copy_btn.setStyleSheet(COPY_BUTTON_STYLE)
         self.copy_btn.setToolTip("Copy message")
@@ -165,12 +165,12 @@ class MessageCard(QWidget):
         else:
             QGuiApplication.clipboard().setText(self.text)
 
-        self.copy_btn.setIcon(qta.icon("fa5s.check", color="#10b981"))
+        self.copy_btn.setIcon(get_icon("msc.check", color="#10b981"))
         self.copy_btn.setToolTip("Copied!")
         QTimer.singleShot(1500, self._reset_copy_icon)
 
     def _reset_copy_icon(self) -> None:
-        self.copy_btn.setIcon(qta.icon("fa5.copy", color=COLOR_TIMESTAMP))
+        self.copy_btn.setIcon(get_icon(AppIcons.COPY))
         self.copy_btn.setToolTip("Copy message")
 
     def paintEvent(self, event) -> None:

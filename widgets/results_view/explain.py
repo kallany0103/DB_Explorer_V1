@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
     QWidget
 )
-import qtawesome as qta
+from ui.icons import get_icon
 
 from ui.components import IconButton, SecondaryButton
 
@@ -91,19 +91,19 @@ class ExplainVisualizer(QWidget):
         toolbar_layout.setSpacing(6)
         toolbar_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
-        self.btn_zoom_in = IconButton(qta.icon("fa5s.search-plus", color="#555555"), "Zoom In")
+        self.btn_zoom_in = IconButton(get_icon("msc.zoom-in", color="#555555"), "Zoom In")
         self.btn_zoom_in.setFixedSize(24, 24)
         self.btn_zoom_in.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_zoom_in.clicked.connect(lambda: self.graph_view.scale(1.2, 1.2))
         
-        self.btn_zoom_out = IconButton(qta.icon("fa5s.search-minus", color="#555555"), "Zoom Out")
+        self.btn_zoom_out = IconButton(get_icon("msc.zoom-out", color="#555555"), "Zoom Out")
         self.btn_zoom_out.setFixedSize(24, 24)
         self.btn_zoom_out.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_zoom_out.clicked.connect(lambda: self.graph_view.scale(0.8, 0.8))
         
         self.btn_reset = QPushButton("Reset")
         self.btn_reset.setObjectName("explainResetBtn")
-        self.btn_reset.setIcon(qta.icon("fa5s.expand-arrows-alt", color="#555555"))
+        self.btn_reset.setIcon(get_icon("msc.screen-full", color="#555555"))
         self.btn_reset.setIconSize(QSize(12, 12))
         self.btn_reset.setToolTip("Reset view zoom and position")
         self.btn_reset.setFixedHeight(24)

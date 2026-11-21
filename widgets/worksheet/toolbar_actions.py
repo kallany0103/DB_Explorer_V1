@@ -1,31 +1,31 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QIcon
-import qtawesome as qta
+from PySide6.QtGui import QAction
+from ui.icons import AppIcons, get_icon
 
 
 def build_worksheet_toolbar_actions(manager):
     main_window = manager.main_window
 
     manager.ws_open_file_action = QAction(
-        qta.icon("fa5s.folder-open", color="#555555"), "Open File", manager
+        get_icon(AppIcons.OPEN_FILE), "Open File", manager
     )
     manager.ws_open_file_action.setToolTip("Open SQL File")
     manager.ws_open_file_action.triggered.connect(main_window.open_sql_file)
 
     manager.ws_save_as_action = QAction(
-        qta.icon("fa5s.save", color="#555555"), "Save As", manager
+        get_icon(AppIcons.SAVE), "Save As", manager
     )
     manager.ws_save_as_action.setToolTip("Save SQL File As")
     manager.ws_save_as_action.triggered.connect(main_window.save_sql_file_as)
 
     manager.ws_execute_action = QAction(
-        qta.icon("fa5s.play", color="#555555"), "Execute", manager
+        get_icon(AppIcons.EXECUTE), "Execute", manager
     )
     manager.ws_execute_action.setToolTip("Execute Query (Ctrl+Enter)")
     manager.ws_execute_action.triggered.connect(main_window.execute_query)
 
     manager.ws_execute_new_tab_action = QAction(
-        qta.icon("mdi6.play-box-multiple", color="#555555"), "Execute in New Output Tab", manager
+        get_icon(AppIcons.EXECUTE_NEW_TAB), "Execute in New Output Tab", manager
     )
     manager.ws_execute_new_tab_action.setToolTip("Execute in New Output Tab (Ctrl+Shift+Enter)")
     manager.ws_execute_new_tab_action.triggered.connect(
@@ -33,7 +33,7 @@ def build_worksheet_toolbar_actions(manager):
     )
 
     manager.ws_cancel_action = QAction(
-        QIcon("assets/cancel_icon.png"), "Cancel", manager
+        get_icon(AppIcons.CANCEL), "Cancel", manager
     )
     manager.ws_cancel_action.setToolTip("Cancel Running Query (Alt+End)")
     manager.ws_cancel_action.triggered.connect(main_window.cancel_current_query)
@@ -46,176 +46,175 @@ def build_worksheet_toolbar_actions(manager):
     )
 
     manager.ws_describe_object_action = QAction(
-        qta.icon("fa5s.info-circle", color="#555555"), "Describe", manager
+        get_icon(AppIcons.DESCRIBE_OBJECT), "Describe", manager
     )
     manager.ws_describe_object_action.setToolTip("Describe Table or Schema (F4)")
     manager.ws_describe_object_action.setShortcut("F4")
     manager.ws_describe_object_action.triggered.connect(main_window.describe_object)
 
     manager.ws_quick_describe_action = QAction(
-        qta.icon("fa5s.search-plus", color="#555555"), "Quick Describe", manager
+        get_icon(AppIcons.QUICK_DESCRIBE), "Quick Describe", manager
     )
     manager.ws_quick_describe_action.setToolTip("Quick Describe (Ctrl+D)")
     manager.ws_quick_describe_action.setShortcut("Ctrl+D")
     manager.ws_quick_describe_action.triggered.connect(main_window.quick_describe)
 
     manager.ws_describe_action = QAction(
-        qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager
+        get_icon(AppIcons.DESCRIBE_QUERY), "Describe (parse) select query", manager
     )
     manager.ws_describe_action.setToolTip("Describe (parse) select query (Shift+F4)")
     manager.ws_describe_action.setShortcut("Shift+F4")
     manager.ws_describe_action.triggered.connect(main_window.describe_query)
 
     manager.ws_explain_ai_action = QAction(
-        qta.icon("fa5s.magic", color="#555555"), "Explain code using AI", manager
+        get_icon(AppIcons.EXPLAIN_AI), "Explain code using AI", manager
     )
     manager.ws_explain_ai_action.setToolTip("Explain code using AI (Ctrl+Alt+E)")
     manager.ws_explain_ai_action.setShortcut("Ctrl+Alt+E")
     manager.ws_explain_ai_action.triggered.connect(main_window.explain_code_using_ai)
 
     manager.ws_optimize_action = QAction(
-        qta.icon("fa5s.tachometer-alt", color="#555555"), "Optimize SQL", manager
+        get_icon(AppIcons.OPTIMIZE_QUERY), "Optimize SQL", manager
     )
     manager.ws_optimize_action.setToolTip("Optimize SQL (Ctrl+Alt+O)")
     manager.ws_optimize_action.setShortcut("Ctrl+Alt+O")
     manager.ws_optimize_action.triggered.connect(main_window.optimize_query)
 
     manager.ws_optimize_batch_action = QAction(
-        qta.icon("fa5s.tasks", color="#555555"), "Optimize Script Workload", manager
+        get_icon(AppIcons.OPTIMIZE_BATCH), "Optimize Script Workload", manager
     )
     manager.ws_optimize_batch_action.setToolTip("Optimize Entire Script Workload (Ctrl+Shift+O)")
     manager.ws_optimize_batch_action.setShortcut("Ctrl+Shift+O")
     manager.ws_optimize_batch_action.triggered.connect(manager.optimize_workload_script)
 
-
     manager.ws_undo_action = QAction(
-        qta.icon("fa5s.undo", color="#555555"), "Undo", manager
+        get_icon(AppIcons.UNDO), "Undo", manager
     )
     manager.ws_undo_action.setShortcut("Ctrl+Z")
     manager.ws_undo_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_undo_action.triggered.connect(main_window.undo_text)
 
     manager.ws_redo_action = QAction(
-        qta.icon("fa5s.redo", color="#555555"), "Redo", manager
+        get_icon(AppIcons.REDO), "Redo", manager
     )
     manager.ws_redo_action.setShortcut("Ctrl+Y")
     manager.ws_redo_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_redo_action.triggered.connect(main_window.redo_text)
 
     manager.ws_cut_action = QAction(
-        qta.icon("fa5s.cut", color="#555555"), "Cut", manager
+        get_icon(AppIcons.CUT), "Cut", manager
     )
     manager.ws_cut_action.setShortcut("Ctrl+X")
     manager.ws_cut_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_cut_action.triggered.connect(main_window.cut_text)
 
     manager.ws_copy_action = QAction(
-        qta.icon("fa5s.copy", color="#555555"), "Copy", manager
+        get_icon(AppIcons.COPY), "Copy", manager
     )
     manager.ws_copy_action.setShortcut("Ctrl+C")
     manager.ws_copy_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_copy_action.triggered.connect(main_window.copy_text)
 
     manager.ws_paste_action = QAction(
-        qta.icon("fa5s.paste", color="#555555"), "Paste", manager
+        get_icon(AppIcons.PASTE), "Paste", manager
     )
     manager.ws_paste_action.setShortcut("Ctrl+V")
     manager.ws_paste_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_paste_action.triggered.connect(main_window.paste_text)
 
     manager.ws_select_all_action = QAction(
-        QIcon("assets/select_all.svg"), "Select ALL", manager
+        get_icon(AppIcons.SELECT_ALL), "Select ALL", manager
     )
     manager.ws_select_all_action.setShortcut("Ctrl+A")
     manager.ws_select_all_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_select_all_action.triggered.connect(main_window.select_all_text)
 
     manager.ws_find_action = QAction(
-        qta.icon("fa5s.search", color="#555555"), "Find...", manager
+        get_icon(AppIcons.FIND), "Find...", manager
     )
     manager.ws_find_action.setShortcut("Ctrl+F")
     manager.ws_find_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_find_action.triggered.connect(lambda: main_window.open_find_dialog(False))
 
     manager.ws_replace_action = QAction(
-        qta.icon("fa5s.sync-alt", color="#555555"), "Replace...", manager
+        get_icon(AppIcons.REPLACE), "Replace...", manager
     )
     manager.ws_replace_action.setShortcut("Ctrl+H")
     manager.ws_replace_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_replace_action.triggered.connect(lambda: main_window.open_find_dialog(True))
 
     manager.ws_goto_line_action = QAction(
-        QIcon("assets/goto_line.svg"), "Goto Line", manager
+        get_icon(AppIcons.GOTO_LINE), "Goto Line", manager
     )
     manager.ws_goto_line_action.setShortcut("Ctrl+G")
     manager.ws_goto_line_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_goto_line_action.triggered.connect(main_window.goto_line)
 
     manager.ws_comment_block_action = QAction(
-        QIcon("assets/comment.svg"), "Comment Block", manager
+        get_icon(AppIcons.COMMENT), "Comment Block", manager
     )
     manager.ws_comment_block_action.setShortcut("Ctrl+/")
     manager.ws_comment_block_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_comment_block_action.triggered.connect(main_window.comment_block)
 
     manager.ws_uncomment_block_action = QAction(
-        QIcon("assets/uncomment.svg"), "Uncomment Block", manager
+        get_icon(AppIcons.UNCOMMENT), "Uncomment Block", manager
     )
     manager.ws_uncomment_block_action.setShortcut("Ctrl+Shift+/")
     manager.ws_uncomment_block_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_uncomment_block_action.triggered.connect(main_window.uncomment_block)
 
     manager.ws_upper_case_action = QAction(
-        QIcon("assets/uppercase.svg"), "Upper Case", manager
+        get_icon(AppIcons.UPPERCASE), "Upper Case", manager
     )
     manager.ws_upper_case_action.setShortcut("Ctrl+Shift+U")
     manager.ws_upper_case_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_upper_case_action.triggered.connect(main_window.upper_case_text)
 
     manager.ws_lower_case_action = QAction(
-        QIcon("assets/lowercase.svg"), "Lower Case", manager
+        get_icon(AppIcons.LOWERCASE), "Lower Case", manager
     )
     manager.ws_lower_case_action.setShortcut("Ctrl+Shift+L")
     manager.ws_lower_case_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_lower_case_action.triggered.connect(main_window.lower_case_text)
 
     manager.ws_initial_caps_action = QAction(
-        qta.icon("mdi.format-letter-case", color="#555555"), "Initial Caps", manager
+        get_icon(AppIcons.INITIAL_CAPS), "Initial Caps", manager
     )
     manager.ws_initial_caps_action.setShortcut("Ctrl+I")
     manager.ws_initial_caps_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_initial_caps_action.triggered.connect(main_window.initial_caps_text)
 
     manager.ws_clear_all_action = QAction(
-        qta.icon("fa5s.trash-alt", color="#d93025"), "Clear All", manager
+        get_icon(AppIcons.CLEAR_ALL), "Clear All", manager
     )
     manager.ws_clear_all_action.setShortcut("F7")
     manager.ws_clear_all_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_clear_all_action.triggered.connect(main_window.clear_query_text)
 
     manager.ws_format_sql_action = QAction(
-        qta.icon("mdi.auto-fix", color="#555555"), "Format SQL", manager
+        get_icon(AppIcons.FORMAT_SQL), "Format SQL", manager
     )
     manager.ws_format_sql_action.setShortcut("Ctrl+Shift+F")
     manager.ws_format_sql_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
     manager.ws_format_sql_action.triggered.connect(main_window.format_sql_text)
 
     manager.ws_commit_action = QAction(
-        qta.icon("mdi6.database-check", color="#28a745"), "Commit", manager
+        get_icon(AppIcons.COMMIT), "Commit", manager
     )
     manager.ws_commit_action.setToolTip("Commit Transaction")
     manager.ws_commit_action.setEnabled(False)
     manager.ws_commit_action.triggered.connect(manager.commit_transaction)
 
     manager.ws_rollback_action = QAction(
-        qta.icon("mdi.database-clock", color="#dc3545"), "Rollback", manager
+        get_icon(AppIcons.ROLLBACK), "Rollback", manager
     )
     manager.ws_rollback_action.setToolTip("Rollback Transaction")
     manager.ws_rollback_action.setEnabled(False)
     manager.ws_rollback_action.triggered.connect(manager.rollback_transaction)
 
     manager.ws_autocommit_action = QAction(
-        qta.icon("fa5s.lock-open", color="#555555"), "Auto-Commit", manager
+        get_icon(AppIcons.AUTOCOMMIT), "Auto-Commit", manager
     )
     manager.ws_autocommit_action.setToolTip("Auto-Commit (Toggle)")
     manager.ws_autocommit_action.setCheckable(True)

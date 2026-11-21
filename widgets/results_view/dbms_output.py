@@ -2,6 +2,7 @@
 
 import os
 from PySide6.QtCore import Qt, QTimer
+from ui.icons import AppIcons, get_icon
 from PySide6.QtGui import QAction, QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -15,7 +16,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
 
 import db
 from ui.menu_style import apply_menu_style
@@ -120,12 +120,12 @@ def create_dbms_output_view(manager, tab_content: QWidget) -> QWidget:
         toggle_btn.setChecked(enabled)
         toggle_btn.blockSignals(False)
         if enabled:
-            toggle_btn.setIcon(qta.icon("fa5s.power-off", color="#16a34a"))
+            toggle_btn.setIcon(get_icon("msc.circle-filled", color="#16a34a"))
             toggle_btn.setToolTip("Turn Output Off (currently On)")
             status_label.setText("DBMS_OUTPUT: ON")
             status_label.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #16a34a;")
         else:
-            toggle_btn.setIcon(qta.icon("fa5s.power-off", color="#dc2626"))
+            toggle_btn.setIcon(get_icon("msc.circle-slash", color="#dc2626"))
             toggle_btn.setToolTip("Turn Output On (currently Off)")
             status_label.setText("DBMS_OUTPUT: OFF")
             status_label.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #dc2626;")
@@ -165,7 +165,7 @@ def create_dbms_output_view(manager, tab_content: QWidget) -> QWidget:
 
     # Clear button
     clear_btn = QToolButton()
-    clear_btn.setIcon(qta.icon("fa5s.trash-alt", color="#64748B"))
+    clear_btn.setIcon(get_icon(AppIcons.CLEAR_ALL))
     clear_btn.setToolTip("Clear DBMS Output")
     clear_btn.setAutoRaise(True)
     clear_btn.setFixedSize(24, 24)
@@ -173,7 +173,7 @@ def create_dbms_output_view(manager, tab_content: QWidget) -> QWidget:
 
     # Copy All button
     copy_btn = QToolButton()
-    copy_btn.setIcon(qta.icon("fa5s.copy", color="#64748B"))
+    copy_btn.setIcon(get_icon(AppIcons.COPY))
     copy_btn.setToolTip("Copy All to Clipboard")
     copy_btn.setAutoRaise(True)
     copy_btn.setFixedSize(24, 24)
@@ -181,7 +181,7 @@ def create_dbms_output_view(manager, tab_content: QWidget) -> QWidget:
 
     # Save to file button
     save_btn = QToolButton()
-    save_btn.setIcon(qta.icon("fa5s.download", color="#64748B"))
+    save_btn.setIcon(get_icon("msc.cloud-download"))
     save_btn.setToolTip("Export Output to File")
     save_btn.setAutoRaise(True)
     save_btn.setFixedSize(24, 24)

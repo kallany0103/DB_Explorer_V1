@@ -16,7 +16,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAction
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from db.query_context import resolve_writable_table_context
 from widgets.results_view.notifications import add_connection_event
@@ -236,11 +236,11 @@ class ResultsManager(QObject):
                     count += 1
                 save_btn.setToolTip(f"Save changes ({count} pending)")
                 if hasattr(save_btn, "setIcon"):
-                    save_btn.setIcon(qta.icon("fa5s.save", color="#2563EB", color_disabled="#CBD5E1"))
+                    save_btn.setIcon(get_icon(AppIcons.SAVE, color="#2563EB"))
             else:
                 save_btn.setToolTip("Save changes (No unsaved changes)")
                 if hasattr(save_btn, "setIcon"):
-                    save_btn.setIcon(qta.icon("fa5s.save", color="#475569", color_disabled="#CBD5E1"))
+                    save_btn.setIcon(get_icon(AppIcons.SAVE))
             if hasattr(save_btn, "style"):
                 save_btn.style().unpolish(save_btn)
                 save_btn.style().polish(save_btn)
@@ -277,9 +277,9 @@ class ResultsManager(QObject):
         """Update the ServiceNow display-label icon and tooltip for ON/OFF state."""
         if hasattr(sn_btn, "setIcon"):
             if is_checked:
-                sn_btn.setIcon(qta.icon("mdi.label", color="#0284C7", color_disabled="#CBD5E1"))
+                sn_btn.setIcon(get_icon("msc.tag", color="#0284C7"))
             else:
-                sn_btn.setIcon(qta.icon("mdi.label-off-outline", color="#475569", color_disabled="#CBD5E1"))
+                sn_btn.setIcon(get_icon("msc.tag", color="#475569"))
         sn_btn.setToolTip(
             "ServiceNow Display Labels: ON (showing readable names — click for raw sys_id/codes)"
             if is_checked
@@ -790,13 +790,13 @@ class ResultsManager(QObject):
         selected_indexes = results_table.selectedIndexes()
         if selected_indexes:
             inspect_action = QAction("View / Edit Cell...", self.main_window)
-            inspect_action.setIcon(qta.icon("fa5s.search-plus", color="#2563EB"))
+            inspect_action.setIcon(get_icon("msc.zoom-in", color="#2563EB"))
             inspect_action.setShortcut("Space")
             inspect_action.triggered.connect(lambda: self.open_cell_value_viewer(results_table))
             menu.addAction(inspect_action)
 
             summarize_action = QAction("Summarize Selected Cells...", self.main_window)
-            summarize_action.setIcon(qta.icon("fa5s.calculator", color="#2563EB"))
+            summarize_action.setIcon(get_icon("msc.symbol-numeric", color="#2563EB"))
             summarize_action.triggered.connect(lambda: self.show_cell_summary_dialog(results_table))
             menu.addAction(summarize_action)
             menu.addSeparator()

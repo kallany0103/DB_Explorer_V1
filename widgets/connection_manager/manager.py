@@ -4,8 +4,8 @@ Package-native implementation used as the primary ConnectionManager entrypoint.
 """
 
 import traceback
-import qtawesome as qta
 from PySide6.QtCore import Qt, QModelIndex, QTimer
+from ui.icons import get_icon
 from PySide6.QtGui import QStandardItem
 from PySide6.QtWidgets import (
     QWidget,
@@ -66,19 +66,11 @@ class ConnectionManager(QWidget):
         self._current_conn_id = None
         self._skip_expansion_restore = False
 
-        self.erd_icon_key = "fa6s.sitemap"
-        self.erd_icon_fallback_key = "fa5s.project-diagram"
-
         self.init_ui()
         self.load_data()
 
     def _get_erd_tab_icon(self):
-        for icon_key in (self.erd_icon_key, self.erd_icon_fallback_key):
-            try:
-                return qta.icon(icon_key)
-            except Exception:
-                continue
-        return qta.icon("fa5s.project-diagram")
+        return get_icon("msc.type-hierarchy")
 
     def _build_erd_tab_title(self, display_name, schema_name, table_name):
         if schema_name and table_name:
@@ -738,7 +730,7 @@ class ConnectionManager(QWidget):
             self._schema_spinner.stop()
             self.schema_model.clear()
             self.schema_model.setHorizontalHeaderLabels(["Name", "Type"])
-            err_icon = qta.icon("mdi.cloud-off-outline", color="#EF4444")
+            err_icon = get_icon("msc.debug-disconnect", color="#EF4444")
             err_item = QStandardItem(err_icon, "Cannot connect to instance")
             err_item.setToolTip(message)
             err_item.setEditable(False)

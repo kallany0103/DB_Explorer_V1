@@ -9,7 +9,7 @@ from PySide6.QtGui import (
     QBrush,
     QFontMetrics,
 )
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QAbstractItemView,
@@ -260,7 +260,7 @@ def create_readonly_banner(parent=None):
 
     icon_label = QLabel()
     icon_label.setObjectName("readonly_banner_icon")
-    icon_label.setPixmap(qta.icon("fa5s.lock", color="#B45309").pixmap(12, 12))
+    icon_label.setPixmap(get_icon("msc.lock", color="#B45309").pixmap(12, 12))
     layout.addWidget(icon_label)
 
     msg_label = QLabel("")
@@ -270,7 +270,7 @@ def create_readonly_banner(parent=None):
     close_btn = QPushButton()
     close_btn.setObjectName("readonly_banner_close")
     close_btn.setFixedSize(18, 18)
-    close_btn.setIcon(qta.icon("fa5s.times", color="#B45309"))
+    close_btn.setIcon(get_icon("msc.close", color="#B45309"))
     close_btn.setIconSize(QSize(10, 10))
     close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     close_btn.setToolTip("Dismiss notice")

@@ -12,6 +12,7 @@ from ui.components import (
 )
 from ui.menu_style import apply_menu_style
 from ui.feature_flags import is_feature_enabled
+from ui.icons import AppIcons, get_icon
 
 
 
@@ -150,12 +151,12 @@ class WorksheetToolbar(QWidget):
 
         layout.addWidget(manager.create_vertical_separator())
 
-        self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo = ActionToolButton("", get_icon("msc.graph"))
         self.explain_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.explain_combo.setFixedWidth(48)
         self.explain_combo.setToolTip("Explain Query")
-        self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
-        self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo.addItem("Explain Analyze", get_icon("msc.graph"))
+        self.explain_combo.addItem("Explain (Plan)", get_icon("msc.graph"))
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
         layout.addWidget(self.explain_combo)
 
@@ -215,7 +216,7 @@ class WorksheetToolbar(QWidget):
 
 
         # Edit Menu
-        self.edit_btn = ActionToolButton("", qta.icon("fa5s.edit", color="#555555"))
+        self.edit_btn = ActionToolButton("", get_icon("msc.edit"))
         self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.edit_btn.setFixedWidth(48)
         self.edit_btn.setToolTip("Edit Operations")
@@ -229,7 +230,7 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Rows Limit
-        self._row_limit_icon = qta.icon("mdi6.table-row", color="#555555")
+        self._row_limit_icon = get_icon("msc.table")
         self.rows_limit_combo = DropdownToolButton("No Limit", self._row_limit_icon)
         self.rows_limit_combo.setObjectName("rows_limit_combo")
         self.rows_limit_combo.setFixedWidth(58)
@@ -410,7 +411,7 @@ class ResultsInfoToolbar(QWidget):
             actions[0].triggered.connect(manager.toggle_table_search)
 
         self.table_search_btn = IconButton(
-            qta.icon("fa5s.search", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.search"),
             "Search in Results",
         )
         self.table_search_btn.setObjectName("table_search_btn")
@@ -430,7 +431,7 @@ class ResultsInfoToolbar(QWidget):
 
         # 2. Row Actions Group
         self.add_row_btn = IconButton(
-            qta.icon("ri.play-list-add-fill", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.plus"),
             "Add new row",
         )
         self.add_row_btn.setObjectName("add_row_btn")
@@ -440,7 +441,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.add_row_btn)
 
         self.save_row_btn = IconButton(
-            qta.icon("fa5s.save", color="#475569", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.SAVE),
             "Save changes",
         )
         self.save_row_btn.setObjectName("save_row_btn")
@@ -450,7 +451,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.save_row_btn)
 
         self.discard_row_btn = IconButton(
-            qta.icon("fa5s.undo", color="#475569", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.UNDO),
             "Discard unsaved changes",
         )
         self.discard_row_btn.setObjectName("discard_row_btn")
@@ -461,7 +462,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.discard_row_btn)
 
         self.delete_row_btn = IconButton(
-            qta.icon("fa5s.trash-alt", color="#DC2626", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.CLEAR_ALL),
             "Delete selected row(s)",
         )
         self.delete_row_btn.setObjectName("delete_row_btn")
@@ -475,7 +476,7 @@ class ResultsInfoToolbar(QWidget):
 
         # 3. Export Group
         self.copy_btn = IconButton(
-            qta.icon("fa5s.copy", color="#475569", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.COPY),
             "Copy selected cells (Ctrl+C)",
         )
         self.copy_btn.setObjectName("copy_btn")
@@ -485,7 +486,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.copy_btn)
 
         self.download_btn = IconButton(
-            qta.icon("fa5s.file-download", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.cloud-download"),
             "Download query result",
         )
         self.download_btn.setObjectName("download_btn")
@@ -495,7 +496,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.download_btn)
 
         self.calc_btn = IconButton(
-            qta.icon("fa5s.calculator", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.symbol-numeric"),
             "Turn ON/OFF live cell summary",
         )
         self.calc_btn.setObjectName("calc_btn")
@@ -507,7 +508,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.calc_btn)
 
         self.sn_display_values_btn = IconButton(
-            qta.icon("mdi.label", color="#0284C7", color_disabled="#CBD5E1"),
+            get_icon("msc.tag"),
             "ServiceNow Display Labels: ON (showing readable names — click for raw sys_id/codes)",
         )
         self.sn_display_values_btn.setObjectName("sn_display_values_btn")
@@ -522,7 +523,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.sn_display_values_btn)
 
         self.sn_resync_btn = IconButton(
-            qta.icon("mdi.cloud-sync", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.sync"),
             "Re-sync table(s) from ServiceNow",
         )
         self.sn_resync_btn.setObjectName("sn_resync_btn")
@@ -539,7 +540,7 @@ class ResultsInfoToolbar(QWidget):
 
         # 3. Pagination and Limit Controls (icons only, zero clutter)
         self.rows_setting_btn = IconButton(
-            qta.icon("fa5s.list-ul", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.list-flat"),
             "Row limit & offset — Click to configure",
         )
         self.rows_setting_btn.setObjectName("rows_setting_btn")
@@ -549,7 +550,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.rows_setting_btn)
 
         self.prev_btn = IconButton(
-            qta.icon("fa5s.chevron-left", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.chevron-left"),
             "Previous page (Already at page 1)",
         )
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -560,7 +561,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.prev_btn)
 
         self.next_btn = IconButton(
-            qta.icon("fa5s.chevron-right", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.chevron-right"),
             "Next page",
         )
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)

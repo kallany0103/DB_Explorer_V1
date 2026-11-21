@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon, COLOR_AMBER
 
 from ui.components import PrimaryButton, SecondaryButton
 from ui.dialog_utils import fit_dialog_to_screen
@@ -493,7 +493,7 @@ class CellValueViewerDialog(QDialog):
         # Prettify Button
         self.prettify_btn = QToolButton(top_bar)
         self.prettify_btn.setObjectName("cellViewerPrettifyBtn")
-        self.prettify_btn.setIcon(qta.icon("fa5s.indent", color="#2563EB"))
+        self.prettify_btn.setIcon(get_icon("msc.json", color="#2563EB"))
         self.prettify_btn.setText("Format JSON")
         self.prettify_btn.setToolTip("Format / Indent JSON (Ctrl+Shift+F)")
         self.prettify_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -503,7 +503,7 @@ class CellValueViewerDialog(QDialog):
         # Minify Button
         self.minify_btn = QToolButton(top_bar)
         self.minify_btn.setObjectName("cellViewerMinifyBtn")
-        self.minify_btn.setIcon(qta.icon("fa5s.compress-alt", color="#475569"))
+        self.minify_btn.setIcon(get_icon("msc.fold", color="#475569"))
         self.minify_btn.setText("Minify")
         self.minify_btn.setToolTip("Remove whitespace and compact JSON")
         self.minify_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -515,7 +515,7 @@ class CellValueViewerDialog(QDialog):
         self.wrap_btn.setObjectName("cellViewerWrapBtn")
         self.wrap_btn.setCheckable(True)
         self.wrap_btn.setChecked(True)
-        self.wrap_btn.setIcon(qta.icon("fa5s.align-left", color="#475569"))
+        self.wrap_btn.setIcon(get_icon("msc.word-wrap", color="#475569"))
         self.wrap_btn.setText("Wrap")
         self.wrap_btn.setToolTip("Toggle Word Wrap")
         self.wrap_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -526,7 +526,7 @@ class CellValueViewerDialog(QDialog):
         self.search_toggle_btn = QToolButton(top_bar)
         self.search_toggle_btn.setObjectName("cellViewerSearchToggleBtn")
         self.search_toggle_btn.setCheckable(True)
-        self.search_toggle_btn.setIcon(qta.icon("fa5s.search", color="#475569"))
+        self.search_toggle_btn.setIcon(get_icon(AppIcons.FIND, color="#475569"))
         self.search_toggle_btn.setText("Find")
         self.search_toggle_btn.setToolTip("Find in text (Ctrl+F)")
         self.search_toggle_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -544,7 +544,7 @@ class CellValueViewerDialog(QDialog):
             ro_badge_layout.setSpacing(4)
             ro_icon = QLabel(ro_badge)
             ro_icon.setObjectName("cellViewerRoIcon")
-            ro_icon.setPixmap(qta.icon("fa5s.lock", color="#D97706").pixmap(12, 12))
+            ro_icon.setPixmap(get_icon("msc.lock", color=COLOR_AMBER).pixmap(12, 12))
             ro_label = QLabel("Read-Only", ro_badge)
             ro_label.setObjectName("cellViewerRoLabel")
             ro_badge_layout.addWidget(ro_icon)
@@ -566,7 +566,7 @@ class CellValueViewerDialog(QDialog):
         self.search_input.setObjectName("cellViewerSearchInput")
         self.search_input.setPlaceholderText("Find in text...")
         self.search_input.addAction(
-            qta.icon("fa5s.search", color="#94A3B8"),
+            get_icon(AppIcons.FIND, color="#94A3B8"),
             QLineEdit.ActionPosition.LeadingPosition,
         )
         self.search_input.setClearButtonEnabled(True)
@@ -581,14 +581,14 @@ class CellValueViewerDialog(QDialog):
 
         self.prev_match_btn = QToolButton(self.search_bar)
         self.prev_match_btn.setObjectName("cellViewerPrevMatchBtn")
-        self.prev_match_btn.setIcon(qta.icon("fa5s.chevron-up", color="#475569"))
+        self.prev_match_btn.setIcon(get_icon("msc.chevron-up", color="#475569"))
         self.prev_match_btn.setToolTip("Previous match (Shift+F3)")
         self.prev_match_btn.clicked.connect(self.find_prev)
         search_layout.addWidget(self.prev_match_btn)
 
         self.next_match_btn = QToolButton(self.search_bar)
         self.next_match_btn.setObjectName("cellViewerNextMatchBtn")
-        self.next_match_btn.setIcon(qta.icon("fa5s.chevron-down", color="#475569"))
+        self.next_match_btn.setIcon(get_icon("msc.chevron-down", color="#475569"))
         self.next_match_btn.setToolTip("Next match (F3 or Enter)")
         self.next_match_btn.clicked.connect(self.find_next)
         search_layout.addWidget(self.next_match_btn)
@@ -600,7 +600,7 @@ class CellValueViewerDialog(QDialog):
 
         close_search_btn = QToolButton(self.search_bar)
         close_search_btn.setObjectName("cellViewerCloseSearchBtn")
-        close_search_btn.setIcon(qta.icon("fa5s.times", color="#64748B"))
+        close_search_btn.setIcon(get_icon("msc.close", color="#64748B"))
         close_search_btn.setToolTip("Close find bar (Esc)")
         close_search_btn.clicked.connect(lambda: self.search_toggle_btn.setChecked(False))
         search_layout.addWidget(close_search_btn)
@@ -650,7 +650,7 @@ class CellValueViewerDialog(QDialog):
         # Copy button
         self.copy_btn = SecondaryButton("Copy", footer_bar)
         self.copy_btn.setObjectName("cellViewerCopyBtn")
-        self.copy_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        self.copy_btn.setIcon(get_icon(AppIcons.COPY))
         self.copy_btn.setToolTip("Copy full text to clipboard (Ctrl+C)")
         self.copy_btn.clicked.connect(self.copy_to_clipboard)
         footer_layout.addWidget(self.copy_btn)
@@ -658,7 +658,7 @@ class CellValueViewerDialog(QDialog):
         # Export button (available in both editable and read-only modes)
         self.export_btn = SecondaryButton("Export...", footer_bar)
         self.export_btn.setObjectName("cellViewerExportBtn")
-        self.export_btn.setIcon(qta.icon("fa5s.file-download", color="#475569"))
+        self.export_btn.setIcon(get_icon("msc.export", color="#475569"))
         self.export_btn.setToolTip("Export to file (Ctrl+E)")
         self.export_btn.clicked.connect(self.export_to_file)
         footer_layout.addWidget(self.export_btn)
@@ -682,7 +682,7 @@ class CellValueViewerDialog(QDialog):
 
             self.apply_btn = PrimaryButton("Save", footer_bar)
             self.apply_btn.setObjectName("cellViewerSaveBtn")
-            self.apply_btn.setIcon(qta.icon("fa5s.save", color="#FFFFFF"))
+            self.apply_btn.setIcon(get_icon(AppIcons.SAVE, color="#FFFFFF"))
             self.apply_btn.setToolTip("Save changes to table cell (Ctrl+Enter, Ctrl+S)")
             self.apply_btn.clicked.connect(self.apply_changes)
             self.save_btn = self.apply_btn  # Alias for Save nomenclature
@@ -1029,12 +1029,7 @@ class CellValueViewerDialog(QDialog):
             self.apply_btn.setEnabled(False)
             self.apply_btn.setText("Saving...")
             self.apply_btn.setIcon(
-                qta.icon(
-                    "fa5s.circle-notch",
-                    color="#FFFFFF",
-                    color_disabled="#FFFFFF",
-                    animation=qta.Spin(self.apply_btn, interval=16, step=15),
-                )
+                get_icon("ph.circle-notch", color="#FFFFFF")
             )
             QTimer.singleShot(400, self.accept)
         else:
