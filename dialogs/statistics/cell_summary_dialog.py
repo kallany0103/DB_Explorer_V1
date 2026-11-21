@@ -1,4 +1,4 @@
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -31,7 +31,7 @@ class CellSummaryDialog(QDialog):
         self.setWindowTitle("Summarize Selected Cells")
         self.resize(380, 420)
         self.setMinimumSize(320, 360)
-        self.setWindowIcon(qta.icon("fa5s.calculator", color="#2563EB"))
+        self.setWindowIcon(get_icon("msc.symbol-numeric", color="#2563EB"))
         self.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.WindowTitleHint
@@ -91,7 +91,7 @@ class CellSummaryDialog(QDialog):
         btn_layout.setSpacing(8)
 
         copy_btn = SecondaryButton("Copy to Clipboard")
-        copy_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_btn.clicked.connect(self._copy_to_clipboard)
         btn_layout.addWidget(copy_btn)
 

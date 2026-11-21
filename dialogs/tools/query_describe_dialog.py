@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QAbstractItemView,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from ui.components import SecondaryButton, LoadingOverlay
 from ui.dialog_utils import fit_dialog_to_screen
@@ -251,21 +251,21 @@ class QueryDescribeDialog(QDialog):
 
         # Save / Export button
         self.save_btn = QToolButton()
-        self.save_btn.setIcon(qta.icon("fa5s.save", color="#475569"))
+        self.save_btn.setIcon(get_icon(AppIcons.SAVE, color="#475569"))
         self.save_btn.setToolTip("Save Describe Output to File...")
         self.save_btn.clicked.connect(self._save_to_file)
         toolbar.addWidget(self.save_btn)
 
         # Copy button
         self.copy_btn = QToolButton()
-        self.copy_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        self.copy_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         self.copy_btn.setToolTip("Copy to Clipboard (Ctrl+C)")
         self.copy_btn.clicked.connect(self._copy_to_clipboard)
         toolbar.addWidget(self.copy_btn)
 
         # Select All button
         self.select_all_btn = QToolButton()
-        self.select_all_btn.setIcon(qta.icon("mdi.select-all", color="#475569"))
+        self.select_all_btn.setIcon(get_icon(AppIcons.SELECT_ALL, color="#475569"))
         self.select_all_btn.setToolTip("Select All (Ctrl+A)")
         self.select_all_btn.clicked.connect(self._select_all)
         toolbar.addWidget(self.select_all_btn)
@@ -275,7 +275,7 @@ class QueryDescribeDialog(QDialog):
 
         # View Switcher (Text View vs Grid View)
         self.text_view_btn = QToolButton()
-        self.text_view_btn.setIcon(qta.icon("fa5s.align-left", color="#475569"))
+        self.text_view_btn.setIcon(get_icon("msc.word-wrap", color="#475569"))
         self.text_view_btn.setToolTip("Text View (Toad Style)")
         self.text_view_btn.setCheckable(True)
         self.text_view_btn.setChecked(True)
@@ -283,7 +283,7 @@ class QueryDescribeDialog(QDialog):
         toolbar.addWidget(self.text_view_btn)
 
         self.grid_view_btn = QToolButton()
-        self.grid_view_btn.setIcon(qta.icon("fa5s.table", color="#475569"))
+        self.grid_view_btn.setIcon(get_icon("msc.table", color="#475569"))
         self.grid_view_btn.setToolTip("Grid View")
         self.grid_view_btn.setCheckable(True)
         self.grid_view_btn.setChecked(False)

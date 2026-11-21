@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
-import qtawesome as qta
+from ui.icons import get_icon
 import traceback
 from ui.components import PrimaryButton, SecondaryButton
 
@@ -45,7 +45,7 @@ class SearchObjectsDialog(QDialog):
         self.search_input.setPlaceholderText("Object name (supports % wildcards)...")
         self.search_input.returnPressed.connect(self.perform_search)
         
-        self.search_btn = PrimaryButton(qta.icon("mdi.magnify", color="white"), "Search")
+        self.search_btn = PrimaryButton(get_icon("msc.search", color="white"), "Search")
         self.search_btn.clicked.connect(self.perform_search)
 
         search_layout.addWidget(self.search_input)
@@ -124,20 +124,20 @@ class SearchObjectsDialog(QDialog):
                     
                     # Add icons based on type
                     icon_map = {
-                        "Table": "mdi.table",
-                        "View": "mdi.eye-outline",
-                        "Function": "mdi.function-variant",
-                        "Index": "mdi.format-list-bulleted",
-                        "Sequence": "mdi.numeric",
-                        "Foreign Table": "mdi.table-network",
-                        "Materialized View": "mdi.eye-settings",
-                        "Schema": "mdi.folder-outline",
-                        "Extension": "mdi.puzzle-outline",
-                        "Language": "mdi.translate",
-                        "Trigger": "mdi.lightning-bolt"
+                        "Table": "msc.table",
+                        "View": "msc.eye",
+                        "Function": "msc.symbol-method",
+                        "Index": "msc.key",
+                        "Sequence": "msc.symbol-numeric",
+                        "Foreign Table": "msc.table",
+                        "Materialized View": "msc.eye",
+                        "Schema": "msc.folder-library",
+                        "Extension": "msc.extensions",
+                        "Language": "msc.code",
+                        "Trigger": "msc.zap"
                     }
-                    icon_str = icon_map.get(type_str, "mdi.database-outline")
-                    name_item.setIcon(qta.icon(icon_str, color="#0078d4"))
+                    icon_str = icon_map.get(type_str, "msc.database")
+                    name_item.setIcon(get_icon(icon_str, color="#0078d4"))
                     
                     self.results_table.setItem(row_idx, 0, schema_item)
                     self.results_table.setItem(row_idx, 1, name_item)

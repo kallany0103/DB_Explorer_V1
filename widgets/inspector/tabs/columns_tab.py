@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-import qtawesome as qta
+from ui.icons import get_icon
 import db
 from dialogs.properties import pg_queries
 from ui.components import PrimaryButton, SecondaryButton
@@ -35,11 +35,11 @@ class ColumnsTab(QWidget):
         toolbar_layout.addStretch()
 
         add_col_btn = SecondaryButton(" Add Column")
-        add_col_btn.setIcon(qta.icon('mdi.plus', color='#334155'))
+        add_col_btn.setIcon(get_icon('msc.plus', color='#334155'))
         add_col_btn.clicked.connect(self._add_column)
         
         save_btn = PrimaryButton(" Save Changes")
-        save_btn.setIcon(qta.icon('mdi.content-save', color='white'))
+        save_btn.setIcon(get_icon('msc.save', color='white'))
         save_btn.clicked.connect(self._save_column_changes)
 
         toolbar_layout.addWidget(add_col_btn)
@@ -98,7 +98,7 @@ class ColumnsTab(QWidget):
 
     def _make_delete_btn(self, row):
         btn = QToolButton()
-        btn.setIcon(qta.icon('mdi.trash-can-outline', color='#000000'))
+        btn.setIcon(get_icon('msc.trash', color='#000000'))
         btn.setIconSize(QSize(20, 20))
         btn.setFixedSize(32, 32)
         btn.setAutoRaise(True)

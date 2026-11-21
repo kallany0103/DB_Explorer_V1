@@ -1,13 +1,13 @@
 # widgets/inspector/statistics_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar, QToolButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QToolButton
 )
 from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
-from PySide6.QtGui import QMovie
-from PySide6.QtCore import QSize, Qt
+from ui.icons import get_icon
+from PySide6.QtCore import QSize
 from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
@@ -31,7 +31,7 @@ class StatisticsWorkbench(QWidget):
         header_layout.setContentsMargins(15, 10, 15, 10)
         
         self.icon_label = QLabel()
-        self.icon_label.setPixmap(qta.icon('mdi.chart-bar', color='#3b82f6').pixmap(24, 24))
+        self.icon_label.setPixmap(get_icon('msc.graph', color='#3b82f6').pixmap(24, 24))
         header_layout.addWidget(self.icon_label)
         
         text_layout = QVBoxLayout()
@@ -47,7 +47,7 @@ class StatisticsWorkbench(QWidget):
 
         
         # Add refresh button to match properties_view
-        self.refresh_btn = IconButton(qta.icon('mdi.refresh', color='#6b7280'), tooltip="Refresh")
+        self.refresh_btn = IconButton(get_icon('msc.refresh', color='#6b7280'), tooltip="Refresh")
         self.refresh_btn.clicked.connect(self.refresh_statistics)
         header_layout.addWidget(self.refresh_btn)
         

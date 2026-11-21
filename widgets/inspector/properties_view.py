@@ -4,12 +4,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QScrollArea, 
     QFrame, QTabWidget, QLineEdit, QToolButton
 )
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QMovie
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtCore import QSize
 from .tabs.columns_tab import ColumnsTab
 from .tabs.constraints_tab import ConstraintsTab
 from .tabs.sql_tab import SqlTab
 import qtawesome as qta
+from ui.icons import get_icon
 from workers.inspector_workers import InspectorWorker
 from ui.components import IconButton
 from .properties_ui import (
@@ -55,7 +56,7 @@ class PropertiesWorkbench(QWidget):
         
 
         
-        self.refresh_btn = IconButton(qta.icon('mdi.refresh', color='#6b7280'), tooltip="Refresh")
+        self.refresh_btn = IconButton(get_icon('msc.refresh', color='#6b7280'), tooltip="Refresh")
         self.refresh_btn.clicked.connect(self.refresh_properties)
         header_layout.addWidget(self.refresh_btn)
         
@@ -109,7 +110,7 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText("Properties")
         self.sub_label.setText(message)
         self.icon_label.setPixmap(
-            qta.icon('mdi.cube-outline', color='#94a3b8').pixmap(24, 24)
+            get_icon('msc.package', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
         self.loading_icon.setVisible(False)
@@ -123,7 +124,7 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText("Properties")
         self.sub_label.setText(message)
         self.icon_label.setPixmap(
-            qta.icon('mdi.cube-outline', color='#94a3b8').pixmap(24, 24)
+            get_icon('msc.package', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
         self.loading_icon.setVisible(True)
@@ -151,29 +152,29 @@ class PropertiesWorkbench(QWidget):
                 group_name = "Languages"
 
         icon_color = '#6366f1'
-        icon_name = 'mdi.cube-outline'
+        icon_name = 'msc.package'
         if obj_type == 'table':
-            icon_name, icon_color = 'mdi.table', '#3b82f6'
+            icon_name, icon_color = 'msc.table', '#3b82f6'
         elif obj_type == 'view':
-            icon_name, icon_color = 'mdi.eye', '#10b981'
+            icon_name, icon_color = 'msc.eye', '#10b981'
         elif obj_type == 'schema':
-            icon_name, icon_color = 'mdi.folder-table', '#f59e0b'
+            icon_name, icon_color = 'msc.folder-library', '#f59e0b'
         elif obj_type == 'connection':
-            icon_name, icon_color = 'mdi.database', '#6366f1'
+            icon_name, icon_color = 'msc.database', '#6366f1'
         elif obj_type == 'function':
-            icon_name, icon_color = 'mdi.function', '#ec4899'
+            icon_name, icon_color = 'msc.symbol-method', '#ec4899'
         elif obj_type == 'sequence':
-            icon_name, icon_color = 'mdi.numeric', '#8b5cf6'
+            icon_name, icon_color = 'msc.symbol-numeric', '#8b5cf6'
         elif obj_type == 'trigger':
             tgenabled = item_data.get('tgenabled')
             if tgenabled == 'D':
-                icon_name, icon_color = 'mdi.lightning-bolt-outline', '#9fa6b2'
+                icon_name, icon_color = 'msc.zap', '#9fa6b2'
             else:
-                icon_name, icon_color = 'mdi.lightning-bolt', '#f59e0b'
+                icon_name, icon_color = 'msc.zap', '#f59e0b'
         
         if group_name:
-            icon_name, icon_color = 'mdi.folder-outline', '#94a3b8'
-        self.icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(24, 24))
+            icon_name, icon_color = 'msc.folder', '#94a3b8'
+        self.icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(24, 24))
         self.sub_label.setText(f"{obj_type.capitalize() if not group_name else 'Collection'}")
         
         # Save the current inner tab index before clearing
@@ -218,8 +219,8 @@ class PropertiesWorkbench(QWidget):
         coll_toolbar.setStyleSheet("background-color: white; border-bottom: 1px solid #e5e7eb; padding: 2px;")
         coll_layout = QHBoxLayout(coll_toolbar)
         coll_layout.setContentsMargins(5, 5, 5, 5)
-        for icon_name, color in [('mdi.delete-outline', '#94a3b8'), ('mdi.delete-sweep-outline', '#94a3b8')]:
-            btn = IconButton(qta.icon(icon_name, color=color))
+        for icon_name, color in [('msc.trash', '#94a3b8'), ('msc.clear-all', '#94a3b8')]:
+            btn = IconButton(get_icon(icon_name, color=color))
             btn.setFixedSize(28, 28)
             coll_layout.addWidget(btn)
         coll_layout.addStretch()
@@ -233,7 +234,9 @@ class PropertiesWorkbench(QWidget):
             items = []
             for val in row:
                 if isinstance(val, bool):
-                    item = QStandardItem(); item.setIcon(qta.icon('mdi.check-bold' if val else 'mdi.close-thick', color='#10b981' if val else '#ef4444')); item.setText("Yes" if val else "No")
+                    item = QStandardItem()
+                    item.setIcon(get_icon('msc.check' if val else 'msc.close', color='#10b981' if val else '#ef4444'))
+                    item.setText("Yes" if val else "No")
                 else:
                     item = QStandardItem(str(val) if val is not None else "")
                 items.append(item)
