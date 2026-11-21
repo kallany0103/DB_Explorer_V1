@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from db.optimizer.cost_evaluator import evaluate_variant_costs
 from db.optimizer.engine import OptimizationResult, analyze_query
@@ -107,7 +107,7 @@ class OptimizeSqlDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("optimizeSqlDialog")
         self.setWindowTitle("SQL Optimizer")
-        fit_dialog_to_screen(self, ideal_width=1080, ideal_height=700, min_width=640, min_height=420)
+        fit_dialog_to_screen(self, ideal_width=900, ideal_height=560, min_width=580, min_height=380)
 
         self.original_sql = sql
         self.dialect = dialect
@@ -155,7 +155,7 @@ class OptimizeSqlDialog(QDialog):
         self.right_pane.setMinimumWidth(240)
         self.body_splitter.addWidget(self.right_pane)
 
-        self.body_splitter.setSizes([640, 440])
+        self.body_splitter.setSizes([560, 340])
         self.body_splitter.setStretchFactor(0, 3)
         self.body_splitter.setStretchFactor(1, 2)
         main_layout.addWidget(self.body_splitter, 1)
@@ -317,7 +317,7 @@ class OptimizeSqlDialog(QDialog):
         tbl_hdr_bar.addStretch()
 
         self.benchmark_btn = SecondaryButton("Run Benchmark", container)
-        self.benchmark_btn.setIcon(qta.icon("fa5s.stopwatch", color="#475569"))
+        self.benchmark_btn.setIcon(get_icon("msc.pulse", color="#475569"))
         self.benchmark_btn.setToolTip("Empirically execute candidates with safety timeouts to measure actual runtime")
         self.benchmark_btn.clicked.connect(self._run_benchmark)
         tbl_hdr_bar.addWidget(self.benchmark_btn)
@@ -375,7 +375,7 @@ class OptimizeSqlDialog(QDialog):
         sel_top_bar.addLayout(title_box, 1)
 
         copy_sel_btn = SecondaryButton("Copy", selected_widget)
-        copy_sel_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_sel_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_sel_btn.clicked.connect(self._copy_selected_sql)
         sel_top_bar.addWidget(copy_sel_btn)
         sel_layout.addLayout(sel_top_bar)
@@ -398,7 +398,7 @@ class OptimizeSqlDialog(QDialog):
         orig_top_bar.addStretch()
 
         copy_orig_btn = SecondaryButton("Copy", orig_widget)
-        copy_orig_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_orig_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_orig_btn.clicked.connect(self._copy_original_sql)
         orig_top_bar.addWidget(copy_orig_btn)
         orig_layout.addLayout(orig_top_bar)
@@ -530,7 +530,7 @@ class OptimizeSqlDialog(QDialog):
 
         hdr_row = QHBoxLayout()
         icon_lbl = QLabel(card)
-        icon_lbl.setPixmap(qta.icon("fa5s.key", color="#475569").pixmap(12, 12))
+        icon_lbl.setPixmap(get_icon("msc.key", color="#475569").pixmap(12, 12))
         title = QLabel("Recommended Indexes", card)
         title.setStyleSheet("font-weight: 600; font-size: 8.5pt; color: #1E293B;")
         hdr_row.addWidget(icon_lbl)
@@ -553,13 +553,13 @@ class OptimizeSqlDialog(QDialog):
         btn_row.addStretch()
 
         self.sim_btn = SecondaryButton("Simulate Index", card)
-        self.sim_btn.setIcon(qta.icon("fa5s.bolt", color="#475569"))
+        self.sim_btn.setIcon(get_icon("msc.zap", color="#475569"))
         self.sim_btn.setToolTip("Test index adoption virtually without allocating physical disk space")
         self.sim_btn.clicked.connect(lambda: self._simulate_virtual_index(indexes[0]))
         btn_row.addWidget(self.sim_btn)
 
         copy_idx_btn = SecondaryButton("Copy DDL", card)
-        copy_idx_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_idx_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_idx_btn.clicked.connect(lambda: QApplication.clipboard().setText(ddl_text))
         btn_row.addWidget(copy_idx_btn)
         btn_row.addStretch()
@@ -605,7 +605,7 @@ class OptimizeSqlDialog(QDialog):
         layout.addStretch()
 
         self.apply_btn = PrimaryButton("Apply to Worksheet", footer)
-        self.apply_btn.setIcon(qta.icon("fa5s.check", color="#FFFFFF"))
+        self.apply_btn.setIcon(get_icon("msc.check", color="#FFFFFF"))
         self.apply_btn.clicked.connect(self._apply_sql)
         layout.addWidget(self.apply_btn)
         return footer
@@ -886,7 +886,7 @@ class OptimizeSqlDialog(QDialog):
         if not hasattr(self, "body_splitter") or not hasattr(self, "left_pane") or not hasattr(self, "right_pane"):
             return
 
-        BREAKPOINT = 860
+        BREAKPOINT = 780
         if width < BREAKPOINT:
             if self.body_splitter.orientation() != Qt.Orientation.Vertical:
                 self.body_splitter.setOrientation(Qt.Orientation.Vertical)
@@ -898,7 +898,7 @@ class OptimizeSqlDialog(QDialog):
                 if curr_h > 0:
                     self.body_splitter.setSizes([int(curr_h * 0.58), int(curr_h * 0.42)])
                 else:
-                    self.body_splitter.setSizes([380, 240])
+                    self.body_splitter.setSizes([260, 180])
         else:
             if self.body_splitter.orientation() != Qt.Orientation.Horizontal:
                 self.body_splitter.setOrientation(Qt.Orientation.Horizontal)
@@ -910,4 +910,4 @@ class OptimizeSqlDialog(QDialog):
                 if curr_w > 0:
                     self.body_splitter.setSizes([int(curr_w * 0.62), int(curr_w * 0.38)])
                 else:
-                    self.body_splitter.setSizes([640, 440])
+                    self.body_splitter.setSizes([560, 340])

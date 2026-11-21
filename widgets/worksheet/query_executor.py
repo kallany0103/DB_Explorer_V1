@@ -4,7 +4,7 @@ import time
 from PySide6.QtWidgets import (
     QMessageBox, QLabel, QWidget
 )
-import qtawesome as qta
+from ui.icons import get_icon
 
 
 from widgets.worksheet.query.query_feedback import (
@@ -393,7 +393,7 @@ def execute_query(manager, conn_data=None, query=None, output_mode="current", pr
     # Update status icon to 'Executing' (Hourglass)
     status_icon = current_tab.findChild(QLabel, "conn_status_icon")
     if status_icon:
-        status_icon.setPixmap(qta.icon("fa5s.hourglass-half", color="#ff9800").pixmap(18, 18))
+        status_icon.setPixmap(get_icon("msc.loading", color="#ff9800").pixmap(18, 18))
 
 
     dispatch_query(
