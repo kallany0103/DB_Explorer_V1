@@ -60,7 +60,7 @@ class AppIcons:
 
     # Transaction Actions
     COMMIT = ("msc.check", COLOR_EMERALD_GREEN)
-    ROLLBACK = ("msc.debug-restart", COLOR_CRIMSON)
+    ROLLBACK = ("ph.arrow-counter-clockwise", COLOR_CRIMSON)
     AUTOCOMMIT = ("msc.unlock", None)
 
     # Database & Schema Tree Objects
