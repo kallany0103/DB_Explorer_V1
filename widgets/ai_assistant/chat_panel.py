@@ -14,14 +14,13 @@ import uuid
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser,
-    QPlainTextEdit, QLabel, QFrame, QApplication, QSplitter,
-    QToolButton, QMenu
+    QPlainTextEdit, QLabel, QFrame, QApplication, QToolButton, QMenu
 )
-from PySide6.QtCore import Qt, Signal, QThread, QObject, QEvent, QSize
-from PySide6.QtGui import QFont, QColor, QTextCursor, QIcon, QKeySequence, QAction
-import qtawesome as qta
+from PySide6.QtCore import Qt, Signal, QThread, QObject, QSize
+from PySide6.QtGui import QFont, QTextCursor
+from ui.icons import get_icon, AppIcons
 
-from ui.components import SecondaryButton, PrimaryButton
+from ui.components import PrimaryButton
 from widgets.ai_assistant.ai_service import explain_query_ai
 from ui.menu_style import apply_menu_style
 
@@ -188,7 +187,7 @@ class AIChatPanel(QWidget):
 
         # Sparkles/AI icon + Title
         ai_icon = QLabel()
-        ai_icon.setPixmap(qta.icon("fa5s.magic", color="#2563EB").pixmap(13, 13))
+        ai_icon.setPixmap(get_icon("msc.sparkle", color="#2563EB").pixmap(13, 13))
         ai_icon.setStyleSheet("background: transparent; border: none;")
         header_layout.addWidget(ai_icon)
 
@@ -202,7 +201,7 @@ class AIChatPanel(QWidget):
 
         # Action: New Chat (+)
         self.btn_new_chat = QToolButton()
-        self.btn_new_chat.setIcon(qta.icon("fa5s.plus", color="#4B5563"))
+        self.btn_new_chat.setIcon(get_icon("msc.plus", color="#4B5563"))
         self.btn_new_chat.setIconSize(QSize(12, 12))
         self.btn_new_chat.setFixedSize(22, 22)
         self.btn_new_chat.setToolTip("New Chat")
@@ -225,7 +224,7 @@ class AIChatPanel(QWidget):
 
         # Action: Past Conversation
         self.btn_history = QToolButton()
-        self.btn_history.setIcon(qta.icon("fa5s.history", color="#4B5563"))
+        self.btn_history.setIcon(get_icon("msc.history", color="#4B5563"))
         self.btn_history.setIconSize(QSize(12, 12))
         self.btn_history.setFixedSize(22, 22)
         self.btn_history.setToolTip("Past Conversation")
@@ -248,7 +247,7 @@ class AIChatPanel(QWidget):
 
         # Action: Copy last explanation to clipboard
         self.btn_copy = QToolButton()
-        self.btn_copy.setIcon(qta.icon("fa5s.copy", color="#4B5563"))
+        self.btn_copy.setIcon(get_icon(AppIcons.COPY, color="#4B5563"))
         self.btn_copy.setIconSize(QSize(12, 12))
         self.btn_copy.setFixedSize(22, 22)
         self.btn_copy.setToolTip("Copy Explanation")
@@ -277,7 +276,7 @@ class AIChatPanel(QWidget):
 
         # Action: Close (✕)
         self.btn_close = QToolButton()
-        self.btn_close.setIcon(qta.icon("fa5s.times", color="#4B5563"))
+        self.btn_close.setIcon(get_icon("msc.close", color="#4B5563"))
         self.btn_close.setIconSize(QSize(11, 11))
         self.btn_close.setFixedSize(20, 20)
         self.btn_close.setToolTip("Close Panel")
@@ -306,7 +305,7 @@ class AIChatPanel(QWidget):
         chip_layout.setSpacing(6)
 
         doc_icon = QLabel()
-        doc_icon.setPixmap(qta.icon("fa5s.file-code", color="#0284C7").pixmap(12, 12))
+        doc_icon.setPixmap(get_icon("msc.file-code", color="#0284C7").pixmap(12, 12))
         doc_icon.setStyleSheet("background: transparent; border: none;")
         chip_layout.addWidget(doc_icon)
 
@@ -356,7 +355,7 @@ class AIChatPanel(QWidget):
         input_frame_layout.addWidget(self.input_edit, stretch=1)
 
         # Send Button with clean arrow-up
-        self.btn_send = PrimaryButton(qta.icon("fa5s.arrow-up", color="#FFFFFF"))
+        self.btn_send = PrimaryButton(get_icon("msc.arrow-up", color="#FFFFFF"))
         self.btn_send.setIconSize(QSize(13, 13))
         self.btn_send.setFixedSize(28, 28)
         self.btn_send.setToolTip("Send (Enter)")
@@ -542,11 +541,11 @@ class AIChatPanel(QWidget):
                 is_current = (conv.get("id") == self.active_conversation_id)
                 prefix = "✓ " if is_current else ""
                 label = f"{prefix}[{time_str}] {title}" if time_str else f"{prefix}{title}"
-                action = menu.addAction(qta.icon("fa5s.comment-dots", color="#2563EB" if is_current else "#6B7280"), label)
+                action = menu.addAction(get_icon("msc.comment-discussion", color="#2563EB" if is_current else "#6B7280"), label)
                 action.triggered.connect(lambda checked=False, c=conv: self._restore_conversation(c))
 
             menu.addSeparator()
-            clear_all_action = menu.addAction(qta.icon("fa5s.trash-alt", color="#EF4444"), "Clear All History")
+            clear_all_action = menu.addAction(get_icon("msc.trash", color="#EF4444"), "Clear All History")
             clear_all_action.triggered.connect(self._clear_past_conversations)
 
         # Show menu aligned under btn_history

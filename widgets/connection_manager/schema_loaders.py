@@ -3,7 +3,7 @@ import sqlite3 as sqlite
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItem, QColor, QFontMetrics
 from PySide6.QtWidgets import QHeaderView, QStyledItemDelegate, QStyle, QApplication
-import qtawesome as qta
+from ui.icons import get_icon
 
 import db
 
@@ -491,7 +491,7 @@ class SchemaLoader:
 
         for file_name in csv_files:
             display_name, _ = os.path.splitext(file_name)
-            table_item = QStandardItem(qta.icon("mdi.table", color="#4CAF50"), display_name)
+            table_item = QStandardItem(get_icon("msc.table", color="#4CAF50"), display_name)
             table_item.setEditable(False)
             table_item.setData({
                 'db_type': 'csv',
@@ -563,9 +563,9 @@ class SchemaLoader:
                 is_core = t_lower in core_names
 
                 if is_core:
-                    icon = qta.icon("mdi.table", color="#1E88E5")
+                    icon = get_icon("msc.table", color="#1E88E5")
                 else:
-                    icon = qta.icon("mdi.table", color="#4CAF50")
+                    icon = get_icon("msc.table", color="#4CAF50")
 
                 t_item = QStandardItem(icon, t_name)
                 t_item.setEditable(False)
@@ -602,7 +602,7 @@ class SchemaLoader:
             def _append_category(cat_name, cat_icon, cat_color, table_list, default_expanded=False, allow_empty=False):
                 if not table_list and not allow_empty:
                     return None
-                folder_item = QStandardItem(qta.icon(cat_icon, color=cat_color), f"{cat_name} ({len(table_list)})")
+                folder_item = QStandardItem(get_icon(cat_icon, color=cat_color), f"{cat_name} ({len(table_list)})")
                 folder_item.setEditable(False)
                 folder_item.setData({"type": "category", "name": cat_name}, Qt.ItemDataRole.UserRole)
                 folder_type = QStandardItem("Category")
@@ -628,22 +628,22 @@ class SchemaLoader:
 
             # 1. Favorites (if any)
             if fav_tables:
-                _append_category("Favorites", "mdi.star", "#FFC107", sorted(fav_tables, key=lambda x: x.lower()), default_expanded=True)
+                _append_category("Favorites", "msc.star-full", "#FFC107", sorted(fav_tables, key=lambda x: x.lower()), default_expanded=True)
 
             # 2. IT Service Management
-            _append_category("IT Service Management", "mdi.clipboard-text-outline", "#1E88E5", sorted(itsm_tables, key=lambda x: x.lower()), default_expanded=True)
+            _append_category("IT Service Management", "msc.checklist", "#1E88E5", sorted(itsm_tables, key=lambda x: x.lower()), default_expanded=True)
 
             # 3. CMDB & Infrastructure
-            _append_category("CMDB & Infrastructure", "mdi.server-network", "#43A047", sorted(cmdb_tables, key=lambda x: x.lower()), default_expanded=False)
+            _append_category("CMDB & Infrastructure", "msc.server", "#43A047", sorted(cmdb_tables, key=lambda x: x.lower()), default_expanded=False)
 
             # 4. User Administration
-            _append_category("User Administration", "mdi.account-group", "#8E24AA", sorted(user_tables, key=lambda x: x.lower()), default_expanded=False)
+            _append_category("User Administration", "msc.organization", "#8E24AA", sorted(user_tables, key=lambda x: x.lower()), default_expanded=False)
 
             # 5. Custom Tables (u_*, x_*)
-            _append_category("Custom Tables", "mdi.domain", "#E65100", sorted(custom_tables, key=lambda x: x.lower()), default_expanded=False, allow_empty=True)
+            _append_category("Custom Tables", "msc.extensions", "#E65100", sorted(custom_tables, key=lambda x: x.lower()), default_expanded=False, allow_empty=True)
 
             # 6. All Tables (A-Z)
-            _append_category("All Tables", "mdi.database", "#78909C", all_sorted, default_expanded=False)
+            _append_category("All Tables", "msc.database", "#78909C", all_sorted, default_expanded=False)
 
             self._connect_expand_handler()
             if not skip_restore:

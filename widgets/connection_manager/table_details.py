@@ -1,5 +1,5 @@
 import re
-import qtawesome as qta
+from ui.icons import get_icon
 
 import db
 from PySide6.QtCore import Qt
@@ -422,13 +422,13 @@ class TableDetailsLoader:
 
                     if is_pk:
                         desc = f"{col_name} [PK] ({col_type})"
-                        icon = qta.icon("mdi.key", color="#FFC107")
+                        icon = get_icon("msc.key", color="#FFC107")
                     elif ref:
                         desc = f"{col_name} ({col_type}) -> {ref}"
-                        icon = qta.icon("mdi.link-variant", color="#2196F3")
+                        icon = get_icon("msc.link", color="#2196F3")
                     else:
                         desc = f"{col_name} ({col_type})"
-                        icon = qta.icon("mdi.table-column", color="#78909C")
+                        icon = get_icon("msc.symbol-variable", color="#78909C")
 
                     col_item = QStandardItem(icon, desc)
                     col_item.setEditable(False)

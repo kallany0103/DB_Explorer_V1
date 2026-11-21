@@ -3,7 +3,7 @@ import time
 import datetime as _dt
 from datetime import datetime
 
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, QPointF, QThread
 from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush
@@ -58,16 +58,16 @@ class DashboardWidget(QWidget):
         # 1. Activity Tab
         self.activity_tab = QWidget()
         self.setup_activity_ui()
-        self.tabs.addTab(self.activity_tab, qta.icon('mdi.chart-line', color="#121213"), "Activity")
+        self.tabs.addTab(self.activity_tab, get_icon('msc.pulse', color="#121213"), "Activity")
 
         # 2. State Tab
         self.state_widget = StateWidget()
         self.state_widget.refresh_requested.connect(self.refresh_requested)
-        self.tabs.addTab(self.state_widget, qta.icon('mdi.database-search', color="#121213"), "State")
+        self.tabs.addTab(self.state_widget, get_icon('msc.database', color="#121213"), "State")
 
         # 3. Logs Tab
         self.logs_widget = LogsWidget()
-        self.tabs.addTab(self.logs_widget, qta.icon('mdi.text-box-outline', color="#121213"), "Logs")
+        self.tabs.addTab(self.logs_widget, get_icon('msc.file-text', color="#121213"), "Logs")
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self.tabs)

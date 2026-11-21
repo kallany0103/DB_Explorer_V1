@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QFileDialog, 
     QLabel, QComboBox, QCheckBox, QTabWidget, QWidget
 )
-import qtawesome as qta
+from ui.icons import get_icon, AppIcons
 from PySide6.QtWidgets import QMessageBox
 from ui.components import PrimaryButton, SecondaryButton, IconButton
 
@@ -33,7 +33,7 @@ class RestoreDialog(QDialog):
         
         # General Tab
         general_tab = QWidget()
-        self.tabs.addTab(general_tab, qta.icon("fa5s.file-alt", color="#555"), "General")
+        self.tabs.addTab(general_tab, get_icon("msc.file-text", color="#555"), "General")
         general_layout = QFormLayout(general_tab)
         general_layout.setContentsMargins(15, 15, 15, 15)
         general_layout.setSpacing(10)
@@ -46,7 +46,7 @@ class RestoreDialog(QDialog):
         # Filename
         self.filename_edit = QLineEdit()
         self.filename_edit.setPlaceholderText("Select a backup file...")
-        browse_btn = IconButton(qta.icon("fa5s.folder-open"))
+        browse_btn = IconButton(get_icon(AppIcons.OPEN_FILE))
         browse_btn.setFixedWidth(40)
         browse_btn.clicked.connect(self.browse_file)
         
@@ -76,7 +76,7 @@ class RestoreDialog(QDialog):
 
         # Data Options Tab
         data_tab = QWidget()
-        self.tabs.addTab(data_tab, qta.icon("fa5s.database", color="#555"), "Data Options")
+        self.tabs.addTab(data_tab, get_icon("msc.database", color="#555"), "Data Options")
         data_layout = QFormLayout(data_tab)
         data_layout.setContentsMargins(15, 15, 15, 15)
         
@@ -96,7 +96,7 @@ class RestoreDialog(QDialog):
 
         # Query Options Tab
         query_tab = QWidget()
-        self.tabs.addTab(query_tab, qta.icon("fa5s.terminal", color="#555"), "Query Options")
+        self.tabs.addTab(query_tab, get_icon("msc.terminal", color="#555"), "Query Options")
         query_layout = QFormLayout(query_tab)
         query_layout.setContentsMargins(15, 15, 15, 15)
         
@@ -111,7 +111,7 @@ class RestoreDialog(QDialog):
 
         #Options Tab
         misc_tab = QWidget()
-        self.tabs.addTab(misc_tab, qta.icon("fa5s.sliders-h", color="#555"), "Options")
+        self.tabs.addTab(misc_tab, get_icon("msc.settings", color="#555"), "Options")
         misc_layout = QFormLayout(misc_tab)
         misc_layout.setContentsMargins(15, 15, 15, 15)
         

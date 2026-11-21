@@ -4,7 +4,7 @@ import time
 import uuid
 
 import db
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtWidgets import (
@@ -368,7 +368,7 @@ class ConnectionActions:
                 if is_fav:
                     # If Favorites folder does not exist, create it at row 0
                     if not fav_folder:
-                        fav_folder = QStandardItem(qta.icon("mdi.star", color="#FFC107"), "Favorites (0)")
+                        fav_folder = QStandardItem(get_icon("msc.star-full", color="#FFC107"), "Favorites (0)")
                         fav_folder.setEditable(False)
                         fav_folder.setData({"type": "category", "name": "Favorites"}, Qt.ItemDataRole.UserRole)
                         fav_type = QStandardItem("Category")
@@ -393,7 +393,7 @@ class ConnectionActions:
                             "sc_request", "sc_req_item", "sc_task", "kb_knowledge",
                         }
                         is_core = table_name.lower() in core_names
-                        icon = qta.icon("mdi.table", color="#1E88E5" if is_core else "#4CAF50")
+                        icon = get_icon("msc.table", color="#1E88E5" if is_core else "#4CAF50")
                         t_item = QStandardItem(icon, table_name)
                         t_item.setEditable(False)
 

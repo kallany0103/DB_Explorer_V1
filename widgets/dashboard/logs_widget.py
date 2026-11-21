@@ -4,18 +4,16 @@ import io
 import json
 import os
 import datetime
-import re, datetime
-from typing import List, Dict, Any
 import re
+from typing import List, Dict, Any
 from PySide6.QtWidgets import QMessageBox, QFileDialog
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt, QSortFilterProxyModel, QThread, Signal
 from db.db_connections import get_downloads_dir
 from ui.components import IconButton
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -375,7 +373,7 @@ class LogsWidget(QWidget):
 
     
         # Download button
-        dl_btn = IconButton(qta.icon("mdi.download", color="#374151"), tooltip="Download logs")
+        dl_btn = IconButton(get_icon("msc.cloud-download", color="#374151"), tooltip="Download logs")
         dl_btn.setFixedSize(28, 28)
         dl_btn.clicked.connect(self._download)
         tb_lay.addWidget(dl_btn)

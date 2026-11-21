@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel,
                                 QAbstractItemView, QMessageBox,QHBoxLayout,
                                 QPlainTextEdit)
 from PySide6.QtCore import Qt, Signal, QObject, QRunnable, Slot
-import qtawesome as qta
+from ui.icons import get_icon
 import db
 from db.db_modifications import terminate_postgres_backend, cancel_postgres_backend
 from ui.components import SecondaryButton, IconButton
@@ -287,7 +287,7 @@ class StateWidget(QWidget):
         toolbar_layout.addStretch()
         
         self.refresh_btn = SecondaryButton(" Refresh")
-        self.refresh_btn.setIcon(qta.icon('mdi.refresh', color='#0ea5e9'))
+        self.refresh_btn.setIcon(get_icon('msc.sync', color='#0ea5e9'))
         self.refresh_btn.setFixedSize(100, 28)
         self.refresh_btn.clicked.connect(lambda: self.refresh_requested.emit())
         toolbar_layout.addWidget(self.refresh_btn)
@@ -408,11 +408,11 @@ class StateWidget(QWidget):
             
             if is_sessions and pid is not None:
                 # Actions
-                self._add_action_btn(table, row_idx, 0, 'fa5s.times', "#ef4444", "Terminate", pid, self.handle_terminate)
-                self._add_action_btn(table, row_idx, 1, 'fa5s.stop', "#1f2937", "Cancel", pid, self.handle_cancel)
+                self._add_action_btn(table, row_idx, 0, 'msc.close', "#ef4444", "Terminate", pid, self.handle_terminate)
+                self._add_action_btn(table, row_idx, 1, 'msc.debug-stop', "#1f2937", "Cancel", pid, self.handle_cancel)
                 
                 is_expanded = pid in expanded_pids_int
-                icon = 'fa5s.chevron-down' if is_expanded else 'fa5s.chevron-right'
+                icon = 'msc.chevron-down' if is_expanded else 'msc.chevron-right'
                 self._add_action_btn(table, row_idx, 2, icon, "#64748b", "Details", pid, self.toggle_details)
                 
                 # Data
@@ -448,16 +448,16 @@ class StateWidget(QWidget):
         table.horizontalScrollBar().setValue(h_scroll)
 
     def _add_action_btn(self, table, row, col, icon_name, color, tooltip, pid, callback):
-        btn = IconButton(qta.icon(icon_name, color=color), tooltip=tooltip)
+        btn = IconButton(get_icon(icon_name, color=color), tooltip=tooltip)
         btn.setFixedSize(24, 24)
         # Use pid=pid to ensure the value is captured correctly
         btn.clicked.connect(lambda checked=False, p=pid: callback(p))
         
         w = QWidget()
-        l = QHBoxLayout(w)
-        l.setContentsMargins(0, 0, 0, 0)
-        l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        l.addWidget(btn)
+        layout = QHBoxLayout(w)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(btn)
         table.setCellWidget(row, col, w)
 
     def toggle_details(self, pid):
