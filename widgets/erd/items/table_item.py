@@ -1,6 +1,6 @@
 import math
-import qtawesome as qta
-from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QGraphicsDropShadowEffect, QMenu
+from ui.icons import get_icon
+from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QStyle, QMenu
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QPainterPath, QFontMetrics
 from PySide6.QtCore import Qt, QRectF, QPointF, QLineF, QSizeF
 
@@ -55,11 +55,11 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         
         # Pre-render icons to QPixmap so SVG/PDF export embeds them correctly
         # (qtawesome draws glyphs via drawText; pre-rasterising avoids missing font in SVG)
-        self.icon_schema = qta.icon('fa5s.layer-group', color='#D93025').pixmap(12, 12)
-        self.icon_table = qta.icon('fa5s.table', color='#1A73E8').pixmap(14, 12)
-        self.icon_pk = qta.icon('fa5s.key', color='#F9AB00').pixmap(12, 12)
-        self.icon_fk = qta.icon('fa5s.key', color='#1A73E8').pixmap(12, 12)
-        self.icon_col = qta.icon('mdi.table-column', color='#34A853').pixmap(12, 12)
+        self.icon_schema = get_icon('msc.folder-library', color='#D93025').pixmap(12, 12)
+        self.icon_table = get_icon('msc.table', color='#1A73E8').pixmap(14, 12)
+        self.icon_pk = get_icon('msc.key', color='#F9AB00').pixmap(12, 12)
+        self.icon_fk = get_icon('msc.link', color='#1A73E8').pixmap(12, 12)
+        self.icon_col = get_icon('msc.symbol-variable', color='#34A853').pixmap(12, 12)
         
         self.update_geometry()
 
@@ -497,7 +497,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         apply_menu_style(menu)
         
         menu.addAction(
-            qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Table"
+            get_icon("msc.trash", color="#DC2626"), "Remove Table"
         ).triggered.connect(self._remove_self)
         if self.size_mode == "manual":
             menu.addSeparator()

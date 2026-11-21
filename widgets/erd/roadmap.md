@@ -217,7 +217,7 @@ Skip unless targeting teams.
 - [ ] **Reduce per-shape duplication** — `PortMixin` (Phase 0); also consider extracting common `mousePressEvent` / `mouseMoveEvent` / `mouseReleaseEvent` skeletons.
 - [ ] **Type hints** in `routing.py`, `commands.py`, `model.py`, then `mypy --strict` for `widgets/erd/`.
 - [ ] **Logging** — replace stray `print` calls (if any) with `logging.getLogger(__name__)`.
-- [ ] **Centralise icons** — one `widgets/erd/icons.py` instead of inline `qta.icon(...)` calls.
+- [x] **Centralise icons** — migrated all inline `qta.icon(...)` calls to centralised monoline icon registry (`ui/icons.py`).
 - [ ] **Constants** — move magic numbers (4 px drag threshold, 8 px handle, 12 px padding, 18 px crow-foot length, 22 px slot spacing, 50 px export margin, 16 K max-dim) into `constants.py` with names.
 - [ ] **DDL function decomposition** — `generate_sql_script` is one ~160-line function in `widget.py`; move to its own `widgets/erd/ddl.py` and split per-dialect.
 

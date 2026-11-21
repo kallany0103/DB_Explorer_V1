@@ -1,4 +1,4 @@
-import qtawesome as qta
+from ui.icons import get_icon, AppIcons
 
 
 from PySide6.QtWidgets import (
@@ -93,22 +93,22 @@ class ERDWidget(QWidget):
 
     def _build_toolbar_file_export_group(self) -> None:
         """Add file open/save and export actions to the toolbar."""
-        open_action = QAction(qta.icon('fa5s.folder-open', color='#555555'), "Open ERD (.erd)", self)
+        open_action = QAction(get_icon(AppIcons.OPEN_FILE, color='#555555'), "Open ERD (.erd)", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.load_erd_file)
         self.toolbar.addAction(open_action)
-        save_action = QAction(qta.icon('fa5s.save', color='#555555'), "Save ERD (.erd)", self)
+        save_action = QAction(get_icon(AppIcons.SAVE, color='#555555'), "Save ERD (.erd)", self)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.save_erd)
         self.toolbar.addAction(save_action)
         self.toolbar.addSeparator()
-        export_png = QAction(qta.icon('fa5s.image', color='#555555'), "Export to PNG", self)
+        export_png = QAction(get_icon("msc.file-media", color='#555555'), "Export to PNG", self)
         export_png.triggered.connect(lambda: self.save_as_image("png"))
         self.toolbar.addAction(export_png)
-        export_svg = QAction(qta.icon('fa5s.vector-square', color='#555555'), "Export to SVG", self)
+        export_svg = QAction(get_icon("msc.symbol-misc", color='#555555'), "Export to SVG", self)
         export_svg.triggered.connect(lambda: self.save_as_image("svg"))
         self.toolbar.addAction(export_svg)
-        export_pdf = QAction(qta.icon('fa5s.file-pdf', color='#555555'), "Export to PDF", self)
+        export_pdf = QAction(get_icon("msc.file-pdf", color='#555555'), "Export to PDF", self)
         export_pdf.triggered.connect(lambda: self.save_as_image("pdf"))
         self.toolbar.addAction(export_pdf)
 
@@ -141,29 +141,29 @@ class ERDWidget(QWidget):
     def _build_toolbar_view_edit_group(self) -> None:
         """Add zoom, align, undo/redo, visibility, and advanced tool actions."""
         self.toolbar.addSeparator()
-        zoom_in_action = QAction(qta.icon('fa5s.search-plus', color='#555555'), "Zoom In", self)
+        zoom_in_action = QAction(get_icon("msc.zoom-in", color='#555555'), "Zoom In", self)
         zoom_in_action.setShortcut("Ctrl++")
         zoom_in_action.triggered.connect(lambda: self.view.scale(1.2, 1.2))
         self.toolbar.addAction(zoom_in_action)
-        zoom_out_action = QAction(qta.icon('fa5s.search-minus', color='#555555'), "Zoom Out", self)
+        zoom_out_action = QAction(get_icon("msc.zoom-out", color='#555555'), "Zoom Out", self)
         zoom_out_action.setShortcut("Ctrl+-")
         zoom_out_action.triggered.connect(lambda: self.view.scale(0.8, 0.8))
         self.toolbar.addAction(zoom_out_action)
-        reset_zoom_action = QAction(qta.icon('fa5s.expand-arrows-alt', color='#555555'), "Zoom to Fit", self)
+        reset_zoom_action = QAction(get_icon("msc.screen-full", color='#555555'), "Zoom to Fit", self)
         reset_zoom_action.setShortcut("Ctrl+0")
         reset_zoom_action.triggered.connect(self._zoom_to_fit)
         self.toolbar.addAction(reset_zoom_action)
         self.toolbar.addSeparator()
-        align_action = QAction(qta.icon('fa5s.magic', color='#555555'), "Auto Align", self)
+        align_action = QAction(get_icon("msc.sparkle", color='#555555'), "Auto Align", self)
         align_action.setShortcut("Alt+Ctrl+L")
         align_action.triggered.connect(self.auto_layout)
         self.toolbar.addAction(align_action)
         self.undo_action = self.undo_stack.createUndoAction(self, "Undo")
-        self.undo_action.setIcon(qta.icon('fa5s.undo', color='#555555'))
+        self.undo_action.setIcon(get_icon(AppIcons.UNDO, color='#555555'))
         self.undo_action.setShortcut("Ctrl+Z")
         self.toolbar.addAction(self.undo_action)
         self.redo_action = self.undo_stack.createRedoAction(self, "Redo")
-        self.redo_action.setIcon(qta.icon('fa5s.redo', color='#555555'))
+        self.redo_action.setIcon(get_icon(AppIcons.REDO, color='#555555'))
         self.redo_action.setShortcut("Ctrl+Y")
         self.toolbar.addAction(self.redo_action)
         self.toolbar.addSeparator()
@@ -173,19 +173,19 @@ class ERDWidget(QWidget):
 
     def _build_toolbar_visibility_group(self) -> None:
         """Add show-details, show-types, and toggle-panel toggle actions."""
-        self.show_details_action = QAction(qta.icon('fa5s.eye', color='#555555'), "Show Details", self)
+        self.show_details_action = QAction(get_icon("msc.eye", color='#555555'), "Show Details", self)
         self.show_details_action.setShortcut("Alt+Ctrl+T")
         self.show_details_action.setCheckable(True)
         self.show_details_action.setChecked(True)
         self.show_details_action.triggered.connect(self.toggle_details)
         self.toolbar.addAction(self.show_details_action)
-        self.show_types_action = QAction(qta.icon('mdi.label-outline', color='#555555'), "Show Data Types", self)
+        self.show_types_action = QAction(get_icon("msc.tag", color='#555555'), "Show Data Types", self)
         self.show_types_action.setShortcut("Alt+Ctrl+D")
         self.show_types_action.setCheckable(True)
         self.show_types_action.setChecked(True)
         self.show_types_action.triggered.connect(self.toggle_types)
         self.toolbar.addAction(self.show_types_action)
-        self.show_panel_action = QAction(qta.icon('mdi.card-text-outline', color='#555555'), "Toggle Panel", self)
+        self.show_panel_action = QAction(get_icon("msc.layout-sidebar-right", color='#555555'), "Toggle Panel", self)
         self.show_panel_action.setCheckable(True)
         self.show_panel_action.setChecked(False)
         self.show_panel_action.triggered.connect(self.toggle_panel)
@@ -193,13 +193,13 @@ class ERDWidget(QWidget):
 
     def _build_toolbar_advanced_group(self) -> None:
         """Add SQL generator and search toolbar buttons plus their keyboard shortcuts."""
-        self.sql_action = QAction(qta.icon('fa5s.database', color='#555555'), "Generate SQL Script", self)
+        self.sql_action = QAction(get_icon("msc.database", color='#555555'), "Generate SQL Script", self)
         self.sql_action.setShortcut("Alt+Ctrl+S")
         self.sql_action.triggered.connect(self.generate_forward_sql)
         self.toolbar.addAction(self.sql_action)
         self.sql_btn = self.toolbar.widgetForAction(self.sql_action)
 
-        self.search_action = QAction(qta.icon('fa5s.search', color='#555555'), "Search", self)
+        self.search_action = QAction(get_icon(AppIcons.FIND, color='#555555'), "Search", self)
         self.search_action.setShortcut("Ctrl+F")
         self.search_action.triggered.connect(self.toggle_search)
         self.toolbar.addAction(self.search_action)
@@ -603,8 +603,8 @@ class ERDWidget(QWidget):
             self.property_panel.hide()
         
     def toggle_details(self, checked):
-        icon_name = 'fa5s.eye' if checked else 'fa5s.eye-slash'
-        self.show_details_action.setIcon(qta.icon(icon_name, color='#555555'))
+        icon_name = 'msc.eye' if checked else 'msc.eye-closed'
+        self.show_details_action.setIcon(get_icon(icon_name, color='#555555'))
         self.update_scene_items(ERDTableItem, 'show_columns', checked)
 
     def toggle_types(self, checked):

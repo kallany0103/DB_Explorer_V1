@@ -6,7 +6,7 @@ Each tile initiates a drag with MIME type "application/x-erd-component",
 which is handled by ERDView.dropEvent / _handle_component_drop.
 """
 
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QLabel, QFrame,
     QPushButton
@@ -20,24 +20,24 @@ from widgets.erd.palette_icons import _make_shape_preview, _make_tile_icon, _ERD
 
 ELEMENTS = [
     # (label,           comp_type,              icon_name,                   icon_color,  row, col)
-    ("Table",           "table",                "fa5s.table",                "#1A73E8",   0,   0),
-    ("Table + FK",      "table_fk",             "mdi.table-key",             "#1A73E8",   0,   1),
-    ("Column",          "column",               "mdi.table-column",          "#34A853",   0,   2),
-    ("Entity",          "entity",               "fa5s.square",               "#2563EB",   1,   0),
-    ("Weak Entity",     "weak_entity",          "fa5s.border-all",           "#6366F1",   1,   1),
-    ("Attribute",       "attribute",            "fa5s.circle",               "#22C55E",   1,   2),
-    ("Key Attribute",   "attribute_key",        "mdi.circle-edit-outline",   "#16A34A",   2,   0),
-    ("Partial Key",     "attribute_partial",    "mdi.circle-double",         "#15803D",   2,   1),
-    ("Multi-valued",    "attribute_multi",      "fa5s.dot-circle",           "#16A34A",   2,   2),
-    ("Derived Attr",    "attribute_derived",    "fa5s.circle-notch",         "#4ADE80",   3,   0),
-    ("Relationship",    "relationship_diamond", "fa5s.square",               "#F59E0B",   3,   1),
-    ("Subject Area",    "subject_area",         "fa5s.object-group",         "#8B5CF6",   3,   2),
-    ("Note",            "note",                 "fa5s.sticky-note",          "#D4A100",   4,   0),
-    ("1-1 Relation",    "relationship:one-to-one",   "mdi6.relation-one-to-one",   "#5F6368", 4, 1),
-    ("1-M Relation",    "relationship:one-to-many",  "mdi6.relation-one-to-many",  "#5F6368", 4, 2),
-    ("M-1 Relation",    "relationship:many-to-one",  "mdi6.relation-many-to-one",  "#5F6368", 5, 0),
-    ("M-M Relation",    "relationship:many-to-many", "mdi6.relation-many-to-many", "#5F6368", 5, 1),
-    ("Plain Link",      "relationship:none",         "mdi6.minus",                "#64748B", 5, 2),
+    ("Table",           "table",                "msc.table",                 "#1A73E8",   0,   0),
+    ("Table + FK",      "table_fk",             "msc.table",                 "#1A73E8",   0,   1),
+    ("Column",          "column",               "msc.symbol-variable",       "#34A853",   0,   2),
+    ("Entity",          "entity",               "msc.symbol-class",          "#2563EB",   1,   0),
+    ("Weak Entity",     "weak_entity",          "msc.symbol-structure",      "#6366F1",   1,   1),
+    ("Attribute",       "attribute",            "ph.circle",                 "#22C55E",   1,   2),
+    ("Key Attribute",   "attribute_key",        "msc.key",                   "#16A34A",   2,   0),
+    ("Partial Key",     "attribute_partial",    "ph.circle-dashed",          "#15803D",   2,   1),
+    ("Multi-valued",    "attribute_multi",      "ph.circles-three",          "#16A34A",   2,   2),
+    ("Derived Attr",    "attribute_derived",    "ph.circle-notch",           "#4ADE80",   3,   0),
+    ("Relationship",    "relationship_diamond", "msc.symbol-property",       "#F59E0B",   3,   1),
+    ("Subject Area",    "subject_area",         "msc.group-by-ref-type",     "#8B5CF6",   3,   2),
+    ("Note",            "note",                 "msc.note",                  "#D4A100",   4,   0),
+    ("1-1 Relation",    "relationship:one-to-one",   "msc.arrow-both",       "#5F6368",   4,   1),
+    ("1-M Relation",    "relationship:one-to-many",  "msc.arrow-right",      "#5F6368",   4,   2),
+    ("M-1 Relation",    "relationship:many-to-one",  "msc.arrow-left",       "#5F6368",   5,   0),
+    ("M-M Relation",    "relationship:many-to-many", "msc.git-compare",      "#5F6368",   5,   1),
+    ("Plain Link",      "relationship:none",         "msc.dash",             "#64748B",   5,   2),
 ]
 
 TILE_W = 88
@@ -83,7 +83,7 @@ class ElementTile(QPushButton):
         else:
             try:
                 scale = 1.2 if comp_type == "table_fk" else 1.0
-                pix = qta.icon(icon_name, color=icon_color, scale_factor=scale).pixmap(ICON_SIZE, ICON_SIZE)
+                pix = get_icon(icon_name, color=icon_color, scale_factor=scale).pixmap(ICON_SIZE, ICON_SIZE)
             except Exception:
                 pix = QPixmap(ICON_SIZE, ICON_SIZE)
                 pix.fill(Qt.GlobalColor.transparent)
@@ -151,7 +151,7 @@ class ERDPalette(QFrame):
         # Header button
         self.header_btn = QPushButton()
         self.header_btn.setObjectName("headerBtn")
-        self.header_btn.setIcon(qta.icon("fa5s.chevron-right", color="#374151"))
+        self.header_btn.setIcon(get_icon("msc.chevron-right", color="#374151"))
         self.header_btn.setIconSize(QSize(12, 12))
         self.header_btn.setFixedHeight(36)
         self.header_btn.setToolTip("Expand Elements")
@@ -180,12 +180,12 @@ class ERDPalette(QFrame):
             self._grid_container.hide()
             self.setFixedWidth(COLLAPSED_W)
             self.header_btn.setText("")
-            self.header_btn.setIcon(qta.icon("fa5s.chevron-right", color="#374151"))
+            self.header_btn.setIcon(get_icon("msc.chevron-right", color="#374151"))
             self.header_btn.setToolTip("Expand Elements")
         else:
             self._grid_container.show()
             self.setFixedWidth(EXPANDED_W)
             self.header_btn.setText("  Elements")
-            self.header_btn.setIcon(qta.icon("fa5s.chevron-down", color="#374151"))
+            self.header_btn.setIcon(get_icon("msc.chevron-down", color="#374151"))
             self.header_btn.setToolTip("Collapse Elements")
 

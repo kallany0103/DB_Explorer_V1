@@ -1,7 +1,7 @@
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem,
-    QMenu, QGraphicsDropShadowEffect, QStyle
+    QMenu, QStyle
 )
 from PySide6.QtGui import QPen, QBrush, QColor, QFont, QPainter
 from PySide6.QtCore import Qt, QPointF, QSizeF
@@ -254,7 +254,7 @@ class ERDWeakEntityItem(QGraphicsRectItem, ResizableItemMixin):
         menu = QMenu()
         apply_menu_style(menu)
         remove_action = menu.addAction(
-            qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Weak Entity"
+            get_icon("msc.trash", color="#DC2626"), "Remove Weak Entity"
         )
         remove_action.triggered.connect(self._remove_self)
         if self.size_mode == "manual":

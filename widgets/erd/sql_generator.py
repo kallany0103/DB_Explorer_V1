@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
-import qtawesome as qta
+from ui.icons import get_icon, AppIcons
 
 from db.db_connections import get_downloads_dir
 from ui.components import PrimaryButton, SecondaryButton, ToastNotification
@@ -53,7 +53,7 @@ class SQLPreviewDialog(QDialog):
         header_layout.setSpacing(10)
 
         icon_lbl = QLabel()
-        icon_lbl.setPixmap(qta.icon("fa5s.code", color="#0078d4").pixmap(18, 18))
+        icon_lbl.setPixmap(get_icon("msc.code", color="#0078d4").pixmap(18, 18))
         icon_lbl.setStyleSheet("background: transparent; border: none;")
 
         title_lbl = QLabel("SQL Script Preview")
@@ -128,8 +128,8 @@ class SQLPreviewDialog(QDialog):
         footer_layout.addStretch()
 
         close_btn = SecondaryButton("Close")
-        copy_btn = SecondaryButton(qta.icon("fa5s.copy", color="#374151"), "Copy to Clipboard")
-        save_btn = PrimaryButton(qta.icon("fa5s.save", color="#ffffff"), "Save as SQL")
+        copy_btn = SecondaryButton(get_icon(AppIcons.COPY, color="#374151"), "Copy to Clipboard")
+        save_btn = PrimaryButton(get_icon(AppIcons.SAVE, color="#ffffff"), "Save as SQL")
 
         close_btn.clicked.connect(self.reject)
         copy_btn.clicked.connect(self.copy_sql)
@@ -196,9 +196,9 @@ class CheckboxOptionRow(QFrame):
 
     def _update_icon(self):
         if self._checked:
-            self._icon_lbl.setPixmap(qta.icon("fa5s.check-square", color="#0078d4").pixmap(18, 18))
+            self._icon_lbl.setPixmap(get_icon("msc.check", color="#0078d4").pixmap(18, 18))
         else:
-            self._icon_lbl.setPixmap(qta.icon("fa5.square", color="#9ca3af").pixmap(18, 18))
+            self._icon_lbl.setPixmap(get_icon("ph.square", color="#9ca3af").pixmap(18, 18))
 
     def mousePressEvent(self, event):
         self._checked = not self._checked
@@ -217,11 +217,11 @@ class DialectPickerDialog(QDialog):
     """Styled dialect selection dialog with interactive cards and generation options."""
 
     DIALECTS = [
-        ("postgresql", "fa5s.database",  "#0078d4", "PostgreSQL",       "Full schema with constraints & indexes"),
-        ("oracle",     "fa5s.server",    "#ea580c", "Oracle Database",  "PL/SQL compatible tables & identity columns"),
-        ("sqlite",     "fa5s.file-alt",  "#16a34a", "SQLite",           "Lightweight file-based schema with autoincrement"),
-        ("mysql",      "fa5s.database",  "#0284c7", "MySQL / MariaDB",  "InnoDB tables with foreign keys & auto-increment"),
-        ("generic",    "fa5s.code",      "#7c3aed", "Generic SQL",      "Standard ANSI SQL-92 compatible script"),
+        ("postgresql", "msc.database",   "#0078d4", "PostgreSQL",       "Full schema with constraints & indexes"),
+        ("oracle",     "msc.server",     "#ea580c", "Oracle Database",  "PL/SQL compatible tables & identity columns"),
+        ("sqlite",     "msc.file-text",  "#16a34a", "SQLite",           "Lightweight file-based schema with autoincrement"),
+        ("mysql",      "msc.database",   "#0284c7", "MySQL / MariaDB",  "InnoDB tables with foreign keys & auto-increment"),
+        ("generic",    "msc.code",       "#7c3aed", "Generic SQL",      "Standard ANSI SQL-92 compatible script"),
     ]
 
     def __init__(self, parent=None):
@@ -252,7 +252,7 @@ class DialectPickerDialog(QDialog):
         hl.setSpacing(12)
 
         icon_lbl = QLabel()
-        icon_lbl.setPixmap(qta.icon("fa5s.file-export", color="#0078d4").pixmap(20, 20))
+        icon_lbl.setPixmap(get_icon("msc.cloud-download", color="#0078d4").pixmap(20, 20))
         icon_lbl.setStyleSheet("background: transparent; border: none;")
 
         title_lbl = QLabel("Select SQL Dialect")
@@ -324,7 +324,7 @@ class DialectPickerDialog(QDialog):
         fl.addStretch()
 
         cancel_btn = SecondaryButton("Cancel")
-        ok_btn = PrimaryButton(qta.icon("fa5s.file-code", color="#ffffff"), "Generate SQL")
+        ok_btn = PrimaryButton(get_icon("msc.file-code", color="#ffffff"), "Generate SQL")
         ok_btn.setDefault(True)
         cancel_btn.clicked.connect(self.reject)
         ok_btn.clicked.connect(self.accept)
@@ -352,7 +352,7 @@ class DialectPickerDialog(QDialog):
         icon_inner = QHBoxLayout(icon_frame)
         icon_inner.setContentsMargins(0, 0, 0, 0)
         lbl_icon = QLabel()
-        lbl_icon.setPixmap(qta.icon(icon_name, color=color).pixmap(16, 16))
+        lbl_icon.setPixmap(get_icon(icon_name, color=color).pixmap(16, 16))
         lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_icon.setStyleSheet("background: transparent; border: none;")
         icon_inner.addWidget(lbl_icon)
@@ -405,9 +405,9 @@ class DialectPickerDialog(QDialog):
             ind = self._indicators.get(k)
             if ind:
                 if is_sel:
-                    ind.setPixmap(qta.icon("fa5s.check-circle", color="#0078d4").pixmap(18, 18))
+                    ind.setPixmap(get_icon("msc.check", color="#0078d4").pixmap(18, 18))
                 else:
-                    ind.setPixmap(qta.icon("fa5s.circle", color="#d1d5db").pixmap(18, 18))
+                    ind.setPixmap(get_icon("ph.circle", color="#d1d5db").pixmap(18, 18))
 
     def selected_dialect(self) -> str:
         return self._selected

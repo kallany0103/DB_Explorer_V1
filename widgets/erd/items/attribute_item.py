@@ -1,4 +1,4 @@
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsItem,
     QMenu, QStyle
@@ -271,7 +271,7 @@ class ERDAttributeItem(QGraphicsEllipseItem, ResizableItemMixin):
         menu = QMenu()
         apply_menu_style(menu)
         remove_action = menu.addAction(
-            qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Attribute"
+            get_icon("msc.trash", color="#DC2626"), "Remove Attribute"
         )
         remove_action.triggered.connect(self._remove_self)
         if self.size_mode == "manual":
