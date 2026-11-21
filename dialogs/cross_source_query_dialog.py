@@ -2,13 +2,12 @@
 
 import os
 import sqlite3
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QDialog, QLabel, QComboBox, QLineEdit, QPushButton, QHBoxLayout,
-    QVBoxLayout, QGridLayout, QGroupBox, QRadioButton, QButtonGroup,
-    QPlainTextEdit, QMessageBox, QWidget, QFrame
+    QDialog, QLabel, QComboBox, QLineEdit, QHBoxLayout,
+    QVBoxLayout, QGridLayout, QGroupBox, QPlainTextEdit, QMessageBox
 )
 import db
 from ui.components import PrimaryButton, SecondaryButton
@@ -111,7 +110,7 @@ class CrossSourceQueryDialog(QDialog):
         # Header
         header_layout = QHBoxLayout()
         header_icon = QLabel()
-        header_icon.setPixmap(qta.icon("mdi.transit-connection-variant", color="#0078d4").pixmap(32, 32))
+        header_icon.setPixmap(get_icon("msc.type-hierarchy", color="#0078d4").pixmap(32, 32))
         
         header_text = QVBoxLayout()
         header_title = QLabel("Cross-Source Query Helper")
@@ -245,11 +244,11 @@ class CrossSourceQueryDialog(QDialog):
         # ---------------- Bottom Action Buttons ----------------
         btn_layout = QHBoxLayout()
         
-        self.copy_btn = SecondaryButton("Copy SQL", qta.icon("mdi.content-copy", color="#374151"))
+        self.copy_btn = SecondaryButton("Copy SQL", get_icon(AppIcons.COPY, color="#374151"))
         self.copy_btn.clicked.connect(self._copy_sql)
         btn_layout.addWidget(self.copy_btn)
 
-        self.save_view_btn = SecondaryButton("Save as View...", qta.icon("mdi.content-save-outline", color="#374151"))
+        self.save_view_btn = SecondaryButton("Save as View...", get_icon("msc.eye", color="#374151"))
         self.save_view_btn.clicked.connect(self._save_as_unified_view)
         btn_layout.addWidget(self.save_view_btn)
 
@@ -259,7 +258,7 @@ class CrossSourceQueryDialog(QDialog):
         self.close_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.close_btn)
 
-        self.run_btn = PrimaryButton("Execute in Worksheet", qta.icon("mdi.play", color="#ffffff"))
+        self.run_btn = PrimaryButton("Execute in Worksheet", get_icon(AppIcons.EXECUTE, color="#ffffff"))
         self.run_btn.clicked.connect(self._execute_in_worksheet)
         btn_layout.addWidget(self.run_btn)
 
@@ -493,15 +492,15 @@ class CrossSourceQueryDialog(QDialog):
         sql_lines = []
         if include_header:
             sql_lines.extend([
-                f"-- ==========================================================",
+                "-- ==========================================================",
                 f"-- Cross-Source Query: [{self.ds_combo_a.currentText()}] x [{self.ds_combo_b.currentText()}]",
-                f"-- ==========================================================",
+                "-- ==========================================================",
             ])
 
         sql_lines.extend([
-            f"SELECT",
-            f"    a.*,",
-            f"    b.*",
+            "SELECT",
+            "    a.*,",
+            "    b.*",
             f'FROM "{schema_a}"."{tbl_a}" AS a',
         ])
 
@@ -538,11 +537,11 @@ class CrossSourceQueryDialog(QDialog):
         clipboard = QGuiApplication.clipboard()
         clipboard.setText(sql)
         self.copy_btn.setText("Copied!")
-        self.copy_btn.setIcon(qta.icon("mdi.check", color="#107c41"))
+        self.copy_btn.setIcon(get_icon("msc.check", color="#107c41"))
         from PySide6.QtCore import QTimer
         QTimer.singleShot(2000, lambda: (
             self.copy_btn.setText("Copy SQL"),
-            self.copy_btn.setIcon(qta.icon("mdi.content-copy", color="#374151"))
+            self.copy_btn.setIcon(get_icon(AppIcons.COPY, color="#374151"))
         ))
 
     def _save_as_unified_view(self):

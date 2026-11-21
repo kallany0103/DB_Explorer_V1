@@ -5,8 +5,8 @@ from PySide6.QtWidgets import (
     QTabWidget, QWidget, QCheckBox, QComboBox, QTableWidget,
     QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem, QSplitter
 )
-from PySide6.QtCore import Qt, QSize
-import qtawesome as qta
+from PySide6.QtCore import Qt
+from ui.icons import get_icon
 import db
 
 
@@ -117,7 +117,7 @@ class CSVDataSourceDialog(QDialog):
 
         top_bar = QHBoxLayout()
         self.scan_btn = QPushButton("Auto-Detect CSV Schema")
-        self.scan_btn.setIcon(qta.icon("mdi.refresh", color="#0078d4"))
+        self.scan_btn.setIcon(get_icon("msc.sync", color="#0078d4"))
         self.scan_btn.clicked.connect(self._auto_detect_schema)
 
         self.table_count_label = QLabel("Detected Files: 0")

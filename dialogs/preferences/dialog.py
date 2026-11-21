@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import get_icon
 
 from ui.components import (
     PasswordBox,
@@ -490,7 +490,7 @@ class PreferencesDialog(QDialog):
     # ── Page & Card Helpers ─────────────────────────────────────────────
 
     def _add_category(self, icon_name: str, label: str) -> int:
-        item = QListWidgetItem(qta.icon(icon_name, color="#475569"), label)
+        item = QListWidgetItem(get_icon(icon_name, color="#475569"), label)
         self.category_list.addItem(item)
         return self.category_list.count() - 1
 
@@ -749,7 +749,7 @@ class PreferencesDialog(QDialog):
     # ── Page Builders ───────────────────────────────────────────────────
 
     def _build_general_page(self) -> None:
-        idx = self._add_category("fa5s.sliders-h", "General")
+        idx = self._add_category("msc.settings", "General")
         scroll, layout = self._create_page(
             idx, "General Settings", "Configure visual theme, default connection, and startup behavior."
         )
@@ -813,7 +813,7 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_features_page(self) -> None:
-        idx = self._add_category("fa5s.cubes", "Features")
+        idx = self._add_category("msc.extensions", "Features")
         scroll, layout = self._create_page(
             idx,
             "Features & Capabilities",
@@ -860,7 +860,7 @@ class PreferencesDialog(QDialog):
             toggle.setChecked(enabled)
 
     def _build_editor_page(self) -> None:
-        idx = self._add_category("fa5s.code", "Text Editor")
+        idx = self._add_category("msc.code", "Text Editor")
         scroll, layout = self._create_page(
             idx, "Text Editor", "Configure font, layout, IntelliSense, and SQL formatting style."
         )
@@ -942,7 +942,7 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_results_view_page(self) -> None:
-        idx = self._add_category("fa5s.table", "Results & Grid")
+        idx = self._add_category("msc.table", "Results & Grid")
         scroll, layout = self._create_page(
             idx, "Results & Data Grid", "Configure query output tables, cell formatting, and clipboard behavior."
         )
@@ -991,7 +991,7 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_database_tools_page(self) -> None:
-        idx = self._add_category("fa5s.database", "Database Tools")
+        idx = self._add_category("msc.database", "Database Tools")
         scroll, layout = self._create_page(
             idx, "Database Tools & Execution", "Configure CLI client binary paths and query execution limits."
         )
@@ -1057,7 +1057,7 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_ai_assistant_page(self) -> None:
-        idx = self._add_category("fa5s.robot", "AI Assistant")
+        idx = self._add_category("msc.sparkle", "AI Assistant")
         scroll, layout = self._create_page(
             idx, "AI Assistant", "Configure AI models and endpoints for SQL explanation and chat."
         )

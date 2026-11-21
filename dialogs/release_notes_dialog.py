@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QTextBrowser, QWidget
 )
 from PySide6.QtCore import Qt
-import qtawesome as qta
+from ui.icons import get_icon
 from ui.components import SecondaryButton
 from ui.dialog_utils import fit_dialog_to_screen
 
@@ -45,7 +45,7 @@ class ReleaseNotesDialog(QDialog):
         try:
             icon_lbl = QLabel()
             icon_lbl.setPixmap(
-                qta.icon("mdi.book-open-page-variant-outline", color="#ffffff").pixmap(24, 24)
+                get_icon("msc.book", color="#ffffff").pixmap(24, 24)
             )
             hb.addWidget(icon_lbl)
         except Exception:

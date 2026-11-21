@@ -1,10 +1,10 @@
 import json
 import os
 import sqlite3 as sqlite
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout,
+    QDialog, QLineEdit, QFormLayout, QHBoxLayout, QVBoxLayout,
     QFileDialog, QMessageBox, QLabel, QWidget, QTabWidget, QTreeWidget,
     QTreeWidgetItem, QAbstractItemView
 )
@@ -256,8 +256,8 @@ class SQLiteDataSourceDialog(QDialog):
             self.table_tree.blockSignals(True)
             self.table_tree.clear()
 
-            schema_icon = qta.icon("fa5s.database", color="#0078d4")
-            table_icon = qta.icon("fa5s.table", color="#10b981")
+            schema_icon = get_icon("msc.folder-library", color="#0078d4")
+            table_icon = get_icon("msc.table", color="#10b981")
 
             # Create main schema node
             main_item = QTreeWidgetItem(self.table_tree)

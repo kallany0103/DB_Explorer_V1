@@ -4,7 +4,7 @@ import pandas as pd
 from PySide6.QtCore import QSize, QSortFilterProxyModel, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QComboBox, QFileDialog, QMessageBox, QTabWidget, QTableView, QWidget
-import qtawesome as qta
+from ui.icons import get_icon
 from ui.components import ToastNotification
 
 import db
@@ -274,11 +274,9 @@ def save_new_row(manager, tab=None):
         if hasattr(save_btn, "setIconSize"):
             save_btn.setIconSize(QSize(14, 14))
         save_btn.setIcon(
-            qta.icon(
-                "fa5s.circle-notch",
+            get_icon(
+                "ph.circle-notch",
                 color="#2563EB",
-                color_disabled="#2563EB",
-                animation=qta.Spin(save_btn, interval=16, step=15),
             )
         )
         if hasattr(manager, "status") and manager.status:

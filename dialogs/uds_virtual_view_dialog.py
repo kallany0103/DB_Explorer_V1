@@ -1,17 +1,13 @@
 # dialogs/uds_virtual_view_dialog.py
 
-import json
-import psycopg2
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QLineEdit, QFormLayout, QPushButton, QHBoxLayout, QVBoxLayout,
+    QDialog, QLineEdit, QFormLayout, QHBoxLayout, QVBoxLayout,
     QMessageBox, QLabel, QTabWidget, QWidget, QComboBox, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QAbstractItemView,
-    QListView
+    QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QListView
 )
-from ui.components import SearchBox, SecondaryButton, PrimaryButton, LoadingOverlay
-from workers.workers import WorkerThread
+from ui.components import SecondaryButton, PrimaryButton, LoadingOverlay
 import db
 
 
@@ -101,7 +97,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
         join_header_layout.addWidget(join_lbl)
 
         self.btn_add_join = SecondaryButton("Add Join Table")
-        self.btn_add_join.setIcon(qta.icon("fa5s.plus", color="#0078d4"))
+        self.btn_add_join.setIcon(get_icon("msc.plus", color="#0078d4"))
         self.btn_add_join.clicked.connect(self._add_join_row)
         join_header_layout.addWidget(self.btn_add_join)
         join_header_layout.addStretch()
@@ -175,7 +171,7 @@ class UDSVirtualViewMaskingDialog(QDialog):
         # Live Data Preview Section
         prev_toolbar = QHBoxLayout()
         self.btn_preview_data = SecondaryButton("Preview Sample Data")
-        self.btn_preview_data.setIcon(qta.icon("fa5s.eye", color="#0078d4"))
+        self.btn_preview_data.setIcon(get_icon("msc.eye", color="#0078d4"))
         self.btn_preview_data.clicked.connect(self._preview_masked_data)
         prev_toolbar.addWidget(self.btn_preview_data)
         prev_toolbar.addStretch()
@@ -191,14 +187,14 @@ class UDSVirtualViewMaskingDialog(QDialog):
 
         # Bottom Action Buttons
         self.worksheet_btn = SecondaryButton("Open in SQL Worksheet")
-        self.worksheet_btn.setIcon(qta.icon("fa5s.code", color="#0078d4"))
+        self.worksheet_btn.setIcon(get_icon("msc.code", color="#0078d4"))
         self.worksheet_btn.clicked.connect(self.open_in_worksheet)
 
         self.cancel_btn = SecondaryButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
 
         self.save_btn = PrimaryButton("Create Unified View")
-        self.save_btn.setIcon(qta.icon("fa5s.save", color="#ffffff"))
+        self.save_btn.setIcon(get_icon(AppIcons.SAVE, color="#ffffff"))
         self.save_btn.clicked.connect(self.create_view)
 
         button_layout = QHBoxLayout()

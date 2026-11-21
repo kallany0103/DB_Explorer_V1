@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTextEdit, QPlainTextEdit, QFrame, QMessageBox,
     QHeaderView, QApplication
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 import db
 from workers.schema_diff_worker import SchemaDiffWorker
@@ -169,7 +169,7 @@ class SchemaDiffDialog(QDialog):
         # Action Compare Button
         self.compare_btn = QPushButton("Compare Schemas", self)
         self.compare_btn.setObjectName("compareBtn")
-        self.compare_btn.setIcon(qta.icon("fa5s.balance-scale", color="white"))
+        self.compare_btn.setIcon(get_icon("msc.diff", color="white"))
         self.compare_btn.clicked.connect(self._run_schema_compare)
         sel_layout.addWidget(self.compare_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
@@ -200,7 +200,7 @@ class SchemaDiffDialog(QDialog):
         self.diff_tree.setHeaderLabels(["Object Name", "Source Type", "Target Type", "Diff Classification"])
         self.diff_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         tree_layout.addWidget(self.diff_tree)
-        self.tabs.addTab(self.tab_tree, qta.icon("fa5s.sitemap", color="#0284c7"), "Side-by-Side Diff Tree")
+        self.tabs.addTab(self.tab_tree, get_icon("msc.type-hierarchy", color="#0284c7"), "Side-by-Side Diff Tree")
 
         # Tab 2: Column Inspector Table
         self.tab_cols = QWidget()
@@ -212,7 +212,7 @@ class SchemaDiffDialog(QDialog):
         self.col_table.setHorizontalHeaderLabels(["Table Name", "Column Name", "Source Type", "Target Type", "Diff Status"])
         self.col_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         col_layout.addWidget(self.col_table)
-        self.tabs.addTab(self.tab_cols, qta.icon("fa5s.table", color="#0284c7"), "Detailed Column Inspector")
+        self.tabs.addTab(self.tab_cols, get_icon("msc.table", color="#0284c7"), "Detailed Column Inspector")
 
         # Tab 3: Migration DDL Script
         self.tab_sql = QWidget()
@@ -236,11 +236,11 @@ class SchemaDiffDialog(QDialog):
         # SQL Actions Bar
         sql_btn_layout = QHBoxLayout()
         self.copy_sql_btn = QPushButton("Copy SQL Script", self.tab_sql)
-        self.copy_sql_btn.setIcon(qta.icon("fa5s.copy", color="#334155"))
+        self.copy_sql_btn.setIcon(get_icon(AppIcons.COPY, color="#334155"))
         self.copy_sql_btn.clicked.connect(self._copy_sql_script)
 
         self.open_worksheet_btn = QPushButton("Open in SQL Worksheet", self.tab_sql)
-        self.open_worksheet_btn.setIcon(qta.icon("fa5s.terminal", color="#0284c7"))
+        self.open_worksheet_btn.setIcon(get_icon("msc.terminal", color="#0284c7"))
         self.open_worksheet_btn.clicked.connect(self._open_in_worksheet)
 
         sql_btn_layout.addStretch()
@@ -248,7 +248,7 @@ class SchemaDiffDialog(QDialog):
         sql_btn_layout.addWidget(self.open_worksheet_btn)
         sql_layout.addLayout(sql_btn_layout)
 
-        self.tabs.addTab(self.tab_sql, qta.icon("fa5s.code", color="#0284c7"), "DDL Migration Script (SQL)")
+        self.tabs.addTab(self.tab_sql, get_icon("msc.code", color="#0284c7"), "DDL Migration Script (SQL)")
 
         main_layout.addWidget(self.tabs)
 
@@ -429,8 +429,8 @@ class SchemaDiffDialog(QDialog):
 
     def _populate_diff_tree(self, diff: dict):
         self.diff_tree.clear()
-        tbl_icon = qta.icon("fa5s.table", color="#0284c7")
-        col_icon = qta.icon("fa5s.columns", color="#64748b")
+        tbl_icon = get_icon("msc.table", color="#0284c7")
+        col_icon = get_icon("msc.symbol-variable", color="#64748b")
 
         for tbl_diff in diff.get("table_diffs", []):
             tbl_name = tbl_diff["table_name"]
