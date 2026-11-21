@@ -57,14 +57,16 @@ class ExportDialog(QDialog):
                 font-weight: 600;
                 font-size: 9pt;
                 color: #1E293B;
-                border: 1px solid #E2E8F0;
+                border: 1px solid #CBD5E1;
                 border-radius: 6px;
-                margin-top: 8px;
+                margin-top: 10px;
                 padding-top: 14px;
+                background-color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
+                left: 12px;
                 padding: 0 6px;
                 background-color: #FFFFFF;
             }
@@ -123,14 +125,16 @@ class ExportDialog(QDialog):
                 font-weight: 600;
                 font-size: 9pt;
                 color: #1E293B;
-                border: 1px solid #E2E8F0;
+                border: 1px solid #CBD5E1;
                 border-radius: 6px;
-                margin-top: 8px;
+                margin-top: 10px;
                 padding-top: 14px;
+                background-color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
+                left: 12px;
                 padding: 0 6px;
                 background-color: #FFFFFF;
             }
