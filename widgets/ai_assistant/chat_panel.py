@@ -187,7 +187,7 @@ class AIChatPanel(QWidget):
 
         # Sparkles/AI icon + Title
         ai_icon = QLabel()
-        ai_icon.setPixmap(get_icon("msc.sparkle", color="#2563EB").pixmap(13, 13))
+        ai_icon.setPixmap(get_icon(AppIcons.AI_ASSISTANT).pixmap(14, 14))
         ai_icon.setStyleSheet("background: transparent; border: none;")
         header_layout.addWidget(ai_icon)
 

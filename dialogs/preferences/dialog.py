@@ -1057,7 +1057,7 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_ai_assistant_page(self) -> None:
-        idx = self._add_category("msc.sparkle", "AI Assistant")
+        idx = self._add_category("ph.robot", "AI Assistant")
         scroll, layout = self._create_page(
             idx, "AI Assistant", "Configure AI models and endpoints for SQL explanation and chat."
         )
