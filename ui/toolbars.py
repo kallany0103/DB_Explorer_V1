@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QPainter, QIcon, QPixmap, QColor
+from PySide6.QtGui import QPainter, QIcon
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QButtonGroup, 
     QToolButton, QMenu, QLabel, QPushButton, QFrame,
@@ -657,18 +657,6 @@ class ResultsInfoToolbar(QWidget):
             self.move(self.x(), 0)
 
 
-def _make_status_dot_icon(color_hex: str) -> QIcon:
-    pix = QPixmap(10, 10)
-    pix.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pix)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor(color_hex))
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawEllipse(1, 1, 8, 8)
-    painter.end()
-    return QIcon(pix)
-
-
 class ProcessFilterBar(QWidget):
     """
     Toolbar for filtering processes in the Processes View.
@@ -682,28 +670,26 @@ class ProcessFilterBar(QWidget):
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(6)
+        layout.setSpacing(5)
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.button_group = QButtonGroup(self)
         self.button_group.setExclusive(True)
 
         filters = [
-            ("All (0)", "ALL", None),
-            ("Running (0)", "RUNNING", "#0284C7"),
-            ("Successful (0)", "SUCCESSFUL", "#16A34A"),
-            ("Warning (0)", "WARNING", "#D97706"),
-            ("Error (0)", "ERROR", "#DC2626")
+            ("All (0)", "ALL"),
+            ("Running (0)", "RUNNING"),
+            ("Successful (0)", "SUCCESSFUL"),
+            ("Warning (0)", "WARNING"),
+            ("Error (0)", "ERROR"),
         ]
 
         self.filter_buttons = {}
-        for label, filter_id, dot_color in filters:
+        for label, filter_id in filters:
             btn = QPushButton(label)
             btn.setObjectName(f"filter_btn_{filter_id}")
             btn.setCheckable(True)
             btn.setFixedHeight(26)
-            if dot_color:
-                btn.setIcon(_make_status_dot_icon(dot_color))
             layout.addWidget(btn)
             self.button_group.addButton(btn)
             self.filter_buttons[filter_id] = btn
