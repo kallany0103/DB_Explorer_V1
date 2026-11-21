@@ -649,10 +649,10 @@ class WorksheetManager(QWidget):
             if data:
                 db_type = data.get("type", "")
                 icon = get_connection_icon(db_type)
-                status_icon.setPixmap(icon.pixmap(18, 18))
+                status_icon.setPixmap(icon.pixmap(16, 16))
             else:
                 # Default fallback
-                status_icon.setPixmap(get_icon("msc.plug", color="#72777a").pixmap(18, 18))
+                status_icon.setPixmap(get_icon("msc.plug", color="#72777a").pixmap(16, 16))
 
 
     def execute_query_in_new_output_tab(self):

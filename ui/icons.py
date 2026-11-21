@@ -63,6 +63,8 @@ class AppIcons:
     COMMIT = ("msc.check", COLOR_EMERALD_GREEN)
     ROLLBACK = ("ph.arrow-counter-clockwise", COLOR_CRIMSON)
     AUTOCOMMIT = ("msc.unlock", None)
+    EXECUTING = ("ph.hourglass-medium", COLOR_AMBER)
+    STATUS_EXECUTING = EXECUTING
 
     # Database & Schema Tree Objects
     NEW_CONNECTION = ("msc.plug", COLOR_PRIMARY_BLUE)

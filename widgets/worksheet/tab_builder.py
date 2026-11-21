@@ -87,7 +87,7 @@ def add_tab(manager):
         QLabel#conn_status_icon {
             background-color: transparent;
             border: none;
-            padding-left: 5px;
+            padding: 0px;
         }
     """)
 
