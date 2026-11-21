@@ -5,6 +5,7 @@ from .search_objects_dialog import SearchObjectsDialog
 from .query_describe_dialog import QueryDescribeDialog
 from .object_describe_dialog import ObjectDescribeDialog
 from .quick_describe_dialog import QuickDescribeDialog
+from .describe_prompt_dialog import DescribePromptDialog
 
 __all__ = [
     "ExportDialog",
@@ -12,5 +13,6 @@ __all__ = [
     "QueryDescribeDialog",
     "ObjectDescribeDialog",
     "QuickDescribeDialog",
+    "DescribePromptDialog",
 ]
 

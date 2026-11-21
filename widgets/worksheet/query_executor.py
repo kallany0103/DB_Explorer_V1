@@ -279,14 +279,10 @@ def describe_object(manager, target: str = None, conn_data: dict = None):
             if ident and ident.upper() not in RESERVED_SQL_KEYWORDS:
                 resolved_target = ident
 
-    # 3. If still empty, prompt the user with QInputDialog
+    # 3. If still empty, prompt the user with modern DescribePromptDialog
     if not resolved_target:
-        from PySide6.QtWidgets import QInputDialog
-        text, ok = QInputDialog.getText(
-            manager.main_window,
-            "Describe (F4)",
-            "Enter Table, View, or Schema name:\n(e.g., employees, hr.departments, public)",
-        )
+        from dialogs.tools.describe_prompt_dialog import DescribePromptDialog
+        text, ok = DescribePromptDialog.get_target(manager.main_window)
         if ok and text and text.strip():
             resolved_target = text.strip()
         else:
