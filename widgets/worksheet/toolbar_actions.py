@@ -46,7 +46,7 @@ def build_worksheet_toolbar_actions(manager):
     )
 
     manager.ws_describe_object_action = QAction(
-        get_icon(AppIcons.DESCRIBE_OBJECT), "Describe", manager
+        get_icon(AppIcons.DESCRIBE_OBJECT), "Describe Object", manager
     )
     manager.ws_describe_object_action.setToolTip("Describe Table or Schema (F4)")
     manager.ws_describe_object_action.setShortcut("F4")

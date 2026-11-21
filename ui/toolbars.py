@@ -187,32 +187,30 @@ class WorksheetToolbar(QWidget):
             layout.addWidget(self.optimize_btn)
             self.optimize_batch_btn = self.optimize_btn
 
-        # Describe (F4) - table and schema
+        # Describe (with Quick Describe & Describe Query in dropdown)
         if hasattr(manager, 'ws_describe_object_action'):
             self.describe_obj_btn = ToolbarActionButton(icon=manager.ws_describe_object_action.icon())
             self.describe_obj_btn.setDefaultAction(manager.ws_describe_object_action)
             self.describe_obj_btn.setIconSize(QSize(16, 16))
-            self.describe_obj_btn.setMinimumWidth(32)
-            self.describe_obj_btn.setToolTip("Describe (F4)")
+            self.describe_obj_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            describe_menu = QMenu(self.describe_obj_btn)
+            apply_menu_style(describe_menu)
+            manager.ws_describe_object_action.setIconVisibleInMenu(True)
+            describe_menu.addAction(manager.ws_describe_object_action)
+            if hasattr(manager, 'ws_quick_describe_action'):
+                manager.ws_quick_describe_action.setIconVisibleInMenu(True)
+                describe_menu.addAction(manager.ws_quick_describe_action)
+            if hasattr(manager, 'ws_describe_action'):
+                manager.ws_describe_action.setIconVisibleInMenu(True)
+                describe_menu.addAction(manager.ws_describe_action)
+            self.describe_obj_btn.setMenu(describe_menu)
+            self.describe_obj_btn.setFixedWidth(48)
+            self.describe_obj_btn.setToolTip("Describe Object (F4)")
             layout.addWidget(self.describe_obj_btn)
 
-        # Quick Describe (Ctrl+D)
-        if hasattr(manager, 'ws_quick_describe_action'):
-            self.quick_describe_btn = ToolbarActionButton(icon=manager.ws_quick_describe_action.icon())
-            self.quick_describe_btn.setDefaultAction(manager.ws_quick_describe_action)
-            self.quick_describe_btn.setIconSize(QSize(16, 16))
-            self.quick_describe_btn.setMinimumWidth(32)
-            self.quick_describe_btn.setToolTip("Quick Describe (Ctrl+D)")
-            layout.addWidget(self.quick_describe_btn)
-
-        # Describe (parse) select query (Shift+F4)
-        if hasattr(manager, 'ws_describe_action'):
-            self.describe_btn = ToolbarActionButton(icon=manager.ws_describe_action.icon())
-            self.describe_btn.setDefaultAction(manager.ws_describe_action)
-            self.describe_btn.setIconSize(QSize(16, 16))
-            self.describe_btn.setMinimumWidth(32)
-            self.describe_btn.setToolTip("Describe (parse) select query (Shift+F4)")
-            layout.addWidget(self.describe_btn)
+            # Backward-compatibility aliases for tests/external references
+            self.quick_describe_btn = self.describe_obj_btn
+            self.describe_btn = self.describe_obj_btn
 
 
         # Edit Menu
