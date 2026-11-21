@@ -1,4 +1,3 @@
-import qtawesome as qta
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QPainter, QIcon
 from PySide6.QtWidgets import (
@@ -724,7 +723,7 @@ class ProcessFilterBar(QWidget):
         layout.addWidget(self.search_edit)
         
         # Action buttons
-        self.view_log_btn = CompactButton(qta.icon("fa5s.file-alt", color="#374151"), "View Log")
+        self.view_log_btn = CompactButton(get_icon("msc.file-text", color="#374151"), "View Log")
         self.view_log_btn.setObjectName("process_view_log_btn")
         self.view_log_btn.setFixedHeight(26)
         self.view_log_btn.clicked.connect(lambda: self.manager._handle_view_log(self.tab_content))

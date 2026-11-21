@@ -12,6 +12,7 @@ from typing import Optional
 import qtawesome as qta
 import qtawesome.iconic_font
 from ui.menu_style import apply_menu_style
+from ui.icons import get_icon, AppIcons
 
 # Guard against Qt console spam when qtawesome is queried with uninitialized/zero size
 _orig_char_icon_pixmap = qtawesome.iconic_font.CharIconEngine.pixmap
@@ -401,7 +402,7 @@ class SearchBox(QLineEdit):
         self.setPlaceholderText(placeholder)
         
         # Add search icon using qtawesome to ensure proper scaling
-        search_icon = qta.icon("fa5s.search", color="#8B929B", scale_factor=0.8)
+        search_icon = get_icon(AppIcons.SEARCH, color="#8B929B", scale_factor=0.8)
         self.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
         
         # Add padding to left so text doesn't hit icon
@@ -428,8 +429,8 @@ class PasswordBox(QLineEdit):
         super().__init__(parent)
         self.setEchoMode(QLineEdit.EchoMode.Password)
         
-        self._eye_icon = qta.icon("fa5s.eye", color="#8B929B", scale_factor=0.7)
-        self._eye_off_icon = qta.icon("fa5s.eye-slash", color="#8B929B", scale_factor=0.7)
+        self._eye_icon = get_icon("msc.eye", color="#8B929B", scale_factor=0.7)
+        self._eye_off_icon = get_icon("msc.eye-closed", color="#8B929B", scale_factor=0.7)
         self._password_visible = False
         
         self._password_action = self.addAction(
@@ -759,25 +760,25 @@ _TOAST_STYLES = {
     "success": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.check-circle",
+        "icon":       "msc.check",
         "icon_color": "#16a34a",
     },
     "error": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.times-circle",
+        "icon":       "msc.error",
         "icon_color": "#dc2626",
     },
     "info": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.info-circle",
+        "icon":       "msc.info",
         "icon_color": "#2563eb",
     },
     "warning": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.exclamation-circle",
+        "icon":       "msc.warning",
         "icon_color": "#d97706",
     },
 }
@@ -815,7 +816,7 @@ class ToastNotification(QWidget):
 
         icon_lbl = QLabel()
         icon_lbl.setStyleSheet("background: transparent;")
-        icon_lbl.setPixmap(qta.icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
+        icon_lbl.setPixmap(get_icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
         icon_lbl.setFixedWidth(20)
         icon_lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
@@ -1013,17 +1014,17 @@ class ConfirmDialog(QDialog):
 
         # Badge styling based on kind
         if kind == "danger":
-            icon_name = "fa5s.trash-alt"
+            icon_name = "msc.trash"
             icon_color = "#dc2626"
             bg_color = "#fee2e2"
             border_color = "#fecaca"
         elif kind == "warning":
-            icon_name = "fa5s.exclamation-triangle"
+            icon_name = "msc.warning"
             icon_color = "#d97706"
             bg_color = "#fef3c7"
             border_color = "#fde68a"
         else:
-            icon_name = "fa5s.question-circle"
+            icon_name = "msc.question"
             icon_color = "#2563eb"
             bg_color = "#eff6ff"
             border_color = "#bfdbfe"
@@ -1038,7 +1039,7 @@ class ConfirmDialog(QDialog):
                 border-radius: 20px;
             }}
         """)
-        icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(18, 18))
+        icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(18, 18))
         content_layout.addWidget(icon_label)
 
         # Text column (Title + Message)
