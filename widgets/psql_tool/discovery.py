@@ -166,8 +166,15 @@ def get_psql_candidates() -> list[dict[str, str]]:
     return candidates
 
 
-def get_all_postgres_candidates() -> list[dict[str, Any]]:
+_CACHED_PG_CANDIDATES: list[dict[str, Any]] | None = None
+
+
+def get_all_postgres_candidates(force_refresh: bool = False) -> list[dict[str, Any]]:
     """Scan and return all detected PostgreSQL client candidates across Windows and WSL."""
+    global _CACHED_PG_CANDIDATES
+    if not force_refresh and _CACHED_PG_CANDIDATES is not None:
+        return [dict(c) for c in _CACHED_PG_CANDIDATES]
+
     candidates = get_psql_candidates()
     for c in candidates:
         c["kind"] = "windows"
@@ -179,7 +186,7 @@ def get_all_postgres_candidates() -> list[dict[str, Any]]:
         wsl_candidates: list[dict[str, Any]] = []
 
         for d in distros:
-            info = check_wsl_postgres(d["name"])
+            info = check_wsl_postgres(d["name"], allow_cold_boot=False)
             if info.get("available"):
                 has_any_wsl_pg = True
                 wsl_candidates.append({
@@ -191,8 +198,20 @@ def get_all_postgres_candidates() -> list[dict[str, Any]]:
                     "version": info.get("version", ""),
                     "available": True,
                 })
+            elif info.get("timed_out") or d.get("state") == "Stopped":
+                # Distro was stopped / cold-booting; assume available rather than showing false 'not installed'
+                has_any_wsl_pg = True
+                wsl_candidates.append({
+                    "name": f"WSL: {d['name']}",
+                    "path": "/usr/bin/psql",
+                    "dir": f"wsl:{d['name']}",
+                    "kind": "wsl",
+                    "distro": d["name"],
+                    "version": "",
+                    "available": True,
+                })
 
-        # If WSL exists but no distro has psql, show the default distro as not installed
+        # Only if WSL exists and all distros were checked and confirmed missing psql
         if not has_any_wsl_pg and distros:
             default_distro = next((d for d in distros if d.get("is_default")), distros[0])
             wsl_candidates.append({
@@ -209,4 +228,5 @@ def get_all_postgres_candidates() -> list[dict[str, Any]]:
     except Exception:
         pass
 
+    _CACHED_PG_CANDIDATES = [dict(c) for c in candidates]
     return candidates

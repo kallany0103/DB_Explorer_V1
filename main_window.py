@@ -318,6 +318,9 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+        # Asynchronously pre-warm CLI binary discovery so opening Settings is instant
+        QTimer.singleShot(250, self._warm_preferences_cache)
+
 
     # CORE WORKSHEET TAB ACTIONS
 
@@ -980,6 +983,24 @@ class MainWindow(QMainWindow):
         )
         dialog.finished.connect(lambda _res: setattr(self, "_preferences_dialog", None))
         dialog.show()
+
+    def _warm_preferences_cache(self) -> None:
+        """Asynchronously discover CLI binary candidates in the background so opening Settings is instant."""
+        import threading
+        from widgets.psql_tool.discovery import get_all_postgres_candidates
+        from widgets.sqlplus_tool.discovery import get_sqlplus_candidates
+
+        def _worker() -> None:
+            try:
+                get_all_postgres_candidates()
+            except Exception:
+                pass
+            try:
+                get_sqlplus_candidates()
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True, name="CLIPrewarmThread").start()
 
     def _apply_preferences_dict(self, settings: dict) -> None:
         self.pg_bin_path = settings.get("pg_bin_path", "")
