@@ -143,7 +143,7 @@ class PropertyPanel(QWidget):
             elif col.get('fk'):
                 icon_lbl.setPixmap(get_icon('msc.key', color='#1A73E8').pixmap(12, 12))
             else:
-                icon_lbl.setPixmap(get_icon('msc.symbol-variable', color='#34A853').pixmap(12, 12))
+                icon_lbl.setPixmap(get_icon('ph.columns', color='#16A34A').pixmap(12, 12))
                 
             rfx.addWidget(icon_lbl)
             rfx.addWidget(QLabel(col['name']))

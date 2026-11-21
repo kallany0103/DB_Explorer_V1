@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton
 )
 from PySide6.QtCore import Qt, QSize, QMimeData, QPoint
-from PySide6.QtGui import QDrag, QPixmap
+from PySide6.QtGui import QDrag, QPixmap, QPainter, QColor, QPen
 from widgets.erd.palette_icons import _make_shape_preview, _make_tile_icon, _ERD_TILE_SHAPE_TYPES
 
 
@@ -22,7 +22,7 @@ ELEMENTS = [
     # (label,           comp_type,              icon_name,                   icon_color,  row, col)
     ("Table",           "table",                "msc.table",                 "#1A73E8",   0,   0),
     ("Table + FK",      "table_fk",             "msc.table",                 "#1A73E8",   0,   1),
-    ("Column",          "column",               "msc.symbol-variable",       "#34A853",   0,   2),
+    ("Column",          "column",               "ph.columns",                "#16A34A",   0,   2),
     ("Entity",          "entity",               "msc.symbol-class",          "#2563EB",   1,   0),
     ("Weak Entity",     "weak_entity",          "msc.symbol-structure",      "#6366F1",   1,   1),
     ("Attribute",       "attribute",            "ph.circle",                 "#22C55E",   1,   2),
@@ -45,6 +45,27 @@ TILE_H = 44
 ICON_SIZE = 22
 EXPANDED_W = 288
 COLLAPSED_W = 36
+
+
+def _make_table_fk_tile(size: int = ICON_SIZE) -> QPixmap:
+    """Generate a Table tile icon badged with a Foreign Key link chain in the bottom-right corner."""
+    pix = QPixmap(size, size)
+    pix.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    base_pix = get_icon("msc.table", color="#1A73E8").pixmap(18, 18)
+    p.drawPixmap(0, 0, base_pix)
+
+    bx, by, bs = 11, 11, 11
+    p.setBrush(QColor("#FFFFFF"))
+    p.setPen(QPen(QColor("#CBD5E1"), 1))
+    p.drawEllipse(bx, by, bs, bs)
+
+    badge_pix = get_icon("msc.link", color="#D97706").pixmap(8, 8)
+    p.drawPixmap(bx + 1, by + 1, badge_pix)
+    p.end()
+    return pix
 
 
 # Draggable tile button
@@ -78,12 +99,13 @@ class ElementTile(QPushButton):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         icon_lbl = QLabel()
-        if comp_type in _ERD_TILE_SHAPE_TYPES:
+        if comp_type == "table_fk":
+            pix = _make_table_fk_tile(ICON_SIZE)
+        elif comp_type in _ERD_TILE_SHAPE_TYPES:
             pix = _make_tile_icon(comp_type, ICON_SIZE)
         else:
             try:
-                scale = 1.2 if comp_type == "table_fk" else 1.0
-                pix = get_icon(icon_name, color=icon_color, scale_factor=scale).pixmap(ICON_SIZE, ICON_SIZE)
+                pix = get_icon(icon_name, color=icon_color).pixmap(ICON_SIZE, ICON_SIZE)
             except Exception:
                 pix = QPixmap(ICON_SIZE, ICON_SIZE)
                 pix.fill(Qt.GlobalColor.transparent)

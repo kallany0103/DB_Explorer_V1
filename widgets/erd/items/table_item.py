@@ -59,7 +59,7 @@ class ERDTableItem(QGraphicsRectItem, ResizableItemMixin):
         self.icon_table = get_icon('msc.table', color='#1A73E8').pixmap(14, 12)
         self.icon_pk = get_icon('msc.key', color='#F9AB00').pixmap(12, 12)
         self.icon_fk = get_icon('msc.link', color='#1A73E8').pixmap(12, 12)
-        self.icon_col = get_icon('msc.symbol-variable', color='#34A853').pixmap(12, 12)
+        self.icon_col = get_icon('ph.columns', color='#16A34A').pixmap(12, 12)
         
         self.update_geometry()
 
