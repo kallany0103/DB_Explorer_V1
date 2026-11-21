@@ -61,7 +61,7 @@ class ERDWidget(QWidget):
             background-color: #ECEFF3;
             border-bottom: 1px solid #C9CFD8;
             spacing: 6px;
-            padding: 0px 6px;
+            padding: 3px;
         }
         QToolButton {
             padding: 0px;
