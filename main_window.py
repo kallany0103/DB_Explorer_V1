@@ -356,7 +356,7 @@ class MainWindow(QMainWindow):
         self.dashboard_widget = dashboard_widget
         tab_title = "Dashboard"
         index = self.tab_widget.addTab(dashboard_widget, tab_title)
-        self.tab_widget.setTabIcon(index, get_icon("msc.dashboard", color="#555555"))
+        self.tab_widget.setTabIcon(index, get_icon("msc.dashboard", color="#555555", offset=(0.0, 0.12)))
         self.tab_widget.setCurrentIndex(index)
         self.renumber_tabs()
 
