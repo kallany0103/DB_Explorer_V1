@@ -99,9 +99,10 @@ class DuckDBManager:
     @staticmethod
     def get_servicenow_duckdb_path(conn_id: str | int) -> str:
         """Returns the local DuckDB database path for a ServiceNow connection."""
-        base_dir = Path("databases")
-        base_dir.mkdir(parents=True, exist_ok=True)
-        return str((base_dir / f"servicenow_{conn_id}.duckdb").resolve())
+        from db.db_connections import user_data_path
+        db_file = user_data_path(f"databases/servicenow_{conn_id}.duckdb")
+        Path(db_file).parent.mkdir(parents=True, exist_ok=True)
+        return str(Path(db_file).resolve())
 
     @staticmethod
     def create_servicenow_session(
