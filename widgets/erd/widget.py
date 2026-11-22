@@ -4,7 +4,8 @@ from ui.icons import get_icon, AppIcons
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QToolBar, QMessageBox, QDialog,
-    QFrame, QLabel, QProgressBar, QStackedWidget
+    QFrame, QLabel, QProgressBar, QStackedWidget,
+    QSizePolicy
 )
 from PySide6.QtGui import QAction, QTransform, QColor, QUndoStack
 from PySide6.QtCore import Qt, QSize, QTimer, QPointF
@@ -86,13 +87,28 @@ class ERDWidget(QWidget):
         self.toolbar.setFixedHeight(34)
         self.toolbar.setIconSize(QSize(16, 16))
         self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.toolbar.setMovable(False)
+        self.toolbar.setFloatable(False)
         self.toolbar.setStyleSheet(self._TOOLBAR_STYLE)
+
+        # Centering spacer (left)
+        left_spacer = QWidget()
+        left_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        left_spacer.setStyleSheet("background: transparent;")
+        self.toolbar.addWidget(left_spacer)
+
         self._build_toolbar_file_export_group()
         layout.addWidget(self.toolbar)
         self._build_content_area(layout)
         self.load_schema()
         self.auto_layout()
         self._build_toolbar_view_edit_group()
+
+        # Centering spacer (right)
+        right_spacer = QWidget()
+        right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        right_spacer.setStyleSheet("background: transparent;")
+        self.toolbar.addWidget(right_spacer)
 
     def _build_toolbar_file_export_group(self) -> None:
         """Add file open/save and export actions to the toolbar."""
