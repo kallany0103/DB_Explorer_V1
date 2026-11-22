@@ -61,7 +61,7 @@ class MaterializedViewMenuBuilder:
 
         menu.addSeparator()
         
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act = action(self.manager, "Query Tool", "msc.file-code", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool(item_data)
         )

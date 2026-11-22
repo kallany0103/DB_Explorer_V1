@@ -198,7 +198,7 @@ class ExplorerMenuBuilder:
         grandparent_item = parent_item.parent() if parent_item else None
         code = grandparent_item.data(Qt.ItemDataRole.UserRole) if grandparent_item else None
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act = action(self.manager, "Query Tool", "msc.file-code", shortcut="Alt+Shift+Q")
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
 
@@ -373,7 +373,7 @@ class ExplorerMenuBuilder:
         view_sub.addAction(act)
 
         menu.addSeparator()
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act = action(self.manager, "Query Tool", "msc.file-code", shortcut="Alt+Shift+Q")
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item_data))
         menu.addAction(act)
 
@@ -412,7 +412,7 @@ class ExplorerMenuBuilder:
     def _data_source_menu(self, menu, item, index):
         ds_data = item.data(Qt.ItemDataRole.UserRole) or {}
 
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act = action(self.manager, "Query Tool", "msc.file-code", shortcut="Alt+Shift+Q")
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(ds_data))
         menu.addAction(act)
 

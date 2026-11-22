@@ -27,6 +27,7 @@ class AppIcons:
     """
 
     # File & Worksheet Actions
+    QUERY_TOOL = ("msc.file-code", None)
     OPEN_FILE = ("msc.folder-opened", None)
     SAVE = ("msc.save", None)
     EXECUTE = ("msc.play", COLOR_EMERALD_GREEN)
@@ -60,8 +61,8 @@ class AppIcons:
     CLEAR_ALL = ("msc.trash", COLOR_CRIMSON)
 
     # Transaction Actions
-    COMMIT = ("mdi6.database-check-outline", COLOR_EMERALD_GREEN)
-    ROLLBACK = ("mdi6.database-arrow-left-outline", COLOR_CRIMSON)
+    COMMIT = ("msc.check", COLOR_EMERALD_GREEN)
+    ROLLBACK = ("ph.arrow-counter-clockwise", COLOR_CRIMSON)
     AUTOCOMMIT = ("msc.unlock", None)
     EXECUTING = ("ph.hourglass-medium", COLOR_AMBER)
     STATUS_EXECUTING = EXECUTING
@@ -103,7 +104,7 @@ _LEGACY_MAP: dict[str, str] = {
     "mdi.file-plus-outline": "msc.new-file",
     "mdi.database-plus": "msc.database",
     "mdi.cloud-plus-outline": "msc.cloud",
-    "mdi.database-search": "msc.search",
+    "mdi.database-search": "msc.file-code",
     "mdi.console": "msc.terminal",
     "mdi.magnify": "msc.search",
     "mdi.refresh": "msc.sync",
