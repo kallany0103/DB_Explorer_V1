@@ -1147,59 +1147,52 @@ class ToggleSwitch(QCheckBox):
 
 
 class SettingsCategoryDelegate(QStyledItemDelegate):
-    """Paints crisp rounded category items with a corner-blended left accent bar."""
+    """Paints modern sidebar category items with clean pill selection and matching icon tint."""
 
     def sizeHint(self, option, index) -> QSize:
         size = super().sizeHint(option, index)
-        return QSize(size.width(), max(size.height(), 36))
+        return QSize(size.width(), max(size.height(), 34))
 
     def paint(self, painter: QPainter, option, index) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        rect = QRectF(option.rect).adjusted(0.5, 1.5, -0.5, -1.5)
-        card_path = QPainterPath()
-        card_path.addRoundedRect(rect, 6.0, 6.0)
+        rect = QRectF(option.rect).adjusted(2.0, 1.0, -2.0, -1.0)
+        pill_path = QPainterPath()
+        pill_path.addRoundedRect(rect, 6.0, 6.0)
 
         is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
         is_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
 
         if is_selected:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#FFFFFF"))
-            painter.drawPath(card_path)
-
-            painter.setPen(QPen(QColor("#E2E8F0"), 1.0))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawPath(card_path)
-
-            clip_path = QPainterPath()
-            clip_path.addRoundedRect(rect.adjusted(-0.5, -0.5, 0.5, 0.5), 6.0, 6.0)
-            painter.setClipPath(clip_path)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#0284C7"))
-            painter.drawRect(QRectF(rect.left() - 0.5, rect.top() - 0.5, 2.0, rect.height() + 1.0))
-            painter.setClipping(False)
+            painter.setBrush(QColor("#E0F2FE"))
+            painter.drawPath(pill_path)
         elif is_hovered:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("#F1F5F9"))
-            painter.drawPath(card_path)
+            painter.drawPath(pill_path)
 
-        icon = index.data(Qt.ItemDataRole.DecorationRole)
-        text_left = rect.left() + 14.0
+        icon_name = index.data(Qt.ItemDataRole.UserRole + 1)
+        if is_selected and icon_name:
+            icon = get_icon(icon_name, color="#0284C7")
+        else:
+            icon = index.data(Qt.ItemDataRole.DecorationRole)
+
+        text_left = rect.left() + 10.0
         if isinstance(icon, QIcon) and not icon.isNull():
-            icon_rect = QRectF(rect.left() + 13.0, rect.center().y() - 8.0, 16.0, 16.0).toRect()
+            icon_rect = QRectF(rect.left() + 10.0, rect.center().y() - 8.0, 16.0, 16.0).toRect()
             icon.paint(painter, icon_rect)
-            text_left = rect.left() + 37.0
+            text_left = rect.left() + 34.0
 
         font = QFont(option.font)
         font.setPointSizeF(9.5)
         font.setWeight(QFont.Weight.Normal)
         painter.setFont(font)
-        painter.setPen(QColor("#0F172A" if is_selected else "#334155"))
+        painter.setPen(QColor("#0369A1" if is_selected else "#334155"))
 
         is_modified = bool(index.data(Qt.ItemDataRole.UserRole))
-        right_pad = 22.0 if is_modified else 8.0
+        right_pad = 20.0 if is_modified else 8.0
         text_rect = QRectF(text_left, rect.top(), rect.right() - text_left - right_pad, rect.height())
         painter.drawText(
             text_rect,
