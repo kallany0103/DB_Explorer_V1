@@ -1,11 +1,11 @@
 import json
 import os
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsItem, QGraphicsLineItem, QGraphicsScene,
-    QGraphicsView, QHBoxLayout, QHeaderView, QLabel, QPushButton, QSplitter,
+    QGraphicsView, QHBoxLayout, QHeaderView, QLabel, QSplitter,
     QStyle, QStyledItemDelegate, QStyleOptionProgressBar, QTabWidget,
     QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
     QWidget
@@ -69,12 +69,13 @@ class ExplainVisualizer(QWidget):
         
         # Header Info
         self.summary_label = QLabel("Run EXPLAIN on a query to see the plan here.")
-        self.summary_label.setStyleSheet("padding: 5px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold;")
+        self.summary_label.setObjectName("explainSummaryLabel")
         self.layout.addWidget(self.summary_label)
 
         # Main Tab Widget
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("")
+        self.tabs.setObjectName("explain_tabs")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         
         # 1. Graphical Tab
         graphics_tab = QWidget()
@@ -85,28 +86,30 @@ class ExplainVisualizer(QWidget):
         # Graphical Toolbar
         self.graph_toolbar = QWidget()
         self.graph_toolbar.setObjectName("explainToolbar")
-        self.graph_toolbar.setFixedHeight(32)
+        self.graph_toolbar.setFixedHeight(36)
         toolbar_layout = QHBoxLayout(self.graph_toolbar)
-        toolbar_layout.setContentsMargins(6, 3, 6, 3)
+        toolbar_layout.setContentsMargins(8, 5, 8, 5)
         toolbar_layout.setSpacing(6)
         toolbar_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
-        self.btn_zoom_in = IconButton(get_icon("msc.zoom-in", color="#555555"), "Zoom In")
+        self.btn_zoom_in = IconButton(get_icon("msc.zoom-in", color="#475569"), "Zoom In")
+        self.btn_zoom_in.setObjectName("explainZoomInBtn")
+        self.btn_zoom_in.setStyleSheet("")
         self.btn_zoom_in.setFixedSize(24, 24)
         self.btn_zoom_in.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_zoom_in.clicked.connect(lambda: self.graph_view.scale(1.2, 1.2))
         
-        self.btn_zoom_out = IconButton(get_icon("msc.zoom-out", color="#555555"), "Zoom Out")
+        self.btn_zoom_out = IconButton(get_icon("msc.zoom-out", color="#475569"), "Zoom Out")
+        self.btn_zoom_out.setObjectName("explainZoomOutBtn")
+        self.btn_zoom_out.setStyleSheet("")
         self.btn_zoom_out.setFixedSize(24, 24)
         self.btn_zoom_out.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_zoom_out.clicked.connect(lambda: self.graph_view.scale(0.8, 0.8))
         
-        self.btn_reset = QPushButton("Reset")
+        self.btn_reset = IconButton(get_icon("msc.screen-full", color="#475569"), "Reset view zoom and position")
         self.btn_reset.setObjectName("explainResetBtn")
-        self.btn_reset.setIcon(get_icon("msc.screen-full", color="#555555"))
-        self.btn_reset.setIconSize(QSize(12, 12))
-        self.btn_reset.setToolTip("Reset view zoom and position")
-        self.btn_reset.setFixedHeight(24)
+        self.btn_reset.setStyleSheet("")
+        self.btn_reset.setFixedSize(24, 24)
         self.btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_reset.clicked.connect(lambda: self.graph_view.reset_view())
         
@@ -125,19 +128,20 @@ class ExplainVisualizer(QWidget):
         
         # Side Details Panel
         self.details_container = QFrame()
+        self.details_container.setObjectName("explainDetailsContainer")
         self.details_container.setFrameShape(QFrame.Shape.StyledPanel)
-        self.details_container.setStyleSheet("background-color: white; border-left: 1px solid #dee2e6;")
         details_layout = QVBoxLayout(self.details_container)
         details_layout.setContentsMargins(0, 0, 0, 0)
         details_layout.setSpacing(0)
         
         # Details Header
         details_header = QWidget()
-        details_header.setStyleSheet("background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold;")
+        details_header.setObjectName("explainDetailsHeader")
         header_layout = QHBoxLayout(details_header)
-        header_layout.setContentsMargins(10, 5, 5, 5)
+        header_layout.setContentsMargins(10, 6, 6, 6)
         
         self.details_title = QLabel("Node Details")
+        self.details_title.setObjectName("explainDetailsTitle")
         header_layout.addWidget(self.details_title)
         
         btn_close = SecondaryButton("×")
@@ -164,7 +168,7 @@ class ExplainVisualizer(QWidget):
         self.details_container.hide() # Hidden by default
         
         graphics_layout.addWidget(self.graph_splitter, 1)
-        self.tabs.addTab(graphics_tab, "Graphical")
+        self.tabs.addTab(graphics_tab, get_icon("msc.type-hierarchy", color="#0284C7"), "Graphical")
         
         # 2. Analysis Tab
         self.analysis_tree = QTreeWidget()
@@ -176,13 +180,26 @@ class ExplainVisualizer(QWidget):
         self.analysis_delegate = AnalysisItemDelegate(self.analysis_tree)
         self.analysis_tree.setItemDelegateForColumn(2, self.analysis_delegate)  # Exclusive
         self.analysis_tree.setItemDelegateForColumn(3, self.analysis_delegate)  # Inclusive
-        self.tabs.addTab(self.analysis_tree, "Analysis")
+        self.tabs.addTab(self.analysis_tree, get_icon("msc.list-tree", color="#64748B"), "Analysis")
         
         # 3. Statistics Tab
         stats_widget = QWidget()
-        stats_layout = QVBoxLayout(stats_widget)
+        stats_layout = QHBoxLayout(stats_widget)
+        stats_layout.setContentsMargins(12, 12, 12, 12)
+        stats_layout.setSpacing(0)
         
-        stats_layout.addWidget(QLabel("<b>Statistics per Node Type</b>"))
+        self.stats_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.stats_splitter.setChildrenCollapsible(False)
+        
+        # Left Panel: Node Type Stats
+        node_panel = QWidget()
+        node_layout = QVBoxLayout(node_panel)
+        node_layout.setContentsMargins(0, 0, 8, 0)
+        node_layout.setSpacing(8)
+        
+        lbl_nodes = QLabel("Statistics per Node Type")
+        lbl_nodes.setStyleSheet("font-size: 12px; font-weight: 600; color: #475569;")
+        node_layout.addWidget(lbl_nodes)
         self.node_stats_table = QTableWidget()
         self.node_stats_table.setColumnCount(4)
         self.node_stats_table.setHorizontalHeaderLabels(["Node type", "Count", "Time spent", "% of query"])
@@ -190,9 +207,18 @@ class ExplainVisualizer(QWidget):
         self.node_stats_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         self.node_stats_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         self.node_stats_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        stats_layout.addWidget(self.node_stats_table)
+        node_layout.addWidget(self.node_stats_table)
+        self.stats_splitter.addWidget(node_panel)
         
-        stats_layout.addWidget(QLabel("<b>Statistics per Relation</b>"))
+        # Right Panel: Relation Stats
+        rel_panel = QWidget()
+        rel_layout = QVBoxLayout(rel_panel)
+        rel_layout.setContentsMargins(8, 0, 0, 0)
+        rel_layout.setSpacing(8)
+        
+        lbl_rels = QLabel("Statistics per Relation")
+        lbl_rels.setStyleSheet("font-size: 12px; font-weight: 600; color: #475569;")
+        rel_layout.addWidget(lbl_rels)
         self.rel_stats_tree = QTreeWidget()
         self.rel_stats_tree.setHeaderLabels(["Relation name", "Scan count", "Total time", "% of query"])
         self.rel_stats_tree.setAlternatingRowColors(True)
@@ -200,11 +226,29 @@ class ExplainVisualizer(QWidget):
         self.rel_stats_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         self.rel_stats_tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         self.rel_stats_tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        stats_layout.addWidget(self.rel_stats_tree)
+        rel_layout.addWidget(self.rel_stats_tree)
+        self.stats_splitter.addWidget(rel_panel)
         
-        self.tabs.addTab(stats_widget, "Statistics")
+        self.stats_splitter.setSizes([500, 500])
+        stats_layout.addWidget(self.stats_splitter)
+        
+        self.tabs.addTab(stats_widget, get_icon("msc.pie-chart", color="#64748B"), "Statistics")
         
         self.layout.addWidget(self.tabs)
+
+    def _update_tab_icons(self, active_index: int):
+        tab_icons = [
+            ("msc.type-hierarchy", 0),
+            ("msc.list-tree", 1),
+            ("msc.pie-chart", 2),
+        ]
+        for icon_name, idx in tab_icons:
+            if idx < self.tabs.count():
+                color = "#0284C7" if idx == active_index else "#64748B"
+                self.tabs.setTabIcon(idx, get_icon(icon_name, color=color))
+
+    def _on_tab_changed(self, index: int):
+        self._update_tab_icons(index)
 
     def load_plan(self, plan_json):
         self.graph_view.scene().clear()
