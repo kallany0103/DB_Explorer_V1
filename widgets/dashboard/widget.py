@@ -5,7 +5,7 @@ from datetime import datetime
 
 from ui.icons import get_icon
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QPointF, QThread
+from PySide6.QtCore import Qt, QTimer, QObject, Signal, QPointF, QThread, QSize
 from PySide6.QtGui import QFont, QColor, QPainter, QPen, QBrush
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,7 +29,8 @@ from widgets.dashboard.state_widget import StateWidget, StateWorker
 class DashboardWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("background-color: #ffffff;")
+        self.setObjectName("dashboardWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.request_stats_update)
         
@@ -53,21 +54,23 @@ class DashboardWidget(QWidget):
 
         # Tab Widget
         self.tabs = QTabWidget()
-
+        self.tabs.setObjectName("dashboard_tabs")
+        self.tabs.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.tabs.setIconSize(QSize(15, 15))
 
         # 1. Activity Tab
         self.activity_tab = QWidget()
         self.setup_activity_ui()
-        self.tabs.addTab(self.activity_tab, get_icon('msc.pulse', color="#121213"), "Activity")
+        self.tabs.addTab(self.activity_tab, get_icon('msc.pulse', color="#0284C7"), "Activity")
 
         # 2. State Tab
         self.state_widget = StateWidget()
         self.state_widget.refresh_requested.connect(self.refresh_requested)
-        self.tabs.addTab(self.state_widget, get_icon('msc.database', color="#121213"), "State")
+        self.tabs.addTab(self.state_widget, get_icon('msc.database', color="#64748B"), "State")
 
         # 3. Logs Tab
         self.logs_widget = LogsWidget()
-        self.tabs.addTab(self.logs_widget, get_icon('msc.file-text', color="#121213"), "Logs")
+        self.tabs.addTab(self.logs_widget, get_icon('msc.file-text', color="#64748B"), "Logs")
 
         self.tabs.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self.tabs)
@@ -140,7 +143,19 @@ class DashboardWidget(QWidget):
         }
         self.logs_widget.append_log_entry(entry)
 
+    def _update_tab_icons(self, active_index: int):
+        tab_icons = [
+            ("msc.pulse", 0),
+            ("msc.database", 1),
+            ("msc.file-text", 2),
+        ]
+        for icon_name, idx in tab_icons:
+            if idx < self.tabs.count():
+                color = "#0284C7" if idx == active_index else "#64748B"
+                self.tabs.setTabIcon(idx, get_icon(icon_name, color=color))
+
     def _on_tab_changed(self, index):
+        self._update_tab_icons(index)
         if self.tabs.widget(index) == self.state_widget:
             self.request_stats_update(manual=True)
         elif self.tabs.widget(index) == self.logs_widget:

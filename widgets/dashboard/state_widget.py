@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
                                 QTableWidget, QTableWidgetItem, QHeaderView, 
                                 QFrame, QSplitter, QLineEdit, QCheckBox, 
-                                QAbstractItemView, QMessageBox,QHBoxLayout,
-                                QPlainTextEdit)
-from PySide6.QtCore import Qt, Signal, QObject, QRunnable, Slot
+                                QAbstractItemView, QMessageBox, QHBoxLayout,
+                                QPlainTextEdit, QApplication)
+from PySide6.QtCore import Qt, Signal, QObject, QRunnable, Slot, QSize, QTimer
 from ui.icons import get_icon
 import db
 from db.db_modifications import terminate_postgres_backend, cancel_postgres_backend
@@ -46,157 +46,247 @@ class StateWorker(QRunnable):
                 pass
 
 class DetailsPanel(QFrame):
-    def __init__(self, data_dict, parent=None):
+    def __init__(self, data_dict, on_close=None, parent=None):
         super().__init__(parent)
+        self.data_dict = data_dict
+        self.on_close = on_close
+        self.setObjectName("DetailsPanel")
         self.setStyleSheet("""
-            QFrame {
+            QFrame#DetailsPanel {
                 background-color: #f8fafc;
-                border: 1px solid #cbd5e1;
-                border-radius: 4px;
-            }
-            QLabel {
-                font-weight: 600;
-                color: #334155;
-                border: none;
-                background: transparent;
-            }
-            QLineEdit, QPlainTextEdit {
-                background-color: #ffffff;
-                border: 1px solid #d1d5db;
-                border-radius: 4px;
-                padding: 6px;
-                color: #0f172a;
-                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-                font-size: 13px;
-            }
-            QScrollBar:vertical {
-                background: transparent;
-                width: 8px;
-                margin: 0px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: #cbd5e1;
-                min-height: 25px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #94a3b8;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-                width: 0px;
-                background: none;
-                border: none;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-            QScrollBar:horizontal {
-                background: transparent;
-                height: 8px;
-                margin: 0px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:horizontal {
-                background: #cbd5e1;
-                min-width: 25px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background: #94a3b8;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                height: 0px;
-                width: 0px;
-                background: none;
-                border: none;
-            }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                background: none;
+                border: 1px solid #e2e8f0;
+                border-left: 3px solid #0284c7;
+                border-radius: 6px;
             }
         """)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
-        
-        # Header with Tab-like appearance
-        tab_header = QFrame()
-        tab_header.setFixedHeight(35)
-        tab_header.setStyleSheet("background: transparent; border: none; border-bottom: 2px solid #3b82f6;")
-        th_lay = QHBoxLayout(tab_header)
-        th_lay.setContentsMargins(0, 0, 0, 0)
-        lbl_tab = QLabel("Details")
-        lbl_tab.setStyleSheet("color: #3b82f6; font-weight: bold; font-size: 14px; padding: 0 10px;")
-        th_lay.addWidget(lbl_tab)
-        th_lay.addStretch()
-        layout.addWidget(tab_header)
-        
-        # Grid-like form
-        form_container = QWidget()
-        form_lay = QVBoxLayout(form_container)
-        form_lay.setContentsMargins(0, 10, 0, 0)
-        form_lay.setSpacing(10)
-        
-        def create_field(label_text, value):
-            row = QHBoxLayout()
-            lbl = QLabel(label_text)
-            lbl.setFixedWidth(140)
-            edit = QLineEdit(str(value) if value is not None else "")
-            edit.setReadOnly(True)
-            row.addWidget(lbl)
-            row.addWidget(edit)
-            return row
+        layout.setContentsMargins(14, 10, 14, 12)
+        layout.setSpacing(8)
 
-        form_lay.addLayout(create_field("Backend type", data_dict.get("Backend type")))
-        form_lay.addLayout(create_field("Query started at", data_dict.get("Query start")))
-        form_lay.addLayout(create_field("Last state changed at", data_dict.get("State change")))
+        # ── Header ──
+        header_lay = QHBoxLayout()
+        header_lay.setContentsMargins(0, 0, 0, 0)
+        header_lay.setSpacing(8)
         
-        sql_lbl = QLabel("SQL")
-        form_lay.addWidget(sql_lbl)
+        # PID badge
+        pid = data_dict.get("pid")
+        pid_lbl = QLabel(f"PID {pid}" if pid is not None else "Session Details")
+        pid_lbl.setStyleSheet("""
+            background-color: #e2e8f0;
+            color: #0f172a;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+        """)
+        header_lay.addWidget(pid_lbl)
+
+        # State pill (active/idle)
+        state_val = str(data_dict.get("State", "")).strip().lower()
+        if state_val:
+            is_active = state_val == "active"
+            bg = "#dcfce7" if is_active else "#f1f5f9"
+            fg = "#15803d" if is_active else "#64748b"
+            dot = "● " if is_active else "○ "
+            state_pill = QLabel(f"{dot}{state_val.capitalize()}")
+            state_pill.setStyleSheet(f"""
+                background-color: {bg};
+                color: {fg};
+                font-weight: 600;
+                font-size: 11px;
+                padding: 3px 8px;
+                border-radius: 4px;
+            """)
+            header_lay.addWidget(state_pill)
+
+        # Subtitle: user @ db
+        db_usr_parts = []
+        if data_dict.get("User"):
+            db_usr_parts.append(str(data_dict.get("User")))
+        if data_dict.get("Database"):
+            db_usr_parts.append(f"@{data_dict.get('Database')}")
+        if data_dict.get("Application") and str(data_dict.get("Application")) != "External / Unknown":
+            db_usr_parts.append(f"({data_dict.get('Application')})")
         
+        if db_usr_parts:
+            info_lbl = QLabel(" ".join(db_usr_parts))
+            info_lbl.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 500;")
+            header_lay.addWidget(info_lbl)
+
+        header_lay.addStretch()
+
+        if self.on_close:
+            close_btn = IconButton(get_icon('msc.chevron-up', color="#64748b"), tooltip="Collapse Details")
+            close_btn.setFixedSize(22, 22)
+            close_btn.setIconSize(QSize(12, 12))
+            close_btn.clicked.connect(self.on_close)
+            header_lay.addWidget(close_btn)
+
+        layout.addLayout(header_lay)
+
+        # ── Metadata Tiles Grid ──
+        tiles_lay = QHBoxLayout()
+        tiles_lay.setContentsMargins(0, 0, 0, 0)
+        tiles_lay.setSpacing(8)
+
+        def make_tile(title_text, val_text):
+            tile = QFrame()
+            tile.setStyleSheet("""
+                QFrame {
+                    background-color: #ffffff;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 5px;
+                }
+            """)
+            t_lay = QVBoxLayout(tile)
+            t_lay.setContentsMargins(8, 5, 8, 5)
+            t_lay.setSpacing(2)
+
+            lbl = QLabel(title_text)
+            lbl.setStyleSheet("font-size: 9px; font-weight: 700; color: #64748b; border: none; background: transparent; text-transform: uppercase;")
+            
+            clean_val = str(val_text).strip() if val_text is not None and str(val_text).strip() else "—"
+            if len(clean_val) > 19 and ("+" in clean_val or "T" in clean_val):
+                clean_val = clean_val[:19].replace("T", " ")
+                
+            val = QLabel(clean_val)
+            val.setStyleSheet("font-size: 11px; font-weight: 600; color: #0f172a; border: none; background: transparent; font-family: 'Consolas', 'Monaco', monospace;")
+            
+            t_lay.addWidget(lbl)
+            t_lay.addWidget(val)
+            return tile
+
+        tiles_lay.addWidget(make_tile("Backend Type", data_dict.get("Backend type")), 1)
+        tiles_lay.addWidget(make_tile("Query Started", data_dict.get("Query start")), 1)
+        tiles_lay.addWidget(make_tile("State Changed", data_dict.get("State change")), 1)
+        tiles_lay.addWidget(make_tile("Wait Event", data_dict.get("Wait event")), 1)
+
+        layout.addLayout(tiles_lay)
+
+        # ── SQL Query Section ──
+        sql_raw = str(data_dict.get("SQL", "") or "").strip()
+        has_real_sql = bool(sql_raw and sql_raw != ";")
+
+        sql_header_lay = QHBoxLayout()
+        sql_header_lay.setContentsMargins(0, 2, 0, 0)
+        sql_header_lay.setSpacing(6)
+
+        sql_title = QLabel("SQL Statement")
+        sql_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;")
+        sql_header_lay.addWidget(sql_title)
+        sql_header_lay.addStretch()
+
+        if has_real_sql:
+            copy_btn = SecondaryButton(get_icon('msc.copy', color="#475569"), " Copy")
+            copy_btn.setFixedHeight(22)
+            copy_btn.setIconSize(QSize(12, 12))
+            copy_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffffff;
+                    color: #475569;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 4px;
+                    padding: 2px 8px;
+                    font-size: 10px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: #f1f5f9;
+                    color: #0f172a;
+                    border-color: #94a3b8;
+                }
+            """)
+            def do_copy():
+                QApplication.clipboard().setText(sql_raw)
+                copy_btn.setText(" Copied!")
+                QTimer.singleShot(1500, lambda: copy_btn.setText(" Copy"))
+            copy_btn.clicked.connect(do_copy)
+            sql_header_lay.addWidget(copy_btn)
+
+        layout.addLayout(sql_header_lay)
+
         self.sql_view = QPlainTextEdit()
-        self.sql_view.setPlainText(data_dict.get("SQL", ""))
         self.sql_view.setReadOnly(True)
-        self.sql_view.setMinimumHeight(150)
-        form_lay.addWidget(self.sql_view)
+        if has_real_sql:
+            self.sql_view.setPlainText(sql_raw)
+            self.sql_view.setStyleSheet("""
+                QPlainTextEdit {
+                    background-color: #ffffff;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 4px;
+                    padding: 6px 8px;
+                    color: #0f172a;
+                    font-family: 'Consolas', 'Cascadia Code', 'Courier New', monospace;
+                    font-size: 11px;
+                }
+            """)
+        else:
+            self.sql_view.setPlaceholderText("No active SQL statement for this session.")
+            self.sql_view.setStyleSheet("""
+                QPlainTextEdit {
+                    background-color: #f8fafc;
+                    border: 1px dashed #cbd5e1;
+                    border-radius: 4px;
+                    padding: 6px 8px;
+                    color: #94a3b8;
+                    font-style: italic;
+                    font-size: 11px;
+                }
+            """)
         
-        layout.addWidget(form_container)
-        layout.addStretch()
+        layout.addWidget(self.sql_view)
+
+    def preferred_height(self) -> int:
+        sql_raw = str(self.data_dict.get("SQL", "") or "").strip()
+        if not sql_raw or sql_raw == ";":
+            return 200
+        lines = sql_raw.count("\n") + 1
+        return min(320, max(220, 190 + lines * 16))
 
 class TableFrame(QFrame):
-    def __init__(self, title, has_checkbox=False, parent=None):
+    def __init__(self, title, has_checkbox=False, has_refresh=False, parent=None):
         super().__init__(parent)
         self.setObjectName("TableFrame")
         self.setStyleSheet("#TableFrame { background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; }")
         
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(1, 0, 1, 1)
         self.layout.setSpacing(0)
 
         self.header = QFrame()
-        self.header.setFixedHeight(45)
-        self.header.setStyleSheet("QFrame { background-color: #f9fafb; border: none; border-bottom: 1px solid #e5e7eb; border-top-left-radius: 6px; border-top-right-radius: 6px; }")
+        self.header.setFixedHeight(44)
+        self.header.setStyleSheet("QFrame { background-color: #f9fafb; border: none; border-bottom: 1px solid #e5e7eb; border-top-left-radius: 5px; border-top-right-radius: 5px; }")
         h_lay = QHBoxLayout(self.header)
         h_lay.setContentsMargins(12, 0, 12, 0)
+        h_lay.setSpacing(8)
+        h_lay.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         
         self.title_label = QLabel(title)
         self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
-        h_lay.addWidget(self.title_label)
+        h_lay.addWidget(self.title_label, 0, Qt.AlignmentFlag.AlignVCenter)
         h_lay.addStretch()
 
         if has_checkbox:
             self.checkbox = QCheckBox("Active sessions only")
             self.checkbox.setStyleSheet("font-size: 13px; color: #4b5563;")
-            h_lay.addWidget(self.checkbox)
-            h_lay.addSpacing(15)
+            self.checkbox.setFixedHeight(28)
+            h_lay.addWidget(self.checkbox, 0, Qt.AlignmentFlag.AlignVCenter)
+            h_lay.addSpacing(4)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search...")
-        self.search_input.setFixedWidth(200)
+        self.search_input.setFixedWidth(180)
+        self.search_input.setFixedHeight(28)
         self.search_input.setStyleSheet("QLineEdit { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: #1f2937; }")
-        h_lay.addWidget(self.search_input)
+        h_lay.addWidget(self.search_input, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.refresh_btn = None
+        if has_refresh:
+            self.refresh_btn = SecondaryButton(get_icon('msc.sync', color='#0ea5e9'), " Refresh")
+            self.refresh_btn.setFixedHeight(28)
+            self.refresh_btn.setIconSize(QSize(14, 14))
+            h_lay.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.layout.addWidget(self.header)
 
@@ -206,12 +296,35 @@ class TableFrame(QFrame):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        self.table.horizontalHeader().setMinimumSectionSize(65)
         self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.table.horizontalHeader().setFixedHeight(32)
         
         self.table.setStyleSheet("""
-            QTableWidget { background-color: #ffffff; color: #000000; gridline-color: #e5e7eb; border: none; font-size: 13px; }
-            QHeaderView::section { background-color: #f8f9fa; color: #000000; padding: 10px; border: none; border-right: 1px solid #d1d5db; border-bottom: 2px solid #d1d5db; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+            QTableWidget { 
+                background-color: #ffffff; 
+                color: #0f172a; 
+                gridline-color: #f1f5f9; 
+                border: none; 
+                border-bottom-left-radius: 5px; 
+                border-bottom-right-radius: 5px; 
+                font-size: 12px; 
+            }
+            QTableWidget::item {
+                padding: 2px 6px;
+            }
+            QHeaderView::section { 
+                background-color: #f8fafc; 
+                color: #334155; 
+                padding: 4px 8px; 
+                border: none; 
+                border-right: 1px solid #e2e8f0; 
+                border-bottom: 1px solid #cbd5e1; 
+                font-weight: 600; 
+                font-size: 11px; 
+                text-transform: uppercase; 
+            }
             QScrollBar:vertical {
                 background: transparent;
                 width: 8px;
@@ -236,15 +349,15 @@ class TableFrame(QFrame):
                 background: none;
             }
             QScrollBar:horizontal {
-                background: transparent;
+                background: #f8fafc;
                 height: 8px;
-                margin: 0px;
-                border-radius: 4px;
+                margin: 0px 4px 2px 4px;
+                border-radius: 3px;
             }
             QScrollBar::handle:horizontal {
                 background: #cbd5e1;
                 min-width: 25px;
-                border-radius: 4px;
+                border-radius: 3px;
             }
             QScrollBar::handle:horizontal:hover {
                 background: #94a3b8;
@@ -274,32 +387,19 @@ class StateWidget(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 5, 10, 10)
-        layout.setSpacing(5)
-
-        # Top Toolbar for State-specific refresh
-        self.toolbar = QFrame()
-        self.toolbar.setFixedHeight(30)
-        self.toolbar.setStyleSheet("background-color: transparent; border: none;")
-        toolbar_layout = QHBoxLayout(self.toolbar)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        
-        toolbar_layout.addStretch()
-        
-        self.refresh_btn = SecondaryButton(" Refresh")
-        self.refresh_btn.setIcon(get_icon('msc.sync', color='#0ea5e9'))
-        self.refresh_btn.setFixedSize(100, 28)
-        self.refresh_btn.clicked.connect(lambda: self.refresh_requested.emit())
-        toolbar_layout.addWidget(self.refresh_btn)
-        
-        layout.addWidget(self.toolbar)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(0)
 
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.setHandleWidth(2)
-        self.splitter.setStyleSheet("QSplitter::handle { background-color: #e5e7eb; }")
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(10)
+        self.splitter.setStyleSheet("QSplitter::handle { background: transparent; }")
         
-        self.sessions_frame = TableFrame("Sessions", has_checkbox=True)
+        self.sessions_frame = TableFrame("Sessions", has_checkbox=True, has_refresh=True)
         self.sessions_table = self.sessions_frame.table
+        self.refresh_btn = self.sessions_frame.refresh_btn
+        if self.refresh_btn:
+            self.refresh_btn.clicked.connect(lambda: self.refresh_requested.emit())
         self.active_checkbox = self.sessions_frame.checkbox
         self.active_checkbox.setChecked(False)
         self.active_checkbox.toggled.connect(lambda _: self.refresh_requested.emit())
@@ -311,13 +411,8 @@ class StateWidget(QWidget):
         self.locks_frame.search_input.textChanged.connect(self._on_search)
         self.splitter.addWidget(self.locks_frame)
 
-        # self.prepared_frame = TableFrame("Prepared Transactions")
-        # self.prepared_table = self.prepared_frame.table
-        # self.prepared_frame.search_input.textChanged.connect(self._on_search)
-        # self.splitter.addWidget(self.prepared_frame)
-
         layout.addWidget(self.splitter)
-        self.splitter.setSizes([400, 250, 150])
+        self.splitter.setSizes([400, 250])
 
     def _on_search(self):
         # Trigger refresh to apply filters properly across expanded rows
@@ -403,6 +498,7 @@ class StateWidget(QWidget):
 
             row_idx = table.rowCount()
             table.insertRow(row_idx)
+            table.setRowHeight(row_idx, 34 if is_sessions else 30)
             
             row_map = {columns[i]: row_data[i] for i in range(len(columns))}
             
@@ -423,10 +519,10 @@ class StateWidget(QWidget):
                 if is_expanded:
                     det_idx = table.rowCount()
                     table.insertRow(det_idx)
-                    panel = DetailsPanel(row_map)
+                    panel = DetailsPanel(row_map, on_close=lambda p=pid: self.toggle_details(p))
                     table.setCellWidget(det_idx, 0, panel)
                     table.setSpan(det_idx, 0, 1, table.columnCount())
-                    table.setRowHeight(det_idx, 400)
+                    table.setRowHeight(det_idx, panel.preferred_height())
             else:
                 for i, col_idx in enumerate(display_cols):
                     val = row_data[col_idx]
@@ -434,10 +530,11 @@ class StateWidget(QWidget):
 
         # Widths
         header = table.horizontalHeader()
+        header.setStretchLastSection(False)
         if is_sessions:
-            header.resizeSection(0, 70)
-            header.resizeSection(1, 60)
-            header.resizeSection(2, 60)
+            header.resizeSection(0, 92)
+            header.resizeSection(1, 75)
+            header.resizeSection(2, 75)
             for i in range(3, table.columnCount()):
                 header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         else:
@@ -449,7 +546,32 @@ class StateWidget(QWidget):
 
     def _add_action_btn(self, table, row, col, icon_name, color, tooltip, pid, callback):
         btn = IconButton(get_icon(icon_name, color=color), tooltip=tooltip)
-        btn.setFixedSize(24, 24)
+        btn.setFixedSize(20, 20)
+        btn.setIconSize(QSize(12, 12))
+        btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d1d5db;
+                border-radius: 3px;
+                background-color: #f9fafb;
+                padding: 0px;
+                margin: 0px;
+            }
+            QPushButton:hover {
+                background-color: #f3f4f6;
+                border-color: #9ca3af;
+            }
+            QPushButton:pressed {
+                background-color: #e5e7eb;
+            }
+            QToolTip {
+                background-color: #ffffff;
+                color: #1f2937;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+        """)
         # Use pid=pid to ensure the value is captured correctly
         btn.clicked.connect(lambda checked=False, p=pid: callback(p))
         
