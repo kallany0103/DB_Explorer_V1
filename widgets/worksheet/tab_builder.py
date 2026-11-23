@@ -144,9 +144,11 @@ def add_tab(manager):
     db_combo_box.currentIndexChanged.connect(lambda: manager.results_manager.refresh_processes_view())
     db_combo_box.currentIndexChanged.connect(lambda: manager.main_window._update_cli_action_states())
     db_combo_box.currentIndexChanged.connect(lambda: manager._update_transaction_button_states())
+    db_combo_box.currentIndexChanged.connect(lambda: manager._update_describe_action_states())
     
     QTimer.singleShot(100, update_conn_status_icon)
     QTimer.singleShot(100, manager._update_transaction_button_states)
+    QTimer.singleShot(100, manager._update_describe_action_states)
 
     toolbar_widget = WorksheetToolbar(manager)
     tab_content.toolbar_widget = toolbar_widget

@@ -85,23 +85,7 @@ def show_editor_context_menu(manager, pos, editor):
         optimize_batch_action.triggered.connect(manager.optimize_workload_script)
         menu.addAction(optimize_batch_action)
 
-    describe_obj_action = QAction(get_icon(AppIcons.DESCRIBE_OBJECT), "Describe", manager)
-    describe_obj_action.setIconVisibleInMenu(True)
-    describe_obj_action.setShortcut("F4")
-    describe_obj_action.triggered.connect(manager.describe_object)
-    menu.addAction(describe_obj_action)
 
-    quick_describe_action = QAction(get_icon(AppIcons.QUICK_DESCRIBE), "Quick Describe", manager)
-    quick_describe_action.setIconVisibleInMenu(True)
-    quick_describe_action.setShortcut("Ctrl+D")
-    quick_describe_action.triggered.connect(manager.quick_describe)
-    menu.addAction(quick_describe_action)
-
-    describe_action = QAction(get_icon(AppIcons.DESCRIBE_QUERY), "Describe (parse) select query", manager)
-    describe_action.setIconVisibleInMenu(True)
-    describe_action.setShortcut("Shift+F4")
-    describe_action.triggered.connect(manager.describe_query)
-    menu.addAction(describe_action)
 
 
     menu.addSeparator()

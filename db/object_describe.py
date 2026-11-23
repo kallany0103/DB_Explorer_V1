@@ -7,7 +7,6 @@ Modeled after the "Describe (F4)" feature in Toad for Oracle.
 
 import re
 import db
-from db.result_metadata import _description_value
 
 
 def parse_object_identifier(raw: str) -> tuple[str | None, str]:
@@ -71,15 +70,31 @@ def parse_object_identifier(raw: str) -> tuple[str | None, str]:
 
 
 def _detect_db_code(conn_data: dict) -> str:
-    code = (conn_data.get("code") or conn_data.get("type") or "").upper()
-    if not code:
-        if conn_data.get("service_name") or "oracle" in str(conn_data.get("driver", "")).lower():
-            code = "ORACLE"
-        elif conn_data.get("host"):
-            code = "POSTGRES"
-        elif conn_data.get("db_path"):
-            code = "SQLITE"
-    return code
+    raw = (
+        conn_data.get("code")
+        or conn_data.get("db_type")
+        or conn_data.get("type")
+        or ""
+    ).upper()
+    if "ORACLE" in raw:
+        return "ORACLE"
+    if "POSTGRES" in raw or "PG" in raw:
+        return "POSTGRES"
+    if "SQLITE" in raw:
+        return "SQLITE"
+
+    # Secondary inspection of connection attributes
+    if (
+        conn_data.get("service_name")
+        or conn_data.get("oracle_db_type")
+        or "oracle" in str(conn_data.get("driver", "")).lower()
+    ):
+        return "ORACLE"
+    elif conn_data.get("db_path"):
+        return "SQLITE"
+    elif conn_data.get("host"):
+        return "POSTGRES"
+    return raw
 
 
 def generate_object_scripts(meta: dict) -> dict[str, str]:
@@ -125,11 +140,11 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
         elif db_code == "SQLITE":
             drop_ddl = f"-- SQLite database file: {obj_name}"
             stats_query = (
-                f"SELECT type AS object_type, COUNT(*) AS object_count\n"
-                f"FROM sqlite_master\n"
-                f"WHERE name NOT LIKE 'sqlite_%'\n"
-                f"GROUP BY type\n"
-                f"ORDER BY 1;"
+                "SELECT type AS object_type, COUNT(*) AS object_count\n"
+                "FROM sqlite_master\n"
+                "WHERE name NOT LIKE 'sqlite_%'\n"
+                "GROUP BY type\n"
+                "ORDER BY 1;"
             )
         else:
             drop_ddl = f'DROP SCHEMA IF EXISTS "{obj_name}" CASCADE;'
@@ -168,7 +183,7 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
             drop_ddl = f'DROP VIEW IF EXISTS {full_quoted} CASCADE;'
 
         col_names = [f'    "{c["name"]}"' for c in columns]
-        select_sql = f'SELECT\n' + ",\n".join(col_names) + f'\nFROM {full_quoted};' if col_names else f'SELECT * FROM {full_quoted};'
+        select_sql = 'SELECT\n' + ",\n".join(col_names) + f'\nFROM {full_quoted};' if col_names else f'SELECT * FROM {full_quoted};'
         count_sql = f'SELECT COUNT(*) AS total_rows FROM {full_quoted};'
 
         scripts["Full DDL"] = view_ddl
@@ -196,13 +211,13 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
     # ─────────────────────────────────────────────────────────────────────────
     # 1. Full DDL
     ddl_sections = [
-        f"-- -----------------------------------------------------------------------------",
+        "-- -----------------------------------------------------------------------------",
         f"-- Object:    {full_quoted}",
         f"-- Type:      {obj_type}",
         f"-- Database:  {db_code or 'RELATIONAL'}",
-        f"-- Generated: Toad for Oracle-style Object Describe",
-        f"-- -----------------------------------------------------------------------------",
-        f"",
+        "-- Generated: Toad for Oracle-style Object Describe",
+        "-- -----------------------------------------------------------------------------",
+        "",
     ]
 
     if db_code in ("ORACLE", "ORACLE_DB"):
@@ -212,7 +227,7 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
     else:
         drop_table_syntax = f"DROP TABLE IF EXISTS {full_quoted} CASCADE;"
 
-    ddl_sections.append(f"-- Drop statement:")
+    ddl_sections.append("-- Drop statement:")
     ddl_sections.append(f"-- {drop_table_syntax}")
     ddl_sections.append("")
     ddl_sections.append(f"CREATE TABLE {full_quoted} (")
@@ -311,7 +326,7 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
     # 3. SELECT Query
     if columns:
         sel_cols = [f'    "{c["name"]}"' for c in columns]
-        select_sql = f"SELECT\n" + ",\n".join(sel_cols) + f"\nFROM {full_quoted};"
+        select_sql = "SELECT\n" + ",\n".join(sel_cols) + f"\nFROM {full_quoted};"
     else:
         select_sql = f"SELECT * FROM {full_quoted};"
 
@@ -322,9 +337,9 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
         insert_sql = (
             f"INSERT INTO {full_quoted} (\n"
             + ",\n".join(ins_cols)
-            + f"\n) VALUES (\n"
+            + "\n) VALUES (\n"
             + ",\n".join(ins_vals)
-            + f"\n);"
+            + "\n);"
         )
     else:
         insert_sql = f"INSERT INTO {full_quoted} DEFAULT VALUES;"
@@ -339,7 +354,7 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
     update_sql = (
         f"UPDATE {full_quoted}\nSET\n"
         + ",\n".join(upd_sets)
-        + f"\nWHERE\n"
+        + "\nWHERE\n"
         + " AND\n".join(where_clauses)
         + ";"
     )
@@ -365,18 +380,18 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
                 f"USING (\n"
                 f"    SELECT\n"
                 + ",\n".join(source_cols)
-                + f"\n    FROM DUAL\n"
-                f") source\n"
-                f"ON (" + " AND ".join(join_conds) + ")\n"
-                f"WHEN MATCHED THEN\n"
-                f"    UPDATE SET\n"
+                + "\n    FROM DUAL\n"
+                ") source\n"
+                "ON (" + " AND ".join(join_conds) + ")\n"
+                "WHEN MATCHED THEN\n"
+                "    UPDATE SET\n"
                 + ",\n".join(m_upd_sets)
-                + f"\nWHEN NOT MATCHED THEN\n"
-                f"    INSERT (\n"
+                + "\nWHEN NOT MATCHED THEN\n"
+                "    INSERT (\n"
                 + ",\n".join(m_ins_cols)
-                + f"\n    ) VALUES (\n"
+                + "\n    ) VALUES (\n"
                 + ",\n".join(m_ins_vals)
-                + f"\n    );"
+                + "\n    );"
             )
         else:
             merge_sql = f"-- MERGE requires a Primary Key or Unique constraint on {full_quoted};\n"
@@ -389,13 +404,13 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
             merge_sql = (
                 f"INSERT INTO {full_quoted} (\n"
                 + ",\n".join(p_ins_cols)
-                + f"\n) VALUES (\n"
+                + "\n) VALUES (\n"
                 + ",\n".join(p_ins_vals)
                 + f"\n)\n"
                 f"ON CONFLICT ({p_pk_conflict})\n"
                 f"DO UPDATE SET\n"
                 + ",\n".join(p_upd_sets)
-                + f";"
+                + ";"
             )
         else:
             merge_sql = f"-- Upsert requires a Primary Key on {full_quoted};\n"
@@ -406,9 +421,9 @@ def generate_object_scripts(meta: dict) -> dict[str, str]:
             merge_sql = (
                 f"INSERT OR REPLACE INTO {full_quoted} (\n"
                 + ",\n".join(sq_ins_cols)
-                + f"\n) VALUES (\n"
+                + "\n) VALUES (\n"
                 + ",\n".join(sq_ins_vals)
-                + f"\n);"
+                + "\n);"
             )
         else:
             merge_sql = f"INSERT OR REPLACE INTO {full_quoted} DEFAULT VALUES;"
@@ -1297,18 +1312,18 @@ def describe_database_object(conn_data: dict, raw_target: str) -> dict:
 
     code = _detect_db_code(conn_data)
 
-    if code in ("ORACLE", "ORACLE_DB"):
+    if code in ("ORACLE", "ORACLE_DB", "ORACLE_FA") or "ORACLE" in code:
         meta = _describe_oracle(conn_data, schema_hint, object_name)
-    elif code in ("POSTGRES", "POSTGRESQL"):
+    elif code in ("POSTGRES", "POSTGRESQL") or "POSTGRES" in code:
         meta = _describe_postgres(conn_data, schema_hint, object_name)
-    elif code == "SQLITE":
+    elif code == "SQLITE" or "SQLITE" in code:
         meta = _describe_sqlite(conn_data, schema_hint, object_name)
     else:
         # Fallback using postgres-compatible queries or zero-row describe
         try:
             meta = _describe_postgres(conn_data, schema_hint, object_name)
         except Exception:
-            raise ValueError(f"Describe object is not supported for database engine: {code}")
+            raise ValueError(f"Describe object is not supported for database engine: {code or 'UNKNOWN'}")
 
     if meta:
         meta["db_code"] = code

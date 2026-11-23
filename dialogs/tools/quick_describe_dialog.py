@@ -292,25 +292,32 @@ class QuickDescribeDialog(QDialog):
         if not self.conn_data:
             return
         try:
-            conn = db.get_connection(self.conn_data)
-            cur = conn.cursor()
-            db_type = self.conn_data.get("db_type", "").lower()
-            if "postgres" in db_type or "pg" in db_type:
-                cur.execute(
-                    "SELECT schema_name FROM information_schema.schemata"
-                    " WHERE schema_name NOT IN ('pg_catalog','information_schema')"
-                    " ORDER BY schema_name"
-                )
-            elif "oracle" in db_type:
-                cur.execute("SELECT username FROM all_users ORDER BY username")
-            else:
-                cur.execute(
-                    "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name"
-                )
-            for row in cur.fetchall():
-                self.owner_combo.addItem(row[0])
-            cur.close()
-            conn.close()
+            raw_type = (self.conn_data.get("db_type") or self.conn_data.get("code") or "").lower()
+            if "postgres" in raw_type or "pg" in raw_type or self.conn_data.get("host"):
+                conn = db.create_postgres_connection(self.conn_data, bypass_cooldown=True)
+                if conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT schema_name FROM information_schema.schemata"
+                        " WHERE schema_name NOT IN ('pg_catalog','information_schema')"
+                        " ORDER BY schema_name"
+                    )
+                    for row in cur.fetchall():
+                        self.owner_combo.addItem(row[0])
+                    cur.close()
+                    conn.close()
+            elif "oracle" in raw_type or self.conn_data.get("service_name"):
+                conn = db.get_pooled_oracle_connection(conn_data=self.conn_data)
+                if conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT username FROM all_users ORDER BY username")
+                    for row in cur.fetchall():
+                        self.owner_combo.addItem(row[0])
+                    cur.close()
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -346,11 +353,21 @@ class QuickDescribeDialog(QDialog):
     def _open_describe(self, target: str) -> None:
         from dialogs.tools.object_describe_dialog import ObjectDescribeDialog
 
-        ObjectDescribeDialog(
-            parent=self.parent(),
+        parent_win = self.parent()
+        if not parent_win and self.worksheet_manager:
+            parent_win = getattr(self.worksheet_manager, "main_window", None)
+
+        dlg = ObjectDescribeDialog(
+            parent=parent_win,
             conn_data=self.conn_data,
             target=target,
-        ).show()
+        )
+        if parent_win:
+            parent_win._object_describe_dlg = dlg
+        self._current_describe_dlg = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
 
     # ------------------------------------------------------------------
     # EVENTS

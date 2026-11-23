@@ -108,6 +108,7 @@ class WorksheetManager(QWidget):
         self.tab_dbms_output: dict[QWidget, bool] = {}
 
         build_worksheet_toolbar_actions(self)
+        self._update_describe_action_states()
 
         # Update Commit/Rollback enabled state whenever the active tab changes
         self.tab_widget.currentChanged.connect(
@@ -558,6 +559,44 @@ class WorksheetManager(QWidget):
                             out_btn = results_header.button_group.button(0)
                             if out_btn:
                                 out_btn.setChecked(True)
+
+        self._update_describe_action_states()
+
+    def _update_describe_action_states(self) -> None:
+        """Enable or disable Describe actions and buttons based on active connection engine support."""
+        tab = self.tab_widget.currentWidget()
+        conn_data = get_tab_connection_data(tab) if tab else None
+
+        is_supported = False
+        if isinstance(conn_data, dict) and conn_data:
+            from db.object_describe import _detect_db_code
+            code = _detect_db_code(conn_data)
+            is_supported = bool(code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL", "SQLITE") or (
+                "ORACLE" in code or "POSTGRES" in code or "SQLITE" in code
+            ))
+
+        # 1. Update worksheet toolbar actions
+        if hasattr(self, "ws_describe_object_action"):
+            self.ws_describe_object_action.setEnabled(is_supported)
+        if hasattr(self, "ws_quick_describe_action"):
+            self.ws_quick_describe_action.setEnabled(is_supported)
+        if hasattr(self, "ws_describe_action"):
+            self.ws_describe_action.setEnabled(is_supported)
+
+        # 2. Update toolbar button if present
+        toolbar = getattr(self, "toolbar", None)
+        if toolbar and hasattr(toolbar, "describe_obj_btn"):
+            toolbar.describe_obj_btn.setEnabled(is_supported)
+
+        # 3. Update main window menu actions
+        mw = getattr(self, "main_window", None)
+        if mw:
+            if hasattr(mw, "describe_object_action"):
+                mw.describe_object_action.setEnabled(is_supported)
+            if hasattr(mw, "quick_describe_action"):
+                mw.quick_describe_action.setEnabled(is_supported)
+            if hasattr(mw, "describe_query_action"):
+                mw.describe_query_action.setEnabled(is_supported)
 
     def update_timer_label(self, label, tab):
         update_timer_label_action(self, label, tab)
