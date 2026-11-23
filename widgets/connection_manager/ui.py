@@ -1,15 +1,13 @@
-import os
 
-import db
 from PySide6.QtWidgets import (
     QVBoxLayout, QWidget, QHBoxLayout, QLabel, QToolButton,
     QSplitter, QTreeView, QFrame, QAbstractItemView, QHeaderView,
     QSizePolicy
 )
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QStandardItemModel
+from PySide6.QtGui import QKeySequence, QShortcut, QStandardItemModel
 from PySide6.QtCore import Qt, QSize, QSortFilterProxyModel
 from ui.components import SearchBox
-import qtawesome as qta
+from ui.icons import get_icon, AppIcons
 
 
 class ConnectionUI:
@@ -51,15 +49,11 @@ class ConnectionUI:
         self.manager.explorer_search_box.setClearButtonEnabled(True)
         self.manager.explorer_search_box.hide()
 
-        search_icon_path = "assets/search.svg"
-        if not os.path.exists(search_icon_path) and hasattr(db, "resource_path"):
-            search_icon_path = db.resource_path("assets/search.svg")
-        search_icon = QIcon(search_icon_path if os.path.exists(search_icon_path) else "")
         self.manager.explorer_search_box.textChanged.connect(self.manager.filter_object_explorer)
         self.manager.explorer_search_box.installEventFilter(self.manager)
 
         self.manager.explorer_search_close_btn = QToolButton()
-        self.manager.explorer_search_close_btn.setIcon(qta.icon("mdi.close", color="#6b7280"))
+        self.manager.explorer_search_close_btn.setIcon(get_icon("msc.close"))
         self.manager.explorer_search_close_btn.setFixedSize(22, 22)
         self.manager.explorer_search_close_btn.setIconSize(QSize(14, 14))
         self.manager.explorer_search_close_btn.setToolTip("Close Filter (Esc)")
@@ -69,7 +63,7 @@ class ConnectionUI:
         self.manager.explorer_search_close_btn.hide()
 
         self.manager.explorer_search_btn = QToolButton()
-        self.manager.explorer_search_btn.setIcon(search_icon)
+        self.manager.explorer_search_btn.setIcon(get_icon(AppIcons.SEARCH))
         self.manager.explorer_search_btn.setFixedSize(24, 24)
         self.manager.explorer_search_btn.setIconSize(QSize(16, 16))
         self.manager.explorer_search_btn.setToolTip("Search Connections")
@@ -86,12 +80,12 @@ class ConnectionUI:
         self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_close_btn)
         self.manager.explorer_search_layout.addWidget(self.manager.explorer_search_btn)
 
-                         # New Connection Type
+        # New Connection Button
         self.add_new_type_btn = QToolButton()
         self.add_new_type_btn.setFixedSize(24, 24)
         self.add_new_type_btn.setIconSize(QSize(16, 16))
-        self.add_new_type_btn.setToolTip("Add New Connection")
-        self.add_new_type_btn.setIcon(qta.icon("mdi.database-plus", color="#6b7280"))
+        self.add_new_type_btn.setToolTip("New Connection...")
+        self.add_new_type_btn.setIcon(get_icon(AppIcons.NEW_CONNECTION))
         self.add_new_type_btn.setProperty("class", "sidebar-tool-btn")
         self.add_new_type_btn.clicked.connect(self.manager.add_connection_flow)
         # Store ref so toggle_left_panel() can hide/show it
@@ -106,7 +100,7 @@ class ConnectionUI:
         self.manager.collapse_panel_btn.setIconSize(QSize(16, 16))
         self.manager.collapse_panel_btn.setToolTip("Collapse Sidebar")
         self.manager.collapse_panel_btn.setProperty("class", "sidebar-tool-btn")
-        self.manager.collapse_panel_btn.setIcon(qta.icon('mdi.chevron-double-left', color='#6b7280'))
+        self.manager.collapse_panel_btn.setIcon(get_icon("msc.chevron-left"))
         self.manager.collapse_panel_btn.clicked.connect(
             lambda: self.manager.main_window.toggle_left_panel()
         )
@@ -187,7 +181,7 @@ class ConnectionUI:
 
         self.manager.schema_search_btn = QToolButton(self.manager.schema_tree.header())
         self.manager.schema_search_btn.setObjectName("schemaSearchBtn")
-        self.manager.schema_search_btn.setIcon(search_icon)
+        self.manager.schema_search_btn.setIcon(get_icon(AppIcons.SEARCH))
         self.manager.schema_search_btn.setFixedSize(24, 24)
         self.manager.schema_search_btn.setIconSize(QSize(16, 16))
         self.manager.schema_search_btn.setToolTip("Filter tables (Ctrl+F)")
@@ -218,7 +212,7 @@ class ConnectionUI:
         self.manager.schema_search_box.installEventFilter(self.manager)
 
         self.manager.schema_search_close_btn = QToolButton()
-        self.manager.schema_search_close_btn.setIcon(qta.icon("mdi.close", color="#6b7280"))
+        self.manager.schema_search_close_btn.setIcon(get_icon("msc.close"))
         self.manager.schema_search_close_btn.setFixedSize(22, 22)
         self.manager.schema_search_close_btn.setIconSize(QSize(14, 14))
         self.manager.schema_search_close_btn.setToolTip("Close Filter (Esc)")
@@ -271,8 +265,8 @@ class ConnectionUI:
         self.manager.collapsed_add_conn_btn = QToolButton()
         self.manager.collapsed_add_conn_btn.setFixedSize(24, 24)
         self.manager.collapsed_add_conn_btn.setIconSize(QSize(16, 16))
-        self.manager.collapsed_add_conn_btn.setToolTip("Add New Connection")
-        self.manager.collapsed_add_conn_btn.setIcon(qta.icon("mdi.database-plus", color="#6b7280"))
+        self.manager.collapsed_add_conn_btn.setToolTip("New Connection...")
+        self.manager.collapsed_add_conn_btn.setIcon(get_icon(AppIcons.NEW_CONNECTION))
         self.manager.collapsed_add_conn_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.collapsed_add_conn_btn.clicked.connect(self.manager.add_connection_flow)
 
@@ -281,7 +275,7 @@ class ConnectionUI:
         self.manager.collapsed_new_ws_btn.setFixedSize(24, 24)
         self.manager.collapsed_new_ws_btn.setIconSize(QSize(16, 16))
         self.manager.collapsed_new_ws_btn.setToolTip("New Worksheet")
-        self.manager.collapsed_new_ws_btn.setIcon(qta.icon('mdi.file-document-edit', color="#6b7280"))
+        self.manager.collapsed_new_ws_btn.setIcon(get_icon("msc.file-code"))
         self.manager.collapsed_new_ws_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.collapsed_new_ws_btn.clicked.connect(lambda: self.manager.main_window.add_tab())
 
@@ -290,7 +284,7 @@ class ConnectionUI:
         self.manager.collapsed_new_erd_btn.setFixedSize(24, 24)
         self.manager.collapsed_new_erd_btn.setIconSize(QSize(16, 16))
         self.manager.collapsed_new_erd_btn.setToolTip("New ERD")
-        self.manager.collapsed_new_erd_btn.setIcon(qta.icon('fa6s.sitemap', color="#6b7280"))
+        self.manager.collapsed_new_erd_btn.setIcon(get_icon("msc.type-hierarchy"))
         self.manager.collapsed_new_erd_btn.setProperty("class", "sidebar-tool-btn")
         self.manager.collapsed_new_erd_btn.clicked.connect(lambda: self.manager.main_window.add_erd_tab())
 

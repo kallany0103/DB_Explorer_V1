@@ -12,6 +12,7 @@ from typing import Optional
 import qtawesome as qta
 import qtawesome.iconic_font
 from ui.menu_style import apply_menu_style
+from ui.icons import get_icon, AppIcons
 
 # Guard against Qt console spam when qtawesome is queried with uninitialized/zero size
 _orig_char_icon_pixmap = qtawesome.iconic_font.CharIconEngine.pixmap
@@ -401,7 +402,7 @@ class SearchBox(QLineEdit):
         self.setPlaceholderText(placeholder)
         
         # Add search icon using qtawesome to ensure proper scaling
-        search_icon = qta.icon("fa5s.search", color="#8B929B", scale_factor=0.8)
+        search_icon = get_icon(AppIcons.SEARCH, color="#8B929B", scale_factor=0.8)
         self.addAction(search_icon, QLineEdit.ActionPosition.LeadingPosition)
         
         # Add padding to left so text doesn't hit icon
@@ -428,8 +429,8 @@ class PasswordBox(QLineEdit):
         super().__init__(parent)
         self.setEchoMode(QLineEdit.EchoMode.Password)
         
-        self._eye_icon = qta.icon("fa5s.eye", color="#8B929B", scale_factor=0.7)
-        self._eye_off_icon = qta.icon("fa5s.eye-slash", color="#8B929B", scale_factor=0.7)
+        self._eye_icon = get_icon("msc.eye", color="#8B929B", scale_factor=0.7)
+        self._eye_off_icon = get_icon("msc.eye-closed", color="#8B929B", scale_factor=0.7)
         self._password_visible = False
         
         self._password_action = self.addAction(
@@ -759,25 +760,25 @@ _TOAST_STYLES = {
     "success": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.check-circle",
+        "icon":       "msc.check",
         "icon_color": "#16a34a",
     },
     "error": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.times-circle",
+        "icon":       "msc.error",
         "icon_color": "#dc2626",
     },
     "info": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.info-circle",
+        "icon":       "msc.info",
         "icon_color": "#2563eb",
     },
     "warning": {
         "bg":         "#ECEFF3",
         "border":     "#B8BEC6",
-        "icon":       "fa5s.exclamation-circle",
+        "icon":       "msc.warning",
         "icon_color": "#d97706",
     },
 }
@@ -815,7 +816,7 @@ class ToastNotification(QWidget):
 
         icon_lbl = QLabel()
         icon_lbl.setStyleSheet("background: transparent;")
-        icon_lbl.setPixmap(qta.icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
+        icon_lbl.setPixmap(get_icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
         icon_lbl.setFixedWidth(20)
         icon_lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
@@ -1013,17 +1014,17 @@ class ConfirmDialog(QDialog):
 
         # Badge styling based on kind
         if kind == "danger":
-            icon_name = "fa5s.trash-alt"
+            icon_name = "msc.trash"
             icon_color = "#dc2626"
             bg_color = "#fee2e2"
             border_color = "#fecaca"
         elif kind == "warning":
-            icon_name = "fa5s.exclamation-triangle"
+            icon_name = "msc.warning"
             icon_color = "#d97706"
             bg_color = "#fef3c7"
             border_color = "#fde68a"
         else:
-            icon_name = "fa5s.question-circle"
+            icon_name = "msc.question"
             icon_color = "#2563eb"
             bg_color = "#eff6ff"
             border_color = "#bfdbfe"
@@ -1038,7 +1039,7 @@ class ConfirmDialog(QDialog):
                 border-radius: 20px;
             }}
         """)
-        icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(18, 18))
+        icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(18, 18))
         content_layout.addWidget(icon_label)
 
         # Text column (Title + Message)
@@ -1146,59 +1147,52 @@ class ToggleSwitch(QCheckBox):
 
 
 class SettingsCategoryDelegate(QStyledItemDelegate):
-    """Paints crisp rounded category items with a corner-blended left accent bar."""
+    """Paints modern sidebar category items with clean pill selection and matching icon tint."""
 
     def sizeHint(self, option, index) -> QSize:
         size = super().sizeHint(option, index)
-        return QSize(size.width(), max(size.height(), 36))
+        return QSize(size.width(), max(size.height(), 34))
 
     def paint(self, painter: QPainter, option, index) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        rect = QRectF(option.rect).adjusted(0.5, 1.5, -0.5, -1.5)
-        card_path = QPainterPath()
-        card_path.addRoundedRect(rect, 6.0, 6.0)
+        rect = QRectF(option.rect).adjusted(2.0, 1.0, -2.0, -1.0)
+        pill_path = QPainterPath()
+        pill_path.addRoundedRect(rect, 6.0, 6.0)
 
         is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
         is_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
 
         if is_selected:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#FFFFFF"))
-            painter.drawPath(card_path)
-
-            painter.setPen(QPen(QColor("#E2E8F0"), 1.0))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawPath(card_path)
-
-            clip_path = QPainterPath()
-            clip_path.addRoundedRect(rect.adjusted(-0.5, -0.5, 0.5, 0.5), 6.0, 6.0)
-            painter.setClipPath(clip_path)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#0284C7"))
-            painter.drawRect(QRectF(rect.left() - 0.5, rect.top() - 0.5, 2.0, rect.height() + 1.0))
-            painter.setClipping(False)
+            painter.setBrush(QColor("#E0F2FE"))
+            painter.drawPath(pill_path)
         elif is_hovered:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("#F1F5F9"))
-            painter.drawPath(card_path)
+            painter.drawPath(pill_path)
 
-        icon = index.data(Qt.ItemDataRole.DecorationRole)
-        text_left = rect.left() + 14.0
+        icon_name = index.data(Qt.ItemDataRole.UserRole + 1)
+        if is_selected and icon_name:
+            icon = get_icon(icon_name, color="#0284C7")
+        else:
+            icon = index.data(Qt.ItemDataRole.DecorationRole)
+
+        text_left = rect.left() + 10.0
         if isinstance(icon, QIcon) and not icon.isNull():
-            icon_rect = QRectF(rect.left() + 13.0, rect.center().y() - 8.0, 16.0, 16.0).toRect()
+            icon_rect = QRectF(rect.left() + 10.0, rect.center().y() - 8.0, 16.0, 16.0).toRect()
             icon.paint(painter, icon_rect)
-            text_left = rect.left() + 37.0
+            text_left = rect.left() + 34.0
 
         font = QFont(option.font)
         font.setPointSizeF(9.5)
         font.setWeight(QFont.Weight.Normal)
         painter.setFont(font)
-        painter.setPen(QColor("#0F172A" if is_selected else "#334155"))
+        painter.setPen(QColor("#0369A1" if is_selected else "#334155"))
 
         is_modified = bool(index.data(Qt.ItemDataRole.UserRole))
-        right_pad = 22.0 if is_modified else 8.0
+        right_pad = 20.0 if is_modified else 8.0
         text_rect = QRectF(text_left, rect.top(), rect.right() - text_left - right_pad, rect.height())
         painter.drawText(
             text_rect,

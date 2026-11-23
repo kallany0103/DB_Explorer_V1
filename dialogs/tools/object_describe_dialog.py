@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from ui.components import LoadingOverlay, SecondaryButton
 from ui.dialog_utils import fit_dialog_to_screen
@@ -111,21 +111,21 @@ class ObjectDescribeDialog(QDialog):
 
         # Refresh button
         self.refresh_btn = QToolButton()
-        self.refresh_btn.setIcon(qta.icon("fa5s.redo-alt", color="#475569"))
+        self.refresh_btn.setIcon(get_icon("msc.sync", color="#475569"))
         self.refresh_btn.setToolTip("Refresh metadata")
         self.refresh_btn.clicked.connect(self._start_fetch)
         header_layout.addWidget(self.refresh_btn)
 
         # Copy DDL button
         self.copy_ddl_btn = QToolButton()
-        self.copy_ddl_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        self.copy_ddl_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         self.copy_ddl_btn.setToolTip("Copy DDL Script to Clipboard")
         self.copy_ddl_btn.clicked.connect(self._copy_ddl)
         header_layout.addWidget(self.copy_ddl_btn)
 
         # View Schema button (shown when table has parent schema info)
         self.schema_jump_btn = QToolButton()
-        self.schema_jump_btn.setIcon(qta.icon("mdi.database-outline", color="#475569"))
+        self.schema_jump_btn.setIcon(get_icon("msc.folder-library", color="#475569"))
         self.schema_jump_btn.setToolTip("View Parent Schema Details")
         self.schema_jump_btn.clicked.connect(self._jump_to_schema_tab)
         self.schema_jump_btn.setVisible(False)
@@ -274,7 +274,7 @@ class ObjectDescribeDialog(QDialog):
             "#", "Column Name", "Data Type", "Nullable", "Default", "Key", "Comments"
         ])
         self._populate_columns_table(self.cols_table, self.meta.get("columns", []))
-        self.tabs.addTab(self.cols_table, qta.icon("fa5s.columns", color="#475569"), "Columns")
+        self.tabs.addTab(self.cols_table, get_icon("msc.symbol-variable", color="#475569"), "Columns")
 
         # 2. Indexes Tab
         indexes = self.meta.get("indexes", [])
@@ -291,7 +291,7 @@ class ObjectDescribeDialog(QDialog):
                 uniq_item.setFont(self._bold_font())
             self.idx_table.setItem(row, 2, uniq_item)
             self.idx_table.setItem(row, 3, QTableWidgetItem(idx.get("type", "btree")))
-        self.tabs.addTab(self.idx_table, qta.icon("mdi.key-variant", color="#475569"), f"Indexes ({len(indexes)})")
+        self.tabs.addTab(self.idx_table, get_icon("msc.key", color="#475569"), f"Indexes ({len(indexes)})")
 
         # 3. Constraints Tab
         constraints = self.meta.get("constraints", [])
@@ -307,7 +307,7 @@ class ObjectDescribeDialog(QDialog):
                 type_item.setFont(self._bold_font())
             self.cst_table.setItem(row, 1, type_item)
             self.cst_table.setItem(row, 2, QTableWidgetItem(cst.get("definition", "")))
-        self.tabs.addTab(self.cst_table, qta.icon("mdi.shield-check-outline", color="#475569"), f"Constraints ({len(constraints)})")
+        self.tabs.addTab(self.cst_table, get_icon("msc.shield", color="#475569"), f"Constraints ({len(constraints)})")
 
         # 4. Data Preview Tab
         sample = self.meta.get("sample_data", {})
@@ -319,7 +319,7 @@ class ObjectDescribeDialog(QDialog):
             for c_idx, val in enumerate(row):
                 val_str = "" if val is None else str(val)
                 self.data_table.setItem(r_idx, c_idx, QTableWidgetItem(val_str))
-        self.tabs.addTab(self.data_table, qta.icon("fa5s.table", color="#475569"), f"Data Preview ({len(rows)})")
+        self.tabs.addTab(self.data_table, get_icon("msc.table", color="#475569"), f"Data Preview ({len(rows)})")
 
         # 5. Scripts Tab (Toad for Oracle Style Suite)
         scripts = self.meta.get("scripts", {})
@@ -327,14 +327,14 @@ class ObjectDescribeDialog(QDialog):
             scripts = {"Full DDL": self.meta.get("ddl", "")}
         self.scripts_widget = self._build_scripts_tab_widget(scripts, default_key="Full DDL")
         self.ddl_editor = getattr(self.scripts_widget, "editor", None)
-        self.tabs.addTab(self.scripts_widget, qta.icon("mdi.script-text-outline", color="#475569"), "Scripts")
+        self.tabs.addTab(self.scripts_widget, get_icon("msc.file-code", color="#475569"), "Scripts")
 
         # 6. Parent Schema Tab (describing both Table and Schema simultaneously)
         schema_info = self.meta.get("schema_info")
         if schema_info:
             schema_name = schema_info.get("name") or self.meta.get("schema") or "Schema"
             self.schema_tab = self._build_schema_container_widget(schema_info)
-            self.tabs.addTab(self.schema_tab, qta.icon("mdi.database-outline", color="#475569"), f"Schema ({schema_name})")
+            self.tabs.addTab(self.schema_tab, get_icon("msc.folder-library", color="#475569"), f"Schema ({schema_name})")
             if hasattr(self, "schema_jump_btn"):
                 self.schema_jump_btn.setVisible(True)
                 self.schema_jump_btn.setToolTip(f"View Parent Schema ({schema_name})")
@@ -410,7 +410,7 @@ class ObjectDescribeDialog(QDialog):
 
         # Double-click a table to drill down into it!
         self.schema_tables.doubleClicked.connect(self._on_table_double_clicked)
-        self.tabs.addTab(self.schema_tables, qta.icon("fa5s.table", color="#475569"), f"Tables ({len(tables)})")
+        self.tabs.addTab(self.schema_tables, get_icon("msc.table", color="#475569"), f"Tables ({len(tables)})")
 
         # 2. Views Tab
         views = self.meta.get("views", [])
@@ -422,7 +422,7 @@ class ObjectDescribeDialog(QDialog):
             self.schema_views.setItem(row, 0, name_item)
             self.schema_views.setItem(row, 1, QTableWidgetItem(v.get("owner", "")))
             self.schema_views.setItem(row, 2, QTableWidgetItem(v.get("comment", "")))
-        self.tabs.addTab(self.schema_views, qta.icon("mdi.eye", color="#475569"), f"Views ({len(views)})")
+        self.tabs.addTab(self.schema_views, get_icon("msc.eye", color="#475569"), f"Views ({len(views)})")
 
         # 3. Functions Tab
         funcs = self.meta.get("functions", [])
@@ -436,7 +436,7 @@ class ObjectDescribeDialog(QDialog):
                 self.schema_funcs.setItem(row, 1, QTableWidgetItem(f.get("owner", "")))
                 self.schema_funcs.setItem(row, 2, QTableWidgetItem(f.get("language", "")))
                 self.schema_funcs.setItem(row, 3, QTableWidgetItem(f.get("comment", "")))
-            self.tabs.addTab(self.schema_funcs, qta.icon("mdi.function", color="#475569"), f"Functions ({len(funcs)})")
+            self.tabs.addTab(self.schema_funcs, get_icon("msc.symbol-method", color="#475569"), f"Functions ({len(funcs)})")
 
         # 4. Scripts Tab
         scripts = self.meta.get("scripts", {})
@@ -444,7 +444,7 @@ class ObjectDescribeDialog(QDialog):
             scripts = {"Full DDL": self.meta.get("ddl", "")}
         self.schema_scripts_widget = self._build_scripts_tab_widget(scripts, default_key="Full DDL")
         self.ddl_editor = getattr(self.schema_scripts_widget, "editor", None)
-        self.tabs.addTab(self.schema_scripts_widget, qta.icon("mdi.script-text-outline", color="#475569"), "Scripts")
+        self.tabs.addTab(self.schema_scripts_widget, get_icon("msc.file-code", color="#475569"), "Scripts")
 
         self.status_label.setText(f"{len(tables)} tables, {len(views)} views in schema {self.meta.get('name')}")
 
@@ -509,7 +509,7 @@ class ObjectDescribeDialog(QDialog):
             s_tables.setItem(row, 4, QTableWidgetItem(t.get("size", "")))
             s_tables.setItem(row, 5, QTableWidgetItem(t.get("comment", "")))
         s_tables.doubleClicked.connect(lambda idx, s=schema_name, tbl=s_tables: self._on_sub_table_double_clicked(s, tbl.item(idx.row(), 0).text()))
-        sub_tabs.addTab(s_tables, qta.icon("fa5s.table", color="#475569"), f"Tables ({len(tables)})")
+        sub_tabs.addTab(s_tables, get_icon("msc.table", color="#475569"), f"Tables ({len(tables)})")
 
         if views:
             s_views = self._create_data_table(["View Name", "Owner", "Comment"])
@@ -520,7 +520,7 @@ class ObjectDescribeDialog(QDialog):
                 s_views.setItem(row, 0, name_item)
                 s_views.setItem(row, 1, QTableWidgetItem(v.get("owner", "")))
                 s_views.setItem(row, 2, QTableWidgetItem(v.get("comment", "")))
-            sub_tabs.addTab(s_views, qta.icon("mdi.eye", color="#475569"), f"Views ({len(views)})")
+            sub_tabs.addTab(s_views, get_icon("msc.eye", color="#475569"), f"Views ({len(views)})")
 
         if funcs:
             s_funcs = self._create_data_table(["Function / Signature", "Owner", "Language", "Comment"])
@@ -532,13 +532,13 @@ class ObjectDescribeDialog(QDialog):
                 s_funcs.setItem(row, 1, QTableWidgetItem(f.get("owner", "")))
                 s_funcs.setItem(row, 2, QTableWidgetItem(f.get("language", "")))
                 s_funcs.setItem(row, 3, QTableWidgetItem(f.get("comment", "")))
-            sub_tabs.addTab(s_funcs, qta.icon("mdi.function", color="#475569"), f"Functions ({len(funcs)})")
+            sub_tabs.addTab(s_funcs, get_icon("msc.symbol-method", color="#475569"), f"Functions ({len(funcs)})")
 
         sub_scripts = schema_meta.get("scripts", {})
         if not sub_scripts:
             sub_scripts = {"Full DDL": schema_meta.get("ddl", "")}
         s_scripts_widget = self._build_scripts_tab_widget(sub_scripts, default_key="Full DDL")
-        sub_tabs.addTab(s_scripts_widget, qta.icon("mdi.script-text-outline", color="#475569"), "Schema Scripts")
+        sub_tabs.addTab(s_scripts_widget, get_icon("msc.file-code", color="#475569"), "Schema Scripts")
 
         layout.addWidget(sub_tabs, stretch=1)
         return container
@@ -668,7 +668,7 @@ class ObjectDescribeDialog(QDialog):
 
         copy_btn = QToolButton()
         copy_btn.setText("Copy")
-        copy_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         copy_btn.setToolTip("Copy displayed script to clipboard")
         copy_btn.setStyleSheet("""
@@ -689,7 +689,7 @@ class ObjectDescribeDialog(QDialog):
 
         worksheet_btn = QToolButton()
         worksheet_btn.setText("Open in Worksheet")
-        worksheet_btn.setIcon(qta.icon("fa5s.external-link-alt", color="#0284c7"))
+        worksheet_btn.setIcon(get_icon("msc.go-to-file", color="#0284c7"))
         worksheet_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         worksheet_btn.setToolTip("Open script in a new SQL Worksheet tab")
         worksheet_btn.setStyleSheet("""
@@ -711,7 +711,7 @@ class ObjectDescribeDialog(QDialog):
 
         save_btn = QToolButton()
         save_btn.setText("Save...")
-        save_btn.setIcon(qta.icon("fa5s.save", color="#475569"))
+        save_btn.setIcon(get_icon(AppIcons.SAVE, color="#475569"))
         save_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         save_btn.setToolTip("Save script as .sql file")
         save_btn.setStyleSheet("""

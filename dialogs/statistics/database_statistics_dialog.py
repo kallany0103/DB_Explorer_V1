@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
-import qtawesome as qta
+from ui.icons import get_icon
 from ui.components import SecondaryButton
 
 
@@ -54,7 +54,7 @@ class DatabaseStatisticsDialog(QDialog):
 
     def _add_stat_row(self, row, icon_name, label_text, value_text):
         icon_label = QLabel()
-        icon_label.setPixmap(qta.icon(icon_name, color="#0078d4").pixmap(24, 24))
+        icon_label.setPixmap(get_icon(icon_name, color="#0078d4").pixmap(24, 24))
         
         name_label = QLabel(label_text)
         name_label.setStyleSheet("font-weight: 600; color: #374151;")
@@ -72,26 +72,26 @@ class DatabaseStatisticsDialog(QDialog):
         try:
             stats = self.manager.connection_actions.fetch_database_statistics(self.conn_data)
             
-            self._add_stat_row(0, "mdi.database", "Database Size", stats.get('db_size', 'N/A'))
+            self._add_stat_row(0, "msc.database", "Database Size", stats.get('db_size', 'N/A'))
             
             line = QFrame()
             line.setFrameShape(QFrame.Shape.HLine)
             line.setStyleSheet("color: #e5e7eb;")
             self.stats_grid.addWidget(line, 1, 0, 1, 3)
 
-            self._add_stat_row(2, "mdi.folder-table", "Schemas", stats.get('schema_count', 0))
-            self._add_stat_row(3, "mdi.table", "Tables", stats.get('table_count', 0))
-            self._add_stat_row(4, "mdi.eye-outline", "Views", stats.get('view_count', 0))
-            self._add_stat_row(5, "mdi.format-list-bulleted", "Indexes", stats.get('index_count', 0))
-            self._add_stat_row(6, "mdi.function-variant", "Functions", stats.get('function_count', 0))
-            self._add_stat_row(7, "mdi.numeric", "Sequences", stats.get('sequence_count', 0))
+            self._add_stat_row(2, "msc.folder", "Schemas", stats.get('schema_count', 0))
+            self._add_stat_row(3, "msc.table", "Tables", stats.get('table_count', 0))
+            self._add_stat_row(4, "msc.eye", "Views", stats.get('view_count', 0))
+            self._add_stat_row(5, "msc.list-ordered", "Indexes", stats.get('index_count', 0))
+            self._add_stat_row(6, "msc.symbol-method", "Functions", stats.get('function_count', 0))
+            self._add_stat_row(7, "msc.symbol-numeric", "Sequences", stats.get('sequence_count', 0))
             
             line2 = QFrame()
             line2.setFrameShape(QFrame.Shape.HLine)
             line2.setStyleSheet("color: #e5e7eb;")
             self.stats_grid.addWidget(line2, 8, 0, 1, 3)
             
-            self._add_stat_row(9, "mdi.account-multiple", "Active Sessions", stats.get('active_sessions', 0))
+            self._add_stat_row(9, "msc.account", "Active Sessions", stats.get('active_sessions', 0))
 
         except Exception as e:
             QMessageBox.critical(self, "Stats Error", f"Failed to load statistics:\n{str(e)}")

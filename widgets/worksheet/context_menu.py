@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QMenu, QApplication
-from PySide6.QtGui import QAction, QIcon
-import qtawesome as qta
+from PySide6.QtGui import QAction
+from ui.icons import AppIcons, get_icon
 from ui.menu_style import apply_menu_style
 from ui.feature_flags import is_feature_enabled
 
@@ -9,14 +9,14 @@ def show_editor_context_menu(manager, pos, editor):
     menu = QMenu(manager)
     apply_menu_style(menu)
 
-    undo_action = QAction(qta.icon("fa5s.undo", color="#555555"), "Undo", manager)
+    undo_action = QAction(get_icon(AppIcons.UNDO), "Undo", manager)
     undo_action.setIconVisibleInMenu(True)
     undo_action.setShortcut("Ctrl+Z")
     undo_action.triggered.connect(editor.undo)
     undo_action.setEnabled(editor.document().isUndoAvailable())
     menu.addAction(undo_action)
 
-    redo_action = QAction(qta.icon("fa5s.redo", color="#555555"), "Redo", manager)
+    redo_action = QAction(get_icon(AppIcons.REDO), "Redo", manager)
     redo_action.setIconVisibleInMenu(True)
     redo_action.setShortcut("Ctrl+Y")
     redo_action.triggered.connect(editor.redo)
@@ -25,21 +25,21 @@ def show_editor_context_menu(manager, pos, editor):
 
     menu.addSeparator()
 
-    cut_action = QAction(qta.icon("fa5s.cut", color="#555555"), "Cut", manager)
+    cut_action = QAction(get_icon(AppIcons.CUT), "Cut", manager)
     cut_action.setIconVisibleInMenu(True)
     cut_action.setShortcut("Ctrl+X")
     cut_action.triggered.connect(editor.cut)
     cut_action.setEnabled(editor.textCursor().hasSelection())
     menu.addAction(cut_action)
 
-    copy_action = QAction(qta.icon("fa5s.copy", color="#555555"), "Copy", manager)
+    copy_action = QAction(get_icon(AppIcons.COPY), "Copy", manager)
     copy_action.setIconVisibleInMenu(True)
     copy_action.setShortcut("Ctrl+C")
     copy_action.triggered.connect(editor.copy)
     copy_action.setEnabled(editor.textCursor().hasSelection())
     menu.addAction(copy_action)
 
-    paste_action = QAction(qta.icon("fa5s.paste", color="#555555"), "Paste", manager)
+    paste_action = QAction(get_icon(AppIcons.PASTE), "Paste", manager)
     paste_action.setIconVisibleInMenu(True)
     paste_action.setShortcut("Ctrl+V")
     paste_action.triggered.connect(editor.paste)
@@ -66,38 +66,38 @@ def show_editor_context_menu(manager, pos, editor):
         menu.addAction(explain_plan_action)
 
     if is_feature_enabled(manager, "ai_assistant"):
-        explain_ai_action = QAction(qta.icon("fa5s.magic", color="#555555"), "Explain with AI", manager)
+        explain_ai_action = QAction(get_icon(AppIcons.EXPLAIN_AI), "Explain with AI", manager)
         explain_ai_action.setIconVisibleInMenu(True)
         explain_ai_action.setShortcut("Ctrl+Alt+E")
         explain_ai_action.triggered.connect(manager.main_window.explain_code_using_ai)
         menu.addAction(explain_ai_action)
 
     if is_feature_enabled(manager, "sql_optimizer"):
-        optimize_sql_action = QAction(qta.icon("fa5s.tachometer-alt", color="#555555"), "Optimize SQL", manager)
+        optimize_sql_action = QAction(get_icon(AppIcons.OPTIMIZE_QUERY), "Optimize SQL", manager)
         optimize_sql_action.setIconVisibleInMenu(True)
         optimize_sql_action.setShortcut("Ctrl+Alt+O")
         optimize_sql_action.triggered.connect(manager.optimize_query)
         menu.addAction(optimize_sql_action)
 
-        optimize_batch_action = QAction(qta.icon("fa5s.tasks", color="#555555"), "Optimize Script Workload (Batch)...", manager)
+        optimize_batch_action = QAction(get_icon(AppIcons.OPTIMIZE_BATCH), "Optimize Script Workload (Batch)...", manager)
         optimize_batch_action.setIconVisibleInMenu(True)
         optimize_batch_action.setShortcut("Ctrl+Shift+O")
         optimize_batch_action.triggered.connect(manager.optimize_workload_script)
         menu.addAction(optimize_batch_action)
 
-    describe_obj_action = QAction(qta.icon("fa5s.info-circle", color="#555555"), "Describe", manager)
+    describe_obj_action = QAction(get_icon(AppIcons.DESCRIBE_OBJECT), "Describe", manager)
     describe_obj_action.setIconVisibleInMenu(True)
     describe_obj_action.setShortcut("F4")
     describe_obj_action.triggered.connect(manager.describe_object)
     menu.addAction(describe_obj_action)
 
-    quick_describe_action = QAction(qta.icon("fa5s.search-plus", color="#555555"), "Quick Describe", manager)
+    quick_describe_action = QAction(get_icon(AppIcons.QUICK_DESCRIBE), "Quick Describe", manager)
     quick_describe_action.setIconVisibleInMenu(True)
     quick_describe_action.setShortcut("Ctrl+D")
     quick_describe_action.triggered.connect(manager.quick_describe)
     menu.addAction(quick_describe_action)
 
-    describe_action = QAction(qta.icon("fa5s.columns", color="#555555"), "Describe (parse) select query", manager)
+    describe_action = QAction(get_icon(AppIcons.DESCRIBE_QUERY), "Describe (parse) select query", manager)
     describe_action.setIconVisibleInMenu(True)
     describe_action.setShortcut("Shift+F4")
     describe_action.triggered.connect(manager.describe_query)
@@ -105,7 +105,7 @@ def show_editor_context_menu(manager, pos, editor):
 
 
     menu.addSeparator()
-    format_action = QAction(QIcon("assets/format_icon.png"), "Format SQL", manager)
+    format_action = QAction(get_icon(AppIcons.FORMAT_SQL), "Format SQL", manager)
     format_action.setIconVisibleInMenu(False)
     format_action.setShortcut("Ctrl+Shift+F")
     format_action.triggered.connect(manager.format_sql_text)

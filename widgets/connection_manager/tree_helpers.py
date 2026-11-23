@@ -2,7 +2,10 @@ import os
 import sys
 from PySide6.QtCore import Qt, QEvent, QModelIndex, QItemSelectionModel
 from PySide6.QtGui import QIcon
-import qtawesome as qta
+from ui.icons import (
+    COLOR_PRIMARY_BLUE, COLOR_AMBER, COLOR_EMERALD_GREEN,
+    COLOR_TEAL, COLOR_SLATE, COLOR_PURPLE, COLOR_CRIMSON, get_icon
+)
 
 
 class TreeHelpers:
@@ -240,67 +243,61 @@ class TreeHelpers:
     def _build_icon(self, level, code=""):
         """Create the QIcon for the given level/code. Called once per unique key."""
         if level == "DATA_SOURCE":
-            return qta.icon("mdi.server-network", color="#0078D4")
+            return get_icon("msc.server", color=COLOR_PRIMARY_BLUE)
         if level == "GROUP":
-            return qta.icon("fa6s.folder", color="#C49102")
+            return get_icon("msc.folder", color=COLOR_AMBER)
         if level == "GROUP_SCHEMAS":
-            return qta.icon("fa6s.layer-group", color="#C49102")
+            return get_icon("msc.layers", color=COLOR_AMBER)
         if level == "GROUP_TABLES":
-            return qta.icon("mdi.table-multiple", color="#C49102")
+            return get_icon("msc.table", color=COLOR_AMBER)
         if level == "GROUP_VIEWS":
-            return qta.icon("mdi6.folder-eye", color="#C49102")
+            return get_icon("msc.eye", color=COLOR_AMBER)
         if level == "GROUP_FOREIGN_TABLES":
-            return qta.icon("mdi.folder-network", color="#C49102")
+            return get_icon("msc.globe", color=COLOR_AMBER)
         if level == "GROUP_MATERIALIZED_VIEWS":
-            return qta.icon("mdi.folder-table", color="#C49102")
+            return get_icon("msc.layers", color=COLOR_AMBER)
         if level == "GROUP_FUNCTIONS":
-            return qta.icon("mdi.code-braces", color="#E91E63")
+            return get_icon("msc.symbol-method", color=COLOR_PURPLE)
         if level == "GROUP_TRIGGER_FUNCTIONS":
-            return qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#C49102'}, {'color': '#C49102', 'scale_factor': 0.5}])
+            return get_icon("msc.zap", color=COLOR_AMBER)
         if level == "GROUP_SEQUENCES":
-            return qta.icon("mdi.numeric", color="#BF7200")
+            return get_icon("msc.symbol-numeric", color=COLOR_AMBER)
         if level == "POLICIES_GROUP":
-            return qta.icon("mdi.folder-lock-outline", color="#9E9E9E")
+            return get_icon("msc.shield", color=COLOR_SLATE)
         if level == "SCHEMA":
-            return qta.icon("mdi.cube-outline", color="#C49102")
+            return get_icon("msc.folder-library", color=COLOR_AMBER)
         if level == "TABLE":
-            return qta.icon("mdi.table", color="#4CAF50")
+            return get_icon("msc.table", color=COLOR_EMERALD_GREEN)
         if level == "VIEW":
-            return qta.icon("mdi.table-eye", color="#2196F3")
+            return get_icon("msc.eye", color=COLOR_TEAL)
         if level == "MATERIALIZED_VIEW":
-            return qta.icon("mdi.table-eye", color="#00BCD4")
+            return get_icon("msc.eye", color=COLOR_TEAL)
         if level == "COLUMN":
-            return qta.icon("mdi.table-column", color="#607D8B")
+            return get_icon("msc.symbol-variable", color=COLOR_SLATE)
         if level == "TRIGGER":
             if code == "D":
-                return qta.icon("mdi.lightning-bolt-outline", color="#9E9E9E")
-            return qta.icon("mdi.lightning-bolt", color="#FF9800")
+                return get_icon("msc.zap", color=COLOR_SLATE)
+            return get_icon("msc.zap", color=COLOR_CRIMSON)
         if level == "POLICY":
-            return qta.icon("mdi.shield-lock-outline", color="#FF5722")
-        if level == "FDW_ROOT":
-            return qta.icon("mdi.server-network", color="#9E9E9E")
-        if level == "FDW":
-            return qta.icon("mdi.server-network", color="#9E9E9E")
+            return get_icon("msc.shield", color=COLOR_CRIMSON)
+        if level in ("FDW_ROOT", "FDW"):
+            return get_icon("msc.plug", color=COLOR_SLATE)
         if level == "SERVER":
-            return qta.icon("fa5s.database", color="#9E9E9E")
+            return get_icon("msc.database", color=COLOR_PRIMARY_BLUE)
         if level == "FOREIGN_TABLE":
-            return qta.icon("mdi.table-network", color="#4CAF50")
-        if level == "EXTENSION_ROOT":
-            return qta.icon("mdi.puzzle", color="#8340A1")
-        if level == "EXTENSION":
-            return qta.icon("mdi.puzzle", color="#8340A1")
-        if level == "LANGUAGE_ROOT":
-            return qta.icon("fa5s.code", color="#795548")
-        if level == "LANGUAGE":
-            return qta.icon("fa5s.code", color="#795548")
+            return get_icon("msc.globe", color=COLOR_EMERALD_GREEN)
+        if level in ("EXTENSION_ROOT", "EXTENSION"):
+            return get_icon("msc.extensions", color=COLOR_PURPLE)
+        if level in ("LANGUAGE_ROOT", "LANGUAGE"):
+            return get_icon("msc.code", color=COLOR_SLATE)
         if level == "SEQUENCE":
-            return qta.icon("mdi.numeric", color="#BF7200")
+            return get_icon("msc.symbol-numeric", color=COLOR_AMBER)
         if level == "FUNCTION":
-            return qta.icon("mdi.code-braces", color="#E91E63")
+            return get_icon("msc.symbol-method", color=COLOR_PURPLE)
         if level == "TRIGGER_FUNCTION":
-            return qta.icon('mdi.code-braces', 'mdi.flash', options=[{'color': '#C49102'}, {'color': '#C49102', 'scale_factor': 0.5}])
+            return get_icon("msc.zap", color=COLOR_PURPLE)
         if level == "USER":
-            return qta.icon("fa5s.user", color="#607D8B")
+            return get_icon("msc.account", color=COLOR_SLATE)
 
         # TYPE-level — SVG file icon
         icon_map = {

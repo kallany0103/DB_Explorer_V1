@@ -86,7 +86,6 @@ def _common_oracle_paths() -> list[Path]:
 
     return candidates
 
-
 def find_sqlplus(custom_path: str | Path | None = None) -> str | None:
     """Return the path to sqlplus.exe following custom path -> PATH -> standard installs."""
     # 1. Custom user-specified setting from Preferences
@@ -148,7 +147,10 @@ def admin_dir(custom_path: str | Path | None = None) -> str | None:
     return None
 
 
-def get_sqlplus_candidates() -> list[dict[str, str]]:
+_CACHED_SQLPLUS_CANDIDATES: list[dict[str, str]] | None = None
+
+
+def get_sqlplus_candidates(force_refresh: bool = False) -> list[dict[str, str]]:
     """Scan and return unique detected Oracle client installations on the machine.
 
     Each candidate dict has:
@@ -156,6 +158,10 @@ def get_sqlplus_candidates() -> list[dict[str, str]]:
     - 'path': path to sqlplus.exe or oci.dll
     - 'dir': client directory
     """
+    global _CACHED_SQLPLUS_CANDIDATES
+    if not force_refresh and _CACHED_SQLPLUS_CANDIDATES is not None:
+        return [dict(c) for c in _CACHED_SQLPLUS_CANDIDATES]
+
     candidates: list[dict[str, str]] = []
     seen_dirs: set[str] = set()
 
@@ -200,4 +206,5 @@ def get_sqlplus_candidates() -> list[dict[str, str]]:
             fp = Path(found).resolve()
             _add(fp.parent, fp, fp.parent.parent.name if fp.parent.name.lower() == "bin" else fp.parent.name)
 
+    _CACHED_SQLPLUS_CANDIDATES = [dict(c) for c in candidates]
     return candidates

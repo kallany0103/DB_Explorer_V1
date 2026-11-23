@@ -139,6 +139,9 @@ def _ensure_servicenow_tables_synced(
                         f"ServiceNow instance {inst} is currently offline or hibernating. "
                         "Please wake up your instance at developer.servicenow.com."
                     ) from sync_err
+                raise ConnectionError(
+                    f"Failed to sync table '{tbl_name}' from ServiceNow: {first_line}"
+                ) from sync_err
 
 
 # 1. RunnableExport (For Large Data / Direct Export)

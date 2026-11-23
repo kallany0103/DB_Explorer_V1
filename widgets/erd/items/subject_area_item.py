@@ -1,4 +1,4 @@
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem, QMenu, QStyle
 )
@@ -195,7 +195,7 @@ class ERDSubjectAreaItem(QGraphicsRectItem, ResizableItemMixin):
             menu.addAction("Auto Size").triggered.connect(self._auto_size_from_menu)
         menu.addSeparator()
         menu.addAction(
-            qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Group"
+            get_icon("msc.trash", color="#DC2626"), "Remove Group"
         ).triggered.connect(self._remove_self)
         menu.exec(event.screenPos())
         event.accept()

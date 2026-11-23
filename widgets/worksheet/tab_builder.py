@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from ui.components import SecondaryButton
 from ui.toolbars import NavigationHeader, WorksheetToolbar
@@ -87,7 +87,7 @@ def add_tab(manager):
         QLabel#conn_status_icon {
             background-color: transparent;
             border: none;
-            padding-left: 5px;
+            padding: 0px;
         }
     """)
 
@@ -101,7 +101,7 @@ def add_tab(manager):
     conn_status_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
     
     # Set a default icon pixmap
-    conn_status_icon.setPixmap(qta.icon("fa5s.link", color="#72777a").pixmap(16, 16))
+    conn_status_icon.setPixmap(get_icon("msc.link", color="#72777a").pixmap(16, 16))
     conn_selection_layout.addWidget(conn_status_icon)
 
     # Vertical Separator
@@ -138,7 +138,7 @@ def add_tab(manager):
             icon = get_connection_icon(db_type)
             conn_status_icon.setPixmap(icon.pixmap(16, 16))
         else:
-            conn_status_icon.setPixmap(qta.icon("fa5s.link", color="#72777a").pixmap(16, 16))
+            conn_status_icon.setPixmap(get_icon("msc.link", color="#72777a").pixmap(16, 16))
 
     db_combo_box.currentIndexChanged.connect(update_conn_status_icon)
     db_combo_box.currentIndexChanged.connect(lambda: manager.results_manager.refresh_processes_view())
@@ -299,9 +299,9 @@ def add_tab(manager):
     history_button_layout.setContentsMargins(0, 2, 0, 0)
     history_button_layout.setSpacing(8)
 
-    copy_history_btn = SecondaryButton(qta.icon("fa5s.copy", color="#475569"), "Copy")
-    copy_to_edit_btn = SecondaryButton(qta.icon("fa5s.external-link-alt", color="#475569"), "Copy to Editor")
-    remove_history_btn = SecondaryButton(qta.icon("fa5s.trash-alt", color="#64748B"), "Remove")
+    copy_history_btn = SecondaryButton(get_icon(AppIcons.COPY, color="#475569"), "Copy")
+    copy_to_edit_btn = SecondaryButton(get_icon("msc.go-to-file", color="#475569"), "Copy to Editor")
+    remove_history_btn = SecondaryButton(get_icon("msc.trash", color="#64748B"), "Remove")
     remove_all_history_btn = SecondaryButton("Remove All")
 
     for btn in (copy_history_btn, copy_to_edit_btn, remove_history_btn, remove_all_history_btn):

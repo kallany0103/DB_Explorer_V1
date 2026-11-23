@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QVBoxLayout, QWidget, QWidgetAction
 
@@ -20,7 +20,7 @@ class ActionWidget(QWidget):
         layout.setSpacing(6)  # The reduced gap!
         
         icon_lbl = QLabel()
-        icon_lbl.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(QSize(16, 16)))
+        icon_lbl.setPixmap(get_icon(icon_name, color=icon_color).pixmap(QSize(16, 16)))
         layout.addWidget(icon_lbl)
         
         text_lbl = QLabel(text)
@@ -71,7 +71,7 @@ class AccountMenu(QMenu):
         avatar.setObjectName("accountMenuAvatar")
         avatar.setFixedSize(24, 24)
         avatar.setPixmap(
-            qta.icon("mdi.account-circle-outline", color="#5F6368").pixmap(QSize(24, 24))
+            get_icon("msc.account", color="#5F6368").pixmap(QSize(24, 24))
         )
         header_layout.addWidget(avatar)
 
@@ -93,7 +93,7 @@ class AccountMenu(QMenu):
         self.addSeparator()
 
         if signed_in:
-            sign_out_widget = ActionWidget("mdi.logout", "#555555", "Sign out", on_sign_out, self)
+            sign_out_widget = ActionWidget("msc.sign-out", "#555555", "Sign out", on_sign_out, self)
             sign_out_action = QWidgetAction(self)
             sign_out_action.setDefaultWidget(sign_out_widget)
             self.addAction(sign_out_action)
@@ -103,7 +103,7 @@ class AccountMenu(QMenu):
             google_action.setDefaultWidget(google_widget)
             self.addAction(google_action)
             
-            email_widget = ActionWidget("mdi.email-outline", "#555555", "Sign in with email", on_email, self)
+            email_widget = ActionWidget("msc.mail", "#555555", "Sign in with email", on_email, self)
             email_action = QWidgetAction(self)
             email_action.setDefaultWidget(email_widget)
             self.addAction(email_action)

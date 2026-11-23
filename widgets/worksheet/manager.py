@@ -1,6 +1,6 @@
 import logging
 
-import qtawesome as qta
+from ui.icons import get_icon
 
 from PySide6.QtWidgets import (
     QWidget, QTextEdit,
@@ -13,7 +13,7 @@ from PySide6.QtCore import (
     QRect
 )
 from PySide6.QtGui import (
-    QIcon, QAction,
+    QAction,
 )
 
 from db.transaction_session import TransactionSession
@@ -98,8 +98,8 @@ class WorksheetManager(QWidget):
         self.tab_timers = {}
         self.running_queries = {}
         self.QUERY_TIMEOUT = 300000
-        self.worksheet_icon_key = "mdi.file-document-edit"
-        self.worksheet_icon_fallback_key = "mdi.file-document"
+        self.worksheet_icon_key = "msc.file-code"
+        self.worksheet_icon_fallback_key = "msc.code"
         # Maps tab widget → TransactionSession (only present when a transaction is open)
         self.tab_transactions: dict[QWidget, TransactionSession] = {}
         # Maps tab widget → bool (True = auto-commit ON, default)
@@ -116,12 +116,7 @@ class WorksheetManager(QWidget):
         
 
     def _get_worksheet_tab_icon(self):
-        for icon_key in (self.worksheet_icon_key, self.worksheet_icon_fallback_key):
-            try:
-                return qta.icon(icon_key, scale_factor=1.15)
-            except Exception:
-                continue
-        return QIcon()
+        return get_icon("msc.file-code")
 
     def _next_worksheet_tab_number(self):
         worksheet_count = sum(
@@ -532,9 +527,9 @@ class WorksheetManager(QWidget):
             is_auto = self.tab_autocommit.get(tab, True)
             self.ws_autocommit_action.setChecked(is_auto)
             if is_auto:
-                self.ws_autocommit_action.setIcon(qta.icon("fa5s.lock-open", color="#555555"))
+                self.ws_autocommit_action.setIcon(get_icon("msc.unlock", color="#555555"))
             else:
-                self.ws_autocommit_action.setIcon(qta.icon("fa5s.lock", color="#dc3545"))
+                self.ws_autocommit_action.setIcon(get_icon("msc.lock", color="#dc3545"))
             self.ws_autocommit_action.blockSignals(False)
 
         if tab and hasattr(tab, "set_dbms_output_enabled"):
@@ -654,10 +649,10 @@ class WorksheetManager(QWidget):
             if data:
                 db_type = data.get("type", "")
                 icon = get_connection_icon(db_type)
-                status_icon.setPixmap(icon.pixmap(18, 18))
+                status_icon.setPixmap(icon.pixmap(16, 16))
             else:
                 # Default fallback
-                status_icon.setPixmap(qta.icon("fa5s.plug", color="#72777a").pixmap(18, 18))
+                status_icon.setPixmap(get_icon("msc.plug", color="#72777a").pixmap(16, 16))
 
 
     def execute_query_in_new_output_tab(self):

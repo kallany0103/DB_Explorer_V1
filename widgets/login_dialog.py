@@ -1,13 +1,13 @@
 import pathlib
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QLineEdit, QToolButton, QMessageBox
+    QDialog, QVBoxLayout, QLabel,
+    QPushButton, QLineEdit, QMessageBox
 )
-from PySide6.QtCore import Qt, QPoint, QSize
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import (
     QPainter, QBrush, QColor, QPainterPath,
-    QMouseEvent, QPixmap
+    QMouseEvent
 )
 
 
@@ -72,7 +72,7 @@ class LoginDialog(QDialog):
         self.pwd_input.setMinimumHeight(44)
         
         self.toggle_action = self.pwd_input.addAction(
-            qta.icon("fa5s.eye", color="#9AA0A6"), 
+            get_icon("msc.eye", color="#9AA0A6"), 
             QLineEdit.ActionPosition.TrailingPosition
         )
         self.toggle_action.triggered.connect(self._toggle_password_visibility)
@@ -102,10 +102,10 @@ class LoginDialog(QDialog):
     def _toggle_password_visibility(self) -> None:
         if self.pwd_input.echoMode() == QLineEdit.EchoMode.Password:
             self.pwd_input.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.toggle_action.setIcon(qta.icon("fa5s.eye-slash", color="#9AA0A6"))
+            self.toggle_action.setIcon(get_icon("msc.eye-closed", color="#9AA0A6"))
         else:
             self.pwd_input.setEchoMode(QLineEdit.EchoMode.Password)
-            self.toggle_action.setIcon(qta.icon("fa5s.eye", color="#9AA0A6"))
+            self.toggle_action.setIcon(get_icon("msc.eye", color="#9AA0A6"))
 
     def _on_signin(self) -> None:
         QMessageBox.information(

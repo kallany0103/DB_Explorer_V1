@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import AppIcons, get_icon
 
 from db.optimizer.batch import (
     BatchItemResult,
@@ -49,7 +49,7 @@ class BatchOptimizerDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("batchOptimizerDialog")
         self.setWindowTitle("Workload & Batch SQL Optimizer")
-        fit_dialog_to_screen(self, ideal_width=1100, ideal_height=720, min_width=640, min_height=420)
+        fit_dialog_to_screen(self, ideal_width=900, ideal_height=580, min_width=580, min_height=380)
 
         self.script_text = script_text
         self.dialect = dialect
@@ -93,7 +93,7 @@ class BatchOptimizerDialog(QDialog):
         bottom_pane = self._create_diff_pane()
         splitter.addWidget(bottom_pane)
 
-        splitter.setSizes([380, 240])
+        splitter.setSizes([260, 180])
         main_layout.addWidget(splitter, 1)
 
         # 4. Footer Bar
@@ -207,12 +207,12 @@ class BatchOptimizerDialog(QDialog):
         hdr_row.addStretch()
 
         self.tune_btn = SecondaryButton("Tune Selected Query...", container)
-        self.tune_btn.setIcon(qta.icon("fa5s.search", color="#475569"))
+        self.tune_btn.setIcon(get_icon("msc.search", color="#475569"))
         self.tune_btn.clicked.connect(self._open_single_tune_dialog)
         hdr_row.addWidget(self.tune_btn)
 
         copy_script_btn = SecondaryButton("Copy Optimized Script", container)
-        copy_script_btn.setIcon(qta.icon("fa5s.copy", color="#475569"))
+        copy_script_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_script_btn.clicked.connect(self._copy_optimized_script)
         hdr_row.addWidget(copy_script_btn)
 
@@ -298,7 +298,7 @@ class BatchOptimizerDialog(QDialog):
 
         if self.on_apply_script:
             apply_all_btn = PrimaryButton("Apply All Rewrites to Worksheet", footer)
-            apply_all_btn.setIcon(qta.icon("fa5s.check", color="#FFFFFF"))
+            apply_all_btn.setIcon(get_icon("msc.check", color="#FFFFFF"))
             apply_all_btn.clicked.connect(self._apply_all_rewrites)
             layout.addWidget(apply_all_btn)
 

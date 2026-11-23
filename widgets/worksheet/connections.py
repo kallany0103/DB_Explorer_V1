@@ -1,5 +1,5 @@
 import db
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import QComboBox, QApplication
 from ui.feature_flags import is_connection_type_enabled
 
@@ -15,7 +15,7 @@ def refresh_all_comboboxes(manager):
 def get_connection_icon(_conn_type):
     """Always returns a fixed link icon with a consistent color."""
     # Returning a fixed professional dark grey link icon for all connections
-    return qta.icon("fa5s.link", color="#333333")
+    return get_icon("msc.link", color="#333333")
 
 
 

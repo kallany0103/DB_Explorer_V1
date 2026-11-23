@@ -14,7 +14,7 @@ import shutil
 import threading
 import time
 
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
@@ -212,11 +212,11 @@ class PSQLToolWidget(QWidget):
 
         # 3. Action buttons
         for icon_key, label, slot in (
-            ("fa5s.copy", "Copy Output", self._copy_output),
-            ("fa5s.trash-alt", "Clear", self._clear),
-            ("fa5s.redo-alt", "Reconnect", self._reconnect),
+            ("msc.copy", "Copy Output", self._copy_output),
+            ("msc.trash", "Clear", self._clear),
+            ("msc.sync", "Reconnect", self._reconnect),
         ):
-            btn = CompactButton(qta.icon(icon_key, color="#4b5563"), label)
+            btn = CompactButton(get_icon(icon_key, color="#4b5563"), label)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
@@ -334,7 +334,7 @@ class PSQLToolWidget(QWidget):
 
             from widgets.psql_tool.wsl_discovery import check_wsl_postgres
             wsl_info = check_wsl_postgres(self._wsl_distro)
-            if not wsl_info.get("available"):
+            if not wsl_info.get("available") and not wsl_info.get("timed_out"):
                 self._hide_spinner()
                 distro_name = self._wsl_distro or "WSL"
                 install_cmd = wsl_info.get("install_cmd") or "sudo apt install postgresql-client"
@@ -674,10 +674,7 @@ def open_psql_tool(conn: dict, manager=None) -> PSQLToolWidget:
     )
 
     if tab_widget is not None:
-        try:
-            icon = qta.icon("mdi.console", color="#89b4fa")
-        except Exception:
-            icon = qta.icon("fa5s.terminal", color="#89b4fa")
+        icon = get_icon("msc.terminal", color="#89b4fa")
 
         db_name = (conn or {}).get("database") or (conn or {}).get("db") or "postgres"
         index = tab_widget.addTab(widget, icon, f"PSQL – {db_name}")

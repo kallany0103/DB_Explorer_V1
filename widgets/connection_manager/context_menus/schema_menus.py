@@ -170,7 +170,7 @@ class SchemaMenuBuilder:
 
     def _add_query_tool_action(self, menu, item_data):
         """Append a Query Tool action that opens a blank SQL tab for *item_data*."""
-        act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        act = action(self.manager, "Query Tool", "msc.file-code", shortcut="Alt+Shift+Q")
         act.triggered.connect(
             lambda: self.manager.connection_actions.open_query_tool(item_data)
         )
@@ -375,7 +375,7 @@ class SchemaMenuBuilder:
         hide_pg_style_actions = db_type_lower in ("csv", "servicenow")
 
         view_sub = self._create_view_data_submenu(menu, item_data, display_name, is_servicenow)
-        query_act = action(self.manager, "Query Tool", "mdi.database-search", shortcut="Alt+Shift+Q")
+        query_act = action(self.manager, "Query Tool", "msc.file-code", shortcut="Alt+Shift+Q")
         query_act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item_data))
 
         export_act = action(self.manager, "Export Rows...", "mdi.export")

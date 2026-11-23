@@ -1,4 +1,4 @@
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem, QMenu
 from PySide6.QtGui import QBrush, QColor, QPen, QFont
 from PySide6.QtCore import Qt, QSizeF
@@ -35,7 +35,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
         self._init_resizable()
         self.connections = []
         self.highlighted_cols = set()
-        self._pin_icon = qta.icon("fa5s.thumbtack", color="#B45309")
+        self._pin_icon = get_icon("msc.pin", color="#B45309")
         self.is_pinned = False
         self.setBrush(QBrush(QColor("#FFF7D6")))
         self.setPen(QPen(QColor("#D4B106"), 1))
@@ -119,7 +119,7 @@ class ERDNoteItem(QGraphicsRectItem, ResizableItemMixin):
             menu.addAction("Auto Size").triggered.connect(self._auto_size_from_menu)
 
         menu.addSeparator()
-        remove_icon = qta.icon("fa5s.trash-alt", color="#DC2626")
+        remove_icon = get_icon("msc.trash", color="#DC2626")
         remove_action = menu.addAction(remove_icon, "Remove Note")
         remove_action.triggered.connect(self.remove_note)
         menu.exec(screen_pos)

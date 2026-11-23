@@ -1,4 +1,4 @@
-import qtawesome as qta
+from ui.icons import get_icon
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
@@ -139,11 +139,11 @@ class PropertyPanel(QWidget):
             rfx = QHBoxLayout()
             icon_lbl = QLabel()
             if col.get('pk'):
-                icon_lbl.setPixmap(qta.icon('fa5s.key', color='#F9AB00').pixmap(12,12))
+                icon_lbl.setPixmap(get_icon('msc.key', color='#F9AB00').pixmap(12, 12))
             elif col.get('fk'):
-                icon_lbl.setPixmap(qta.icon('fa5s.key', color='#1A73E8').pixmap(12,12))
+                icon_lbl.setPixmap(get_icon('msc.key', color='#1A73E8').pixmap(12, 12))
             else:
-                icon_lbl.setPixmap(qta.icon('fa5s.columns', color='#34A853').pixmap(12,12))
+                icon_lbl.setPixmap(get_icon('ph.columns', color='#16A34A').pixmap(12, 12))
                 
             rfx.addWidget(icon_lbl)
             rfx.addWidget(QLabel(col['name']))

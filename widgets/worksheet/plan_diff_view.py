@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import get_icon
 
 from db.optimizer.plan_models import PlanNode
 
@@ -283,7 +283,7 @@ class PlanDiffWidget(QWidget):
             rel_text = b.relation
             cond_text = b.condition
             status = "optimized"
-            icon = qta.icon("fa5s.check", color="#16A34A")
+            icon = get_icon("msc.check", color="#16A34A")
 
         else:
             active = c  # type: ignore[assignment]
@@ -322,14 +322,14 @@ class PlanDiffWidget(QWidget):
     def _get_node_icon(self, node_type: str, is_bottleneck: bool = False):
         lower = (node_type or "").lower()
         if "procedural" in lower or "pl/sql" in lower:
-            return qta.icon("fa5s.cogs", color="#2563EB")
+            return get_icon("msc.gear", color="#2563EB")
         if "index" in lower:
-            return qta.icon("fa5s.bolt", color="#16A34A")
+            return get_icon("msc.zap", color="#16A34A")
         if "scan" in lower or is_bottleneck:
-            return qta.icon("fa5s.exclamation-triangle", color="#D97706")
+            return get_icon("msc.warning", color="#D97706")
         if "join" in lower:
-            return qta.icon("fa5s.link", color="#2563EB")
-        return qta.icon("fa5s.layer-group", color="#64748B")
+            return get_icon("msc.link", color="#2563EB")
+        return get_icon("msc.layers", color="#64748B")
 
     def _is_identical_plan(self, a: Optional[PlanNode], b: Optional[PlanNode]) -> bool:
         if a is None and b is None:

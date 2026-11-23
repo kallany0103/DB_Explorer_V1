@@ -1,5 +1,5 @@
 from PySide6.QtGui import QAction
-import qtawesome as qta
+from ui.icons import get_icon
 from ui.menu_style import apply_menu_style
 
 def build_main_window_menu(main_window):
@@ -89,7 +89,7 @@ def build_main_window_menu(main_window):
     window_menu.addAction(main_window.minimize_action)
     window_menu.addAction(main_window.maximize_action)
     window_menu.addSeparator()
-    close_action = QAction(qta.icon("mdi.window-close", color="#555555"), "Close", main_window)
+    close_action = QAction(get_icon("msc.close"), "Close", main_window)
     close_action.setShortcut("Alt+F4")
     close_action.triggered.connect(main_window.close)
     window_menu.addAction(close_action)

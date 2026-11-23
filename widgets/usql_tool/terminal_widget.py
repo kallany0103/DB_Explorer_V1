@@ -12,7 +12,7 @@ from pathlib import Path
 import threading
 import time
 
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
@@ -196,11 +196,11 @@ class USQLToolWidget(QWidget):
         layout.addStretch()
 
         for icon_key, label, slot in (
-            ("fa5s.copy", "Copy Output", self._copy_output),
-            ("fa5s.trash-alt", "Clear", self._clear),
-            ("fa5s.redo-alt", "Reconnect", self._reconnect),
+            ("msc.copy", "Copy Output", self._copy_output),
+            ("msc.trash", "Clear", self._clear),
+            ("msc.sync", "Reconnect", self._reconnect),
         ):
-            btn = CompactButton(qta.icon(icon_key, color="#4b5563"), label)
+            btn = CompactButton(get_icon(icon_key, color="#4b5563"), label)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
@@ -710,10 +710,7 @@ def open_usql_tool(conn: dict, manager=None) -> USQLToolWidget:
     widget = USQLToolWidget(conn, pg_bin_path=pg_bin_path)
 
     if tab_widget is not None:
-        try:
-            icon = qta.icon("mdi.console", color="#a6e3a1")
-        except Exception:
-            icon = qta.icon("fa5s.terminal", color="#a6e3a1")
+        icon = get_icon("msc.terminal", color="#a6e3a1")
 
         db_name = (conn or {}).get("database") or (conn or {}).get("db") or "psql"
         index = tab_widget.addTab(widget, icon, f"PSQL Tool – {db_name}")

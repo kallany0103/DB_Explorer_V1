@@ -1,4 +1,3 @@
-import qtawesome as qta
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QPainter, QIcon
 from PySide6.QtWidgets import (
@@ -12,6 +11,7 @@ from ui.components import (
 )
 from ui.menu_style import apply_menu_style
 from ui.feature_flags import is_feature_enabled
+from ui.icons import AppIcons, get_icon
 
 
 
@@ -150,12 +150,12 @@ class WorksheetToolbar(QWidget):
 
         layout.addWidget(manager.create_vertical_separator())
 
-        self.explain_combo = ActionToolButton("", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo = ActionToolButton("", get_icon("msc.graph"))
         self.explain_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.explain_combo.setFixedWidth(48)
         self.explain_combo.setToolTip("Explain Query")
-        self.explain_combo.addItem("Explain Analyze", qta.icon("fa5s.stopwatch", color="#555555"))
-        self.explain_combo.addItem("Explain (Plan)", qta.icon("fa5s.stopwatch", color="#555555"))
+        self.explain_combo.addItem("Explain Analyze", get_icon("msc.graph"))
+        self.explain_combo.addItem("Explain (Plan)", get_icon("msc.graph"))
         self.explain_combo.itemTriggered.connect(self._on_explain_triggered)
         layout.addWidget(self.explain_combo)
 
@@ -168,54 +168,53 @@ class WorksheetToolbar(QWidget):
             self.explain_ai_btn.setToolTip("Explain code using AI (Ctrl+Alt+E)")
             layout.addWidget(self.explain_ai_btn)
 
-        # Optimize Query
+        # Optimize Query (with Batch Workload Optimize in dropdown)
         if hasattr(manager, 'ws_optimize_action'):
             self.optimize_btn = ToolbarActionButton(icon=manager.ws_optimize_action.icon())
             self.optimize_btn.setDefaultAction(manager.ws_optimize_action)
             self.optimize_btn.setIconSize(QSize(16, 16))
-            self.optimize_btn.setMinimumWidth(32)
+            self.optimize_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            optimize_menu = QMenu(self.optimize_btn)
+            apply_menu_style(optimize_menu)
+            manager.ws_optimize_action.setIconVisibleInMenu(True)
+            optimize_menu.addAction(manager.ws_optimize_action)
+            if hasattr(manager, 'ws_optimize_batch_action'):
+                manager.ws_optimize_batch_action.setIconVisibleInMenu(True)
+                optimize_menu.addAction(manager.ws_optimize_batch_action)
+            self.optimize_btn.setMenu(optimize_menu)
+            self.optimize_btn.setFixedWidth(48)
             self.optimize_btn.setToolTip("Optimize SQL (Ctrl+Alt+O)")
             layout.addWidget(self.optimize_btn)
+            self.optimize_batch_btn = self.optimize_btn
 
-        # Optimize Workload / Batch Script
-        if hasattr(manager, 'ws_optimize_batch_action'):
-            self.optimize_batch_btn = ToolbarActionButton(icon=manager.ws_optimize_batch_action.icon())
-            self.optimize_batch_btn.setDefaultAction(manager.ws_optimize_batch_action)
-            self.optimize_batch_btn.setIconSize(QSize(16, 16))
-            self.optimize_batch_btn.setMinimumWidth(32)
-            self.optimize_batch_btn.setToolTip("Optimize Entire Script Workload (Ctrl+Shift+O)")
-            layout.addWidget(self.optimize_batch_btn)
-
-        # Describe (F4) - table and schema
+        # Describe (with Quick Describe & Describe Query in dropdown)
         if hasattr(manager, 'ws_describe_object_action'):
             self.describe_obj_btn = ToolbarActionButton(icon=manager.ws_describe_object_action.icon())
             self.describe_obj_btn.setDefaultAction(manager.ws_describe_object_action)
             self.describe_obj_btn.setIconSize(QSize(16, 16))
-            self.describe_obj_btn.setMinimumWidth(32)
-            self.describe_obj_btn.setToolTip("Describe (F4)")
+            self.describe_obj_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            describe_menu = QMenu(self.describe_obj_btn)
+            apply_menu_style(describe_menu)
+            manager.ws_describe_object_action.setIconVisibleInMenu(True)
+            describe_menu.addAction(manager.ws_describe_object_action)
+            if hasattr(manager, 'ws_quick_describe_action'):
+                manager.ws_quick_describe_action.setIconVisibleInMenu(True)
+                describe_menu.addAction(manager.ws_quick_describe_action)
+            if hasattr(manager, 'ws_describe_action'):
+                manager.ws_describe_action.setIconVisibleInMenu(True)
+                describe_menu.addAction(manager.ws_describe_action)
+            self.describe_obj_btn.setMenu(describe_menu)
+            self.describe_obj_btn.setFixedWidth(48)
+            self.describe_obj_btn.setToolTip("Describe Object (F4)")
             layout.addWidget(self.describe_obj_btn)
 
-        # Quick Describe (Ctrl+D)
-        if hasattr(manager, 'ws_quick_describe_action'):
-            self.quick_describe_btn = ToolbarActionButton(icon=manager.ws_quick_describe_action.icon())
-            self.quick_describe_btn.setDefaultAction(manager.ws_quick_describe_action)
-            self.quick_describe_btn.setIconSize(QSize(16, 16))
-            self.quick_describe_btn.setMinimumWidth(32)
-            self.quick_describe_btn.setToolTip("Quick Describe (Ctrl+D)")
-            layout.addWidget(self.quick_describe_btn)
-
-        # Describe (parse) select query (Shift+F4)
-        if hasattr(manager, 'ws_describe_action'):
-            self.describe_btn = ToolbarActionButton(icon=manager.ws_describe_action.icon())
-            self.describe_btn.setDefaultAction(manager.ws_describe_action)
-            self.describe_btn.setIconSize(QSize(16, 16))
-            self.describe_btn.setMinimumWidth(32)
-            self.describe_btn.setToolTip("Describe (parse) select query (Shift+F4)")
-            layout.addWidget(self.describe_btn)
+            # Backward-compatibility aliases for tests/external references
+            self.quick_describe_btn = self.describe_obj_btn
+            self.describe_btn = self.describe_obj_btn
 
 
         # Edit Menu
-        self.edit_btn = ActionToolButton("", qta.icon("fa5s.edit", color="#555555"))
+        self.edit_btn = ActionToolButton("", get_icon("msc.edit"))
         self.edit_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.edit_btn.setFixedWidth(48)
         self.edit_btn.setToolTip("Edit Operations")
@@ -229,52 +228,48 @@ class WorksheetToolbar(QWidget):
         layout.addWidget(manager.create_vertical_separator())
 
         # Rows Limit
-        self._row_limit_icon = qta.icon("mdi6.table-row", color="#555555")
-        self.rows_limit_combo = DropdownToolButton("No Limit", self._row_limit_icon)
+        self.rows_limit_combo = DropdownToolButton("No Limit")
         self.rows_limit_combo.setObjectName("rows_limit_combo")
-        self.rows_limit_combo.setFixedWidth(58)
+        self.rows_limit_combo.setFixedWidth(82)
         self.rows_limit_combo.setToolTip("Row Limit: No Limit")
         self.rows_limit_combo.addItems(["No Limit", "100", "500", "1000"])
+        self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
 
-        # Override setCurrentText and currentText to handle icon-only for "No Limit"
-        # and text-only (number) for numeric limits
         self._current_row_limit = "No Limit"
 
-        def _update_limit_style(is_icon_only):
-            pad_left = 0 if is_icon_only else 4
-            pad_right = 16 if is_icon_only else 18
-            self.rows_limit_combo.setStyleSheet(f"""
-                QToolButton {{
+        def _update_limit_style():
+            self.rows_limit_combo.setStyleSheet("""
+                QToolButton {
                     border: 1px solid #b9b9b9;
                     border-radius: 4px;
                     background-color: #ffffff;
                     color: #333333;
-                    padding: 0px {pad_right}px 0px {pad_left}px;
+                    padding: 0px 16px 0px 4px;
                     font-size: 8.5pt;
-                }}
-                QToolButton:hover {{
+                }
+                QToolButton:hover {
                     background-color: #e8e8e8;
                     border-color: #9c9c9c;
-                }}
-                QToolButton:pressed {{
+                }
+                QToolButton:pressed {
                     background-color: #dcdcdc;
-                }}
-                QToolButton::menu-button {{
+                }
+                QToolButton::menu-button {
                     subcontrol-origin: padding;
                     subcontrol-position: right center;
                     width: 14px;
                     border: none;
-                }}
-                QToolButton::menu-button:hover, QToolButton::menu-button:open {{
+                }
+                QToolButton::menu-button:hover, QToolButton::menu-button:open {
                     background-color: #dcdcdc;
                     border-radius: 3px;
-                }}
-                QToolButton::menu-arrow {{
+                }
+                QToolButton::menu-arrow {
                     image: url(assets/toolbar-chevron-down.svg);
                     width: 9px;
                     height: 9px;
                     subcontrol-position: center center;
-                }}
+                }
             """)
 
         def _get_current_limit():
@@ -283,23 +278,16 @@ class WorksheetToolbar(QWidget):
         def _set_current_limit(val):
             val_str = str(val or "No Limit")
             self._current_row_limit = val_str
-            if val_str == "No Limit":
-                self.rows_limit_combo.setText("")
-                self.rows_limit_combo.setIcon(self._row_limit_icon)
-                self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-                self.rows_limit_combo.setToolTip("Row Limit: No Limit")
-                _update_limit_style(is_icon_only=True)
-            else:
-                self.rows_limit_combo.setText(val_str)
-                self.rows_limit_combo.setIcon(QIcon())
-                self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-                self.rows_limit_combo.setToolTip(f"Row Limit: {val_str}")
-                _update_limit_style(is_icon_only=False)
+            self.rows_limit_combo.setText(val_str)
+            self.rows_limit_combo.setIcon(QIcon())
+            self.rows_limit_combo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            self.rows_limit_combo.setToolTip(f"Row Limit: {val_str}")
             for action in self.rows_limit_combo._menu.actions():
                 if action.text() == val_str:
                     action.setChecked(True)
                     break
 
+        _update_limit_style()
         self.rows_limit_combo.currentText = _get_current_limit
         self.rows_limit_combo.setCurrentText = _set_current_limit
         _set_current_limit("No Limit")
@@ -410,7 +398,7 @@ class ResultsInfoToolbar(QWidget):
             actions[0].triggered.connect(manager.toggle_table_search)
 
         self.table_search_btn = IconButton(
-            qta.icon("fa5s.search", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.search"),
             "Search in Results",
         )
         self.table_search_btn.setObjectName("table_search_btn")
@@ -430,7 +418,7 @@ class ResultsInfoToolbar(QWidget):
 
         # 2. Row Actions Group
         self.add_row_btn = IconButton(
-            qta.icon("ri.play-list-add-fill", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.plus"),
             "Add new row",
         )
         self.add_row_btn.setObjectName("add_row_btn")
@@ -440,7 +428,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.add_row_btn)
 
         self.save_row_btn = IconButton(
-            qta.icon("fa5s.save", color="#475569", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.SAVE),
             "Save changes",
         )
         self.save_row_btn.setObjectName("save_row_btn")
@@ -450,7 +438,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.save_row_btn)
 
         self.discard_row_btn = IconButton(
-            qta.icon("fa5s.undo", color="#475569", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.UNDO),
             "Discard unsaved changes",
         )
         self.discard_row_btn.setObjectName("discard_row_btn")
@@ -461,7 +449,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.discard_row_btn)
 
         self.delete_row_btn = IconButton(
-            qta.icon("fa5s.trash-alt", color="#DC2626", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.CLEAR_ALL),
             "Delete selected row(s)",
         )
         self.delete_row_btn.setObjectName("delete_row_btn")
@@ -475,7 +463,7 @@ class ResultsInfoToolbar(QWidget):
 
         # 3. Export Group
         self.copy_btn = IconButton(
-            qta.icon("fa5s.copy", color="#475569", color_disabled="#CBD5E1"),
+            get_icon(AppIcons.COPY),
             "Copy selected cells (Ctrl+C)",
         )
         self.copy_btn.setObjectName("copy_btn")
@@ -485,7 +473,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.copy_btn)
 
         self.download_btn = IconButton(
-            qta.icon("fa5s.file-download", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.cloud-download"),
             "Download query result",
         )
         self.download_btn.setObjectName("download_btn")
@@ -495,7 +483,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.download_btn)
 
         self.calc_btn = IconButton(
-            qta.icon("fa5s.calculator", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.symbol-numeric"),
             "Turn ON/OFF live cell summary",
         )
         self.calc_btn.setObjectName("calc_btn")
@@ -507,7 +495,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.calc_btn)
 
         self.sn_display_values_btn = IconButton(
-            qta.icon("mdi.label", color="#0284C7", color_disabled="#CBD5E1"),
+            get_icon("msc.tag"),
             "ServiceNow Display Labels: ON (showing readable names — click for raw sys_id/codes)",
         )
         self.sn_display_values_btn.setObjectName("sn_display_values_btn")
@@ -522,7 +510,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.sn_display_values_btn)
 
         self.sn_resync_btn = IconButton(
-            qta.icon("mdi.cloud-sync", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.sync"),
             "Re-sync table(s) from ServiceNow",
         )
         self.sn_resync_btn.setObjectName("sn_resync_btn")
@@ -539,7 +527,7 @@ class ResultsInfoToolbar(QWidget):
 
         # 3. Pagination and Limit Controls (icons only, zero clutter)
         self.rows_setting_btn = IconButton(
-            qta.icon("fa5s.list-ul", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.list-flat"),
             "Row limit & offset — Click to configure",
         )
         self.rows_setting_btn.setObjectName("rows_setting_btn")
@@ -549,7 +537,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.rows_setting_btn)
 
         self.prev_btn = IconButton(
-            qta.icon("fa5s.chevron-left", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.chevron-left"),
             "Previous page (Already at page 1)",
         )
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -560,7 +548,7 @@ class ResultsInfoToolbar(QWidget):
         layout.addWidget(self.prev_btn)
 
         self.next_btn = IconButton(
-            qta.icon("fa5s.chevron-right", color="#475569", color_disabled="#CBD5E1"),
+            get_icon("msc.chevron-right"),
             "Next page",
         )
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -678,11 +666,11 @@ class ProcessFilterBar(QWidget):
         self.manager = manager
         self.tab_content = tab_content
         self.setObjectName("processFilterBar")
-        self.setFixedHeight(34)
+        self.setFixedHeight(36)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 3, 6, 3)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(5)
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.button_group = QButtonGroup(self)
@@ -693,16 +681,15 @@ class ProcessFilterBar(QWidget):
             ("Running (0)", "RUNNING"),
             ("Successful (0)", "SUCCESSFUL"),
             ("Warning (0)", "WARNING"),
-            ("Error (0)", "ERROR")
+            ("Error (0)", "ERROR"),
         ]
 
         self.filter_buttons = {}
         for label, filter_id in filters:
             btn = QPushButton(label)
+            btn.setObjectName(f"filter_btn_{filter_id}")
             btn.setCheckable(True)
             btn.setFixedHeight(26)
-            btn.setMinimumWidth(50)
-            btn.setMaximumWidth(100)
             layout.addWidget(btn)
             self.button_group.addButton(btn)
             self.filter_buttons[filter_id] = btn
@@ -717,19 +704,19 @@ class ProcessFilterBar(QWidget):
         # Search Field
         self.search_edit = SearchBox("Search processes...")
         self.search_edit.setFixedHeight(26)
-        self.search_edit.setMinimumWidth(70)
-        self.search_edit.setMaximumWidth(130)
+        self.search_edit.setMinimumWidth(180)
+        self.search_edit.setMaximumWidth(220)
         self.search_edit.textChanged.connect(lambda text: self.manager._filter_processes_table(self.tab_content, text))
         layout.addWidget(self.search_edit)
         
         # Action buttons
-        self.view_log_btn = CompactButton(qta.icon("fa5s.file-alt", color="#374151"), "View Log")
+        self.view_log_btn = CompactButton(get_icon("msc.file-text", color="#374151"), "View Log")
         self.view_log_btn.setObjectName("process_view_log_btn")
         self.view_log_btn.setFixedHeight(26)
         self.view_log_btn.clicked.connect(lambda: self.manager._handle_view_log(self.tab_content))
         layout.addWidget(self.view_log_btn)
 
-        self.refresh_now_btn = CompactButton("Refresh")
+        self.refresh_now_btn = CompactButton(get_icon("msc.refresh", color="#374151"), "Refresh")
         self.refresh_now_btn.setObjectName("process_refresh_now_btn")
         self.refresh_now_btn.setFixedHeight(26)
         self.refresh_now_btn.clicked.connect(self.manager.refresh_processes_view)

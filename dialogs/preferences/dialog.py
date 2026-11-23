@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import qtawesome as qta
+from ui.icons import get_icon
 
 from ui.components import (
     PasswordBox,
@@ -401,12 +401,8 @@ class PreferencesDialog(QDialog):
         sidebar.setObjectName("settingsSidebar")
         sidebar.setFixedWidth(190)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(12, 14, 12, 12)
+        layout.setContentsMargins(10, 12, 10, 10)
         layout.setSpacing(10)
-
-        title = QLabel("Settings")
-        title.setObjectName("settingsSidebarTitle")
-        layout.addWidget(title)
 
         self.search_edit = SearchBox("Search settings...")
         self.search_edit.setObjectName("settingsSearchEdit")
@@ -490,11 +486,12 @@ class PreferencesDialog(QDialog):
     # ── Page & Card Helpers ─────────────────────────────────────────────
 
     def _add_category(self, icon_name: str, label: str) -> int:
-        item = QListWidgetItem(qta.icon(icon_name, color="#475569"), label)
+        item = QListWidgetItem(get_icon(icon_name, color="#475569"), label)
+        item.setData(Qt.ItemDataRole.UserRole + 1, icon_name)
         self.category_list.addItem(item)
         return self.category_list.count() - 1
 
-    def _create_page(self, page_idx: int, title: str, subtitle: str):
+    def _create_page(self, page_idx: int, title: str, subtitle: str = ""):
         scroll = QScrollArea()
         scroll.setObjectName("settingsScrollArea")
         scroll.setWidgetResizable(True)
@@ -509,22 +506,12 @@ class PreferencesDialog(QDialog):
 
         header = QWidget()
         header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(0, 0, 0, 6)
-        header_layout.setSpacing(3)
+        header_layout.setContentsMargins(0, 0, 0, 4)
+        header_layout.setSpacing(0)
 
         lbl = QLabel(title)
         lbl.setObjectName("settingsPageTitle")
         header_layout.addWidget(lbl)
-
-        sub = QLabel(subtitle)
-        sub.setObjectName("settingsPageSubtitle")
-        sub.setWordWrap(True)
-        header_layout.addWidget(sub)
-
-        divider = QFrame()
-        divider.setObjectName("settingsHeaderDivider")
-        divider.setFrameShape(QFrame.Shape.HLine)
-        header_layout.addWidget(divider)
         layout.addWidget(header)
 
         scroll.setWidget(container)
@@ -532,7 +519,7 @@ class PreferencesDialog(QDialog):
         return scroll, layout
 
     def _create_card(self, page_idx: int, page_layout: QVBoxLayout, title: str) -> dict:
-        section_lbl = QLabel(title.upper())
+        section_lbl = QLabel(title)
         section_lbl.setObjectName("settingsCardTitle")
         page_layout.addWidget(section_lbl)
 
@@ -749,10 +736,8 @@ class PreferencesDialog(QDialog):
     # ── Page Builders ───────────────────────────────────────────────────
 
     def _build_general_page(self) -> None:
-        idx = self._add_category("fa5s.sliders-h", "General")
-        scroll, layout = self._create_page(
-            idx, "General Settings", "Configure visual theme, default connection, and startup behavior."
-        )
+        idx = self._add_category("msc.settings", "General")
+        scroll, layout = self._create_page(idx, "General")
 
         appearance = self._create_card(idx, layout, "Appearance & Startup")
         self.theme_combo = self._create_combo(["Grey (Default)", "Light Blue", "Light Green"])
@@ -813,12 +798,8 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_features_page(self) -> None:
-        idx = self._add_category("fa5s.cubes", "Features")
-        scroll, layout = self._create_page(
-            idx,
-            "Features & Capabilities",
-            "Enable or disable workspace modules and database connectors. Disabled items are hidden from menus and toolbars.",
-        )
+        idx = self._add_category("msc.extensions", "Features")
+        scroll, layout = self._create_page(idx, "Features")
 
         preset_bar = QHBoxLayout()
         preset_bar.setContentsMargins(0, 0, 0, 2)
@@ -860,10 +841,8 @@ class PreferencesDialog(QDialog):
             toggle.setChecked(enabled)
 
     def _build_editor_page(self) -> None:
-        idx = self._add_category("fa5s.code", "Text Editor")
-        scroll, layout = self._create_page(
-            idx, "Text Editor", "Configure font, layout, IntelliSense, and SQL formatting style."
-        )
+        idx = self._add_category("msc.code", "Text Editor")
+        scroll, layout = self._create_page(idx, "Text Editor")
 
         typo = self._create_card(idx, layout, "Typography & View")
         self.editor_font_combo = QFontComboBox(self)
@@ -942,10 +921,8 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_results_view_page(self) -> None:
-        idx = self._add_category("fa5s.table", "Results & Grid")
-        scroll, layout = self._create_page(
-            idx, "Results & Data Grid", "Configure query output tables, cell formatting, and clipboard behavior."
-        )
+        idx = self._add_category("msc.table", "Results & Grid")
+        scroll, layout = self._create_page(idx, "Results & Grid")
 
         presentation = self._create_card(idx, layout, "Cell Presentation & Pagination")
         self.grid_null_text_edit = QLineEdit()
@@ -991,10 +968,8 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_database_tools_page(self) -> None:
-        idx = self._add_category("fa5s.database", "Database Tools")
-        scroll, layout = self._create_page(
-            idx, "Database Tools & Execution", "Configure CLI client binary paths and query execution limits."
-        )
+        idx = self._add_category("msc.database", "Database Tools")
+        scroll, layout = self._create_page(idx, "Database Tools")
 
         binaries = self._create_card(idx, layout, "External CLI Binaries")
 
@@ -1057,10 +1032,8 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_ai_assistant_page(self) -> None:
-        idx = self._add_category("fa5s.robot", "AI Assistant")
-        scroll, layout = self._create_page(
-            idx, "AI Assistant", "Configure AI models and endpoints for SQL explanation and chat."
-        )
+        idx = self._add_category("msc.robot", "AI Assistant")
+        scroll, layout = self._create_page(idx, "AI Assistant")
 
         card = self._create_card(idx, layout, "Model & Provider")
         self.ai_provider_combo = self._create_combo([

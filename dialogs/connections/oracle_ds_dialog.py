@@ -1,5 +1,5 @@
 import json
-import qtawesome as qta
+from ui.icons import get_icon
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -151,7 +151,7 @@ class OracleDataSourceDialog(QDialog):
 
         self.fetch_tables_btn = QPushButton("Fetch Tables")
         self.fetch_tables_btn.setObjectName("primaryButton")
-        self.fetch_tables_btn.setIcon(qta.icon("fa5s.sync", color="white"))
+        self.fetch_tables_btn.setIcon(get_icon("msc.sync", color="white"))
         self.fetch_tables_btn.clicked.connect(self.fetchRemoteTables)
 
         toolbar_layout.addWidget(self.search_box)

@@ -4,7 +4,7 @@
 from PySide6.QtCore import QPoint, QSize
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication, QMenu
-import qtawesome as qta
+from ui.icons import get_icon
 
 from ui.feature_flags import is_feature_enabled
 from widgets.connection_manager.menu_style import apply_menu_style
@@ -15,7 +15,7 @@ def action(parent, label, icon_key=None, shortcut=None, enabled=True):
     act = QAction(label, parent)
     if icon_key:
         try:
-            act.setIcon(qta.icon(icon_key, color="#4b5563"))
+            act.setIcon(get_icon(icon_key, color="#4b5563"))
         except Exception:
             pass
     if shortcut:
@@ -35,26 +35,26 @@ def stub(*_):
 
 def add_properties_statistics_actions(menu, manager, item_data, obj_name):
     """Add Describe/Properties/Statistics items that open or refresh inspector workbench tabs."""
-    desc_act = action(manager, "Describe...", "mdi.information-outline", shortcut="F4")
+    desc_act = action(manager, "Describe...", "msc.info", shortcut="F4")
     desc_act.triggered.connect(
         lambda _checked=False, data=item_data, name=obj_name: manager.describe_object(data, name)
     )
     menu.addAction(desc_act)
 
-    quick_desc_act = action(manager, "Quick Describe...", "fa5s.search-plus", shortcut="Ctrl+D")
+    quick_desc_act = action(manager, "Quick Describe...", "msc.zoom-in", shortcut="Ctrl+D")
     quick_desc_act.triggered.connect(
         lambda _checked=False, data=item_data, name=obj_name: manager.quick_describe_object(data, name)
     )
     menu.addAction(quick_desc_act)
 
     if is_feature_enabled(manager, "object_inspector"):
-        act = action(manager, "Properties...", "mdi.tune", shortcut="Alt+Shift+E")
+        act = action(manager, "Properties...", "msc.settings", shortcut="Alt+Shift+E")
         act.triggered.connect(
             lambda _checked=False, data=item_data, name=obj_name: manager.open_properties_workbench(data, name)
         )
         menu.addAction(act)
 
-        act = action(manager, "Statistics...", "mdi.chart-bar", shortcut="Alt+Shift+S")
+        act = action(manager, "Statistics...", "msc.graph", shortcut="Alt+Shift+S")
         act.triggered.connect(
             lambda _checked=False, data=item_data, name=obj_name: manager.open_statistics_workbench(data, name)
         )
@@ -67,7 +67,7 @@ def standalone_menu(parent, label, icon_key=None):
     apply_menu_style(sub)
     if icon_key:
         try:
-            sub.setIcon(qta.icon(icon_key, color="#4b5563"))
+            sub.setIcon(get_icon(icon_key, color="#4b5563"))
         except Exception:
             pass
     return sub

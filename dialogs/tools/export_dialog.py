@@ -1,250 +1,252 @@
-# from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout,
-#                              QComboBox, QCheckBox, QDialogButtonBox, QFileDialog, QStyle)
-# from PyQt6.QtGui import QIcon
-# from PyQt6.QtCore import Qt
-# import os  # for file path manipulations
+# dialogs/tools/export_dialog.py
 
-
-# class ExportDialog(QDialog):
-#     def __init__(self, parent=None, default_filename="export.csv"):
-#         super().__init__(parent)
-#         self.setWindowTitle("Export Data")
-#         # Set default initial size (optional)
-#         self.resize(500, 300)
-        
-#         # make dialog resizable
-#         self.setSizeGripEnabled(True)
-#         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
-        
-#         #self.setMinimumWidth(550)
-#         main_layout = QVBoxLayout(self)
-#         tab_widget = QTabWidget()
-#         main_layout.addWidget(tab_widget)
-#         general_tab = QWidget()
-#         options_tab = QWidget()
-#         tab_widget.addTab(general_tab, "General")
-#         tab_widget.addTab(options_tab, "Options")
-#         general_layout = QFormLayout(general_tab)
-#         general_layout.addRow("Action:", QLabel("Export"))
-
-#         self.filename_edit = QLineEdit(default_filename)
-#         browse_btn = QPushButton()
-#         browse_btn.setIcon(self.style().standardIcon(
-#             QStyle.StandardPixmap.SP_DirOpenIcon))
-#         browse_btn.setFixedSize(30, 25)
-#         browse_btn.clicked.connect(self.browse_file)
-#         filename_layout = QHBoxLayout()
-#         filename_layout.addWidget(self.filename_edit)
-#         filename_layout.addWidget(browse_btn)
-#         general_layout.addRow("Filename:", filename_layout)
-#         self.format_combo = QComboBox()
-#         self.format_combo.addItems(["csv", "xlsx"])
-#         self.format_combo.setCurrentText("csv")
-#         self.format_combo.currentTextChanged.connect(self.on_format_change)
-#         general_layout.addRow("Format:", self.format_combo)
-#         self.encoding_combo = QComboBox()
-#         self.encoding_combo.addItems(['UTF-8', 'LATIN1', 'windows-1252'])
-#         self.encoding_combo.setEditable(True)
-#         general_layout.addRow("Encoding:", self.encoding_combo)
-#         options_layout = QFormLayout(options_tab)
-#         self.options_layout = options_layout
-#         self.header_check = QCheckBox("Header")
-#         self.header_check.setChecked(True)
-#         options_layout.addRow("Options:", self.header_check)
-#         self.delimiter_label = QLabel("Delimiter:")
-#         self.delimiter_combo = QComboBox()
-#         self.delimiter_combo.addItems([',', ';', '|', '\\t'])
-#         self.delimiter_combo.setEditable(True)
-#         self.quote_label = QLabel("Quote character:")
-#         self.quote_edit = QLineEdit('"')
-#         self.quote_edit.setMaxLength(1)
-#         options_layout.addRow(self.delimiter_label, self.delimiter_combo)
-#         options_layout.addRow(self.quote_label, self.quote_edit)
-#         button_box = QDialogButtonBox(
-#             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-#         button_box.accepted.connect(self.accept)
-#         button_box.rejected.connect(self.reject)
-#         main_layout.addWidget(button_box)
-#         self.on_format_change(self.format_combo.currentText())
-
-#     def on_format_change(self, format_text):
-#         is_csv = (format_text == 'csv')
-#         self.encoding_combo.setEnabled(is_csv)
-#         self.delimiter_label.setVisible(is_csv)
-#         self.delimiter_combo.setVisible(is_csv)
-#         self.quote_label.setVisible(is_csv)
-#         self.quote_edit.setVisible(is_csv)
-#         current_filename = self.filename_edit.text()
-#         base_name, _ = os.path.splitext(current_filename)
-#         self.filename_edit.setText(f"{base_name}.{format_text}")
-
-#     def browse_file(self):
-#         file_filter = "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"
-#         path, _ = QFileDialog.getSaveFileName(
-#             self, "Select Output File", self.filename_edit.text(), file_filter)
-#         if path:
-#             self.filename_edit.setText(path)
-
-    
-#     def get_options(self):
-#         delimiter = self.delimiter_combo.currentText()
-#         if delimiter == '\\t':
-#           delimiter = '\t'
-#         return {
-#            "filename": self.filename_edit.text(),
-#            "format": self.format_combo.currentText(),   # <<< ADD THIS
-#            "encoding": self.encoding_combo.currentText(),
-#            "header": self.header_check.isChecked(),
-#            "delimiter": delimiter,
-#            "quote": self.quote_edit.text()
-#        }
-
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTabWidget, QWidget, QFormLayout, 
-                             QLabel, QLineEdit, QHBoxLayout,
-                             QComboBox, QCheckBox, QFileDialog, QStyle)
+import os
 from PySide6.QtCore import Qt
-import os 
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
 from ui.components import PrimaryButton, SecondaryButton
-from ui.dialog_utils import fit_dialog_to_screen
+from ui.icons import get_icon
+
 
 class ExportDialog(QDialog):
-    def __init__(self, parent=None, default_filename="export.csv"):
+    """
+    Unified dialog for exporting query results and table data.
+    Provides destination, file format, and format-specific settings in a clean single view.
+    """
+
+    def __init__(self, parent=None, default_filename: str = "query_results.csv"):
         super().__init__(parent)
         self.setWindowTitle("Export Data")
-        self.setSizeGripEnabled(True)
-        fit_dialog_to_screen(self, ideal_width=680, ideal_height=480, min_width=500, min_height=350)
+        self.resize(540, 420)
+        self.setMinimumSize(480, 360)
         self.setWindowFlags(
-            Qt.WindowType.Dialog | 
-            Qt.WindowType.WindowTitleHint | 
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.CustomizeWindowHint
+            Qt.WindowType.Dialog
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.CustomizeWindowHint
         )
-
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        
-        main_layout = QVBoxLayout(self)
-        tab_widget = QTabWidget()
-        main_layout.addWidget(tab_widget)
-        
-        general_tab = QWidget()
-        options_tab = QWidget()
-        
-        tab_widget.addTab(general_tab, "General")
-        tab_widget.addTab(options_tab, "Options")
-        
-        # General Tab Layout
-        general_layout = QFormLayout(general_tab)
-        
-        # 1. Action Label
-        general_layout.addRow("Action:", QLabel("Export Data"))
-        
-        # 2. File Name Input (Only Name)
+        self.setStyleSheet("QDialog { background-color: #FFFFFF; }")
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # ── Scrollable / Padded Body ─────────────────────────────────
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(20, 16, 20, 16)
+        body_layout.setSpacing(14)
+
+        # ── Group 1: Output Destination & Format ─────────────────────
+        dest_group = QGroupBox("Output Destination && Format")
+        dest_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                font-size: 9pt;
+                color: #1E293B;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 14px;
+                background-color: #FFFFFF;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 12px;
+                padding: 0 6px;
+                background-color: #FFFFFF;
+            }
+        """)
+        dest_form = QFormLayout(dest_group)
+        dest_form.setContentsMargins(14, 12, 14, 12)
+        dest_form.setHorizontalSpacing(14)
+        dest_form.setVerticalSpacing(10)
+        dest_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        # 1. File Name
         self.filename_edit = QLineEdit(default_filename)
-        general_layout.addRow("File Name:", self.filename_edit)
+        self.filename_edit.setFixedHeight(28)
+        dest_form.addRow("File Name:", self.filename_edit)
 
-        # 3. Location Input (Default: Desktop)
+        # 2. Location + Browse Button
         desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        
         self.location_edit = QLineEdit(desktop_path)
-        
-        browse_btn = SecondaryButton("")
-        browse_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
-        browse_btn.setFixedSize(30, 25)
-        browse_btn.setToolTip("Browse Folder")
+        self.location_edit.setFixedHeight(28)
+
+        browse_btn = SecondaryButton(get_icon("msc.folder-opened", color="#374151"), "")
+        browse_btn.setFixedHeight(28)
+        browse_btn.setFixedWidth(34)
+        browse_btn.setToolTip("Browse Destination Folder")
         browse_btn.clicked.connect(self.browse_folder)
-        
-        location_layout = QHBoxLayout()
-        location_layout.addWidget(self.location_edit)
-        location_layout.addWidget(browse_btn)
-        
 
-        general_layout.addRow("Location:", location_layout)
+        loc_layout = QHBoxLayout()
+        loc_layout.setContentsMargins(0, 0, 0, 0)
+        loc_layout.setSpacing(6)
+        loc_layout.addWidget(self.location_edit)
+        loc_layout.addWidget(browse_btn)
+        dest_form.addRow("Location:", loc_layout)
 
-        # 4. Format Selection
+        # 3. Format Selection
         self.format_combo = QComboBox()
-        self.format_combo.addItems(["csv", "xlsx", "txt"])
-        self.format_combo.setCurrentText("csv")
+        self.format_combo.setFixedHeight(28)
+        self.format_combo.addItem("CSV (Comma Separated) (*.csv)", "csv")
+        self.format_combo.addItem("Excel Workbook (*.xlsx)", "xlsx")
+        self.format_combo.addItem("Text / Tab Delimited (*.txt)", "txt")
         self.format_combo.currentTextChanged.connect(self.on_format_change)
-        general_layout.addRow("Format:", self.format_combo)
+        dest_form.addRow("Format:", self.format_combo)
 
-        # 5. Encoding
+        # 4. Encoding
         self.encoding_combo = QComboBox()
-        self.encoding_combo.addItems(['UTF-8', 'LATIN1', 'windows-1252', 'utf-8-sig'])
+        self.encoding_combo.setFixedHeight(28)
+        self.encoding_combo.addItems(["UTF-8", "LATIN1", "windows-1252", "utf-8-sig"])
         self.encoding_combo.setEditable(True)
-        general_layout.addRow("Encoding:", self.encoding_combo)
-        
-        #Options Tab Layout
-        options_layout = QFormLayout(options_tab)
-        self.options_layout = options_layout
-        
-        self.header_check = QCheckBox("Include Headers")
+        dest_form.addRow("Encoding:", self.encoding_combo)
+
+        body_layout.addWidget(dest_group)
+
+        # ── Group 2: CSV Formatting Options ──────────────────────────
+        self.csv_group = QGroupBox("CSV Formatting Options")
+        self.csv_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                font-size: 9pt;
+                color: #1E293B;
+                border: 1px solid #CBD5E1;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 14px;
+                background-color: #FFFFFF;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 12px;
+                padding: 0 6px;
+                background-color: #FFFFFF;
+            }
+        """)
+        csv_form = QFormLayout(self.csv_group)
+        csv_form.setContentsMargins(14, 12, 14, 12)
+        csv_form.setHorizontalSpacing(14)
+        csv_form.setVerticalSpacing(10)
+        csv_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        # Headers Checkbox
+        self.header_check = QCheckBox("Include column headers in output")
         self.header_check.setChecked(True)
-        options_layout.addRow("Headers:", self.header_check)
-        
-        self.delimiter_label = QLabel("Delimiter:")
+        csv_form.addRow("Headers:", self.header_check)
+
+        # Delimiter & Quote Character
+        opts_row = QHBoxLayout()
+        opts_row.setContentsMargins(0, 0, 0, 0)
+        opts_row.setSpacing(16)
+
         self.delimiter_combo = QComboBox()
-        self.delimiter_combo.addItems([',', ';', '|', '\\t'])
+        self.delimiter_combo.setFixedHeight(28)
+        self.delimiter_combo.setFixedWidth(130)
+        self.delimiter_combo.addItem("Comma ( , )", ",")
+        self.delimiter_combo.addItem("Semicolon ( ; )", ";")
+        self.delimiter_combo.addItem("Pipe ( | )", "|")
+        self.delimiter_combo.addItem("Tab ( \\t )", "\\t")
         self.delimiter_combo.setEditable(True)
-        
-        self.quote_label = QLabel("Quote character:")
+        opts_row.addWidget(self.delimiter_combo)
+
+        opts_row.addWidget(QLabel("Quote char:"))
         self.quote_edit = QLineEdit('"')
+        self.quote_edit.setFixedHeight(28)
+        self.quote_edit.setFixedWidth(45)
         self.quote_edit.setMaxLength(1)
-        
-        options_layout.addRow(self.delimiter_label, self.delimiter_combo)
-        options_layout.addRow(self.quote_label, self.quote_edit)
-        
-        #Bottom Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
+        self.quote_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        opts_row.addWidget(self.quote_edit)
+        opts_row.addStretch()
+
+        csv_form.addRow("Delimiter:", opts_row)
+        body_layout.addWidget(self.csv_group)
+
+        body_layout.addStretch()
+        root_layout.addWidget(body, 1)
+
+        # ── Grounded Footer Button Bar ───────────────────────────────
+        footer = QFrame()
+        footer.setObjectName("dialogFooter")
+        footer.setStyleSheet("""
+            QFrame#dialogFooter {
+                background-color: #F8FAFC;
+                border-top: 1px solid #E2E8F0;
+            }
+        """)
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(16, 10, 16, 10)
+        footer_layout.setSpacing(8)
+        footer_layout.addStretch()
+
         cancel_btn = SecondaryButton("Cancel")
+        cancel_btn.setMinimumWidth(85)
+        cancel_btn.setFixedHeight(30)
         cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        
-        ok_btn = PrimaryButton("OK")
-        ok_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(ok_btn)
-        
-        main_layout.addLayout(btn_layout)
-        
+        footer_layout.addWidget(cancel_btn)
+
+        export_btn = PrimaryButton(get_icon("msc.export", color="#FFFFFF"), "Export")
+        export_btn.setMinimumWidth(95)
+        export_btn.setFixedHeight(30)
+        export_btn.setDefault(True)
+        export_btn.clicked.connect(self.accept)
+        footer_layout.addWidget(export_btn)
+
+        root_layout.addWidget(footer)
 
         self.on_format_change(self.format_combo.currentText())
 
-    def on_format_change(self, format_text):
-        is_csv = (format_text in ['csv', 'txt'])
-        
+    def on_format_change(self, _format_text: str = "") -> None:
+        """Handle format selection changes: auto-update extension and toggle CSV options."""
+        format_id = self.format_combo.currentData() or "csv"
+        is_csv = format_id in ("csv", "txt")
+
+        self.csv_group.setVisible(is_csv)
         self.encoding_combo.setEnabled(is_csv)
-        self.delimiter_label.setVisible(is_csv)
-        self.delimiter_combo.setVisible(is_csv)
-        self.quote_label.setVisible(is_csv)
-        self.quote_edit.setVisible(is_csv)
-        
+
         current_filename = self.filename_edit.text()
         base_name, _ = os.path.splitext(current_filename)
-        
-        if format_text.startswith("."):
-             self.filename_edit.setText(f"{base_name}{format_text}")
-        else:
-             self.filename_edit.setText(f"{base_name}.{format_text}")
 
-    def browse_folder(self):
+        ext = f".{format_id}"
+        self.filename_edit.setText(f"{base_name}{ext}")
+
+    def browse_folder(self) -> None:
+        """Open native directory picker to choose the export destination folder."""
         folder = QFileDialog.getExistingDirectory(
             self, "Select Output Folder", self.location_edit.text()
         )
         if folder:
             self.location_edit.setText(folder)
 
-    def get_options(self):
-        delimiter = self.delimiter_combo.currentText()
-        if delimiter == '\\t':
-          delimiter = '\t'
+    def get_options(self) -> dict:
+        """Return the dictionary of export parameters required by export workers."""
+        delimiter = self.delimiter_combo.currentData() or self.delimiter_combo.currentText()
+        if delimiter in ("\\t", r"\t"):
+            delimiter = "\t"
+
         full_path = os.path.join(self.location_edit.text(), self.filename_edit.text())
+        format_id = self.format_combo.currentData() or "csv"
 
         return {
-           "filename": full_path,
-           "format": self.format_combo.currentText(),
-           "encoding": self.encoding_combo.currentText(),
-           "header": self.header_check.isChecked(),
-           "delimiter": delimiter,
-           "quote": self.quote_edit.text()
-       }
+            "filename": full_path,
+            "format": format_id,
+            "encoding": self.encoding_combo.currentText(),
+            "header": self.header_check.isChecked(),
+            "delimiter": delimiter,
+            "quote": self.quote_edit.text(),
+        }

@@ -1,9 +1,9 @@
 import re
-import qtawesome as qta
+from ui.icons import get_icon
 
 import db
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QStandardItem
+from PySide6.QtGui import QStandardItem, QColor
 from workers.connection_workers import ServiceNowTableDetailsWorker
 
 
@@ -14,6 +14,21 @@ def _create_loading_item(manager):
     item.setEditable(False)
     manager._spinner.start(item)
     return item
+
+
+def _create_empty_item(text: str) -> list[QStandardItem]:
+    """Create a muted placeholder row when a group node has no children."""
+    empty_item = QStandardItem(text)
+    empty_item.setEditable(False)
+    empty_item.setEnabled(False)
+    font = empty_item.font()
+    font.setItalic(True)
+    empty_item.setFont(font)
+    empty_item.setForeground(QColor("#888888"))
+
+    type_item = QStandardItem("")
+    type_item.setEditable(False)
+    return [empty_item, type_item]
 
 
 
@@ -88,20 +103,24 @@ class TableDetailsLoader:
                 try:
                     cursor = self.manager.pg_conn.cursor()
                     cursor.execute("SELECT fdwname FROM pg_foreign_data_wrapper ORDER BY fdwname;")
-                    for (fdw_name,) in cursor.fetchall():
-                        fdw_item = QStandardItem(fdw_name)
-                        fdw_item.setEditable(False)
-                        self.manager._set_tree_item_icon(fdw_item, level="FDW")
+                    rows = cursor.fetchall()
+                    if not rows:
+                        item.appendRow(_create_empty_item("No foreign data wrappers found"))
+                    else:
+                        for (fdw_name,) in rows:
+                            fdw_item = QStandardItem(fdw_name)
+                            fdw_item.setEditable(False)
+                            self.manager._set_tree_item_icon(fdw_item, level="FDW")
 
-                        fdw_data = item_data.copy()
-                        fdw_data['type'] = 'fdw'
-                        fdw_data['fdw_name'] = fdw_name
-                        fdw_item.setData(fdw_data, Qt.ItemDataRole.UserRole)
-                        fdw_item.appendRow(_create_loading_item(self.manager))
+                            fdw_data = item_data.copy()
+                            fdw_data['type'] = 'fdw'
+                            fdw_data['fdw_name'] = fdw_name
+                            fdw_item.setData(fdw_data, Qt.ItemDataRole.UserRole)
+                            fdw_item.appendRow(_create_loading_item(self.manager))
 
-                        type_item = QStandardItem("Foreign Data Wrapper")
-                        type_item.setEditable(False)
-                        item.appendRow([fdw_item, type_item])
+                            type_item = QStandardItem("Foreign Data Wrapper")
+                            type_item.setEditable(False)
+                            item.appendRow([fdw_item, type_item])
                 except Exception as e:
                     self.manager.status.showMessage(f"Error loading FDWs: {e}", 5000)
 
@@ -116,20 +135,24 @@ class TableDetailsLoader:
                         WHERE srvfdw = (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname = %s)
                         ORDER BY srvname;
                     """, (fdw_name,))
-                    for (srv_name,) in cursor.fetchall():
-                        srv_item = QStandardItem(srv_name)
-                        srv_item.setEditable(False)
-                        self.manager._set_tree_item_icon(srv_item, level="SERVER")
+                    rows = cursor.fetchall()
+                    if not rows:
+                        item.appendRow(_create_empty_item("No foreign servers found"))
+                    else:
+                        for (srv_name,) in rows:
+                            srv_item = QStandardItem(srv_name)
+                            srv_item.setEditable(False)
+                            self.manager._set_tree_item_icon(srv_item, level="SERVER")
 
-                        srv_data = item_data.copy()
-                        srv_data['type'] = 'foreign_server'
-                        srv_data['server_name'] = srv_name
-                        srv_item.setData(srv_data, Qt.ItemDataRole.UserRole)
-                        srv_item.appendRow(_create_loading_item(self.manager))
+                            srv_data = item_data.copy()
+                            srv_data['type'] = 'foreign_server'
+                            srv_data['server_name'] = srv_name
+                            srv_item.setData(srv_data, Qt.ItemDataRole.UserRole)
+                            srv_item.appendRow(_create_loading_item(self.manager))
 
-                        type_item = QStandardItem("Foreign Server")
-                        type_item.setEditable(False)
-                        item.appendRow([srv_item, type_item])
+                            type_item = QStandardItem("Foreign Server")
+                            type_item.setEditable(False)
+                            item.appendRow([srv_item, type_item])
                 except Exception as e:
                     self.manager.status.showMessage(f"Error loading Foreign Servers: {e}", 5000)
 
@@ -144,19 +167,23 @@ class TableDetailsLoader:
                         WHERE srvname = %s
                         ORDER BY 1;
                     """, (srv_name,))
-                    for (user_name,) in cursor.fetchall():
-                        um_item = QStandardItem(user_name)
-                        um_item.setEditable(False)
-                        self.manager._set_tree_item_icon(um_item, level="USER")
+                    rows = cursor.fetchall()
+                    if not rows:
+                        item.appendRow(_create_empty_item("No user mappings found"))
+                    else:
+                        for (user_name,) in rows:
+                            um_item = QStandardItem(user_name)
+                            um_item.setEditable(False)
+                            self.manager._set_tree_item_icon(um_item, level="USER")
 
-                        um_data = item_data.copy()
-                        um_data['type'] = 'user_mapping'
-                        um_data['user_name'] = user_name
-                        um_item.setData(um_data, Qt.ItemDataRole.UserRole)
+                            um_data = item_data.copy()
+                            um_data['type'] = 'user_mapping'
+                            um_data['user_name'] = user_name
+                            um_item.setData(um_data, Qt.ItemDataRole.UserRole)
 
-                        type_item = QStandardItem("User Mapping")
-                        type_item.setEditable(False)
-                        item.appendRow([um_item, type_item])
+                            type_item = QStandardItem("User Mapping")
+                            type_item.setEditable(False)
+                            item.appendRow([um_item, type_item])
                 except Exception as e:
                     self.manager.status.showMessage(f"Error loading User Mappings: {e}", 5000)
 
@@ -165,20 +192,24 @@ class TableDetailsLoader:
                 try:
                     cursor = self.manager.pg_conn.cursor()
                     cursor.execute("SELECT extname FROM pg_extension ORDER BY extname;")
-                    for (ext_name,) in cursor.fetchall():
-                        ext_item = QStandardItem(ext_name)
-                        ext_item.setEditable(False)
-                        self.manager._set_tree_item_icon(ext_item, level="EXTENSION")
+                    rows = cursor.fetchall()
+                    if not rows:
+                        item.appendRow(_create_empty_item("No extensions found"))
+                    else:
+                        for (ext_name,) in rows:
+                            ext_item = QStandardItem(ext_name)
+                            ext_item.setEditable(False)
+                            self.manager._set_tree_item_icon(ext_item, level="EXTENSION")
 
-                        ext_data = item_data.copy()
-                        ext_data['type'] = 'extension'
-                        ext_data['table_type'] = 'EXTENSION'
-                        ext_data['ext_name'] = ext_name
-                        ext_item.setData(ext_data, Qt.ItemDataRole.UserRole)
+                            ext_data = item_data.copy()
+                            ext_data['type'] = 'extension'
+                            ext_data['table_type'] = 'EXTENSION'
+                            ext_data['ext_name'] = ext_name
+                            ext_item.setData(ext_data, Qt.ItemDataRole.UserRole)
 
-                        type_item = QStandardItem("Extension")
-                        type_item.setEditable(False)
-                        item.appendRow([ext_item, type_item])
+                            type_item = QStandardItem("Extension")
+                            type_item.setEditable(False)
+                            item.appendRow([ext_item, type_item])
                 except Exception as e:
                     self.manager.status.showMessage(f"Error loading Extensions: {e}", 5000)
 
@@ -187,20 +218,24 @@ class TableDetailsLoader:
                 try:
                     cursor = self.manager.pg_conn.cursor()
                     cursor.execute("SELECT lanname FROM pg_language ORDER BY lanname;")
-                    for (lan_name,) in cursor.fetchall():
-                        lan_item = QStandardItem(lan_name)
-                        lan_item.setEditable(False)
-                        self.manager._set_tree_item_icon(lan_item, level="LANGUAGE")
+                    rows = cursor.fetchall()
+                    if not rows:
+                        item.appendRow(_create_empty_item("No languages found"))
+                    else:
+                        for (lan_name,) in rows:
+                            lan_item = QStandardItem(lan_name)
+                            lan_item.setEditable(False)
+                            self.manager._set_tree_item_icon(lan_item, level="LANGUAGE")
 
-                        lan_data = item_data.copy()
-                        lan_data['type'] = 'language'
-                        lan_data['table_type'] = 'LANGUAGE'
-                        lan_data['lan_name'] = lan_name
-                        lan_item.setData(lan_data, Qt.ItemDataRole.UserRole)
+                            lan_data = item_data.copy()
+                            lan_data['type'] = 'language'
+                            lan_data['table_type'] = 'LANGUAGE'
+                            lan_data['lan_name'] = lan_name
+                            lan_item.setData(lan_data, Qt.ItemDataRole.UserRole)
 
-                        type_item = QStandardItem("Language")
-                        type_item.setEditable(False)
-                        item.appendRow([lan_item, type_item])
+                            type_item = QStandardItem("Language")
+                            type_item.setEditable(False)
+                            item.appendRow([lan_item, type_item])
                 except Exception as e:
                     self.manager.status.showMessage(f"Error loading Languages: {e}", 5000)
 
@@ -355,6 +390,9 @@ class TableDetailsLoader:
                             type_item = QStandardItem("Trigger Function")
                             type_item.setEditable(False)
                             item.appendRow([func_item, type_item])
+
+                    if item.rowCount() == 0:
+                        item.appendRow(_create_empty_item(f"No {group_name.lower()} found"))
                             
                     cursor.close()
 
@@ -422,13 +460,13 @@ class TableDetailsLoader:
 
                     if is_pk:
                         desc = f"{col_name} [PK] ({col_type})"
-                        icon = qta.icon("mdi.key", color="#FFC107")
+                        icon = get_icon("msc.key", color="#FFC107")
                     elif ref:
                         desc = f"{col_name} ({col_type}) -> {ref}"
-                        icon = qta.icon("mdi.link-variant", color="#2196F3")
+                        icon = get_icon("msc.link", color="#2196F3")
                     else:
                         desc = f"{col_name} ({col_type})"
-                        icon = qta.icon("mdi.table-column", color="#78909C")
+                        icon = get_icon("msc.symbol-variable", color="#78909C")
 
                     col_item = QStandardItem(icon, desc)
                     col_item.setEditable(False)

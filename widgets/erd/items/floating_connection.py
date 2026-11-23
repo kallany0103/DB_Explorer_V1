@@ -3,6 +3,11 @@ from PySide6.QtWidgets import QApplication, QGraphicsPathItem, QGraphicsEllipseI
 from PySide6.QtGui import QPen, QBrush, QColor, QPainterPath
 from PySide6.QtCore import Qt, QPointF
 from ui.menu_style import apply_menu_style
+from ui.icons import get_icon
+from widgets.erd.constants import RELATION_TYPES
+from widgets.erd.items.resizable import item_visual_scene_rect
+import widgets.erd.commands
+import widgets.erd.items.connection_item
 
 
 # Lazy import helper to avoid circular dependency:
@@ -10,12 +15,6 @@ from ui.menu_style import apply_menu_style
 def _get_table_item_class():
     from widgets.erd.items.table_item import ERDTableItem  # noqa: PLC0415
     return ERDTableItem
-
-from widgets.erd.constants import RELATION_TYPES
-import qtawesome as qta
-from widgets.erd.items.resizable import item_visual_scene_rect
-import widgets.erd.commands
-import widgets.erd.items.connection_item
 
 
 def arm_port_drag(item, scene_pos, *, col=None, relation_type="none"):
@@ -233,7 +232,7 @@ class ERDFloatingConnectionItem(QGraphicsPathItem):
     def contextMenuEvent(self, event):
         menu = QMenu()
         apply_menu_style(menu)
-        menu.addAction(qta.icon("fa5s.trash-alt", color="#DC2626"), "Remove Connection").triggered.connect(self._remove_self)
+        menu.addAction(get_icon("msc.trash", color="#DC2626"), "Remove Connection").triggered.connect(self._remove_self)
         menu.exec(event.screenPos())
         event.accept()
 
