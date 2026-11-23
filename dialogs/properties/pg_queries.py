@@ -136,16 +136,30 @@ GET_ROLES = """
 
 GET_FUNCTION_DETAILS = """
     SELECT 
-        pg_get_userbyid(p.proowner) as owner,
-        l.lanname as language,
-        pg_get_function_result(p.oid) as result_type,
-        pg_get_function_arguments(p.oid) as arguments,
-        p.prosrc as definition,
-        obj_description(p.oid, 'pg_proc') as comment
+        pg_get_userbyid(p.proowner) AS "Owner",
+        n.nspname AS "Schema",
+        l.lanname AS "Language",
+        pg_get_function_result(p.oid) AS "Return type",
+        pg_get_function_arguments(p.oid) AS "Arguments",
+        CASE p.provolatile
+            WHEN 'i' THEN 'Immutable'
+            WHEN 's' THEN 'Stable'
+            WHEN 'v' THEN 'Volatile'
+        END AS "Volatility",
+        p.prosecdef AS "Security definer",
+        obj_description(p.oid, 'pg_proc') AS "Comment",
+        pg_get_functiondef(p.oid) AS "Definition"
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     JOIN pg_language l ON l.oid = p.prolang
-    WHERE n.nspname = %s AND (p.proname || '(' || pg_get_function_arguments(p.oid) || ')') = %s;
+    WHERE n.nspname = %s AND (p.proname = %s OR (p.proname || '(' || pg_get_function_arguments(p.oid) || ')') = %s);
+"""
+
+GET_VIEW_DEF = """
+    SELECT pg_get_viewdef(c.oid, true)
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relname = %s;
 """
 
 GET_FUNCTION_PRIVILEGES = """
@@ -387,6 +401,19 @@ LIST_VIEWS = """
     ORDER BY c.relname;
 """
 
+LIST_MATVIEWS = """
+    SELECT 
+        c.relname as "Name",
+        pg_get_userbyid(c.relowner) as "Owner",
+        c.relispopulated as "Populated?",
+        pg_size_pretty(pg_total_relation_size(c.oid)) as "Total size",
+        obj_description(c.oid, 'pg_class') as "Comment"
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = %s AND c.relkind = 'm'
+    ORDER BY c.relname;
+"""
+
 LIST_FUNCTIONS = """
     SELECT 
         p.proname || '(' || pg_get_function_arguments(p.oid) || ')' as "Name",
@@ -396,8 +423,43 @@ LIST_FUNCTIONS = """
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     JOIN pg_language l ON l.oid = p.prolang
-    WHERE n.nspname = %s
+    WHERE n.nspname = %s AND p.prorettype != 'trigger'::regtype
     ORDER BY 1;
+"""
+
+LIST_TRIGGER_FUNCTIONS = """
+    SELECT 
+        p.proname || '(' || pg_get_function_arguments(p.oid) || ')' as "Name",
+        pg_get_userbyid(p.proowner) as "Owner",
+        l.lanname as "Language",
+        obj_description(p.oid, 'pg_proc') as "Comment"
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN pg_language l ON l.oid = p.prolang
+    WHERE n.nspname = %s AND p.prorettype = 'trigger'::regtype
+    ORDER BY 1;
+"""
+
+LIST_FDWS = """
+    SELECT 
+        fdwname as "Name",
+        pg_get_userbyid(fdwowner) as "Owner",
+        fdwhandler::regproc::text as "Handler",
+        fdwvalidator::regproc::text as "Validator",
+        obj_description(oid, 'pg_foreign_data_wrapper') as "Comment"
+    FROM pg_foreign_data_wrapper
+    ORDER BY fdwname;
+"""
+
+LIST_LANGUAGES = """
+    SELECT 
+        lanname as "Name",
+        pg_get_userbyid(lanowner) as "Owner",
+        lanispl as "Procedural?",
+        lanpltrusted as "Trusted?",
+        obj_description(oid, 'pg_language') as "Comment"
+    FROM pg_language
+    ORDER BY lanname;
 """
 
 LIST_SEQUENCES = """

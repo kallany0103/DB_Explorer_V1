@@ -2,13 +2,18 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QAbstractItemView,
     QHeaderView, QMessageBox, QToolButton, QApplication
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QEvent
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from ui.icons import get_icon
 import db
 from dialogs.properties import pg_queries
 from ui.components import PrimaryButton, SecondaryButton
-from widgets.inspector.properties_ui import PropertyTable, DataTypeDelegate
+from widgets.inspector.properties_ui import (
+    PropertyTable,
+    DataTypeDelegate,
+    CheckboxDelegate,
+    PropertyCellDelegate,
+)
 
 class ColumnsTab(QWidget):
     def __init__(self, data, workbench):
@@ -34,6 +39,13 @@ class ColumnsTab(QWidget):
         toolbar_layout.addWidget(col_count_label)
         toolbar_layout.addStretch()
 
+        table_type = (self.item_data.get('table_type') or '').upper()
+        self.is_read_only = bool(
+            'MATERIALIZED' in table_type
+            or 'VIEW' in table_type
+            or self.item_data.get('type') in ('materialized_view', 'matview', 'view')
+        )
+
         add_col_btn = SecondaryButton(" Add Column")
         add_col_btn.setIcon(get_icon('msc.plus', color='#334155'))
         add_col_btn.clicked.connect(self._add_column)
@@ -42,14 +54,34 @@ class ColumnsTab(QWidget):
         save_btn.setIcon(get_icon('msc.save', color='white'))
         save_btn.clicked.connect(self._save_column_changes)
 
-        toolbar_layout.addWidget(add_col_btn)
-        toolbar_layout.addWidget(save_btn)
+        if not self.is_read_only:
+            toolbar_layout.addWidget(add_col_btn)
+            toolbar_layout.addWidget(save_btn)
         layout.addWidget(toolbar)
 
         # Table
         self.columns_table = PropertyTable()
-        self.columns_table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
+        self.columns_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self.columns_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.columns_table.verticalHeader().setDefaultSectionSize(32)
+        if self.is_read_only:
+            self.columns_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        else:
+            self.columns_table.setEditTriggers(
+                QAbstractItemView.EditTrigger.DoubleClicked
+                | QAbstractItemView.EditTrigger.SelectedClicked
+                | QAbstractItemView.EditTrigger.EditKeyPressed
+            )
+        self.columns_table.setItemDelegate(PropertyCellDelegate(self.columns_table))
+        if not self.is_read_only:
+            self.columns_table.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_table))
+            self.columns_table.setItemDelegateForColumn(2, CheckboxDelegate(self.columns_table))
+            self.columns_table.setItemDelegateForColumn(3, CheckboxDelegate(self.columns_table))
+        else:
+            self.columns_table.setItemDelegateForColumn(2, CheckboxDelegate(self.columns_table))
+            self.columns_table.setItemDelegateForColumn(3, CheckboxDelegate(self.columns_table))
         self.columns_table.horizontalHeader().setStretchLastSection(False)
+        self.columns_table.viewport().installEventFilter(self)
 
         self.columns_model = QStandardItemModel()
         self.columns_model.setHorizontalHeaderLabels(["Name", "Data Type", "PK", "Not Null", "Default", "", "Comment"])
@@ -64,7 +96,6 @@ class ColumnsTab(QWidget):
                                     orig_name=col.get("name", ""))
 
         self.columns_table.setModel(self.columns_model)
-        self.columns_table.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_table))
 
         hh = self.columns_table.horizontalHeader()
         hh.setStretchLastSection(False)
@@ -79,11 +110,14 @@ class ColumnsTab(QWidget):
         self.columns_table.setColumnWidth(4, 150)
         self.columns_table.setColumnWidth(5, 40)
 
-        for row in range(self.columns_model.rowCount()):
-            self.columns_table.setIndexWidget(
-                self.columns_model.index(row, 5),
-                self._make_delete_btn(row)
-            )
+        if not self.is_read_only:
+            for row in range(self.columns_model.rowCount()):
+                self.columns_table.setIndexWidget(
+                    self.columns_model.index(row, 5),
+                    self._make_delete_btn(row)
+                )
+        else:
+            self.columns_table.setColumnHidden(5, True)
 
         layout.addWidget(self.columns_table)
 
@@ -95,12 +129,21 @@ class ColumnsTab(QWidget):
         self.columns_model.rowsRemoved.connect(_update_count)
         _update_count()
 
+    def eventFilter(self, obj, event):
+        if hasattr(self, 'columns_table') and obj == self.columns_table.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                idx = self.columns_table.indexAt(event.pos())
+                if idx.isValid() and idx.column() in (2, 3):
+                    self.columns_table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+                else:
+                    self.columns_table.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+        return super().eventFilter(obj, event)
 
     def _make_delete_btn(self, row):
         btn = QToolButton()
         btn.setIcon(get_icon('msc.trash', color='#000000'))
-        btn.setIconSize(QSize(20, 20))
-        btn.setFixedSize(32, 32)
+        btn.setIconSize(QSize(18, 18))
+        btn.setFixedSize(26, 26)
         btn.setAutoRaise(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolTip("Delete this column")
@@ -131,20 +174,18 @@ class ColumnsTab(QWidget):
         type_item = QStandardItem(data_type)
 
         pk_item = QStandardItem()
-        pk_item.setCheckable(True)
         pk_item.setEditable(False)
-        pk_item.setCheckState(Qt.CheckState.Checked if is_pk else Qt.CheckState.Unchecked)
         pk_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        pk_item.setData(bool(is_pk), Qt.ItemDataRole.UserRole)
 
         nn_item = QStandardItem()
-        nn_item.setCheckable(True)
         nn_item.setEditable(False)
-        nn_item.setCheckState(Qt.CheckState.Checked if not_null else Qt.CheckState.Unchecked)
         nn_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        nn_item.setData(bool(not_null), Qt.ItemDataRole.UserRole)
 
         default_item = QStandardItem(str(default_val) if default_val else "")
         comment_item = QStandardItem(str(comment) if comment else "")
-        action_item  = QStandardItem()
+        action_item = QStandardItem()
         action_item.setEditable(False)
 
         self.columns_model.appendRow([name_item, type_item, pk_item, nn_item, default_item, action_item, comment_item])
@@ -187,8 +228,8 @@ class ColumnsTab(QWidget):
         for row in range(self.columns_model.rowCount()):
             name       = self.columns_model.item(row, 0).text().strip()
             data_type  = self.columns_model.item(row, 1).text().strip()
-            is_pk      = self.columns_model.item(row, 2).checkState() == Qt.CheckState.Checked
-            not_null   = self.columns_model.item(row, 3).checkState() == Qt.CheckState.Checked
+            is_pk      = bool(self.columns_model.item(row, 2).data(Qt.ItemDataRole.UserRole))
+            not_null   = bool(self.columns_model.item(row, 3).data(Qt.ItemDataRole.UserRole))
             default_val = self.columns_model.item(row, 4).text().strip()
             comment    = self.columns_model.item(row, 6).text().strip()
             orig_name  = self.columns_model.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""

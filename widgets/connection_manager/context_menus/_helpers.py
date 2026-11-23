@@ -34,19 +34,7 @@ def stub(*_):
 
 
 def add_properties_statistics_actions(menu, manager, item_data, obj_name):
-    """Add Describe/Properties/Statistics items that open or refresh inspector workbench tabs."""
-    desc_act = action(manager, "Describe...", "msc.info", shortcut="F4")
-    desc_act.triggered.connect(
-        lambda _checked=False, data=item_data, name=obj_name: manager.describe_object(data, name)
-    )
-    menu.addAction(desc_act)
-
-    quick_desc_act = action(manager, "Quick Describe...", "msc.zoom-in", shortcut="Ctrl+D")
-    quick_desc_act.triggered.connect(
-        lambda _checked=False, data=item_data, name=obj_name: manager.quick_describe_object(data, name)
-    )
-    menu.addAction(quick_desc_act)
-
+    """Add Properties/Statistics items that open or refresh inspector workbench tabs."""
     if is_feature_enabled(manager, "object_inspector"):
         act = action(manager, "Properties...", "msc.settings", shortcut="Alt+Shift+E")
         act.triggered.connect(
