@@ -751,7 +751,8 @@ class PropertyTable(QTableView):
         self.horizontalHeader().setStretchLastSection(True)
         self.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.verticalHeader().setVisible(False)
-        self.setShowGrid(False)
+        self.setShowGrid(True)
+        self.horizontalHeader().setHighlightSections(False)
         self.verticalHeader().setDefaultSectionSize(28)
 
 # ── Toast Notification ────────────────────────────────────────────────────────

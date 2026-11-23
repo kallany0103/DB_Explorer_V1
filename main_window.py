@@ -532,6 +532,8 @@ class MainWindow(QMainWindow):
     def _update_cli_action_states(self, index: object = None) -> None:
         from widgets.tools.cli_launcher import update_cli_action_states
         update_cli_action_states(self, index)
+        if hasattr(self, "worksheet_manager") and hasattr(self.worksheet_manager, "_update_describe_action_states"):
+            self.worksheet_manager._update_describe_action_states()
 
     def commit_transaction(self):
         return self.worksheet_manager.commit_transaction()
