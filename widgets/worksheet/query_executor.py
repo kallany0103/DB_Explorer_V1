@@ -1,4 +1,5 @@
 import html
+import re
 import time
 
 from PySide6.QtWidgets import (
@@ -194,6 +195,14 @@ def describe_query(manager):
         manager.show_info("Please select a database connection for the current worksheet.")
         return
 
+    from db.object_describe import _detect_db_code
+    code = _detect_db_code(conn_data) if isinstance(conn_data, dict) else ""
+    if not (code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL", "SQLITE") or (
+        "ORACLE" in code or "POSTGRES" in code or "SQLITE" in code
+    )):
+        manager.show_info("Describe is only supported for PostgreSQL, Oracle, and SQLite databases.")
+        return
+
     from db.query_describe import resolve_describe_query
 
     clean_query = ""
@@ -256,10 +265,18 @@ def describe_object(manager, target: str = None, conn_data: dict = None):
             if conn_mgr and hasattr(conn_mgr, "_get_selected_schema_item_data"):
                 item_data = conn_mgr._get_selected_schema_item_data()
                 if item_data:
-                    conn_data = item_data.get("connection") or item_data
+                    conn_data = item_data.get("conn_data") or item_data.get("connection") or item_data
 
     if not conn_data:
         manager.show_info("Please select a database connection to describe an object.")
+        return
+
+    from db.object_describe import _detect_db_code
+    code = _detect_db_code(conn_data) if isinstance(conn_data, dict) else ""
+    if not (code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL", "SQLITE") or (
+        "ORACLE" in code or "POSTGRES" in code or "SQLITE" in code
+    )):
+        manager.show_info("Describe is only supported for PostgreSQL, Oracle, and SQLite databases.")
         return
 
     query_editor = get_query_editor(current_tab) if current_tab else None
@@ -290,6 +307,9 @@ def describe_object(manager, target: str = None, conn_data: dict = None):
 
     # Normalize partially selected or malformed quotes (e.g. Emam"."credential)
     from db.object_describe import parse_object_identifier
+    from_match = re.search(r'\bFROM\s+(["`]?[\w]+["`]?\.?["`]?[\w]+["`]?)', resolved_target, re.IGNORECASE)
+    if from_match:
+        resolved_target = from_match.group(1).replace('"', '').replace('`', '')
     s_hint, o_name = parse_object_identifier(resolved_target)
     if s_hint and o_name:
         resolved_target = f'"{s_hint}"."{o_name}"'
@@ -317,7 +337,19 @@ def quick_describe(manager, target: str = None, conn_data: dict = None):
             if conn_mgr and hasattr(conn_mgr, "_get_selected_schema_item_data"):
                 item_data = conn_mgr._get_selected_schema_item_data()
                 if item_data:
-                    conn_data = item_data.get("connection") or item_data
+                    conn_data = item_data.get("conn_data") or item_data.get("connection") or item_data
+
+    if not conn_data:
+        manager.show_info("Please select a database connection to describe an object.")
+        return
+
+    from db.object_describe import _detect_db_code
+    code = _detect_db_code(conn_data) if isinstance(conn_data, dict) else ""
+    if not (code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL", "SQLITE") or (
+        "ORACLE" in code or "POSTGRES" in code or "SQLITE" in code
+    )):
+        manager.show_info("Quick Describe is only supported for PostgreSQL, Oracle, and SQLite databases.")
+        return
 
     # 2. If target not provided, resolve from editor selection or cursor
     resolved_target = (target or "").strip()

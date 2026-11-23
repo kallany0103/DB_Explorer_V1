@@ -140,21 +140,32 @@ class ConnectionManager(QWidget):
     def prepare_inspector_item_data(self, item_data, obj_name):
         """Normalize tree UserRole payloads for inspector workbench workers."""
         data = dict(item_data)
-        if data.get("type"):
-            return data
 
         table_type = (data.get("table_type") or "").upper()
         if data.get("table_name"):
-            if "FUNCTION" in table_type or "TRIGGER" in table_type:
+            if "TRIGGER" in table_type:
+                data["type"] = "trigger_function"
+            elif "FUNCTION" in table_type:
                 data["type"] = "function"
             elif "SEQUENCE" in table_type:
                 data["type"] = "sequence"
+            elif "MATERIALIZED" in table_type:
+                data["type"] = "materialized_view"
+            elif "VIEW" in table_type:
+                data["type"] = "view"
             else:
                 data["type"] = "table"
-        elif data.get("schema_name"):
+            return data
+
+        if data.get("group_name"):
+            data["type"] = "schema_group" if data.get("schema_name") else "group"
+            return data
+
+        if data.get("type"):
+            return data
+
+        if data.get("schema_name"):
             data["type"] = "schema"
-        elif data.get("group_name"):
-            data["type"] = "schema_group"
         elif data.get("conn_data") or data.get("host") or data.get("database"):
             data["type"] = "connection"
             data.setdefault("name", obj_name)
@@ -167,12 +178,24 @@ class ConnectionManager(QWidget):
         self.main_window.show_statistics_workbench(item_data, obj_name)
 
     def describe_object(self, item_data, obj_name):
-        conn_data = item_data.get("connection") or item_data if isinstance(item_data, dict) else None
-        self.main_window.describe_object(target=obj_name, conn_data=conn_data)
+        conn_data = (
+            item_data.get("conn_data")
+            or item_data.get("connection")
+            or (item_data if isinstance(item_data, dict) else None)
+        )
+        schema_name = item_data.get("schema_name") if isinstance(item_data, dict) else None
+        target = f'"{schema_name}"."{obj_name}"' if schema_name and "." not in str(obj_name) else obj_name
+        self.main_window.describe_object(target=target, conn_data=conn_data)
 
     def quick_describe_object(self, item_data, obj_name):
-        conn_data = item_data.get("connection") or item_data if isinstance(item_data, dict) else None
-        self.main_window.quick_describe(target=obj_name, conn_data=conn_data)
+        conn_data = (
+            item_data.get("conn_data")
+            or item_data.get("connection")
+            or (item_data if isinstance(item_data, dict) else None)
+        )
+        schema_name = item_data.get("schema_name") if isinstance(item_data, dict) else None
+        target = f'"{schema_name}"."{obj_name}"' if schema_name and "." not in str(obj_name) else obj_name
+        self.main_window.quick_describe(target=target, conn_data=conn_data)
 
     def _get_selected_schema_item_data(self) -> dict | None:
         """Return the UserRole data dict for the currently selected schema-tree item."""

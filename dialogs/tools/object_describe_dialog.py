@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QToolButton,
     QTableWidget,
     QTableWidgetItem,
@@ -28,11 +27,12 @@ from PySide6.QtWidgets import (
 )
 from ui.icons import AppIcons, get_icon
 
-from ui.components import LoadingOverlay, SecondaryButton
+from ui.components import LoadingOverlay, SecondaryButton, SearchBox
 from ui.dialog_utils import fit_dialog_to_screen
 from workers.workers import WorkerThread
 from db.object_describe import describe_database_object
 from dialogs.tools.query_describe_dialog import DescribeHighlighter
+from widgets.results_view.output_tabs import FlatSelectionDelegate
 
 
 class ObjectDescribeDialog(QDialog):
@@ -55,6 +55,11 @@ class ObjectDescribeDialog(QDialog):
         self._start_fetch()
 
     def _init_ui(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8fafc;
+            }
+        """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
@@ -63,15 +68,20 @@ class ObjectDescribeDialog(QDialog):
         header_frame = QFrame()
         header_frame.setStyleSheet("""
             QFrame {
-                background: #f8fafc;
+                background: #ffffff;
                 border: 1px solid #e2e8f0;
                 border-radius: 6px;
                 padding: 6px 12px;
             }
         """)
-        header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(4, 4, 4, 4)
-        header_layout.setSpacing(10)
+        header_vbox = QVBoxLayout(header_frame)
+        header_vbox.setContentsMargins(6, 6, 6, 6)
+        header_vbox.setSpacing(6)
+
+        # Top row: Type Badge + Title + Stretch + Actions (Search & Buttons)
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(8)
 
         # Object Type Badge
         self.type_badge = QLabel("OBJECT")
@@ -86,50 +96,87 @@ class ObjectDescribeDialog(QDialog):
                 letter-spacing: 0.5px;
             }
         """)
-        header_layout.addWidget(self.type_badge)
+        top_row.addWidget(self.type_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        # Object Title & Subtitle
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
         self.title_label = QLabel(self.target)
         self.title_label.setStyleSheet("font-size: 13pt; font-weight: 700; color: #0f172a;")
-        self.subtitle_label = QLabel("Loading object details...")
-        self.subtitle_label.setStyleSheet("font-size: 8.5pt; color: #64748b;")
-        title_box.addWidget(self.title_label)
-        title_box.addWidget(self.subtitle_label)
-        header_layout.addLayout(title_box)
+        top_row.addWidget(self.title_label, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        header_layout.addStretch()
+        top_row.addStretch()
 
         # Search / Filter Box
-        self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Filter columns / tables...")
+        self.search_box = SearchBox(placeholder="Filter columns / tables...")
         self.search_box.setClearButtonEnabled(True)
         self.search_box.setFixedWidth(200)
+        self.search_box.setFixedHeight(28)
         self.search_box.textChanged.connect(self._on_filter_changed)
-        header_layout.addWidget(self.search_box)
+
+        btn_style = """
+            QToolButton {
+                background-color: #ffffff;
+                border: 1px solid #c4c9d4;
+                border-radius: 4px;
+                padding: 0px;
+                color: #475569;
+            }
+            QToolButton:hover {
+                background-color: #f1f5f9;
+                border-color: #94a3b8;
+                color: #1e293b;
+            }
+            QToolButton:pressed {
+                background-color: #e2e8f0;
+                border-color: #94a3b8;
+                padding: 0px;
+            }
+            QToolButton:disabled {
+                background-color: #f8fafc;
+                border-color: #e2e8f0;
+                color: #cbd5e1;
+            }
+        """
 
         # Refresh button
         self.refresh_btn = QToolButton()
+        self.refresh_btn.setFixedSize(28, 28)
+        self.refresh_btn.setStyleSheet(btn_style)
         self.refresh_btn.setIcon(get_icon("msc.sync", color="#475569"))
         self.refresh_btn.setToolTip("Refresh metadata")
         self.refresh_btn.clicked.connect(self._start_fetch)
-        header_layout.addWidget(self.refresh_btn)
 
         # Copy DDL button
         self.copy_ddl_btn = QToolButton()
+        self.copy_ddl_btn.setFixedSize(28, 28)
+        self.copy_ddl_btn.setStyleSheet(btn_style)
         self.copy_ddl_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         self.copy_ddl_btn.setToolTip("Copy DDL Script to Clipboard")
         self.copy_ddl_btn.clicked.connect(self._copy_ddl)
-        header_layout.addWidget(self.copy_ddl_btn)
 
         # View Schema button (shown when table has parent schema info)
         self.schema_jump_btn = QToolButton()
+        self.schema_jump_btn.setFixedSize(28, 28)
+        self.schema_jump_btn.setStyleSheet(btn_style)
         self.schema_jump_btn.setIcon(get_icon("msc.folder-library", color="#475569"))
         self.schema_jump_btn.setToolTip("View Parent Schema Details")
         self.schema_jump_btn.clicked.connect(self._jump_to_schema_tab)
         self.schema_jump_btn.setVisible(False)
-        header_layout.addWidget(self.schema_jump_btn)
+
+        actions_bar = QHBoxLayout()
+        actions_bar.setContentsMargins(0, 0, 0, 0)
+        actions_bar.setSpacing(4)
+        actions_bar.addWidget(self.search_box)
+        actions_bar.addWidget(self.refresh_btn)
+        actions_bar.addWidget(self.copy_ddl_btn)
+        actions_bar.addWidget(self.schema_jump_btn)
+        top_row.addLayout(actions_bar)
+
+        header_vbox.addLayout(top_row)
+
+        # Bottom row: Subtitle Metadata
+        self.subtitle_label = QLabel("Loading object details...")
+        self.subtitle_label.setStyleSheet("font-size: 8.5pt; color: #64748b;")
+        self.subtitle_label.setWordWrap(True)
+        header_vbox.addWidget(self.subtitle_label)
 
         layout.addWidget(header_frame)
 
@@ -138,30 +185,41 @@ class ObjectDescribeDialog(QDialog):
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 1px solid #cbd5e1;
-                border-radius: 4px;
+                border-radius: 6px;
                 background: #ffffff;
-                top: -1px;
+                top: 0px;
+            }
+            QTabBar {
+                background: transparent;
+                qproperty-drawBase: 0;
             }
             QTabBar::tab {
-                background: #f1f5f9;
+                background: #ffffff;
                 border: 1px solid #cbd5e1;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
+                border-bottom: 2px solid transparent;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
                 padding: 6px 14px;
-                margin-right: 2px;
-                font-size: 9pt;
+                margin-right: 4px;
+                margin-top: 0px;
+                margin-bottom: 0px;
+                font-size: 8.5pt;
                 font-weight: 500;
-                color: #475569;
+                color: #64748b;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #f8fafc;
+                border-color: #94a3b8;
+                color: #0f172a;
             }
             QTabBar::tab:selected {
                 background: #ffffff;
                 color: #0284c7;
-                font-weight: 600;
-                border-bottom: 1px solid #ffffff;
-            }
-            QTabBar::tab:hover:!selected {
-                background: #e2e8f0;
+                border: 1px solid #cbd5e1;
+                border-bottom: 2px solid #0284c7;
+                margin-top: 0px;
+                margin-bottom: 0px;
+                font-weight: 500;
             }
         """)
         layout.addWidget(self.tabs, stretch=1)
@@ -169,7 +227,7 @@ class ObjectDescribeDialog(QDialog):
         # ── Bottom Status Bar ──
         bottom_bar = QHBoxLayout()
         bottom_bar.setContentsMargins(4, 2, 4, 2)
-        bottom_bar.setSpacing(10)
+        bottom_bar.setSpacing(8)
 
         self.status_label = QLabel("Ready")
         self.status_label.setStyleSheet("color: #64748b; font-size: 9pt;")
@@ -254,8 +312,13 @@ class ObjectDescribeDialog(QDialog):
         parts = []
         for k, v in details.items():
             if v and v != "N/A":
-                parts.append(f"<b>{k}:</b> {v}")
-        self.subtitle_label.setText(" &nbsp;|&nbsp; ".join(parts) if parts else f"Schema: {schema}")
+                if k == "Estimated Rows" and str(v).lstrip("-").isdigit():
+                    v_int = int(v)
+                    v_str = f"{v_int:,}" if v_int >= 0 else "N/A"
+                    parts.append(f"<b>{k}:</b> {v_str}")
+                else:
+                    parts.append(f"<b>{k}:</b> {v}")
+        self.subtitle_label.setText(" &nbsp;&nbsp;|&nbsp;&nbsp; ".join(parts) if parts else f"<b>Schema:</b> {schema}")
 
         # Clear existing tabs
         self.tabs.clear()
@@ -282,13 +345,11 @@ class ObjectDescribeDialog(QDialog):
         self.idx_table.setRowCount(len(indexes))
         for row, idx in enumerate(indexes):
             name_item = QTableWidgetItem(idx.get("name", ""))
-            name_item.setFont(self._bold_font())
             self.idx_table.setItem(row, 0, name_item)
             self.idx_table.setItem(row, 1, QTableWidgetItem(idx.get("definition", "")))
             uniq_item = QTableWidgetItem("UNIQUE" if idx.get("unique") else "NON-UNIQUE")
             if idx.get("unique"):
                 uniq_item.setForeground(QColor("#059669"))
-                uniq_item.setFont(self._bold_font())
             self.idx_table.setItem(row, 2, uniq_item)
             self.idx_table.setItem(row, 3, QTableWidgetItem(idx.get("type", "btree")))
         self.tabs.addTab(self.idx_table, get_icon("msc.key", color="#475569"), f"Indexes ({len(indexes)})")
@@ -299,12 +360,10 @@ class ObjectDescribeDialog(QDialog):
         self.cst_table.setRowCount(len(constraints))
         for row, cst in enumerate(constraints):
             name_item = QTableWidgetItem(cst.get("name", ""))
-            name_item.setFont(self._bold_font())
             self.cst_table.setItem(row, 0, name_item)
             type_item = QTableWidgetItem(cst.get("type", ""))
             if "Primary" in cst.get("type", ""):
                 type_item.setForeground(QColor("#b45309"))
-                type_item.setFont(self._bold_font())
             self.cst_table.setItem(row, 1, type_item)
             self.cst_table.setItem(row, 2, QTableWidgetItem(cst.get("definition", "")))
         self.tabs.addTab(self.cst_table, get_icon("msc.shield", color="#475569"), f"Constraints ({len(constraints)})")
@@ -355,7 +414,6 @@ class ObjectDescribeDialog(QDialog):
             table.setItem(row, 0, pos_item)
 
             name_item = QTableWidgetItem(c.get("name", ""))
-            name_item.setFont(self._bold_font())
             table.setItem(row, 1, name_item)
 
             type_item = QTableWidgetItem(c.get("data_type", ""))
@@ -366,7 +424,6 @@ class ObjectDescribeDialog(QDialog):
             null_item = QTableWidgetItem("NOT NULL" if not is_nullable else "NULL")
             if not is_nullable:
                 null_item.setForeground(QColor("#b91c1c"))
-                null_item.setFont(self._bold_font())
             else:
                 null_item.setForeground(QColor("#64748b"))
             table.setItem(row, 3, null_item)
@@ -383,7 +440,6 @@ class ObjectDescribeDialog(QDialog):
             key_item = QTableWidgetItem(key_text)
             if "PK" in keys:
                 key_item.setForeground(QColor("#d97706"))
-                key_item.setFont(self._bold_font())
             table.setItem(row, 5, key_item)
 
             table.setItem(row, 6, QTableWidgetItem(c.get("comment", "")))
@@ -400,7 +456,6 @@ class ObjectDescribeDialog(QDialog):
         self.schema_tables.setRowCount(len(tables))
         for row, t in enumerate(tables):
             name_item = QTableWidgetItem(t.get("name", ""))
-            name_item.setFont(self._bold_font())
             self.schema_tables.setItem(row, 0, name_item)
             self.schema_tables.setItem(row, 1, QTableWidgetItem(t.get("type", "Table")))
             self.schema_tables.setItem(row, 2, QTableWidgetItem(str(t.get("columns_count", 0))))
@@ -418,7 +473,6 @@ class ObjectDescribeDialog(QDialog):
         self.schema_views.setRowCount(len(views))
         for row, v in enumerate(views):
             name_item = QTableWidgetItem(v.get("name", ""))
-            name_item.setFont(self._bold_font())
             self.schema_views.setItem(row, 0, name_item)
             self.schema_views.setItem(row, 1, QTableWidgetItem(v.get("owner", "")))
             self.schema_views.setItem(row, 2, QTableWidgetItem(v.get("comment", "")))
@@ -431,7 +485,6 @@ class ObjectDescribeDialog(QDialog):
             self.schema_funcs.setRowCount(len(funcs))
             for row, f in enumerate(funcs):
                 name_item = QTableWidgetItem(f.get("name", ""))
-                name_item.setFont(self._bold_font())
                 self.schema_funcs.setItem(row, 0, name_item)
                 self.schema_funcs.setItem(row, 1, QTableWidgetItem(f.get("owner", "")))
                 self.schema_funcs.setItem(row, 2, QTableWidgetItem(f.get("language", "")))
@@ -501,7 +554,6 @@ class ObjectDescribeDialog(QDialog):
         s_tables.setRowCount(len(tables))
         for row, t in enumerate(tables):
             name_item = QTableWidgetItem(t.get("name", ""))
-            name_item.setFont(self._bold_font())
             s_tables.setItem(row, 0, name_item)
             s_tables.setItem(row, 1, QTableWidgetItem(t.get("type", "Table")))
             s_tables.setItem(row, 2, QTableWidgetItem(str(t.get("columns_count", 0))))
@@ -516,7 +568,6 @@ class ObjectDescribeDialog(QDialog):
             s_views.setRowCount(len(views))
             for row, v in enumerate(views):
                 name_item = QTableWidgetItem(v.get("name", ""))
-                name_item.setFont(self._bold_font())
                 s_views.setItem(row, 0, name_item)
                 s_views.setItem(row, 1, QTableWidgetItem(v.get("owner", "")))
                 s_views.setItem(row, 2, QTableWidgetItem(v.get("comment", "")))
@@ -527,7 +578,6 @@ class ObjectDescribeDialog(QDialog):
             s_funcs.setRowCount(len(funcs))
             for row, f in enumerate(funcs):
                 name_item = QTableWidgetItem(f.get("name", ""))
-                name_item.setFont(self._bold_font())
                 s_funcs.setItem(row, 0, name_item)
                 s_funcs.setItem(row, 1, QTableWidgetItem(f.get("owner", "")))
                 s_funcs.setItem(row, 2, QTableWidgetItem(f.get("language", "")))
@@ -557,26 +607,61 @@ class ObjectDescribeDialog(QDialog):
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setHighlightSections(False)
+        table.verticalHeader().setHighlightSections(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setAlternatingRowColors(True)
+        table.setItemDelegate(FlatSelectionDelegate(parent=table))
         table.setStyleSheet("""
             QTableWidget {
-                background-color: #ffffff;
-                alternate-background-color: #f8fafc;
-                gridline-color: #f1f5f9;
+                background-color: #FFFFFF;
+                alternate-background-color: #F8FAFC;
+                gridline-color: #E2E8F0;
                 border: none;
-                selection-background-color: #e0f2fe;
-                selection-color: #0f172a;
+                font-size: 9pt;
+                color: #0F172A;
+                selection-background-color: #D4E0EE;
+                selection-color: #0F172A;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QTableWidget::item:selected {
+                background-color: #D4E0EE;
+                color: #0F172A;
             }
             QHeaderView::section {
-                background-color: #f1f5f9;
-                color: #475569;
-                padding: 5px 8px;
+                background-color: #E8EEF4;
+                color: #334155;
+                padding: 6px 8px;
                 border: none;
-                border-bottom: 1px solid #cbd5e1;
-                border-right: 1px solid #e2e8f0;
-                font-weight: 600;
+                border-bottom: 1px solid #CBD5E1;
+                border-right: 1px solid #CBD5E1;
+                font-size: 8.5pt;
+                font-weight: 500;
+                text-align: left;
+            }
+            QHeaderView::section:hover {
+                background-color: #DFE8F0;
+                color: #0F172A;
+            }
+            QHeaderView::section:vertical {
+                background-color: #F8FAFC;
+                color: #64748B;
+                border: none;
+                border-right: 1px solid #CBD5E1;
+                border-bottom: 1px solid #E2E8F0;
+                padding: 0 4px;
+                text-align: center;
+                font-size: 8.5pt;
+                font-weight: 500;
+            }
+            QHeaderView::section:vertical:checked,
+            QHeaderView::section:vertical:pressed {
+                background-color: #D4E0EE;
+                color: #0F172A;
+                font-weight: 500;
             }
         """)
         return table
@@ -603,9 +688,7 @@ class ObjectDescribeDialog(QDialog):
         return editor
 
     def _bold_font(self) -> QFont:
-        f = QFont()
-        f.setBold(True)
-        return f
+        return QFont()
 
     def _build_scripts_tab_widget(self, scripts_dict: dict, default_key: str = "Full DDL") -> QWidget:
         container = QWidget()
@@ -666,25 +749,35 @@ class ObjectDescribeDialog(QDialog):
 
         tb_layout.addStretch()
 
+        script_btn_style = """
+            QToolButton {
+                background-color: #ffffff;
+                border: 1px solid #c4c9d4;
+                border-radius: 4px;
+                padding: 3px 10px;
+                font-size: 8.5pt;
+                color: #334155;
+                font-weight: 500;
+                min-height: 22px;
+            }
+            QToolButton:hover {
+                background-color: #f1f5f9;
+                border-color: #94a3b8;
+                color: #0f172a;
+            }
+            QToolButton:pressed {
+                background-color: #e2e8f0;
+                border-color: #94a3b8;
+                padding: 3px 10px;
+            }
+        """
+
         copy_btn = QToolButton()
         copy_btn.setText("Copy")
         copy_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         copy_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         copy_btn.setToolTip("Copy displayed script to clipboard")
-        copy_btn.setStyleSheet("""
-            QToolButton {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                border-radius: 4px;
-                padding: 3px 8px;
-                font-size: 8.5pt;
-                color: #334155;
-            }
-            QToolButton:hover {
-                background: #f1f5f9;
-                border-color: #94a3b8;
-            }
-        """)
+        copy_btn.setStyleSheet(script_btn_style)
         tb_layout.addWidget(copy_btn)
 
         worksheet_btn = QToolButton()
@@ -694,17 +787,24 @@ class ObjectDescribeDialog(QDialog):
         worksheet_btn.setToolTip("Open script in a new SQL Worksheet tab")
         worksheet_btn.setStyleSheet("""
             QToolButton {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
+                background-color: #f0f9ff;
+                border: 1px solid #bae6fd;
                 border-radius: 4px;
-                padding: 3px 8px;
+                padding: 3px 10px;
                 font-size: 8.5pt;
-                color: #0369a1;
-                font-weight: 600;
+                color: #0284c7;
+                font-weight: 500;
+                min-height: 22px;
             }
             QToolButton:hover {
-                background: #f0f9ff;
-                border-color: #0284c7;
+                background-color: #e0f2fe;
+                border-color: #7dd3fc;
+                color: #0369a1;
+            }
+            QToolButton:pressed {
+                background-color: #bae6fd;
+                border-color: #7dd3fc;
+                padding: 3px 10px;
             }
         """)
         tb_layout.addWidget(worksheet_btn)
@@ -714,20 +814,7 @@ class ObjectDescribeDialog(QDialog):
         save_btn.setIcon(get_icon(AppIcons.SAVE, color="#475569"))
         save_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         save_btn.setToolTip("Save script as .sql file")
-        save_btn.setStyleSheet("""
-            QToolButton {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                border-radius: 4px;
-                padding: 3px 8px;
-                font-size: 8.5pt;
-                color: #334155;
-            }
-            QToolButton:hover {
-                background: #f1f5f9;
-                border-color: #94a3b8;
-            }
-        """)
+        save_btn.setStyleSheet(script_btn_style)
         tb_layout.addWidget(save_btn)
 
         layout.addWidget(toolbar_frame)

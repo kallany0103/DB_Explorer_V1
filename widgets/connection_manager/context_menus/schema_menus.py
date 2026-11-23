@@ -87,7 +87,7 @@ class SchemaMenuBuilder:
             self._data_source_menu(menu, item, item_data, index)
         elif node_type == "unified_views_root":
             self._unified_views_root_menu(menu, item, item_data, index)
-        elif node_type == "schema_group":
+        elif node_type in ("schema_group", "oracle_schema_group") or (item_data.get("group_name") and not table_name):
             self._schema_group_menu(menu, item, item_data, index)
         elif is_triggers_group:
             self.trigger_builder.build_group_menu(menu, item, item_data, index)

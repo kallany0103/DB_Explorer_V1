@@ -1,21 +1,19 @@
 # widgets/inspector/properties_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QScrollArea, 
-    QFrame, QTabWidget, QLineEdit, QToolButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, 
+    QFrame, QTabWidget, QToolButton
 )
-from PySide6.QtGui import QStandardItemModel, QStandardItem
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from .tabs.columns_tab import ColumnsTab
 from .tabs.constraints_tab import ConstraintsTab
 from .tabs.sql_tab import SqlTab
 import qtawesome as qta
-from ui.icons import get_icon
+from ui.icons import get_icon, get_database_icon
 from workers.inspector_workers import InspectorWorker
 from ui.components import IconButton
 from .properties_ui import (
-    CollapsibleCard, PropertyTable,
-    HIDDEN_PROPERTY_KEYS, PROPERTY_LABELS
+    CollapsibleCard, CollectionCard, HIDDEN_PROPERTY_KEYS, PROPERTY_LABELS
 )
 
 
@@ -36,18 +34,30 @@ class PropertiesWorkbench(QWidget):
      
         # Toolbar-like header
         header_frame = QFrame()
-        header_frame.setStyleSheet("background-color: white; border-bottom: 1px solid #e5e7eb;")
+        header_frame.setObjectName("propertiesHeaderFrame")
+        header_frame.setStyleSheet("""
+            QFrame#propertiesHeaderFrame {
+                background-color: #ffffff;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            QFrame#propertiesHeaderFrame QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(15, 10, 15, 10)
         
         self.icon_label = QLabel()
+        self.icon_label.setStyleSheet("border: none; background: transparent;")
         header_layout.addWidget(self.icon_label)
         
         text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
         self.header_label = QLabel("Properties")
-        self.header_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
+        self.header_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827; border: none; background: transparent;")
         self.sub_label = QLabel("Select an object to view properties")
-        self.sub_label.setStyleSheet("font-size: 11px; color: #6b7280;")
+        self.sub_label.setStyleSheet("font-size: 11px; color: #6b7280; border: none; background: transparent;")
         text_layout.addWidget(self.header_label)
         text_layout.addWidget(self.sub_label)
         header_layout.addLayout(text_layout)
@@ -86,18 +96,28 @@ class PropertiesWorkbench(QWidget):
         layout.addWidget(self.progress_container)
         self.progress_container.setVisible(False)
         
+        self.setObjectName("propertiesWorkbench")
+
         self.scroll = QScrollArea()
+        self.scroll.setObjectName("propertiesScroll")
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.scroll.setStyleSheet("background-color: #f8fafc;")
         
         self.container = QWidget()
+        self.container.setObjectName("propertiesContainer")
         self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(15, 15, 15, 15)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(0)
         
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        for card in self.findChildren(CollectionCard):
+            card._update_table_geometry()
+        for sql_tab in self.findChildren(SqlTab):
+            sql_tab._update_editor_geometry()
 
     def refresh_properties(self):
         if self.item_data:
@@ -140,10 +160,30 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText(obj_name)
         
         obj_type = item_data.get('type', 'Unknown')
+        table_type = str(item_data.get('table_type', '')).upper()
         group_name = item_data.get('group_name')
+
+        if "MATERIALIZED" in table_type and group_name != "Materialized Views":
+            obj_type = "materialized_view"
+        elif "TRIGGER" in table_type and group_name != "Trigger Functions":
+            obj_type = "trigger_function"
+        elif "FUNCTION" in table_type and group_name != "Functions":
+            obj_type = "function"
+        elif "SEQUENCE" in table_type and group_name != "Sequences":
+            obj_type = "sequence"
+        elif "VIEW" in table_type and group_name != "Views" and "MATERIALIZED" not in table_type:
+            obj_type = "view"
+        elif item_data.get('table_name') and obj_type in ("schema_group", "group"):
+            obj_type = "table"
         if not group_name and obj_type.endswith('_root'):
             if obj_type == 'schemas_root':
                 group_name = "Schemas"
+            elif obj_type == 'tables_root':
+                group_name = "Tables"
+            elif obj_type == 'views_root':
+                group_name = "Views"
+            elif obj_type == 'functions_root':
+                group_name = "Functions"
             elif obj_type == 'fdw_root':
                 group_name = "Foreign Data Wrappers"
             elif obj_type == 'extension_root':
@@ -153,29 +193,93 @@ class PropertiesWorkbench(QWidget):
 
         icon_color = '#6366f1'
         icon_name = 'msc.package'
-        if obj_type == 'table':
+        if obj_type in ('materialized_view', 'matview') or group_name == 'Materialized Views':
+            icon_name, icon_color = 'msc.eye', '#0284c7'
+        elif obj_type == 'trigger_function' or group_name == 'Trigger Functions':
+            icon_name, icon_color = 'msc.symbol-method', '#f59e0b'
+        elif obj_type == 'table' or group_name == 'Tables':
             icon_name, icon_color = 'msc.table', '#3b82f6'
-        elif obj_type == 'view':
+        elif obj_type == 'view' or group_name == 'Views':
             icon_name, icon_color = 'msc.eye', '#10b981'
-        elif obj_type == 'schema':
+        elif obj_type == 'schema' or obj_type == 'schemas_root' or group_name == 'Schemas':
             icon_name, icon_color = 'msc.folder-library', '#f59e0b'
         elif obj_type == 'connection':
-            icon_name, icon_color = 'msc.database', '#6366f1'
-        elif obj_type == 'function':
+            icon_name, icon_color = None, None
+            self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
+        elif obj_type == 'function' or group_name == 'Functions':
             icon_name, icon_color = 'msc.symbol-method', '#ec4899'
-        elif obj_type == 'sequence':
+        elif obj_type == 'sequence' or group_name == 'Sequences':
             icon_name, icon_color = 'msc.symbol-numeric', '#8b5cf6'
-        elif obj_type == 'trigger':
+        elif obj_type in ('fdw', 'fdw_root') or group_name in ('Foreign Data Wrappers', 'FDW'):
+            icon_name, icon_color = 'msc.plug', '#0ea5e9'
+        elif obj_type in ('language', 'language_root') or group_name in ('Languages', 'Java'):
+            icon_name, icon_color = 'msc.code', '#8b5cf6'
+        elif obj_type == 'trigger' or group_name == 'Triggers':
             tgenabled = item_data.get('tgenabled')
             if tgenabled == 'D':
                 icon_name, icon_color = 'msc.zap', '#9fa6b2'
             else:
                 icon_name, icon_color = 'msc.zap', '#f59e0b'
-        
-        if group_name:
+        elif group_name or obj_type in ('group', 'schema_group'):
             icon_name, icon_color = 'msc.folder', '#94a3b8'
-        self.icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(24, 24))
-        self.sub_label.setText(f"{obj_type.capitalize() if not group_name else 'Collection'}")
+
+        if icon_name:
+            self.icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(24, 24))
+
+        conn_data = item_data.get('conn_data') or {}
+        db_name = conn_data.get('database') or item_data.get('database')
+        schema_name = item_data.get('schema_name')
+
+        if obj_type.endswith('_root'):
+            clean_group = group_name or obj_type.replace('_root', '').capitalize()
+            self.sub_label.setText(f"Collection • {clean_group}")
+        elif obj_type in ('group', 'schema_group', 'oracle_schema_group') or (group_name and not item_data.get('table_name')):
+            target = group_name or "Collection"
+            sub = f"Collection • {target}"
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        elif obj_type == 'schema':
+            sub = "Schema"
+            if db_name:
+                sub += f" • Database: {db_name}"
+            self.sub_label.setText(sub)
+        elif obj_type in ('materialized_view', 'matview'):
+            sub = "Materialized View"
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        elif obj_type == 'trigger_function':
+            sub = "Trigger Function"
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        elif obj_type == 'function':
+            sub = "Function"
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        elif obj_type == 'fdw':
+            self.sub_label.setText("Foreign Data Wrapper")
+        elif obj_type == 'language':
+            self.sub_label.setText("Language")
+        elif obj_type == 'table':
+            sub = "Table"
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        elif obj_type == 'view':
+            sub = "View"
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        elif obj_type != 'Unknown':
+            sub = obj_type.replace('_', ' ').capitalize()
+            if schema_name:
+                sub += f" • Schema: {schema_name}"
+            self.sub_label.setText(sub)
+        else:
+            self.sub_label.setText(group_name or "Object")
         
         # Save the current inner tab index before clearing
         for i in range(self.container_layout.count()):
@@ -213,53 +317,126 @@ class PropertiesWorkbench(QWidget):
         self.container_layout.addWidget(QLabel(f"Error: {error_msg}"))
 
     def _display_group(self, data):
-        data.get("group_name", "Collection")
-        # Toolbar
-        coll_toolbar = QFrame()
-        coll_toolbar.setStyleSheet("background-color: white; border-bottom: 1px solid #e5e7eb; padding: 2px;")
-        coll_layout = QHBoxLayout(coll_toolbar)
-        coll_layout.setContentsMargins(5, 5, 5, 5)
-        for icon_name, color in [('msc.trash', '#94a3b8'), ('msc.clear-all', '#94a3b8')]:
-            btn = IconButton(get_icon(icon_name, color=color))
-            btn.setFixedSize(28, 28)
-            coll_layout.addWidget(btn)
-        coll_layout.addStretch()
-        search = QLineEdit(); search.setPlaceholderText("Search..."); search.setFixedWidth(200); coll_layout.addWidget(search)
-        self.container_layout.addWidget(coll_toolbar)
+        group_name = data.get("group_name", "Collection")
+        group_widget = QWidget()
+        group_layout = QVBoxLayout(group_widget)
+        group_layout.setContentsMargins(16, 16, 16, 16)
+        group_layout.setSpacing(12)
 
-        table = PropertyTable()
-        model = QStandardItemModel()
-        model.setHorizontalHeaderLabels(data.get("columns", []))
-        for row in data.get("rows", []):
-            items = []
-            for val in row:
-                if isinstance(val, bool):
-                    item = QStandardItem()
-                    item.setIcon(get_icon('msc.check' if val else 'msc.close', color='#10b981' if val else '#ef4444'))
-                    item.setText("Yes" if val else "No")
-                else:
-                    item = QStandardItem(str(val) if val is not None else "")
-                items.append(item)
-            model.appendRow(items)
-        table.setModel(model)
-        self.container_layout.addWidget(table)
-        
-        search.textChanged.connect(lambda t: [table.setRowHidden(r, not any(t.lower() in model.item(r, c).text().lower() for c in range(model.columnCount()))) for r in range(model.rowCount())])
-        table.resizeColumnsToContents()
+        columns = data.get("columns", [])
+        rows = data.get("rows", [])
+        card = CollectionCard(group_name, columns, rows)
+        group_layout.addWidget(card)
+        group_layout.addStretch()
+        self.container_layout.addWidget(group_widget)
 
     def _display_object(self, data):
         obj_type = self.item_data.get('type', 'Unknown')
-        
-        # Use tabbed interface for tables
-        if obj_type == 'table':
+        table_type = str(self.item_data.get('table_type', '')).upper()
+        group_name = self.item_data.get('group_name')
+
+        if "MATERIALIZED" in table_type and group_name != "Materialized Views":
+            obj_type = "materialized_view"
+        elif "TRIGGER" in table_type and group_name != "Trigger Functions":
+            obj_type = "trigger_function"
+        elif "FUNCTION" in table_type and group_name != "Functions":
+            obj_type = "function"
+        elif "SEQUENCE" in table_type and group_name != "Sequences":
+            obj_type = "sequence"
+        elif "VIEW" in table_type and group_name != "Views" and "MATERIALIZED" not in table_type:
+            obj_type = "view"
+        elif self.item_data.get('table_name') and obj_type in ("schema_group", "group"):
+            obj_type = "table"
+
+        details = data.get("details", {})
+        columns = data.get("columns", [])
+        sql = data.get("sql", "")
+
+        # If data has no properties, columns, or SQL
+        if not details and not columns and not sql:
+            self._display_empty_object()
+            return
+
+        is_matview = (
+            obj_type in ('materialized_view', 'matview')
+            or "MATERIALIZED" in table_type
+            or details.get("Object type") == "Materialized view"
+        )
+        is_view = (
+            obj_type == 'view'
+            or ("VIEW" in table_type and not is_matview)
+            or details.get("Object type") == "View"
+        )
+
+        if is_matview or is_view:
+            self._display_materialized_view_with_tabs(data)
+        elif obj_type == 'table':
             self._display_table_with_tabs(data)
+        elif obj_type == 'schema':
+            self._display_schema_with_tabs(data)
         else:
-            self._display_object_with_cards(data)
+            self._display_object_with_tabs(data)
+
+    def _display_materialized_view_with_tabs(self, data):
+        tab_widget = QTabWidget()
+        tab_widget.setObjectName("explain_tabs")
+
+        # General Tab
+        general_tab = self._create_general_tab(data)
+        tab_widget.addTab(general_tab, "General")
+
+        # Columns Tab (read-only)
+        if data.get("columns"):
+            columns_tab = self._create_columns_tab(data)
+            tab_widget.addTab(columns_tab, "Columns")
+
+        # SQL Tab
+        if data.get("sql"):
+            sql_tab = self._create_sql_tab(data)
+            tab_widget.addTab(sql_tab, "SQL")
+
+        self.container_layout.addWidget(tab_widget)
+
+        if hasattr(self, '_last_inner_tab_index') and self._last_inner_tab_index < tab_widget.count():
+            tab_widget.setCurrentIndex(self._last_inner_tab_index)
+
+    def _display_empty_object(self):
+        empty_widget = QWidget()
+        layout = QVBoxLayout(empty_widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        card = QFrame()
+        card.setObjectName("propertyCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(24, 36, 24, 36)
+        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.setSpacing(8)
+
+        icon_label = QLabel()
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setPixmap(get_icon('msc.info', color='#94a3b8').pixmap(36, 36))
+        icon_label.setStyleSheet("border: none; background: transparent;")
+        card_layout.addWidget(icon_label)
+
+        title = QLabel(f"No properties available for '{self.obj_name}'")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 11pt; font-weight: 600; color: #334155; border: none; background: transparent;")
+        card_layout.addWidget(title)
+
+        sub = QLabel("The database did not return any metadata or properties for this object.")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub.setStyleSheet("font-size: 9pt; color: #64748b; border: none; background: transparent;")
+        card_layout.addWidget(sub)
+
+        layout.addWidget(card)
+        layout.addStretch()
+        self.container_layout.addWidget(empty_widget)
 
     def _display_table_with_tabs(self, data):
         tab_widget = QTabWidget()
-        tab_widget.setStyleSheet("""
-            """)
+        tab_widget.setObjectName("explain_tabs")
         
         # General Tab
         general_tab = self._create_general_tab(data)
@@ -283,17 +460,64 @@ class PropertiesWorkbench(QWidget):
         if hasattr(self, '_last_inner_tab_index') and self._last_inner_tab_index < tab_widget.count():
             tab_widget.setCurrentIndex(self._last_inner_tab_index)
 
+    def _display_schema_with_tabs(self, data):
+        tab_widget = QTabWidget()
+        tab_widget.setObjectName("explain_tabs")
+
+        # General Tab
+        general_tab = self._create_general_tab(data)
+        tab_widget.addTab(general_tab, "General")
+
+        # Tables Tab (if schema contains tables)
+        tables_data = data.get("tables", {})
+        if tables_data.get("rows"):
+            tables_tab = QWidget()
+            t_layout = QVBoxLayout(tables_tab)
+            t_layout.setContentsMargins(16, 16, 16, 16)
+            t_layout.setSpacing(12)
+            t_card = CollectionCard("Tables", tables_data.get("columns", []), tables_data.get("rows", []))
+            t_layout.addWidget(t_card)
+            t_layout.addStretch()
+            tab_widget.addTab(tables_tab, "Tables")
+
+        # SQL Tab
+        if data.get("sql"):
+            sql_tab = self._create_sql_tab(data)
+            tab_widget.addTab(sql_tab, "SQL")
+
+        self.container_layout.addWidget(tab_widget)
+
+        if hasattr(self, '_last_inner_tab_index') and self._last_inner_tab_index < tab_widget.count():
+            tab_widget.setCurrentIndex(self._last_inner_tab_index)
+
+    def _display_object_with_tabs(self, data):
+        tab_widget = QTabWidget()
+        tab_widget.setObjectName("explain_tabs")
+
+        general_tab = self._create_general_tab(data)
+        tab_widget.addTab(general_tab, "General")
+
+        obj_type = self.item_data.get('type', '')
+        if obj_type != 'connection' and data.get("sql"):
+            sql_tab = self._create_sql_tab(data)
+            tab_widget.addTab(sql_tab, "SQL")
+
+        self.container_layout.addWidget(tab_widget)
+
+        if hasattr(self, '_last_inner_tab_index') and self._last_inner_tab_index < tab_widget.count():
+            tab_widget.setCurrentIndex(self._last_inner_tab_index)
+
     def _create_general_tab(self, data):
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
         
         details = data.get("details", {})
         gen = CollapsibleCard("General")
         gen.add_row("Name", self.obj_name)
         for k, v in details.items():
-            if k in HIDDEN_PROPERTY_KEYS:
+            if k in HIDDEN_PROPERTY_KEYS or k.lower() == "name":
                 continue
             label = PROPERTY_LABELS.get(k, k.replace("_", " ").capitalize())
             gen.add_row(label, v)
@@ -308,27 +532,15 @@ class PropertiesWorkbench(QWidget):
         return ConstraintsTab(data)
 
     def _create_sql_tab(self, data):
-        return SqlTab(data)
+        return SqlTab(data, self)
 
     def _display_object_with_cards(self, data):
-        details = data.get("details", {})
-        gen = CollapsibleCard("General")
-        gen.add_row("Name", self.obj_name)
-        for k, v in details.items():
-            if k in HIDDEN_PROPERTY_KEYS:
-                continue
-            label = PROPERTY_LABELS.get(k, k.replace("_", " ").capitalize())
-            gen.add_row(label, v)
-        self.container_layout.addWidget(gen)
-        
-        if data.get("sql"):
-            sql_card = CollapsibleCard("SQL")
-            editor = QTextEdit(); editor.setReadOnly(True); editor.setPlainText(data["sql"]); editor.setStyleSheet("font-family: 'Consolas', monospace; font-size: 10pt; border: none; background: #f9fafb;"); editor.setMinimumHeight(200); sql_card.content_layout.addWidget(editor)
-            self.container_layout.addWidget(sql_card)
-        self.container_layout.addStretch()
+        self._display_object_with_tabs(data)
 
     def _clear_container(self):
         while self.container_layout.count():
             item = self.container_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                w = item.widget()
+                w.setParent(None)
+                w.deleteLater()

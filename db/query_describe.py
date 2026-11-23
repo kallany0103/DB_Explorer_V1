@@ -187,17 +187,24 @@ def describe_select_query(conn_data: dict, raw_query: str) -> list[dict]:
     if not isinstance(conn_data, dict) or not conn_data:
         raise ValueError("Invalid connection information.")
 
-    code = (conn_data.get("code") or conn_data.get("type") or "").upper()
-    if not code:
-        if conn_data.get("service_name") or "oracle" in str(conn_data.get("driver", "")).lower():
-            code = "ORACLE"
-        elif conn_data.get("host"):
-            code = "POSTGRES"
-        elif conn_data.get("db_path"):
-            code = "SQLITE"
+    raw_code = (
+        conn_data.get("code")
+        or conn_data.get("db_type")
+        or conn_data.get("type")
+        or ""
+    ).upper()
+
+    if "ORACLE" in raw_code or conn_data.get("service_name") or conn_data.get("oracle_db_type") or "oracle" in str(conn_data.get("driver", "")).lower():
+        code = "ORACLE"
+    elif "POSTGRES" in raw_code or "PG" in raw_code or conn_data.get("host"):
+        code = "POSTGRES"
+    elif "SQLITE" in raw_code or conn_data.get("db_path"):
+        code = "SQLITE"
+    else:
+        code = raw_code
 
     # --- ORACLE ---
-    if code in ("ORACLE", "ORACLE_DB"):
+    if code in ("ORACLE", "ORACLE_DB", "ORACLE_FA") or "ORACLE" in code:
         conn = db.get_pooled_oracle_connection(conn_data=conn_data)
         if not conn:
             raise ConnectionError("Failed to connect to Oracle database.")

@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QToolButton,
     QFileDialog,
     QApplication,
@@ -36,10 +35,11 @@ from PySide6.QtWidgets import (
 )
 from ui.icons import AppIcons, get_icon
 
-from ui.components import SecondaryButton, LoadingOverlay
+from ui.components import SecondaryButton, LoadingOverlay, SearchBox
 from ui.dialog_utils import fit_dialog_to_screen
 from workers.workers import WorkerThread
 from db.query_describe import describe_select_query, format_describe_text
+from widgets.results_view.output_tabs import FlatSelectionDelegate
 
 
 class DescribeHighlighter(QSyntaxHighlighter):
@@ -241,6 +241,11 @@ class QueryDescribeDialog(QDialog):
         self._start_describe()
 
     def _init_ui(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f8fafc;
+            }
+        """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
@@ -249,8 +254,35 @@ class QueryDescribeDialog(QDialog):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(6)
 
+        tb_btn_style = """
+            QToolButton {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 0px;
+                color: #475569;
+            }
+            QToolButton:hover {
+                background: #f1f5f9;
+                border-color: #94a3b8;
+                color: #1e293b;
+            }
+            QToolButton:pressed {
+                background: #e2e8f0;
+                border-color: #64748b;
+                padding: 0px;
+            }
+            QToolButton:checked {
+                background: #e0f2fe;
+                border-color: #0284c7;
+                padding: 0px;
+            }
+        """
+
         # Save / Export button
         self.save_btn = QToolButton()
+        self.save_btn.setFixedSize(28, 28)
+        self.save_btn.setStyleSheet(tb_btn_style)
         self.save_btn.setIcon(get_icon(AppIcons.SAVE, color="#475569"))
         self.save_btn.setToolTip("Save Describe Output to File...")
         self.save_btn.clicked.connect(self._save_to_file)
@@ -258,6 +290,8 @@ class QueryDescribeDialog(QDialog):
 
         # Copy button
         self.copy_btn = QToolButton()
+        self.copy_btn.setFixedSize(28, 28)
+        self.copy_btn.setStyleSheet(tb_btn_style)
         self.copy_btn.setIcon(get_icon(AppIcons.COPY, color="#475569"))
         self.copy_btn.setToolTip("Copy to Clipboard (Ctrl+C)")
         self.copy_btn.clicked.connect(self._copy_to_clipboard)
@@ -265,6 +299,8 @@ class QueryDescribeDialog(QDialog):
 
         # Select All button
         self.select_all_btn = QToolButton()
+        self.select_all_btn.setFixedSize(28, 28)
+        self.select_all_btn.setStyleSheet(tb_btn_style)
         self.select_all_btn.setIcon(get_icon(AppIcons.SELECT_ALL, color="#475569"))
         self.select_all_btn.setToolTip("Select All (Ctrl+A)")
         self.select_all_btn.clicked.connect(self._select_all)
@@ -275,6 +311,8 @@ class QueryDescribeDialog(QDialog):
 
         # View Switcher (Text View vs Grid View)
         self.text_view_btn = QToolButton()
+        self.text_view_btn.setFixedSize(28, 28)
+        self.text_view_btn.setStyleSheet(tb_btn_style)
         self.text_view_btn.setIcon(get_icon("msc.word-wrap", color="#475569"))
         self.text_view_btn.setToolTip("Text View (Toad Style)")
         self.text_view_btn.setCheckable(True)
@@ -283,6 +321,8 @@ class QueryDescribeDialog(QDialog):
         toolbar.addWidget(self.text_view_btn)
 
         self.grid_view_btn = QToolButton()
+        self.grid_view_btn.setFixedSize(28, 28)
+        self.grid_view_btn.setStyleSheet(tb_btn_style)
         self.grid_view_btn.setIcon(get_icon("msc.table", color="#475569"))
         self.grid_view_btn.setToolTip("Grid View")
         self.grid_view_btn.setCheckable(True)
@@ -294,10 +334,10 @@ class QueryDescribeDialog(QDialog):
         toolbar.addStretch()
 
         # Search / Filter Box
-        self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Filter columns...")
+        self.search_box = SearchBox(placeholder="Filter columns...")
         self.search_box.setClearButtonEnabled(True)
-        self.search_box.setFixedWidth(180)
+        self.search_box.setFixedWidth(190)
+        self.search_box.setFixedHeight(28)
         self.search_box.textChanged.connect(self._on_filter_changed)
         toolbar.addWidget(self.search_box)
 
@@ -342,27 +382,62 @@ class QueryDescribeDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setHighlightSections(False)
+        self.table.verticalHeader().setHighlightSections(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
+        self.table.setItemDelegate(FlatSelectionDelegate(parent=self.table))
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: #ffffff;
-                alternate-background-color: #f8fafc;
-                gridline-color: #f1f5f9;
-                border: 1px solid #cbd5e1;
+                background-color: #FFFFFF;
+                alternate-background-color: #F8FAFC;
+                gridline-color: #E2E8F0;
+                border: 1px solid #CBD5E1;
                 border-radius: 4px;
-                selection-background-color: #e0f2fe;
-                selection-color: #0f172a;
+                font-size: 9pt;
+                color: #0F172A;
+                selection-background-color: #D4E0EE;
+                selection-color: #0F172A;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QTableWidget::item:selected {
+                background-color: #D4E0EE;
+                color: #0F172A;
             }
             QHeaderView::section {
-                background-color: #f1f5f9;
-                color: #475569;
-                padding: 4px 8px;
+                background-color: #E8EEF4;
+                color: #334155;
+                padding: 6px 8px;
                 border: none;
-                border-bottom: 1px solid #cbd5e1;
-                border-right: 1px solid #e2e8f0;
-                font-weight: 600;
+                border-bottom: 1px solid #CBD5E1;
+                border-right: 1px solid #CBD5E1;
+                font-size: 8.5pt;
+                font-weight: 500;
+                text-align: left;
+            }
+            QHeaderView::section:hover {
+                background-color: #DFE8F0;
+                color: #0F172A;
+            }
+            QHeaderView::section:vertical {
+                background-color: #F8FAFC;
+                color: #64748B;
+                border: none;
+                border-right: 1px solid #CBD5E1;
+                border-bottom: 1px solid #E2E8F0;
+                padding: 0 4px;
+                text-align: center;
+                font-size: 8.5pt;
+                font-weight: 500;
+            }
+            QHeaderView::section:vertical:checked,
+            QHeaderView::section:vertical:pressed {
+                background-color: #D4E0EE;
+                color: #0F172A;
+                font-weight: 500;
             }
         """)
         self.stack.addWidget(self.table)
@@ -479,9 +554,6 @@ class QueryDescribeDialog(QDialog):
             self.table.setItem(row, 0, pos_item)
 
             name_item = QTableWidgetItem(c.get("name", ""))
-            name_font = QFont()
-            name_font.setBold(True)
-            name_item.setFont(name_font)
             self.table.setItem(row, 1, name_item)
 
             type_item = QTableWidgetItem(c.get("data_type", ""))
@@ -493,9 +565,6 @@ class QueryDescribeDialog(QDialog):
             null_item = QTableWidgetItem(null_text)
             if not is_nullable:
                 null_item.setForeground(QColor("#b91c1c"))
-                f = QFont()
-                f.setBold(True)
-                null_item.setFont(f)
             else:
                 null_item.setForeground(QColor("#64748b"))
             self.table.setItem(row, 3, null_item)

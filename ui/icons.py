@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from typing import Any, Optional, Union
 from PySide6.QtGui import QIcon, QPalette
 from PySide6.QtWidgets import QApplication
@@ -259,3 +261,60 @@ def get_icon(
     if not kwargs:
         _icon_cache[cache_key] = icon
     return icon
+
+
+_DB_ICON_MAP: dict[str, str] = {
+    "POSTGRES": "assets/postgresql.svg",
+    "POSTGRESQL": "assets/postgresql.svg",
+    "SQLITE": "assets/sqlite.svg",
+    "ORACLE": "assets/oracle.svg",
+    "ORACLE_DB": "assets/oracle.svg",
+    "ORACLE_FA": "assets/oracle_fusion.svg",
+    "SERVICENOW": "assets/servicenow.svg",
+    "UDS": "assets/unified_data_source.svg",
+    "CSV": "assets/csv.svg",
+}
+
+
+def get_database_icon(item_data: Any) -> QIcon:
+    """Returns the brand QIcon for a database connection (e.g. Oracle, PostgreSQL, SQLite)."""
+    if not item_data:
+        return get_icon("msc.database", color=COLOR_PRIMARY_BLUE)
+
+    code = ""
+    if isinstance(item_data, str):
+        code = item_data.upper()
+    elif isinstance(item_data, dict):
+        conn_data = item_data.get("conn_data") or {}
+        code = str(conn_data.get("code") or item_data.get("code") or "").upper()
+        if not code:
+            db_type = str(item_data.get("db_type") or conn_data.get("db_type") or "").upper()
+            if "ORACLE" in db_type:
+                code = "ORACLE_FA" if ("FA" in db_type or "FUSION" in db_type) else "ORACLE"
+            elif "POSTGRES" in db_type:
+                code = "POSTGRES"
+            elif "SQLITE" in db_type:
+                code = "SQLITE"
+            elif "SERVICENOW" in db_type:
+                code = "SERVICENOW"
+            elif "CSV" in db_type:
+                code = "CSV"
+            elif "UDS" in db_type:
+                code = "UDS"
+
+        if not code:
+            node_type = str(item_data.get("type") or "").lower()
+            if "oracle" in node_type or conn_data.get("service_name") or conn_data.get("oracle_db_type"):
+                code = "ORACLE"
+            elif "postgres" in node_type or conn_data.get("database") or item_data.get("database"):
+                code = "POSTGRES"
+
+    rel_path = _DB_ICON_MAP.get(code)
+    if rel_path:
+        base_dir = getattr(sys, '_MEIPASS', os.path.abspath("."))
+        abs_path = os.path.join(base_dir, rel_path)
+        if os.path.exists(abs_path):
+            return QIcon(abs_path)
+
+    return get_icon("msc.database", color=COLOR_PRIMARY_BLUE)
+
