@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
-from ui.icons import get_icon
+from ui.icons import get_icon, get_database_icon
 from PySide6.QtCore import QSize
 from ui.components import IconButton
 
@@ -26,19 +26,31 @@ class StatisticsWorkbench(QWidget):
         
         # Header
         header_frame = QFrame()
-        header_frame.setStyleSheet("background-color: white; border-bottom: 1px solid #e5e7eb;")
+        header_frame.setObjectName("statisticsHeaderFrame")
+        header_frame.setStyleSheet("""
+            QFrame#statisticsHeaderFrame {
+                background-color: #ffffff;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            QFrame#statisticsHeaderFrame QLabel {
+                border: none;
+                background: transparent;
+            }
+        """)
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(15, 10, 15, 10)
         
         self.icon_label = QLabel()
+        self.icon_label.setStyleSheet("border: none; background: transparent;")
         self.icon_label.setPixmap(get_icon('msc.graph', color='#3b82f6').pixmap(24, 24))
         header_layout.addWidget(self.icon_label)
         
         text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
         self.header_label = QLabel("Statistics")
-        self.header_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
+        self.header_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827; border: none; background: transparent;")
         self.sub_label = QLabel("Select an object to view statistics")
-        self.sub_label.setStyleSheet("font-size: 11px; color: #6b7280;")
+        self.sub_label.setStyleSheet("font-size: 11px; color: #6b7280; border: none; background: transparent;")
         text_layout.addWidget(self.header_label)
         text_layout.addWidget(self.sub_label)
         header_layout.addLayout(text_layout)
@@ -122,10 +134,51 @@ class StatisticsWorkbench(QWidget):
         self.item_data = item_data
         self.obj_name = obj_name
         self.header_label.setText(f"Statistics - {obj_name}")
+
+        obj_type = item_data.get('type', 'Unknown')
+        group_name = item_data.get('group_name')
+        table_type = str(item_data.get('table_type', '')).upper()
+
+        if obj_type == 'connection':
+            self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
+        elif obj_type in ('materialized_view', 'matview') or group_name == 'Materialized Views' or "MATERIALIZED" in table_type:
+            self.icon_label.setPixmap(get_icon('msc.eye', color='#0284c7').pixmap(24, 24))
+        elif obj_type == 'trigger_function' or group_name == 'Trigger Functions' or "TRIGGER" in table_type:
+            self.icon_label.setPixmap(get_icon('msc.symbol-method', color='#f59e0b').pixmap(24, 24))
+        elif obj_type == 'table' or group_name == 'Tables' or "TABLE" in table_type:
+            self.icon_label.setPixmap(get_icon('msc.table', color='#3b82f6').pixmap(24, 24))
+        elif obj_type == 'view' or group_name == 'Views' or "VIEW" in table_type:
+            self.icon_label.setPixmap(get_icon('msc.eye', color='#10b981').pixmap(24, 24))
+        elif obj_type in ('schema', 'oracle_schema') or group_name == 'Schemas' or obj_type in ('schemas_root', 'oracle_schemas_root'):
+            self.icon_label.setPixmap(get_icon('msc.folder-library', color='#f59e0b').pixmap(24, 24))
+        elif obj_type in ('function', 'procedure', 'package') or group_name in ('Functions', 'Procedures', 'Packages'):
+            self.icon_label.setPixmap(get_icon('msc.symbol-method', color='#ec4899').pixmap(24, 24))
+        elif obj_type == 'sequence' or group_name == 'Sequences':
+            self.icon_label.setPixmap(get_icon('msc.symbol-numeric', color='#8b5cf6').pixmap(24, 24))
+        elif obj_type == 'trigger' or group_name == 'Triggers':
+            self.icon_label.setPixmap(get_icon('msc.zap', color='#f59e0b').pixmap(24, 24))
+        elif group_name or obj_type in ('group', 'schema_group', 'oracle_schema_group'):
+            self.icon_label.setPixmap(get_icon('msc.folder', color='#94a3b8').pixmap(24, 24))
+        else:
+            self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
         
-        db_type = item_data.get('db_type')
-        if db_type != 'postgres':
-            self.sub_label.setText("Statistics are only available for PostgreSQL")
+        db_type = (item_data.get('db_type') or '').lower()
+        if not db_type:
+            conn_data = item_data.get('conn_data') or {}
+            db_type = (conn_data.get('db_type') or '').lower()
+            if not db_type:
+                if (
+                    conn_data.get('service_name')
+                    or conn_data.get('oracle_db_type')
+                    or 'oracle' in str(item_data.get('type', '')).lower()
+                ):
+                    db_type = 'oracle'
+                elif conn_data.get('database') or conn_data.get('host'):
+                    db_type = 'postgres'
+
+        is_supported = (db_type == 'postgres') or ('oracle' in db_type)
+        if not is_supported:
+            self.sub_label.setText("Statistics are only available for PostgreSQL and Oracle")
             return
 
         self.sub_label.setText(f"Type: {item_data.get('type', 'Unknown').capitalize()}")
