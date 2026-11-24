@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, 
     QFrame, QTabWidget, QToolButton
 )
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QThreadPool
 from .tabs.columns_tab import ColumnsTab
 from .tabs.constraints_tab import ConstraintsTab
 from .tabs.sql_tab import SqlTab
@@ -124,9 +124,9 @@ class PropertiesWorkbench(QWidget):
         for sql_tab in self.findChildren(SqlTab):
             sql_tab._update_editor_geometry()
 
-    def refresh_properties(self):
+    def refresh_properties(self, silent=False):
         if self.item_data:
-            self.update_view(self.item_data, self.obj_name, force_refresh=True)
+            self.update_view(self.item_data, self.obj_name, force_refresh=True, show_loading=not silent)
 
     def show_empty_state(self, message="Select an object to view properties"):
         """Show an empty state without the loading spinner."""
@@ -156,7 +156,7 @@ class PropertiesWorkbench(QWidget):
         self.progress_container.setVisible(True)
         self.scroll.setVisible(False)
 
-    def update_view(self, item_data, obj_name, force_refresh=False):
+    def update_view(self, item_data, obj_name, force_refresh=False, show_loading=True):
         if not force_refresh and self.item_data == item_data and self.obj_name == obj_name:
             return
             
@@ -293,18 +293,21 @@ class PropertiesWorkbench(QWidget):
                 self._last_inner_tab_index = widget.currentIndex()
                 break
 
-        self._clear_container()
-        
         if not item_data:
+            self._clear_container()
             return
-        
-        self.loading_icon.setVisible(True)
-        self.progress_container.setVisible(True)
-        self.scroll.setVisible(False)
+
+        if show_loading:
+            self._clear_container()
+            self.loading_icon.setVisible(True)
+            self.progress_container.setVisible(True)
+            self.scroll.setVisible(False)
+
         worker = InspectorWorker(item_data, obj_name, task_type="properties")
         worker.signals.finished.connect(self._on_data_loaded)
         worker.signals.error.connect(self._on_load_error)
-        self.main_window.thread_pool.start(worker)
+        pool = getattr(self.main_window, 'thread_pool', None) or QThreadPool.globalInstance()
+        pool.start(worker)
 
     def _on_data_loaded(self, data):
         self.progress_container.setVisible(False)

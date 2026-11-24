@@ -7,7 +7,7 @@ from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
 from ui.icons import get_icon, get_database_icon
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, QThreadPool
 from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
@@ -108,9 +108,9 @@ class StatisticsWorkbench(QWidget):
         """Backward-compatible alias for progress_container."""
         return self.progress_container
 
-    def refresh_statistics(self):
+    def refresh_statistics(self, silent=False):
         if self.item_data:
-            self.update_view(self.item_data, self.obj_name, force_refresh=True)
+            self.update_view(self.item_data, self.obj_name, force_refresh=True, show_loading=not silent)
 
     def show_empty_state(self, message="Select an object to view statistics"):
         """Show an empty state without the loading spinner."""
@@ -132,7 +132,7 @@ class StatisticsWorkbench(QWidget):
         self.progress_container.setVisible(True)
         self.content_container.setVisible(False)
 
-    def update_view(self, item_data, obj_name, force_refresh=False):
+    def update_view(self, item_data, obj_name, force_refresh=False, show_loading=True):
         if not force_refresh and self.item_data == item_data and self.obj_name == obj_name:
             return
             
@@ -187,16 +187,18 @@ class StatisticsWorkbench(QWidget):
             return
 
         self.sub_label.setText(f"Type: {item_data.get('type', 'Unknown').capitalize()}")
-        
-        self.loading_icon.setVisible(True)
-        self.progress_container.setVisible(True)
-        self.content_container.setVisible(False)
-        self.stats_view.clear_stats()
-        
+
+        if show_loading:
+            self.loading_icon.setVisible(True)
+            self.progress_container.setVisible(True)
+            self.content_container.setVisible(False)
+            self.stats_view.clear_stats()
+
         worker = InspectorWorker(item_data, obj_name, task_type="statistics")
         worker.signals.finished.connect(self._on_stats_loaded)
         worker.signals.error.connect(self._on_load_error)
-        self.main_window.thread_pool.start(worker)
+        pool = getattr(self.main_window, 'thread_pool', None) or QThreadPool.globalInstance()
+        pool.start(worker)
 
     def _on_stats_loaded(self, data):
         self.progress_container.setVisible(False)
