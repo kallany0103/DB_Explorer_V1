@@ -2,39 +2,13 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QTextEdit, 
-    QTableView, QHeaderView, QMessageBox, QStyledItemDelegate
+    QTableView, QHeaderView, QMessageBox
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Qt
 from .base_properties import BasePropertiesDialog
 from . import pg_queries
-
-
-
-
-class DataTypeDelegate(QStyledItemDelegate):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.data_types = [
-            "integer", "bigint", "smallint", "boolean", "character varying", "character",
-            "text", "date", "timestamp", "timestamp without time zone", "timestamp with time zone",
-            "time", "time without time zone", "numeric", "double precision", "real",
-            "json", "jsonb", "uuid", "bytea", "serial", "bigserial", "smallserial"
-        ]
-
-    def createEditor(self, parent, option, index):
-        editor = QComboBox(parent)
-        editor.addItems(self.data_types)
-        editor.setEditable(True)
-        return editor
-
-    def setEditorData(self, editor, index):
-        value = index.model().data(index, Qt.ItemDataRole.EditRole)
-        editor.setCurrentText(value)
-
-    def setModelData(self, editor, model, index):
-        value = editor.currentText()
-        model.setData(index, value, Qt.ItemDataRole.EditRole)
+from widgets.inspector.properties_ui import DataTypeDelegate
 
 
 
@@ -89,7 +63,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
         self.columns_view = QTableView()
         self.columns_view.setModel(self.columns_model)
         self.columns_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.columns_view.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_view))
+        self.columns_view.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_view, db_type=self.db_type))
         col_layout.addWidget(self.columns_view)
         self.tab_widget.addTab(self.columns_tab, "Columns")
 
@@ -157,7 +131,7 @@ class TablePropertiesDialog(BasePropertiesDialog):
                 cursor.execute(pg_queries.GET_TABLE_COLUMNS, (self.schema_name, self.table_name))
                 for row in cursor.fetchall():
                     name_item = QStandardItem(str(row[0]) if row[0] is not None else "")
-                    type_item = QStandardItem(str(row[1]) if row[1] is not None else "")
+                    type_item = QStandardItem(str(row[1]).strip().upper() if row[1] is not None else "")
                     
                     pk_item = QStandardItem()
                     pk_item.setCheckable(True)

@@ -44,6 +44,23 @@ class ColumnsTab(QWidget):
         self.original_columns_data = data.get("columns", [])
         self.init_ui()
 
+    @property
+    def db_type(self) -> str:
+        item = self.item_data or {}
+        conn_data = item.get("conn_data") or {}
+        code = str(conn_data.get("code") or item.get("code") or "").upper()
+        dt = str(item.get("db_type") or conn_data.get("db_type") or "").upper()
+        nt = str(item.get("type") or "").lower()
+        if (
+            "ORACLE" in code
+            or "ORACLE" in dt
+            or "oracle" in nt
+            or conn_data.get("service_name")
+            or conn_data.get("oracle_db_type")
+        ):
+            return "oracle"
+        return "postgres"
+
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -93,7 +110,9 @@ class ColumnsTab(QWidget):
         self.columns_table.setItemDelegate(PropertyCellDelegate(self.columns_table))
         self.columns_table.setItemDelegateForColumn(5, ActionCellDelegate(self.columns_table))
         if not self.is_read_only:
-            self.columns_table.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_table))
+            self.columns_table.setItemDelegateForColumn(
+                1, DataTypeDelegate(self.columns_table, db_type=self.db_type)
+            )
             self.columns_table.setItemDelegateForColumn(2, CheckboxDelegate(self.columns_table))
             self.columns_table.setItemDelegateForColumn(3, CheckboxDelegate(self.columns_table))
         else:
@@ -107,7 +126,7 @@ class ColumnsTab(QWidget):
 
         for col in self.original_columns_data:
             self._append_column_row(col.get("name", ""),
-                                    col.get("data_type", ""),
+                                    str(col.get("data_type", "")).strip().upper(),
                                     col.get("is_pk", False),
                                     not col.get("nullable", True),
                                     col.get("default_value") or "",
@@ -234,7 +253,8 @@ class ColumnsTab(QWidget):
         return self.columns_model.rowCount() - 1
 
     def _add_column(self):
-        row = self._append_column_row("new_column", "integer", False, False, "", "", orig_name="")
+        default_type = "VARCHAR2(255)" if self.db_type == "oracle" else "INTEGER"
+        row = self._append_column_row("new_column", default_type, False, False, "", "", orig_name="")
         if hasattr(self, 'columns_table'):
             self.columns_table.setIndexWidget(
                 self.columns_model.index(row, 5),
@@ -289,7 +309,7 @@ class ColumnsTab(QWidget):
                 if name != orig_name:
                     alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" RENAME COLUMN "{orig_name}" TO "{name}";')
 
-                if data_type != orig.get('data_type', ''):
+                if data_type.strip().upper() != str(orig.get('data_type', '')).strip().upper():
                     alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" TYPE {data_type} USING "{name}"::{data_type};')
 
                 if not_null != (not orig.get('nullable', True)):
