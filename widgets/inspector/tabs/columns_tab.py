@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QAbstractItemView,
-    QHeaderView, QMessageBox, QToolButton, QStyledItemDelegate
+    QHeaderView, QMessageBox, QToolButton, QStyledItemDelegate, QApplication
 )
 from PySide6.QtCore import Qt, QSize, QEvent, QModelIndex
 from PySide6.QtGui import QStandardItemModel, QStandardItem
@@ -256,14 +256,8 @@ class ColumnsTab(QWidget):
             wb.progress.setVisible(visible)
 
     def _save_column_changes(self):
-        conn_data = self.item_data.get('conn_data') or self.item_data
-        pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
-        try:
-            conn = db.create_postgres_connection(**pg_conn_data)
-            cursor = conn.cursor()
-        except Exception as e:
-            QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
-            return
+        self.save_btn.start_loading()
+        QApplication.processEvents()
 
         schema_name = self.item_data.get('schema_name', 'public')
         table_name = self.obj_name
@@ -326,6 +320,23 @@ class ColumnsTab(QWidget):
                     alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
 
         dropped_cols = orig_names_set - grid_orig_names
+
+        # Fast in-memory check: if nothing changed, exit immediately without network overhead
+        if not alter_statements and not dropped_cols and sorted(new_pk_columns) == sorted(old_pk_columns):
+            self.save_btn.stop_loading()
+            ToastNotification.show_toast(self, "No column changes detected.", kind="info")
+            return
+
+        conn_data = self.item_data.get('conn_data') or self.item_data
+        pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
+        try:
+            conn = db.create_postgres_connection(**pg_conn_data)
+            cursor = conn.cursor()
+        except Exception as e:
+            self.save_btn.stop_loading()
+            QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
+            return
+
         for col_name in dropped_cols:
             deps = pg_queries.check_column_dependencies(cursor, schema_name, table_name, col_name)
             if deps:
@@ -345,6 +356,7 @@ class ColumnsTab(QWidget):
                     alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}" CASCADE;')
                 else:
                     conn.close()
+                    self.save_btn.stop_loading()
                     return
             else:
                 alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}";')
@@ -360,10 +372,9 @@ class ColumnsTab(QWidget):
         conn.close()
 
         if not alter_statements:
+            self.save_btn.stop_loading()
             ToastNotification.show_toast(self, "No column changes detected.", kind="info")
             return
-
-        self.save_btn.start_loading("")
 
         def _worker_execute():
             exec_conn = db.create_postgres_connection(**pg_conn_data)
