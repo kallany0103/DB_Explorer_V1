@@ -183,13 +183,18 @@ class StatisticsWorkbench(QWidget):
                     or 'oracle' in str(item_data.get('type', '')).lower()
                 ):
                     db_type = 'oracle'
-                elif conn_data.get('database') or conn_data.get('host'):
+                elif (
+                    conn_data.get('database')
+                    or conn_data.get('host')
+                    or item_data.get('schema_name')
+                    or item_data.get('table_name')
+                ):
                     db_type = 'postgres'
 
         is_supported = (db_type == 'postgres') or ('oracle' in db_type)
         if not is_supported:
             self.progress_container.setVisible(False)
-            self.content_container.setVisible(True)
+            self.content_container.setVisible(False)
             self.stats_view.clear_stats()
             self.sub_label.setText("Statistics are only available for PostgreSQL and Oracle")
             return

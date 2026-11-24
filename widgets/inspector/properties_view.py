@@ -313,14 +313,19 @@ class PropertiesWorkbench(QWidget):
                     or 'oracle' in str(item_data.get('type', '')).lower()
                 ):
                     db_type = 'oracle'
-                elif conn_data.get('database') or conn_data.get('host'):
+                elif (
+                    conn_data.get('database')
+                    or conn_data.get('host')
+                    or item_data.get('schema_name')
+                    or item_data.get('table_name')
+                ):
                     db_type = 'postgres'
 
         is_supported = (db_type == 'postgres') or ('oracle' in db_type)
         if not is_supported:
             self._clear_container()
             self.progress_container.setVisible(False)
-            self.scroll.setVisible(True)
+            self.scroll.setVisible(False)
             self.sub_label.setText("Properties are only available for PostgreSQL and Oracle")
             return
 
