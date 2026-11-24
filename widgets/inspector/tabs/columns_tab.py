@@ -1,13 +1,14 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QAbstractItemView,
-    QHeaderView, QMessageBox, QToolButton, QApplication
+    QHeaderView, QMessageBox, QToolButton, QStyledItemDelegate
 )
-from PySide6.QtCore import Qt, QSize, QEvent
+from PySide6.QtCore import Qt, QSize, QEvent, QModelIndex
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from ui.icons import get_icon
 import db
 from dialogs.properties import pg_queries
-from ui.components import PrimaryButton, SecondaryButton
+from ui.components import IconButton, PrimaryIconButton, ToastNotification
+from workers.workers import WorkerThread
 from widgets.inspector.properties_ui import (
     PropertyTable,
     DataTypeDelegate,
@@ -15,12 +16,19 @@ from widgets.inspector.properties_ui import (
     PropertyCellDelegate,
 )
 
+
+class ActionCellDelegate(QStyledItemDelegate):
+    """Delegate for action/button column: suppresses focus rects, selection, and hover highlights."""
+    def paint(self, painter, option, index):
+        pass
+
+
 class ColumnsTab(QWidget):
     def __init__(self, data, workbench):
         super().__init__()
         self.workbench = workbench
-        self.item_data = workbench.item_data
-        self.obj_name = workbench.obj_name
+        self.item_data = (workbench.item_data or {}) if workbench else {}
+        self.obj_name = (workbench.obj_name or "") if workbench else ""
         self.original_columns_data = data.get("columns", [])
         self.init_ui()
 
@@ -46,17 +54,15 @@ class ColumnsTab(QWidget):
             or self.item_data.get('type') in ('materialized_view', 'matview', 'view')
         )
 
-        add_col_btn = SecondaryButton(" Add Column")
-        add_col_btn.setIcon(get_icon('msc.plus', color='#334155'))
-        add_col_btn.clicked.connect(self._add_column)
-        
-        save_btn = PrimaryButton(" Save Changes")
-        save_btn.setIcon(get_icon('msc.save', color='white'))
-        save_btn.clicked.connect(self._save_column_changes)
+        self.add_col_btn = IconButton(get_icon('msc.plus', color='#334155'), tooltip="Add Column")
+        self.add_col_btn.clicked.connect(self._add_column)
+
+        self.save_btn = PrimaryIconButton(get_icon('msc.save', color='white'), tooltip="Save Changes")
+        self.save_btn.clicked.connect(self._save_column_changes)
 
         if not self.is_read_only:
-            toolbar_layout.addWidget(add_col_btn)
-            toolbar_layout.addWidget(save_btn)
+            toolbar_layout.addWidget(self.add_col_btn)
+            toolbar_layout.addWidget(self.save_btn)
         layout.addWidget(toolbar)
 
         # Table
@@ -73,6 +79,7 @@ class ColumnsTab(QWidget):
                 | QAbstractItemView.EditTrigger.EditKeyPressed
             )
         self.columns_table.setItemDelegate(PropertyCellDelegate(self.columns_table))
+        self.columns_table.setItemDelegateForColumn(5, ActionCellDelegate(self.columns_table))
         if not self.is_read_only:
             self.columns_table.setItemDelegateForColumn(1, DataTypeDelegate(self.columns_table))
             self.columns_table.setItemDelegateForColumn(2, CheckboxDelegate(self.columns_table))
@@ -96,6 +103,8 @@ class ColumnsTab(QWidget):
                                     orig_name=col.get("name", ""))
 
         self.columns_table.setModel(self.columns_model)
+        self.columns_table.clearSelection()
+        self.columns_table.setCurrentIndex(QModelIndex())
 
         hh = self.columns_table.horizontalHeader()
         hh.setStretchLastSection(False)
@@ -140,11 +149,21 @@ class ColumnsTab(QWidget):
         return super().eventFilter(obj, event)
 
     def _make_delete_btn(self, row):
-        btn = QToolButton()
-        btn.setIcon(get_icon('msc.trash', color='#000000'))
-        btn.setIconSize(QSize(18, 18))
-        btn.setFixedSize(26, 26)
+        container = QWidget()
+        container.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        container.setStyleSheet("background: transparent;")
+
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        btn = QToolButton(container)
+        btn.setIcon(get_icon('msc.trash', color='#64748b'))
+        btn.setIconSize(QSize(16, 16))
+        btn.setFixedSize(24, 24)
         btn.setAutoRaise(True)
+        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolTip("Delete this column")
         btn.setStyleSheet("""
@@ -152,6 +171,8 @@ class ColumnsTab(QWidget):
                 border: none;
                 border-radius: 4px;
                 background: transparent;
+                padding: 0px;
+                margin: 0px;
             }
             QToolButton:hover {
                 background-color: #fee2e2;
@@ -162,11 +183,13 @@ class ColumnsTab(QWidget):
         def _delete():
             for r in range(self.columns_model.rowCount()):
                 w = self.columns_table.indexWidget(self.columns_model.index(r, 5))
-                if w is btn:
+                if w is container or (w and w.findChild(QToolButton) is btn):
                     self.columns_model.removeRow(r)
                     break
+
         btn.clicked.connect(_delete)
-        return btn
+        layout.addWidget(btn)
+        return container
 
     def _append_column_row(self, name, data_type, is_pk, not_null, default_val, comment, orig_name=None):
         name_item = QStandardItem(name)
@@ -186,7 +209,7 @@ class ColumnsTab(QWidget):
         default_item = QStandardItem(str(default_val) if default_val else "")
         comment_item = QStandardItem(str(comment) if comment else "")
         action_item = QStandardItem()
-        action_item.setEditable(False)
+        action_item.setFlags(Qt.ItemFlag.NoItemFlags)
 
         self.columns_model.appendRow([name_item, type_item, pk_item, nn_item, default_item, action_item, comment_item])
         return self.columns_model.rowCount() - 1
@@ -200,10 +223,20 @@ class ColumnsTab(QWidget):
             )
             self.columns_table.scrollToBottom()
 
-    def _save_column_changes(self):
-        self.workbench.progress.setVisible(True)
-        QApplication.processEvents()
+    def _set_progress(self, visible: bool):
+        wb = getattr(self, "workbench", None)
+        if not wb:
+            return
+        if hasattr(wb, "progress_container"):
+            wb.progress_container.setVisible(visible)
+            if hasattr(wb, "loading_icon"):
+                wb.loading_icon.setVisible(visible)
+            if hasattr(wb, "scroll"):
+                wb.scroll.setVisible(not visible)
+        elif hasattr(wb, "progress"):
+            wb.progress.setVisible(visible)
 
+    def _save_column_changes(self):
         conn_data = self.item_data.get('conn_data') or self.item_data
         pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
         try:
@@ -211,7 +244,6 @@ class ColumnsTab(QWidget):
             cursor = conn.cursor()
         except Exception as e:
             QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
-            self.workbench.progress.setVisible(False)
             return
 
         schema_name = self.item_data.get('schema_name', 'public')
@@ -222,17 +254,17 @@ class ColumnsTab(QWidget):
         old_pk_columns = [col['name'] for col in self.original_columns_data if col.get('is_pk')]
 
         orig_names_set = {col['name'] for col in self.original_columns_data}
-        orig_by_name   = {col['name']: col for col in self.original_columns_data}
+        orig_by_name = {col['name']: col for col in self.original_columns_data}
         grid_orig_names = set()
 
         for row in range(self.columns_model.rowCount()):
-            name       = self.columns_model.item(row, 0).text().strip()
-            data_type  = self.columns_model.item(row, 1).text().strip()
-            is_pk      = bool(self.columns_model.item(row, 2).data(Qt.ItemDataRole.UserRole))
-            not_null   = bool(self.columns_model.item(row, 3).data(Qt.ItemDataRole.UserRole))
+            name = self.columns_model.item(row, 0).text().strip()
+            data_type = self.columns_model.item(row, 1).text().strip()
+            is_pk = bool(self.columns_model.item(row, 2).data(Qt.ItemDataRole.UserRole))
+            not_null = bool(self.columns_model.item(row, 3).data(Qt.ItemDataRole.UserRole))
             default_val = self.columns_model.item(row, 4).text().strip()
-            comment    = self.columns_model.item(row, 6).text().strip()
-            orig_name  = self.columns_model.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""
+            comment = self.columns_model.item(row, 6).text().strip()
+            orig_name = self.columns_model.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""
 
             if is_pk:
                 new_pk_columns.append(name)
@@ -292,6 +324,9 @@ class ColumnsTab(QWidget):
                 msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
                 if msg.exec() == QMessageBox.StandardButton.Ok:
                     alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}" CASCADE;')
+                else:
+                    conn.close()
+                    return
             else:
                 alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}";')
 
@@ -303,21 +338,38 @@ class ColumnsTab(QWidget):
                 pk_cols_str = ", ".join([f'"{c}"' for c in new_pk_columns])
                 alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ADD PRIMARY KEY ({pk_cols_str});')
 
+        conn.close()
+
         if not alter_statements:
-            QMessageBox.information(self, "No Changes", "No column changes detected.")
-            conn.close()
-            self.workbench.progress.setVisible(False)
+            ToastNotification.show_toast(self, "No column changes detected.", kind="info")
             return
 
-        try:
-            for stmt in alter_statements:
-                cursor.execute(stmt)
-            conn.commit()
-            QMessageBox.information(self, "Success", "Table columns updated successfully.")
-            self.workbench.refresh_properties()
-        except Exception as e:
-            conn.rollback()
-            QMessageBox.critical(self, "Execution Error", f"Failed to execute changes:\n{e}\n\nTransaction rolled back.")
-        finally:
-            conn.close()
-            self.workbench.progress.setVisible(False)
+        self.save_btn.start_loading("")
+
+        def _worker_execute():
+            exec_conn = db.create_postgres_connection(**pg_conn_data)
+            try:
+                cur = exec_conn.cursor()
+                for stmt in alter_statements:
+                    cur.execute(stmt)
+                exec_conn.commit()
+            except Exception:
+                exec_conn.rollback()
+                raise
+            finally:
+                exec_conn.close()
+
+        self._save_worker = WorkerThread(_worker_execute)
+        self._save_worker.finished_signal.connect(self._on_save_finished)
+        self._save_worker.start()
+
+    def _on_save_finished(self, _result, error):
+        self.save_btn.stop_loading()
+        if error:
+            QMessageBox.critical(self, "Execution Error", f"Failed to execute changes:\n{error}\n\nTransaction rolled back.")
+            return
+
+        ToastNotification.show_toast(self, "Table columns updated successfully.", kind="success")
+        wb = getattr(self, "workbench", None)
+        if wb and hasattr(wb, "refresh_properties"):
+            wb.refresh_properties()
