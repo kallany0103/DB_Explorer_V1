@@ -7,7 +7,7 @@ from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
 from ui.icons import get_icon, get_database_icon
-from PySide6.QtCore import QSize, QThreadPool
+from PySide6.QtCore import QSize, QThreadPool, Qt
 from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
@@ -65,6 +65,7 @@ class StatisticsWorkbench(QWidget):
         header_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(header_frame)
+        layout.setAlignment(header_frame, Qt.AlignmentFlag.AlignTop)
         
         self.loading_icon = QToolButton()
         self.loading_icon.setIcon(
@@ -103,7 +104,6 @@ class StatisticsWorkbench(QWidget):
         self.content_layout.addWidget(self.stats_view)
         
         layout.addWidget(self.content_container, 1)
-        layout.addStretch(1)
 
     @property
     def progress(self):

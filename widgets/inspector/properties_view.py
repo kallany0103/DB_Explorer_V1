@@ -72,6 +72,7 @@ class PropertiesWorkbench(QWidget):
         header_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(header_frame)
+        layout.setAlignment(header_frame, Qt.AlignmentFlag.AlignTop)
         
         self.loading_icon = QToolButton()
         self.loading_icon.setIcon(
@@ -112,7 +113,6 @@ class PropertiesWorkbench(QWidget):
         
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll, 1)
-        layout.addStretch(1)
 
     @property
     def progress(self):
