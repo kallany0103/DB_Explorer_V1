@@ -18,9 +18,21 @@ from widgets.inspector.properties_ui import (
 
 
 class ActionCellDelegate(QStyledItemDelegate):
-    """Delegate for action/button column: suppresses focus rects, selection, and hover highlights."""
+    """Delegate for action/button column: suppresses focus rects, selection, and hover highlights, and sizes index widget to cell."""
     def paint(self, painter, option, index):
         pass
+
+    def updateEditorGeometry(self, editor, option, index):
+        editor.setGeometry(option.rect)
+
+    def editorEvent(self, event, model, option, index):
+        if event.type() in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.MouseButtonDblClick,
+        ):
+            return True
+        return super().editorEvent(event, model, option, index)
 
 
 class ColumnsTab(QWidget):
@@ -162,13 +174,12 @@ class ColumnsTab(QWidget):
         btn.setIcon(get_icon('msc.trash', color='#64748b'))
         btn.setIconSize(QSize(16, 16))
         btn.setFixedSize(24, 24)
-        btn.setAutoRaise(True)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolTip("Delete this column")
         btn.setStyleSheet("""
             QToolButton {
-                border: none;
+                border: 1px solid transparent;
                 border-radius: 4px;
                 background: transparent;
                 padding: 0px;
@@ -177,6 +188,14 @@ class ColumnsTab(QWidget):
             QToolButton:hover {
                 background-color: #fee2e2;
                 border: 1px solid #fca5a5;
+            }
+            QToolTip {
+                background-color: #ffffff;
+                color: #1f2937;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
             }
         """)
 
