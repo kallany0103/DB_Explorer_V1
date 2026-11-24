@@ -391,4 +391,4 @@ class ColumnsTab(QWidget):
         ToastNotification.show_toast(self, "Table columns updated successfully.", kind="success")
         wb = getattr(self, "workbench", None)
         if wb and hasattr(wb, "refresh_properties"):
-            wb.refresh_properties()
+            wb.refresh_properties(silent=True)
