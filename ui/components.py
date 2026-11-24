@@ -132,9 +132,12 @@ class LoadingOverlay(QWidget):
 
 class LoadingButton:
 
-    def start_loading(self, text="Testing"):
+    def start_loading(self, text=None):
         self._original_text = self.text()
         self._original_icon = self.icon()
+
+        if text is None:
+            text = "Testing" if self._original_text else ""
 
         # Lock width during loading so button never jumps or shifts position in layout
         self._had_fixed_width = (self.minimumWidth() == self.maximumWidth() and self.minimumWidth() > 0)
@@ -150,7 +153,8 @@ class LoadingButton:
         self._progress_value = 0.0
         self._dot_tick = 0
         self.setEnabled(False)
-        self.setIcon(QIcon())
+        if text or self._original_text:
+            self.setIcon(QIcon())
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -359,6 +363,52 @@ class PrimaryButton(QPushButton, LoadingButton):
                 background-color: #f3f4f6;
                 color: #9ca3af;
                 border-color: #e5e7eb;
+            }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #f0f7ff;
+                color: #0284c7;
+                border-color: #93c5fd;
+            }
+        """)
+
+
+class PrimaryIconButton(PrimaryButton):
+    """
+    A primary (blue) icon-only button with a squarer look.
+    Inherits from PrimaryButton and LoadingButton.
+    """
+    def __init__(self, icon: QIcon, tooltip: str = "", parent=None):
+        super().__init__(icon, "", parent)
+        if tooltip:
+            self.setToolTip(tooltip)
+
+        self.setStyleSheet("""
+            QPushButton {
+                min-height: 22px;
+                min-width: 22px;
+                padding: 2px;
+                border: 1px solid #006cbe;
+                border-radius: 4px;
+                background-color: #0078d4;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #006cbe;
+                border-color: #005a9e;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+            QPushButton:disabled {
+                background-color: #f3f4f6;
+                color: #9ca3af;
+                border-color: #e5e7eb;
+            }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #0284c7;
+                border-color: #0369a1;
             }
         """)
 
