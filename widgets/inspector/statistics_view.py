@@ -103,6 +103,11 @@ class StatisticsWorkbench(QWidget):
         
         layout.addWidget(self.content_container)
 
+    @property
+    def progress(self):
+        """Backward-compatible alias for progress_container."""
+        return self.progress_container
+
     def refresh_statistics(self):
         if self.item_data:
             self.update_view(self.item_data, self.obj_name, force_refresh=True)

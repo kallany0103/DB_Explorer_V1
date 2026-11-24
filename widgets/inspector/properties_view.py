@@ -112,6 +112,11 @@ class PropertiesWorkbench(QWidget):
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll)
 
+    @property
+    def progress(self):
+        """Backward-compatible alias for progress_container."""
+        return self.progress_container
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         for card in self.findChildren(CollectionCard):
