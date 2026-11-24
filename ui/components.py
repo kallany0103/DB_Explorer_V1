@@ -376,10 +376,11 @@ class PrimaryButton(QPushButton, LoadingButton):
 class PrimaryIconButton(PrimaryButton):
     """
     A primary (blue) icon-only button with a squarer look.
-    Inherits from PrimaryButton and LoadingButton.
+    Uses spinning msc.loading animation during loading instead of a progress bar overlay.
     """
     def __init__(self, icon: QIcon, tooltip: str = "", parent=None):
         super().__init__(icon, "", parent)
+        self._initial_icon = icon
         if tooltip:
             self.setToolTip(tooltip)
 
@@ -412,14 +413,37 @@ class PrimaryIconButton(PrimaryButton):
             }
         """)
 
+    def start_loading(self, text=None):
+        self._orig_icon = self.icon()
+        self._orig_tooltip = self.toolTip()
+        self.setProperty("loading", True)
+        self.setEnabled(False)
+        self.setIcon(qta.icon('msc.loading', color='white', animation=qta.Spin(self)))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def stop_loading(self):
+        self.setProperty("loading", False)
+        self.setEnabled(True)
+        if hasattr(self, '_orig_icon') and self._orig_icon:
+            self.setIcon(self._orig_icon)
+        elif hasattr(self, '_initial_icon') and self._initial_icon:
+            self.setIcon(self._initial_icon)
+        if hasattr(self, '_orig_tooltip') and self._orig_tooltip:
+            self.setToolTip(self._orig_tooltip)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
 
 class IconButton(SecondaryButton):
     """
     An icon-only button or a button where the icon is the primary visual element.
     Inherits from SecondaryButton but adjusts padding for a squarer look.
+    Uses spinning msc.loading animation during loading instead of a progress bar overlay.
     """
     def __init__(self, icon: QIcon, tooltip: str = "", parent=None):
         super().__init__(icon, "", parent)
+        self._initial_icon = icon
         if tooltip:
             self.setToolTip(tooltip)
         
@@ -440,7 +464,33 @@ class IconButton(SecondaryButton):
             QPushButton:pressed {
                 background-color: #e5e7eb;
             }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #f0f7ff;
+                border-color: #93c5fd;
+            }
         """)
+
+    def start_loading(self, text=None):
+        self._orig_icon = self.icon()
+        self._orig_tooltip = self.toolTip()
+        self.setProperty("loading", True)
+        self.setEnabled(False)
+        self.setIcon(qta.icon('msc.loading', color='#0284c7', animation=qta.Spin(self)))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def stop_loading(self):
+        self.setProperty("loading", False)
+        self.setEnabled(True)
+        if hasattr(self, '_orig_icon') and self._orig_icon:
+            self.setIcon(self._orig_icon)
+        elif hasattr(self, '_initial_icon') and self._initial_icon:
+            self.setIcon(self._initial_icon)
+        if hasattr(self, '_orig_tooltip') and self._orig_tooltip:
+            self.setToolTip(self._orig_tooltip)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class SearchBox(QLineEdit):
