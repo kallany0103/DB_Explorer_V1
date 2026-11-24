@@ -1,7 +1,7 @@
 # widgets/inspector/statistics_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QToolButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QToolButton, QSizePolicy
 )
 from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
@@ -27,6 +27,7 @@ class StatisticsWorkbench(QWidget):
         # Header
         header_frame = QFrame()
         header_frame.setObjectName("statisticsHeaderFrame")
+        header_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         header_frame.setStyleSheet("""
             QFrame#statisticsHeaderFrame {
                 background-color: #ffffff;
@@ -101,7 +102,8 @@ class StatisticsWorkbench(QWidget):
         self.stats_view = StatisticsTab()
         self.content_layout.addWidget(self.stats_view)
         
-        layout.addWidget(self.content_container)
+        layout.addWidget(self.content_container, 1)
+        layout.addStretch(1)
 
     @property
     def progress(self):

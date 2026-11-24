@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, 
-    QFrame, QTabWidget, QToolButton
+    QFrame, QTabWidget, QToolButton, QSizePolicy
 )
 from PySide6.QtCore import QSize, Qt, QThreadPool
 from .tabs.columns_tab import ColumnsTab
@@ -35,6 +35,7 @@ class PropertiesWorkbench(QWidget):
         # Toolbar-like header
         header_frame = QFrame()
         header_frame.setObjectName("propertiesHeaderFrame")
+        header_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         header_frame.setStyleSheet("""
             QFrame#propertiesHeaderFrame {
                 background-color: #ffffff;
@@ -110,7 +111,8 @@ class PropertiesWorkbench(QWidget):
         self.container_layout.setSpacing(0)
         
         self.scroll.setWidget(self.container)
-        layout.addWidget(self.scroll)
+        layout.addWidget(self.scroll, 1)
+        layout.addStretch(1)
 
     @property
     def progress(self):
