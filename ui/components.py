@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QProgressBar, QStyle, QStyledItemDelegate, QSizePolicy
 )
 from PySide6.QtGui import (
-    QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QPixmap, QPen, QGuiApplication
+    QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QFontMetrics, QPixmap, QPen, QGuiApplication
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QRectF, QSize, QEvent
 from typing import Optional
@@ -918,12 +918,13 @@ class ToastNotification(QWidget):
         icon_lbl = QLabel()
         icon_lbl.setStyleSheet("background: transparent;")
         icon_lbl.setPixmap(get_icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
-        icon_lbl.setFixedWidth(20)
-        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        icon_lbl.setFixedSize(16, 16)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         msg_lbl = QLabel(message)
-        msg_lbl.setFont(QFont("Segoe UI Variable", 10))
-        msg_lbl.setStyleSheet("color: #1f2937; background: transparent; line-height: 1.3;")
+        msg_font = QFont("Segoe UI Variable", 10)
+        msg_lbl.setFont(msg_font)
+        msg_lbl.setStyleSheet("color: #1f2937; background: transparent;")
         msg_lbl.setWordWrap(True)
         msg_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         msg_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -949,13 +950,17 @@ class ToastNotification(QWidget):
         """)
         close_btn.clicked.connect(self.close)
 
-        layout.addWidget(icon_lbl)
-        layout.addWidget(msg_lbl, 1)
-        layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(icon_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(msg_lbl, 1, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self.adjustSize()
-        if self.width() < 260:
-            self.setMinimumWidth(260)
+        fm = QFontMetrics(msg_font)
+        text_w = max((fm.horizontalAdvance(line) for line in message.split("\n")), default=100)
+        target_w = min(max_toast_w, max(260, text_w + 90))
+        available_text_w = max(100, target_w - 78)
+        text_h = msg_lbl.heightForWidth(available_text_w)
+        target_h = max(38, text_h + 20)
+        self.setFixedSize(target_w, target_h)
 
         self._reposition()
 
