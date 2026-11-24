@@ -166,7 +166,14 @@ class ConnectionManager(QWidget):
 
         if data.get("schema_name"):
             data["type"] = "schema"
-        elif data.get("conn_data") or data.get("host") or data.get("database"):
+        elif (
+            data.get("conn_data")
+            or data.get("host")
+            or data.get("database")
+            or data.get("db_type")
+            or data.get("instance_url")
+            or data.get("db_path")
+        ):
             data["type"] = "connection"
             data.setdefault("name", obj_name)
         return data

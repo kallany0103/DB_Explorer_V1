@@ -137,7 +137,7 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText("Properties")
         self.sub_label.setText(message)
         self.icon_label.setPixmap(
-            get_icon('msc.package', color='#94a3b8').pixmap(24, 24)
+            get_icon('msc.settings', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
         self.loading_icon.setVisible(False)
@@ -151,7 +151,7 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText("Properties")
         self.sub_label.setText(message)
         self.icon_label.setPixmap(
-            get_icon('msc.package', color='#94a3b8').pixmap(24, 24)
+            get_icon('msc.settings', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
         self.loading_icon.setVisible(True)
@@ -198,8 +198,8 @@ class PropertiesWorkbench(QWidget):
             elif obj_type == 'language_root':
                 group_name = "Languages"
 
-        icon_color = '#6366f1'
-        icon_name = 'msc.package'
+        icon_color = None
+        icon_name = None
         if obj_type in ('materialized_view', 'matview') or group_name == 'Materialized Views':
             icon_name, icon_color = 'msc.eye', '#0284c7'
         elif obj_type == 'trigger_function' or group_name == 'Trigger Functions':
@@ -211,7 +211,6 @@ class PropertiesWorkbench(QWidget):
         elif obj_type == 'schema' or obj_type == 'schemas_root' or group_name == 'Schemas':
             icon_name, icon_color = 'msc.folder-library', '#f59e0b'
         elif obj_type == 'connection':
-            icon_name, icon_color = None, None
             self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
         elif obj_type == 'function' or group_name == 'Functions':
             icon_name, icon_color = 'msc.symbol-method', '#ec4899'
@@ -229,6 +228,8 @@ class PropertiesWorkbench(QWidget):
                 icon_name, icon_color = 'msc.zap', '#f59e0b'
         elif group_name or obj_type in ('group', 'schema_group'):
             icon_name, icon_color = 'msc.folder', '#94a3b8'
+        else:
+            self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
 
         if icon_name:
             self.icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(24, 24))
