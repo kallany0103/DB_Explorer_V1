@@ -27,6 +27,11 @@ def execute_via_native_cli(main_window: "MainWindow", cli_type: str) -> None:
         main_window: The application's main window instance.
         cli_type: Either ``"psql"`` (PostgreSQL) or ``"sqlplus"`` (Oracle).
     """
+    if cli_type == "psql" and not is_feature_enabled(main_window, "terminal_psql"):
+        return
+    if cli_type == "sqlplus" and not is_feature_enabled(main_window, "terminal_sqlplus"):
+        return
+
     current_tab = main_window.tab_widget.currentWidget()
     if not current_tab:
         return
@@ -85,10 +90,13 @@ def update_cli_action_states(main_window: "MainWindow", index: object = None) ->
     if not hasattr(main_window, "execute_usql_action") or not hasattr(main_window, "execute_sqlplus_action"):
         return
 
-    if not is_feature_enabled(main_window, "native_terminals"):
-        main_window.execute_usql_action.setVisible(False)
+    psql_on = is_feature_enabled(main_window, "terminal_psql")
+    sqlplus_on = is_feature_enabled(main_window, "terminal_sqlplus")
+    main_window.execute_usql_action.setVisible(psql_on)
+    main_window.execute_sqlplus_action.setVisible(sqlplus_on)
+
+    if not psql_on and not sqlplus_on:
         main_window.execute_usql_action.setEnabled(False)
-        main_window.execute_sqlplus_action.setVisible(False)
         main_window.execute_sqlplus_action.setEnabled(False)
         return
 
@@ -106,11 +114,11 @@ def update_cli_action_states(main_window: "MainWindow", index: object = None) ->
 
     conn_code = (conn_data.get("code") or conn_data.get("db_type") or "").upper()
     if conn_code == "POSTGRES":
-        main_window.execute_usql_action.setEnabled(True)
+        main_window.execute_usql_action.setEnabled(psql_on)
         main_window.execute_sqlplus_action.setEnabled(False)
     elif conn_code in ("ORACLE", "ORACLE_DB"):
         main_window.execute_usql_action.setEnabled(False)
-        main_window.execute_sqlplus_action.setEnabled(True)
+        main_window.execute_sqlplus_action.setEnabled(sqlplus_on)
     else:
         main_window.execute_usql_action.setEnabled(False)
         main_window.execute_sqlplus_action.setEnabled(False)

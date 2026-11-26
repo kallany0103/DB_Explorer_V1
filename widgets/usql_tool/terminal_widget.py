@@ -60,6 +60,8 @@ class USQLToolWidget(QWidget):
       database in the UI tab and connection label.
     """
 
+    feature_key = "terminal_psql"
+
     _output_received = Signal(str)
     terminal_closed = Signal()
 

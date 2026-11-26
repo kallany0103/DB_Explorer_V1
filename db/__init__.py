@@ -1,3 +1,5 @@
+import importlib
+
 from db.db_connections import (
     create_sqlite_connection,
     create_postgres_connection,
@@ -38,41 +40,6 @@ from db.schema_retrieval import (
     get_servicenow_schema,
     get_postgres_available_schemas,
     get_oracle_available_schemas,
-)
-
-from db.duckdb_manager import (
-    DuckDBManager,
-)
-
-from db.servicenow_metadata import (
-    test_servicenow_connection,
-    fetch_servicenow_tables,
-    fetch_servicenow_columns,
-)
-
-from db.servicenow_dlt import (
-    sync_servicenow_table,
-    get_synced_tables,
-)
-
-from db.oracle_utils import (
-    enable_dbms_output,
-    disable_dbms_output,
-    fetch_dbms_output,
-    is_oracle_plsql,
-    prepare_oracle_query,
-    parse_oracle_ddl_target,
-    fetch_oracle_compiler_errors,
-    generate_oracle_table_ddl,
-    generate_oracle_object_source,
-    generate_oracle_insert_script,
-    generate_oracle_update_script,
-)
-
-from db.postgres_utils import (
-    generate_postgres_table_ddl,
-    generate_postgres_insert_script,
-    generate_postgres_update_script,
 )
 
 from db.db_modifications import (
@@ -205,3 +172,37 @@ __all__ = [
     "sync_servicenow_table",
     "get_synced_tables",
 ]
+
+_LAZY_MODULE_EXPORTS: dict[str, str] = {
+    "DuckDBManager": "db.duckdb_manager",
+    "test_servicenow_connection": "db.servicenow_metadata",
+    "fetch_servicenow_tables": "db.servicenow_metadata",
+    "fetch_servicenow_columns": "db.servicenow_metadata",
+    "sync_servicenow_table": "db.servicenow_dlt",
+    "get_synced_tables": "db.servicenow_dlt",
+    "enable_dbms_output": "db.oracle_utils",
+    "disable_dbms_output": "db.oracle_utils",
+    "fetch_dbms_output": "db.oracle_utils",
+    "is_oracle_plsql": "db.oracle_utils",
+    "prepare_oracle_query": "db.oracle_utils",
+    "parse_oracle_ddl_target": "db.oracle_utils",
+    "fetch_oracle_compiler_errors": "db.oracle_utils",
+    "generate_oracle_table_ddl": "db.oracle_utils",
+    "generate_oracle_object_source": "db.oracle_utils",
+    "generate_oracle_insert_script": "db.oracle_utils",
+    "generate_oracle_update_script": "db.oracle_utils",
+    "generate_postgres_table_ddl": "db.postgres_utils",
+    "generate_postgres_insert_script": "db.postgres_utils",
+    "generate_postgres_update_script": "db.postgres_utils",
+}
+
+
+def __getattr__(name: str):
+    """Lazily resolve optional connector helpers without importing them at startup."""
+    module_path = _LAZY_MODULE_EXPORTS.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = importlib.import_module(module_path)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value

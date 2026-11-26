@@ -43,6 +43,8 @@ from workers.connection_workers import AvailableSchemasWorker
 
 
 class ERDWidget(QWidget):
+    feature_key = "erd_designer"
+
     def __init__(self, schema_data, parent=None, loading=False, conn_data=None):
         super().__init__(parent)
         self.schema_data = schema_data

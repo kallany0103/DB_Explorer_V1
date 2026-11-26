@@ -1,12 +1,18 @@
 # dialogs/connections/__init__.py
 
+from ui.feature_flags import import_feature_symbol
+
 from .base_connection_dialog import BaseConnectionDialog
 from .postgres_dialog import PostgresConnectionDialog
 from .sqlite_dialog import SQLiteConnectionDialog
 from .oracle_dialog import OracleConnectionDialog
 from .csv_dialog import CSVConnectionDialog
 from .servicenow_dialog import ServiceNowConnectionDialog
-from .uds_dialog import UDSConnectionDialog
+UDSConnectionDialog = import_feature_symbol(
+    "unified_data_source",
+    "dialogs.connections.uds_dialog",
+    "UDSConnectionDialog",
+)
 from .unified_connection_dialog import UnifiedConnectionDialog
 
 from .postgres_ds_dialog import PostgresDataSourceDialog

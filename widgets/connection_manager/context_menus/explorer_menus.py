@@ -43,15 +43,6 @@ class ExplorerMenuBuilder:
         act = action(self.manager, "New Connection Group", "mdi.folder-plus-outline")
         act.triggered.connect(lambda: self.manager.connection_dialogs.add_connection_group(item))
         menu.addAction(act)
-        
-        menu.addSeparator()
-        act = action(self.manager, "Edit Connection Type", "mdi.pencil-outline")
-        act.triggered.connect(lambda: self.manager.connection_dialogs.edit_connection_type(item))
-        menu.addAction(act)
-        
-        act = action(self.manager, "Delete Connection Type", "mdi.delete-outline")
-        act.triggered.connect(lambda: self.manager.connection_dialogs.delete_connection_type(item))
-        menu.addAction(act)
 
     def _connection_group_menu(self, menu, item):
         parent_item = item.parent()
@@ -186,19 +177,23 @@ class ExplorerMenuBuilder:
         act.triggered.connect(lambda: self.manager.connection_actions.open_query_tool(item))
         menu.addAction(act)
 
-        # Terminal submenu — only shown when Integrated CLI Terminals feature is enabled
-        if is_feature_enabled(self.manager, "native_terminals"):
+        # Terminal submenu — show only enabled terminal tools
+        psql_on = is_feature_enabled(self.manager, "terminal_psql")
+        sqlplus_on = is_feature_enabled(self.manager, "terminal_sqlplus")
+        if psql_on or sqlplus_on:
             term_sub = submenu(menu, "Terminal", "mdi.console")
 
-            psql_act = action(self.manager, "PSQL Tool", "mdi.console")
-            psql_act.setEnabled(code == "POSTGRES")
-            psql_act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
-            term_sub.addAction(psql_act)
+            if psql_on:
+                psql_act = action(self.manager, "PSQL Tool", "mdi.console")
+                psql_act.setEnabled(code == "POSTGRES")
+                psql_act.triggered.connect(lambda: self.manager.connection_actions.open_psql_tool(conn_data))
+                term_sub.addAction(psql_act)
 
-            sqlplus_act = action(self.manager, "SQL*Plus Tool", "mdi.database-cog")
-            sqlplus_act.setEnabled(code in ("ORACLE_DB", "ORACLE_FA"))
-            sqlplus_act.triggered.connect(lambda: self.manager.connection_actions.open_sqlplus_tool(conn_data))
-            term_sub.addAction(sqlplus_act)
+            if sqlplus_on:
+                sqlplus_act = action(self.manager, "SQL*Plus Tool", "mdi.database-cog")
+                sqlplus_act.setEnabled(code in ("ORACLE_DB", "ORACLE_FA"))
+                sqlplus_act.triggered.connect(lambda: self.manager.connection_actions.open_sqlplus_tool(conn_data))
+                term_sub.addAction(sqlplus_act)
         
         # parent_item = item.parent()
         # grandparent_item = parent_item.parent() if parent_item else None
@@ -222,12 +217,12 @@ class ExplorerMenuBuilder:
             act.triggered.connect(lambda: self.manager.connection_dialogs.edit_uds_connection(item))
             menu.addAction(act)
 
-            if is_feature_enabled(self.manager, "data_virtualization"):
+            if is_feature_enabled(self.manager, "unified_data_source"):
                 act = action(self.manager, "Create Virtual View...", "mdi.eye-plus")
                 act.triggered.connect(lambda _, it=connection_item: self.manager.connection_actions.open_uds_virtual_view_dialog(it.data(Qt.ItemDataRole.UserRole)))
                 menu.addAction(act)
 
-            if is_feature_enabled(self.manager, "native_terminals"):
+            if is_feature_enabled(self.manager, "terminal_psql"):
                 act = action(self.manager, "USQL Tool", "mdi.console")
                 act.triggered.connect(lambda: self.manager.connection_actions.open_usql_tool(conn_data))
                 menu.addAction(act)

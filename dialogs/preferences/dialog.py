@@ -40,11 +40,12 @@ from ui.dialog_utils import fit_dialog_to_screen
 from ui.feature_flags import (
     FEATURE_CATALOG,
     FEATURE_SPEC_BY_KEY,
+    import_feature_symbol,
+    is_compiled_in,
     is_connection_type_enabled,
+    is_feature_enabled,
     normalize_feature_flags,
 )
-from widgets.psql_tool.discovery import get_all_postgres_candidates
-from widgets.sqlplus_tool.discovery import get_sqlplus_candidates
 
 
 class BinaryPathSelector(QWidget):
@@ -798,6 +799,10 @@ class PreferencesDialog(QDialog):
         self.pages_stack.addWidget(scroll)
 
     def _build_features_page(self) -> None:
+        compiled_specs = [spec for spec in FEATURE_CATALOG if is_compiled_in(spec.key)]
+        if not compiled_specs:
+            return
+
         idx = self._add_category("msc.extensions", "Features")
         scroll, layout = self._create_page(idx, "Features")
 
@@ -816,7 +821,7 @@ class PreferencesDialog(QDialog):
 
         current_flags = normalize_feature_flags(getattr(self.main_window, "feature_flags", None))
         cards_by_cat: dict[str, dict] = {}
-        for spec in FEATURE_CATALOG:
+        for spec in compiled_specs:
             if spec.category not in cards_by_cat:
                 cards_by_cat[spec.category] = self._create_card(idx, layout, spec.category)
             toggle = ToggleSwitch()
@@ -971,41 +976,64 @@ class PreferencesDialog(QDialog):
         idx = self._add_category("msc.database", "Database Tools")
         scroll, layout = self._create_page(idx, "Database Tools")
 
-        binaries = self._create_card(idx, layout, "External CLI Binaries")
+        psql_on = is_feature_enabled(self.main_window, "terminal_psql")
+        sqlplus_on = is_feature_enabled(self.main_window, "terminal_sqlplus")
+        self.pg_bin_picker = None
+        self.oracle_bin_picker = None
 
-        # 1. PostgreSQL Binary Path (unified Windows + WSL dropdown)
-        self.pg_bin_picker = BinaryPathSelector(
-            current_val=getattr(self.main_window, "pg_bin_path", ""),
-            candidates=get_all_postgres_candidates(),
-            dialog_title="Select PostgreSQL Bin Directory",
-            parent=self,
-            use_wsl=bool(getattr(self.main_window, "use_wsl", False)),
-            wsl_distro=getattr(self.main_window, "wsl_distro", None),
-        )
-        self.pg_bin_picker.path_changed.connect(lambda _p: self._mark_dirty())
-        self._add_row(
-            binaries,
-            "PostgreSQL Binary Path",
-            "Directory containing psql, pg_dump, and pg_restore executables.",
-            self.pg_bin_picker,
-            330,
-        )
+        page_keys: list[str] = []
+        if psql_on or sqlplus_on:
+            binaries = self._create_card(idx, layout, "External CLI Binaries")
 
-        # 2. Oracle Binary Path
-        self.oracle_bin_picker = BinaryPathSelector(
-            getattr(self.main_window, "oracle_bin_path", ""),
-            get_sqlplus_candidates(),
-            "Select Oracle Bin Directory",
-            parent=self,
-        )
-        self.oracle_bin_picker.path_changed.connect(lambda _p: self._mark_dirty())
-        self._add_row(
-            binaries,
-            "Oracle Binary Path",
-            "Directory containing sqlplus and Oracle Instant Client libraries.",
-            self.oracle_bin_picker,
-            330,
-        )
+            if psql_on:
+                get_pg_candidates = import_feature_symbol(
+                    "terminal_psql",
+                    "widgets.psql_tool.discovery",
+                    "get_all_postgres_candidates",
+                    fallback=lambda: [],
+                )
+                # 1. PostgreSQL Binary Path (unified Windows + WSL dropdown)
+                self.pg_bin_picker = BinaryPathSelector(
+                    current_val=getattr(self.main_window, "pg_bin_path", ""),
+                    candidates=get_pg_candidates(),
+                    dialog_title="Select PostgreSQL Bin Directory",
+                    parent=self,
+                    use_wsl=bool(getattr(self.main_window, "use_wsl", False)),
+                    wsl_distro=getattr(self.main_window, "wsl_distro", None),
+                )
+                self.pg_bin_picker.path_changed.connect(lambda _p: self._mark_dirty())
+                self._add_row(
+                    binaries,
+                    "PostgreSQL Binary Path",
+                    "Directory containing psql, pg_dump, and pg_restore executables.",
+                    self.pg_bin_picker,
+                    330,
+                )
+                page_keys.extend(["pg_bin_path", "use_wsl", "wsl_distro"])
+
+            if sqlplus_on:
+                get_ora_candidates = import_feature_symbol(
+                    "terminal_sqlplus",
+                    "widgets.sqlplus_tool.discovery",
+                    "get_sqlplus_candidates",
+                    fallback=lambda: [],
+                )
+                # 2. Oracle Binary Path
+                self.oracle_bin_picker = BinaryPathSelector(
+                    getattr(self.main_window, "oracle_bin_path", ""),
+                    get_ora_candidates(),
+                    "Select Oracle Bin Directory",
+                    parent=self,
+                )
+                self.oracle_bin_picker.path_changed.connect(lambda _p: self._mark_dirty())
+                self._add_row(
+                    binaries,
+                    "Oracle Binary Path",
+                    "Directory containing sqlplus and Oracle Instant Client libraries.",
+                    self.oracle_bin_picker,
+                    330,
+                )
+                page_keys.append("oracle_bin_path")
 
         execution = self._create_card(idx, layout, "Query Execution Limits")
         self.query_timeout_spin = QSpinBox()
@@ -1020,18 +1048,18 @@ class PreferencesDialog(QDialog):
             self.default_row_limit_combo.setCurrentIndex(lim_idx)
         self._add_row(execution, "Default Row Limit", "Maximum rows returned per query in new worksheets.", self.default_row_limit_combo)
 
-        self._page_setting_keys[idx] = (
-            "pg_bin_path",
-            "oracle_bin_path",
-            "use_wsl",
-            "wsl_distro",
-            "query_timeout_sec",
-            "default_row_limit",
-        )
+        page_keys.extend(["query_timeout_sec", "default_row_limit"])
+        self._page_setting_keys[idx] = tuple(page_keys)
         layout.addStretch()
         self.pages_stack.addWidget(scroll)
 
     def _build_ai_assistant_page(self) -> None:
+        if not is_feature_enabled(self.main_window, "ai_assistant"):
+            self.ai_provider_combo = None
+            self.ai_model_edit = None
+            self.ai_api_key_edit = None
+            self.ai_base_url_edit = None
+            return
         idx = self._add_category("msc.robot", "AI Assistant")
         scroll, layout = self._create_page(idx, "AI Assistant")
 
@@ -1177,19 +1205,22 @@ class PreferencesDialog(QDialog):
             self.grid_show_row_numbers_check.setChecked(defaults["grid_show_row_numbers"])
             self.grid_copy_headers_check.setChecked(defaults["grid_copy_headers"])
 
-            self.pg_bin_picker.set_selected_info(
-                pg_bin_path=defaults["pg_bin_path"],
-                use_wsl=defaults.get("use_wsl", False),
-                wsl_distro=defaults.get("wsl_distro", None),
-            )
-            self.oracle_bin_picker.set_value(defaults["oracle_bin_path"])
+            if self.pg_bin_picker is not None:
+                self.pg_bin_picker.set_selected_info(
+                    pg_bin_path=defaults["pg_bin_path"],
+                    use_wsl=defaults.get("use_wsl", False),
+                    wsl_distro=defaults.get("wsl_distro", None),
+                )
+            if self.oracle_bin_picker is not None:
+                self.oracle_bin_picker.set_value(defaults["oracle_bin_path"])
             self.query_timeout_spin.setValue(defaults["query_timeout_sec"])
             self.default_row_limit_combo.setCurrentText(defaults["default_row_limit"])
 
-            self.ai_provider_combo.setCurrentText(defaults["ai_provider"])
-            self.ai_model_edit.setText(defaults["ai_model"])
-            self.ai_api_key_edit.setText(defaults["ai_api_key"])
-            self.ai_base_url_edit.setText(defaults["ai_base_url"])
+            if self.ai_provider_combo is not None:
+                self.ai_provider_combo.setCurrentText(defaults["ai_provider"])
+                self.ai_model_edit.setText(defaults["ai_model"])
+                self.ai_api_key_edit.setText(defaults["ai_api_key"])
+                self.ai_base_url_edit.setText(defaults["ai_base_url"])
 
             for key, toggle in self.feature_checks.items():
                 toggle.setChecked(defaults["feature_flags"].get(key, True))
@@ -1199,7 +1230,40 @@ class PreferencesDialog(QDialog):
 
     def get_settings(self) -> dict:
         """Return dictionary of all current settings values."""
-        pg_info = self.pg_bin_picker.get_selected_info()
+        pg_info = (
+            self.pg_bin_picker.get_selected_info()
+            if self.pg_bin_picker is not None
+            else {
+                "pg_bin_path": getattr(self.main_window, "pg_bin_path", ""),
+                "use_wsl": bool(getattr(self.main_window, "use_wsl", False)),
+                "wsl_distro": getattr(self.main_window, "wsl_distro", None),
+            }
+        )
+        oracle_bin = (
+            self.oracle_bin_picker.get_value()
+            if self.oracle_bin_picker is not None
+            else getattr(self.main_window, "oracle_bin_path", "")
+        )
+        ai_provider = (
+            self.ai_provider_combo.currentText()
+            if self.ai_provider_combo is not None
+            else getattr(self.main_window, "ai_provider", "OpenAI")
+        )
+        ai_model = (
+            self.ai_model_edit.text().strip()
+            if self.ai_model_edit is not None
+            else getattr(self.main_window, "ai_model", "")
+        )
+        ai_api_key = (
+            self.ai_api_key_edit.text().strip()
+            if self.ai_api_key_edit is not None
+            else getattr(self.main_window, "ai_api_key", "")
+        )
+        ai_base_url = (
+            self.ai_base_url_edit.text().strip()
+            if self.ai_base_url_edit is not None
+            else getattr(self.main_window, "ai_base_url", "")
+        )
         return {
             "theme": self.theme_combo.currentText(),
             "default_connection_id": self.default_conn_combo.currentData(),
@@ -1226,15 +1290,15 @@ class PreferencesDialog(QDialog):
             "grid_show_row_numbers": self.grid_show_row_numbers_check.isChecked(),
             "grid_copy_headers": self.grid_copy_headers_check.isChecked(),
             "pg_bin_path": pg_info["pg_bin_path"],
-            "oracle_bin_path": self.oracle_bin_picker.get_value(),
+            "oracle_bin_path": oracle_bin,
             "use_wsl": pg_info["use_wsl"],
             "wsl_distro": pg_info["wsl_distro"],
             "query_timeout_sec": self.query_timeout_spin.value(),
             "default_row_limit": self.default_row_limit_combo.currentText(),
-            "ai_provider": self.ai_provider_combo.currentText(),
-            "ai_model": self.ai_model_edit.text().strip(),
-            "ai_api_key": self.ai_api_key_edit.text().strip(),
-            "ai_base_url": self.ai_base_url_edit.text().strip(),
+            "ai_provider": ai_provider,
+            "ai_model": ai_model,
+            "ai_api_key": ai_api_key,
+            "ai_base_url": ai_base_url,
         }
 
 
