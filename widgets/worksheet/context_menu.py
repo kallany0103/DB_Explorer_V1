@@ -1,8 +1,10 @@
 from PySide6.QtWidgets import QMenu, QApplication
 from PySide6.QtGui import QAction
+from db.object_describe import _detect_db_code
 from ui.icons import AppIcons, get_icon
 from ui.menu_style import apply_menu_style
 from ui.feature_flags import is_feature_enabled
+from widgets.worksheet.query.query_preparation import get_tab_connection_data
 
 
 def show_editor_context_menu(manager, pos, editor):
@@ -56,13 +58,23 @@ def show_editor_context_menu(manager, pos, editor):
 
     menu.addSeparator()
 
+    tab = manager.tab_widget.currentWidget() if hasattr(manager, "tab_widget") else None
+    conn_data = get_tab_connection_data(tab) if tab else None
+    code = _detect_db_code(conn_data) if isinstance(conn_data, dict) and conn_data else ""
+    is_explain_supported = bool(code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL") or (
+        "ORACLE" in code or "POSTGRES" in code
+    ))
+    is_optimize_supported = is_explain_supported
+
     if is_feature_enabled(manager, "execution_plan"):
         explain_analyze_action = QAction("Explain Analyze", manager)
         explain_analyze_action.triggered.connect(manager.explain_query)
+        explain_analyze_action.setEnabled(is_explain_supported)
         menu.addAction(explain_analyze_action)
 
         explain_plan_action = QAction("Explain Plan", manager)
         explain_plan_action.triggered.connect(manager.explain_plan_query)
+        explain_plan_action.setEnabled(is_explain_supported)
         menu.addAction(explain_plan_action)
 
     if is_feature_enabled(manager, "ai_assistant"):
@@ -77,12 +89,14 @@ def show_editor_context_menu(manager, pos, editor):
         optimize_sql_action.setIconVisibleInMenu(True)
         optimize_sql_action.setShortcut("Ctrl+Alt+O")
         optimize_sql_action.triggered.connect(manager.optimize_query)
+        optimize_sql_action.setEnabled(is_optimize_supported)
         menu.addAction(optimize_sql_action)
 
         optimize_batch_action = QAction(get_icon(AppIcons.OPTIMIZE_BATCH), "Optimize Script Workload (Batch)...", manager)
         optimize_batch_action.setIconVisibleInMenu(True)
         optimize_batch_action.setShortcut("Ctrl+Shift+O")
         optimize_batch_action.triggered.connect(manager.optimize_workload_script)
+        optimize_batch_action.setEnabled(is_optimize_supported)
         menu.addAction(optimize_batch_action)
 
 

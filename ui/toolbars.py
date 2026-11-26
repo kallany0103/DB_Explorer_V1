@@ -322,6 +322,9 @@ class WorksheetToolbar(QWidget):
             self.optimize_batch_btn.setVisible(optimizer_on)
             self.optimize_batch_btn.setEnabled(optimizer_on)
 
+        if hasattr(self.manager, "_update_describe_action_states"):
+            self.manager._update_describe_action_states()
+
     def paintEvent(self, event):
         opt = QStyleOption()
         opt.initFrom(self)

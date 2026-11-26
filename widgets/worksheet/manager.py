@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QAction,
 )
 
+from db.object_describe import _detect_db_code
 from db.transaction_session import TransactionSession
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.query.query_preparation import (
@@ -563,40 +564,72 @@ class WorksheetManager(QWidget):
         self._update_describe_action_states()
 
     def _update_describe_action_states(self) -> None:
-        """Enable or disable Describe actions and buttons based on active connection engine support."""
+        """Enable or disable Describe, Explain, and Optimize actions based on active connection engine support."""
         tab = self.tab_widget.currentWidget()
         conn_data = get_tab_connection_data(tab) if tab else None
 
-        is_supported = False
+        is_describe_supported = False
+        is_explain_supported = False
+        is_optimize_supported = False
+        code = ""
         if isinstance(conn_data, dict) and conn_data:
-            from db.object_describe import _detect_db_code
             code = _detect_db_code(conn_data)
-            is_supported = bool(code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL", "SQLITE") or (
+            is_describe_supported = bool(code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL", "SQLITE") or (
                 "ORACLE" in code or "POSTGRES" in code or "SQLITE" in code
             ))
+            # Explain and live Optimization are only supported on PostgreSQL and Oracle
+            is_explain_supported = bool(code in ("ORACLE", "ORACLE_DB", "ORACLE_FA", "POSTGRES", "POSTGRESQL") or (
+                "ORACLE" in code or "POSTGRES" in code
+            ))
+            is_optimize_supported = is_explain_supported
 
         # 1. Update worksheet toolbar actions
         if hasattr(self, "ws_describe_object_action"):
-            self.ws_describe_object_action.setEnabled(is_supported)
+            self.ws_describe_object_action.setEnabled(is_describe_supported)
         if hasattr(self, "ws_quick_describe_action"):
-            self.ws_quick_describe_action.setEnabled(is_supported)
+            self.ws_quick_describe_action.setEnabled(is_describe_supported)
         if hasattr(self, "ws_describe_action"):
-            self.ws_describe_action.setEnabled(is_supported)
+            self.ws_describe_action.setEnabled(is_describe_supported)
+        if hasattr(self, "ws_optimize_action"):
+            self.ws_optimize_action.setEnabled(is_optimize_supported)
+        if hasattr(self, "ws_optimize_batch_action"):
+            self.ws_optimize_batch_action.setEnabled(is_optimize_supported)
 
-        # 2. Update toolbar button if present
-        toolbar = getattr(self, "toolbar", None)
-        if toolbar and hasattr(toolbar, "describe_obj_btn"):
-            toolbar.describe_obj_btn.setEnabled(is_supported)
+        # 2. Update active tab toolbar widgets if present
+        toolbar = getattr(tab, "toolbar_widget", None) if tab else getattr(self, "toolbar", None)
+        if toolbar:
+            if hasattr(toolbar, "describe_obj_btn"):
+                toolbar.describe_obj_btn.setEnabled(is_describe_supported)
+            if hasattr(toolbar, "explain_combo"):
+                toolbar.explain_combo.setEnabled(is_explain_supported)
+                if is_explain_supported:
+                    toolbar.explain_combo.setToolTip("Explain Query")
+                else:
+                    toolbar.explain_combo.setToolTip(f"Explain Query (Supported for PostgreSQL and Oracle; current: {code or 'None'})")
+            if hasattr(toolbar, "optimize_btn"):
+                toolbar.optimize_btn.setEnabled(is_optimize_supported)
+                if is_optimize_supported:
+                    toolbar.optimize_btn.setToolTip("Optimize SQL (Ctrl+Alt+O)")
+                else:
+                    toolbar.optimize_btn.setToolTip(f"Optimize SQL (Supported for PostgreSQL and Oracle; current: {code or 'None'})")
 
         # 3. Update main window menu actions
         mw = getattr(self, "main_window", None)
         if mw:
             if hasattr(mw, "describe_object_action"):
-                mw.describe_object_action.setEnabled(is_supported)
+                mw.describe_object_action.setEnabled(is_describe_supported)
             if hasattr(mw, "quick_describe_action"):
-                mw.quick_describe_action.setEnabled(is_supported)
+                mw.quick_describe_action.setEnabled(is_describe_supported)
             if hasattr(mw, "describe_query_action"):
-                mw.describe_query_action.setEnabled(is_supported)
+                mw.describe_query_action.setEnabled(is_describe_supported)
+            if hasattr(mw, "explain_action"):
+                mw.explain_action.setEnabled(is_explain_supported)
+            if hasattr(mw, "explain_analyze_action"):
+                mw.explain_analyze_action.setEnabled(is_explain_supported)
+            if hasattr(mw, "explain_plan_action"):
+                mw.explain_plan_action.setEnabled(is_explain_supported)
+            if hasattr(mw, "optimize_action"):
+                mw.optimize_action.setEnabled(is_optimize_supported)
 
     def update_timer_label(self, label, tab):
         update_timer_label_action(self, label, tab)
