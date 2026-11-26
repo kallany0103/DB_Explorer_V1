@@ -38,7 +38,7 @@ class TriggerMenuBuilder:
         menu.addAction(act)
 
         menu.addSeparator()
-        if is_feature_enabled(self.manager, "native_terminals"):
+        if is_feature_enabled(self.manager, "terminal_psql"):
             act = action(self.manager, "PSQL Tool", "mdi.console")
             act.triggered.connect(
                 lambda: self.manager.connection_actions.open_usql_tool(item_data)

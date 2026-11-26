@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+from ui.feature_flags import is_feature_enabled
 from ui.icons import get_icon
 
 _AVATAR_SIZE = 20
@@ -141,9 +142,12 @@ class TitleBarWidget(QWidget):
         self._btn_settings.clicked.connect(self._window.show_preferences)
         layout.addWidget(self._btn_settings)
 
-        self._btn_user = UserControl(self)
-        self._btn_user.clicked.connect(self._show_account_menu)
-        layout.addWidget(self._btn_user)
+        if is_feature_enabled(parent_window, "auth_sso"):
+            self._btn_user = UserControl(self)
+            self._btn_user.clicked.connect(self._show_account_menu)
+            layout.addWidget(self._btn_user)
+        else:
+            self._btn_user = None
 
         self._btn_min = QPushButton()
         self._btn_min.setObjectName("titleBarBtnMin")
@@ -240,10 +244,14 @@ class TitleBarWidget(QWidget):
 
     def set_user_state(self, auth_session) -> None:
         """Reflect the signed-in state on the user control (avatar + chevron)."""
+        if self._btn_user is None:
+            return
         self._btn_user.set_user_state(auth_session)
 
     def _show_account_menu(self) -> None:
         """Open account sign-in choices from the user control."""
+        if self._btn_user is None:
+            return
         self._window.show_login_menu(self._btn_user)
 
 

@@ -7,8 +7,8 @@ from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QWidget
 
 from ui.feature_flags import (
     CONNECTOR_FEATURE_KEYS,
+    default_feature_flags,
     is_feature_enabled,
-    normalize_feature_flags,
 )
 from widgets.worksheet.code_editor import CodeEditor
 
@@ -71,7 +71,6 @@ def save_main_window_session(main_window, session_file):
         "ai_model": getattr(main_window, "ai_model", ""),
         "ai_api_key": getattr(main_window, "ai_api_key", ""),
         "ai_base_url": getattr(main_window, "ai_base_url", ""),
-        "feature_flags": normalize_feature_flags(getattr(main_window, "feature_flags", None)),
         "saved_tree_paths": list(getattr(main_window.connection_manager, "_saved_tree_paths", [])) if should_restore else [],
         "saved_selection_name": getattr(main_window.connection_manager, "_saved_selection_name", None) if should_restore else None,
         "schema_states": getattr(main_window.connection_manager, "_schema_states", {}) if should_restore else {},
@@ -278,7 +277,7 @@ def restore_main_window_session(main_window, session_file):
         main_window.ai_model = session_data.get("ai_model", "")
         main_window.ai_api_key = session_data.get("ai_api_key", "")
         main_window.ai_base_url = session_data.get("ai_base_url", "")
-        main_window.feature_flags = normalize_feature_flags(session_data.get("feature_flags"))
+        main_window.feature_flags = default_feature_flags()
 
         if any(not main_window.feature_flags.get(key, True) for key in CONNECTOR_FEATURE_KEYS):
             main_window.connection_manager.load_data()
@@ -369,7 +368,7 @@ def restore_main_window_session(main_window, session_file):
                     continue
                 main_window.add_dashboard_tab()
             elif tab_type == "psql":
-                if not is_feature_enabled(main_window, "native_terminals"):
+                if not is_feature_enabled(main_window, "terminal_psql"):
                     continue
                 conn = _find_connection_for_restore(
                     tab_data.get("conn_id"),
@@ -384,7 +383,7 @@ def restore_main_window_session(main_window, session_file):
                     from widgets.psql_tool.terminal_widget import open_psql_tool
                     open_psql_tool(conn_copy, getattr(main_window, "connection_manager", None))
             elif tab_type == "sqlplus":
-                if not is_feature_enabled(main_window, "native_terminals"):
+                if not is_feature_enabled(main_window, "terminal_sqlplus"):
                     continue
                 conn = _find_connection_for_restore(
                     tab_data.get("conn_id"),

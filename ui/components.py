@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QProgressBar, QStyle, QStyledItemDelegate, QSizePolicy
 )
 from PySide6.QtGui import (
-    QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QPixmap, QPen, QGuiApplication
+    QIcon, QAction, QActionGroup, QPainter, QColor, QPainterPath, QFont, QFontMetrics, QPixmap, QPen, QGuiApplication
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QRectF, QSize, QEvent
 from typing import Optional
@@ -132,9 +132,12 @@ class LoadingOverlay(QWidget):
 
 class LoadingButton:
 
-    def start_loading(self, text="Testing"):
+    def start_loading(self, text=None):
         self._original_text = self.text()
         self._original_icon = self.icon()
+
+        if text is None:
+            text = "Testing" if self._original_text else ""
 
         # Lock width during loading so button never jumps or shifts position in layout
         self._had_fixed_width = (self.minimumWidth() == self.maximumWidth() and self.minimumWidth() > 0)
@@ -150,7 +153,8 @@ class LoadingButton:
         self._progress_value = 0.0
         self._dot_tick = 0
         self.setEnabled(False)
-        self.setIcon(QIcon())
+        if text or self._original_text:
+            self.setIcon(QIcon())
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -360,16 +364,86 @@ class PrimaryButton(QPushButton, LoadingButton):
                 color: #9ca3af;
                 border-color: #e5e7eb;
             }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #f0f7ff;
+                color: #0284c7;
+                border-color: #93c5fd;
+            }
         """)
+
+
+class PrimaryIconButton(PrimaryButton):
+    """
+    A primary (blue) icon-only button with a squarer look.
+    Uses spinning msc.loading animation during loading instead of a progress bar overlay.
+    """
+    def __init__(self, icon: QIcon, tooltip: str = "", parent=None):
+        super().__init__(icon, "", parent)
+        self._initial_icon = icon
+        if tooltip:
+            self.setToolTip(tooltip)
+
+        self.setStyleSheet("""
+            QPushButton {
+                min-height: 22px;
+                min-width: 22px;
+                padding: 2px;
+                border: 1px solid #006cbe;
+                border-radius: 4px;
+                background-color: #0078d4;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #006cbe;
+                border-color: #005a9e;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+            QPushButton:disabled {
+                background-color: #f3f4f6;
+                color: #9ca3af;
+                border-color: #e5e7eb;
+            }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #0284c7;
+                border-color: #0369a1;
+            }
+        """)
+
+    def start_loading(self, text=None):
+        self._orig_icon = self.icon()
+        self._orig_tooltip = self.toolTip()
+        self.setProperty("loading", True)
+        self.setEnabled(False)
+        self.setIcon(qta.icon('msc.loading', color='white', animation=qta.Spin(self)))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def stop_loading(self):
+        self.setProperty("loading", False)
+        self.setEnabled(True)
+        if hasattr(self, '_orig_icon') and self._orig_icon:
+            self.setIcon(self._orig_icon)
+        elif hasattr(self, '_initial_icon') and self._initial_icon:
+            self.setIcon(self._initial_icon)
+        if hasattr(self, '_orig_tooltip') and self._orig_tooltip:
+            self.setToolTip(self._orig_tooltip)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class IconButton(SecondaryButton):
     """
     An icon-only button or a button where the icon is the primary visual element.
     Inherits from SecondaryButton but adjusts padding for a squarer look.
+    Uses spinning msc.loading animation during loading instead of a progress bar overlay.
     """
     def __init__(self, icon: QIcon, tooltip: str = "", parent=None):
         super().__init__(icon, "", parent)
+        self._initial_icon = icon
         if tooltip:
             self.setToolTip(tooltip)
         
@@ -390,7 +464,33 @@ class IconButton(SecondaryButton):
             QPushButton:pressed {
                 background-color: #e5e7eb;
             }
+            QPushButton[loading="true"],
+            QPushButton[loading="true"]:disabled {
+                background-color: #f0f7ff;
+                border-color: #93c5fd;
+            }
         """)
+
+    def start_loading(self, text=None):
+        self._orig_icon = self.icon()
+        self._orig_tooltip = self.toolTip()
+        self.setProperty("loading", True)
+        self.setEnabled(False)
+        self.setIcon(qta.icon('msc.loading', color='#0284c7', animation=qta.Spin(self)))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def stop_loading(self):
+        self.setProperty("loading", False)
+        self.setEnabled(True)
+        if hasattr(self, '_orig_icon') and self._orig_icon:
+            self.setIcon(self._orig_icon)
+        elif hasattr(self, '_initial_icon') and self._initial_icon:
+            self.setIcon(self._initial_icon)
+        if hasattr(self, '_orig_tooltip') and self._orig_tooltip:
+            self.setToolTip(self._orig_tooltip)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class SearchBox(QLineEdit):
@@ -551,6 +651,12 @@ class DropdownToolButton(ActionToolButton):
         self._action_group = QActionGroup(self)
         self._action_group.setExclusive(True)
         self.itemTriggered.connect(self.setCurrentText)
+        apply_menu_style(self._menu, compact=True)
+        self._menu.aboutToShow.connect(self._sync_menu_width)
+
+    def _sync_menu_width(self):
+        if self.width() > 0:
+            self._menu.setMinimumWidth(self.width())
 
     def addItem(self, text, icon=None, data=None):
         action = super().addItem(text, icon=icon, data=data)
@@ -818,12 +924,13 @@ class ToastNotification(QWidget):
         icon_lbl = QLabel()
         icon_lbl.setStyleSheet("background: transparent;")
         icon_lbl.setPixmap(get_icon(style["icon"], color=style["icon_color"]).pixmap(16, 16))
-        icon_lbl.setFixedWidth(20)
-        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        icon_lbl.setFixedSize(16, 16)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         msg_lbl = QLabel(message)
-        msg_lbl.setFont(QFont("Segoe UI Variable", 10))
-        msg_lbl.setStyleSheet("color: #1f2937; background: transparent; line-height: 1.3;")
+        msg_font = QFont("Segoe UI Variable", 10)
+        msg_lbl.setFont(msg_font)
+        msg_lbl.setStyleSheet("color: #1f2937; background: transparent;")
         msg_lbl.setWordWrap(True)
         msg_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         msg_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -849,13 +956,17 @@ class ToastNotification(QWidget):
         """)
         close_btn.clicked.connect(self.close)
 
-        layout.addWidget(icon_lbl)
-        layout.addWidget(msg_lbl, 1)
-        layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(icon_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(msg_lbl, 1, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self.adjustSize()
-        if self.width() < 260:
-            self.setMinimumWidth(260)
+        fm = QFontMetrics(msg_font)
+        text_w = max((fm.horizontalAdvance(line) for line in message.split("\n")), default=100)
+        target_w = min(max_toast_w, max(260, text_w + 90))
+        available_text_w = max(100, target_w - 78)
+        text_h = msg_lbl.heightForWidth(available_text_w)
+        target_h = max(38, text_h + 20)
+        self.setFixedSize(target_w, target_h)
 
         self._reposition()
 

@@ -1,16 +1,18 @@
 # widgets/inspector/statistics_view.py
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QToolButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QToolButton, QSizePolicy
 )
 from dialogs.statistics.stats_tab import StatisticsTab
 from workers.inspector_workers import InspectorWorker
 import qtawesome as qta
 from ui.icons import get_icon, get_database_icon
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, QThreadPool, Qt
 from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
+    feature_key = "object_inspector"
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -27,6 +29,7 @@ class StatisticsWorkbench(QWidget):
         # Header
         header_frame = QFrame()
         header_frame.setObjectName("statisticsHeaderFrame")
+        header_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         header_frame.setStyleSheet("""
             QFrame#statisticsHeaderFrame {
                 background-color: #ffffff;
@@ -64,6 +67,7 @@ class StatisticsWorkbench(QWidget):
         header_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(header_frame)
+        layout.setAlignment(header_frame, Qt.AlignmentFlag.AlignTop)
         
         self.loading_icon = QToolButton()
         self.loading_icon.setIcon(
@@ -101,11 +105,16 @@ class StatisticsWorkbench(QWidget):
         self.stats_view = StatisticsTab()
         self.content_layout.addWidget(self.stats_view)
         
-        layout.addWidget(self.content_container)
+        layout.addWidget(self.content_container, 1)
 
-    def refresh_statistics(self):
+    @property
+    def progress(self):
+        """Backward-compatible alias for progress_container."""
+        return self.progress_container
+
+    def refresh_statistics(self, silent=False):
         if self.item_data:
-            self.update_view(self.item_data, self.obj_name, force_refresh=True)
+            self.update_view(self.item_data, self.obj_name, force_refresh=True, show_loading=not silent)
 
     def show_empty_state(self, message="Select an object to view statistics"):
         """Show an empty state without the loading spinner."""
@@ -127,7 +136,7 @@ class StatisticsWorkbench(QWidget):
         self.progress_container.setVisible(True)
         self.content_container.setVisible(False)
 
-    def update_view(self, item_data, obj_name, force_refresh=False):
+    def update_view(self, item_data, obj_name, force_refresh=False, show_loading=True):
         if not force_refresh and self.item_data == item_data and self.obj_name == obj_name:
             return
             
@@ -167,31 +176,48 @@ class StatisticsWorkbench(QWidget):
             conn_data = item_data.get('conn_data') or {}
             db_type = (conn_data.get('db_type') or '').lower()
             if not db_type:
-                if (
+                code = str(conn_data.get("code") or item_data.get("code") or "").upper()
+                if "ORACLE" in code:
+                    db_type = "oracle"
+                elif "POSTGRES" in code:
+                    db_type = "postgres"
+                elif "SQLITE" in code or conn_data.get('db_path'):
+                    db_type = "sqlite"
+                elif (
                     conn_data.get('service_name')
                     or conn_data.get('oracle_db_type')
                     or 'oracle' in str(item_data.get('type', '')).lower()
                 ):
                     db_type = 'oracle'
-                elif conn_data.get('database') or conn_data.get('host'):
+                elif (
+                    conn_data.get('database')
+                    or conn_data.get('host')
+                    or item_data.get('schema_name')
+                    or item_data.get('table_name')
+                ):
                     db_type = 'postgres'
 
-        is_supported = (db_type == 'postgres') or ('oracle' in db_type)
+        is_supported = (db_type == 'postgres') or ('oracle' in db_type) or (db_type == 'sqlite')
         if not is_supported:
-            self.sub_label.setText("Statistics are only available for PostgreSQL and Oracle")
+            self.progress_container.setVisible(False)
+            self.content_container.setVisible(False)
+            self.stats_view.clear_stats()
+            self.sub_label.setText("Statistics are only available for PostgreSQL, Oracle, and SQLite")
             return
 
         self.sub_label.setText(f"Type: {item_data.get('type', 'Unknown').capitalize()}")
-        
-        self.loading_icon.setVisible(True)
-        self.progress_container.setVisible(True)
-        self.content_container.setVisible(False)
-        self.stats_view.clear_stats()
-        
+
+        if show_loading:
+            self.loading_icon.setVisible(True)
+            self.progress_container.setVisible(True)
+            self.content_container.setVisible(False)
+            self.stats_view.clear_stats()
+
         worker = InspectorWorker(item_data, obj_name, task_type="statistics")
         worker.signals.finished.connect(self._on_stats_loaded)
         worker.signals.error.connect(self._on_load_error)
-        self.main_window.thread_pool.start(worker)
+        pool = getattr(self.main_window, 'thread_pool', None) or QThreadPool.globalInstance()
+        pool.start(worker)
 
     def _on_stats_loaded(self, data):
         self.progress_container.setVisible(False)

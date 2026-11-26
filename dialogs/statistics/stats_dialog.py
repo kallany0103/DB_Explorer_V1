@@ -4,8 +4,9 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
+import db
 from .stats_tab import StatisticsTab
-from workers.inspector_stats import fetch_statistics_results
+import workers.inspector_stats as inspector_stats
 from ui.components import SecondaryButton
 
 
@@ -17,7 +18,16 @@ class ObjectStatisticsDialog(QDialog):
         self.item_data = item_data
         self.obj_name = obj_name
         self.manager = parent 
-        self.db_type = item_data.get('db_type', 'postgres')
+        conn_data = item_data.get('conn_data') or {}
+        self.db_type = (item_data.get('db_type') or conn_data.get('db_type') or '').lower()
+        if not self.db_type:
+            code = str(conn_data.get("code") or item_data.get("code") or "").upper()
+            if "SQLITE" in code or conn_data.get("db_path"):
+                self.db_type = "sqlite"
+            elif "ORACLE" in code:
+                self.db_type = "oracle"
+            else:
+                self.db_type = "postgres"
         self.schema_name = item_data.get('schema_name', 'public')
         
         self.setWindowTitle(f"Statistics - {self.obj_name}")
@@ -43,16 +53,21 @@ class ObjectStatisticsDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def load_data(self):
-        if self.db_type != 'postgres':
+        if self.db_type not in ('postgres', 'sqlite'):
             return
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         conn = None
         try:
             conn = self.manager.connection_actions.get_connection(self.item_data)
+            if not conn and self.db_type == 'sqlite':
+                conn_data = self.item_data.get('conn_data') or self.item_data
+                conn = db.create_sqlite_connection(conn_data.get('db_path'))
+            if not conn:
+                raise ConnectionError(f"Failed to connect to {self.db_type} database.")
             cursor = conn.cursor()
 
-            result = fetch_statistics_results(cursor, self.item_data, self.obj_name)
+            result = inspector_stats.fetch_statistics_results(cursor, self.item_data, self.obj_name)
             first = True
             for item in result.get("stats", []):
                 self.stats_view.display_data(item["columns"], item["rows"], append=not first)

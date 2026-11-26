@@ -1,5 +1,5 @@
 #define MyAppName "Universal SQL Client"
-#define MyAppVersion "1.44.7"
+#define MyAppVersion "1.44.8"
 #define MyAppPublisher "Datafluent BD"
 #define MyAppURL "https://www.datafluent.team"
 #define MyAppExeName "Universal SQL Client.exe"

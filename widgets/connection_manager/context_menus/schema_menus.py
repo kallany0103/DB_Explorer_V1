@@ -417,7 +417,7 @@ class SchemaMenuBuilder:
             else:
                 erd_act = None
 
-            if is_feature_enabled(self.manager, "data_virtualization"):
+            if is_feature_enabled(self.manager, "unified_data_source"):
                 cross_source_act = action(self.manager, "Cross-Source Join Helper...", "mdi.transit-connection-variant")
                 cross_source_act.triggered.connect(
                     lambda: self.manager.connection_actions.open_cross_source_query_dialog(item_data, display_name)
@@ -691,7 +691,7 @@ class SchemaMenuBuilder:
         )
         menu.addAction(act)
 
-        if is_feature_enabled(self.manager, "native_terminals"):
+        if is_feature_enabled(self.manager, "terminal_psql"):
             act = action(self.manager, "PSQL Tool", "mdi.console")
             act.triggered.connect(lambda: open_usql_tool(item_data.get("conn_data") or item_data, self.manager))
             menu.addAction(act)
@@ -1117,7 +1117,7 @@ class SchemaMenuBuilder:
     def _data_source_menu(self, menu, item, item_data, index):
         self._add_query_tool_action(menu, item_data)
 
-        if is_feature_enabled(self.manager, "data_virtualization"):
+        if is_feature_enabled(self.manager, "unified_data_source"):
             act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
             act.triggered.connect(
                 lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)
@@ -1153,7 +1153,7 @@ class SchemaMenuBuilder:
     # Unified Views Root (UDS)
 
     def _unified_views_root_menu(self, menu, item, item_data, index):
-        if is_feature_enabled(self.manager, "data_virtualization"):
+        if is_feature_enabled(self.manager, "unified_data_source"):
             act = action(self.manager, "Create Unified View...", "mdi.eye-plus")
             act.triggered.connect(
                 lambda: self.manager.connection_actions.open_uds_virtual_view_dialog(item_data)

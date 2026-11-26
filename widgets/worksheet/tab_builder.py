@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 from ui.icons import AppIcons, get_icon
 
 from ui.components import SecondaryButton
+from ui.feature_flags import import_feature_symbol
 from ui.toolbars import NavigationHeader, WorksheetToolbar
-from widgets.ai_assistant import AIChatPanel
 from widgets.worksheet.autocomplete import CompletionEngine
 from widgets.worksheet.code_editor import CodeEditor
 from widgets.worksheet.connections import get_connection_icon
@@ -31,6 +31,8 @@ from widgets.worksheet.query.query_preparation import (
     extract_query_under_cursor,
     sync_editor_limit,
 )
+
+AIChatPanel = import_feature_symbol("ai_assistant", "widgets.ai_assistant", "AIChatPanel")
 
 def add_tab(manager):
     tab_content = QWidget(manager.tab_widget)
@@ -333,15 +335,18 @@ def add_tab(manager):
     editor_horizontal_splitter.setHandleWidth(2)
     editor_horizontal_splitter.addWidget(editor_container)
 
-    ai_chat_panel = AIChatPanel(manager.main_window if hasattr(manager, 'main_window') else None)
-    ai_chat_panel.setObjectName("ai_chat_panel")
-    ai_chat_panel.hide()  # Hidden by default until "Explain code using AI" is clicked
-    ai_chat_panel.close_requested.connect(ai_chat_panel.hide)
+    if AIChatPanel is not None:
+        ai_chat_panel = AIChatPanel(manager.main_window if hasattr(manager, 'main_window') else None)
+        ai_chat_panel.setObjectName("ai_chat_panel")
+        ai_chat_panel.hide()  # Hidden by default until "Explain code using AI" is clicked
+        ai_chat_panel.close_requested.connect(ai_chat_panel.hide)
 
-    editor_horizontal_splitter.addWidget(ai_chat_panel)
-    editor_horizontal_splitter.setStretchFactor(0, 1)
-    editor_horizontal_splitter.setStretchFactor(1, 0)
-    tab_content.ai_chat_panel = ai_chat_panel
+        editor_horizontal_splitter.addWidget(ai_chat_panel)
+        editor_horizontal_splitter.setStretchFactor(0, 1)
+        editor_horizontal_splitter.setStretchFactor(1, 0)
+        tab_content.ai_chat_panel = ai_chat_panel
+    else:
+        tab_content.ai_chat_panel = None
 
     main_vertical_splitter.addWidget(editor_horizontal_splitter)
 

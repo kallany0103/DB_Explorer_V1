@@ -24,7 +24,13 @@ from PySide6.QtWidgets import (
     QWidget,
     QPushButton,
 )
-from dialogs.uds_virtual_view_dialog import UDSVirtualViewMaskingDialog
+from ui.feature_flags import import_feature_symbol
+
+UDSVirtualViewMaskingDialog = import_feature_symbol(
+    "unified_data_source",
+    "dialogs.uds_virtual_view_dialog",
+    "UDSVirtualViewMaskingDialog",
+)
 from dialogs.schema_objects import (
     CreateTableDialog, 
     CreateViewDialog, 

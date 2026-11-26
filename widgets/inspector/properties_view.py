@@ -2,9 +2,9 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, 
-    QFrame, QTabWidget, QToolButton
+    QFrame, QTabWidget, QToolButton, QSizePolicy
 )
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QThreadPool
 from .tabs.columns_tab import ColumnsTab
 from .tabs.constraints_tab import ConstraintsTab
 from .tabs.sql_tab import SqlTab
@@ -19,6 +19,8 @@ from .properties_ui import (
 
 
 class PropertiesWorkbench(QWidget):
+    feature_key = "object_inspector"
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -35,6 +37,7 @@ class PropertiesWorkbench(QWidget):
         # Toolbar-like header
         header_frame = QFrame()
         header_frame.setObjectName("propertiesHeaderFrame")
+        header_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         header_frame.setStyleSheet("""
             QFrame#propertiesHeaderFrame {
                 background-color: #ffffff;
@@ -71,6 +74,7 @@ class PropertiesWorkbench(QWidget):
         header_layout.addWidget(self.refresh_btn)
         
         layout.addWidget(header_frame)
+        layout.setAlignment(header_frame, Qt.AlignmentFlag.AlignTop)
         
         self.loading_icon = QToolButton()
         self.loading_icon.setIcon(
@@ -110,7 +114,12 @@ class PropertiesWorkbench(QWidget):
         self.container_layout.setSpacing(0)
         
         self.scroll.setWidget(self.container)
-        layout.addWidget(self.scroll)
+        layout.addWidget(self.scroll, 1)
+
+    @property
+    def progress(self):
+        """Backward-compatible alias for progress_container."""
+        return self.progress_container
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -119,9 +128,9 @@ class PropertiesWorkbench(QWidget):
         for sql_tab in self.findChildren(SqlTab):
             sql_tab._update_editor_geometry()
 
-    def refresh_properties(self):
+    def refresh_properties(self, silent=False):
         if self.item_data:
-            self.update_view(self.item_data, self.obj_name, force_refresh=True)
+            self.update_view(self.item_data, self.obj_name, force_refresh=True, show_loading=not silent)
 
     def show_empty_state(self, message="Select an object to view properties"):
         """Show an empty state without the loading spinner."""
@@ -130,7 +139,7 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText("Properties")
         self.sub_label.setText(message)
         self.icon_label.setPixmap(
-            get_icon('msc.package', color='#94a3b8').pixmap(24, 24)
+            get_icon('msc.settings', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
         self.loading_icon.setVisible(False)
@@ -144,14 +153,14 @@ class PropertiesWorkbench(QWidget):
         self.header_label.setText("Properties")
         self.sub_label.setText(message)
         self.icon_label.setPixmap(
-            get_icon('msc.package', color='#94a3b8').pixmap(24, 24)
+            get_icon('msc.settings', color='#94a3b8').pixmap(24, 24)
         )
         self._clear_container()
         self.loading_icon.setVisible(True)
         self.progress_container.setVisible(True)
         self.scroll.setVisible(False)
 
-    def update_view(self, item_data, obj_name, force_refresh=False):
+    def update_view(self, item_data, obj_name, force_refresh=False, show_loading=True):
         if not force_refresh and self.item_data == item_data and self.obj_name == obj_name:
             return
             
@@ -191,8 +200,8 @@ class PropertiesWorkbench(QWidget):
             elif obj_type == 'language_root':
                 group_name = "Languages"
 
-        icon_color = '#6366f1'
-        icon_name = 'msc.package'
+        icon_color = None
+        icon_name = None
         if obj_type in ('materialized_view', 'matview') or group_name == 'Materialized Views':
             icon_name, icon_color = 'msc.eye', '#0284c7'
         elif obj_type == 'trigger_function' or group_name == 'Trigger Functions':
@@ -204,7 +213,6 @@ class PropertiesWorkbench(QWidget):
         elif obj_type == 'schema' or obj_type == 'schemas_root' or group_name == 'Schemas':
             icon_name, icon_color = 'msc.folder-library', '#f59e0b'
         elif obj_type == 'connection':
-            icon_name, icon_color = None, None
             self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
         elif obj_type == 'function' or group_name == 'Functions':
             icon_name, icon_color = 'msc.symbol-method', '#ec4899'
@@ -222,6 +230,8 @@ class PropertiesWorkbench(QWidget):
                 icon_name, icon_color = 'msc.zap', '#f59e0b'
         elif group_name or obj_type in ('group', 'schema_group'):
             icon_name, icon_color = 'msc.folder', '#94a3b8'
+        else:
+            self.icon_label.setPixmap(get_database_icon(item_data).pixmap(24, 24))
 
         if icon_name:
             self.icon_label.setPixmap(get_icon(icon_name, color=icon_color).pixmap(24, 24))
@@ -288,18 +298,55 @@ class PropertiesWorkbench(QWidget):
                 self._last_inner_tab_index = widget.currentIndex()
                 break
 
-        self._clear_container()
-        
         if not item_data:
+            self._clear_container()
             return
-        
-        self.loading_icon.setVisible(True)
-        self.progress_container.setVisible(True)
-        self.scroll.setVisible(False)
+
+        db_type = (item_data.get('db_type') or '').lower()
+        if not db_type:
+            conn_data = item_data.get('conn_data') or {}
+            db_type = (conn_data.get('db_type') or '').lower()
+            if not db_type:
+                code = str(conn_data.get("code") or item_data.get("code") or "").upper()
+                if "ORACLE" in code:
+                    db_type = "oracle"
+                elif "POSTGRES" in code:
+                    db_type = "postgres"
+                elif "SQLITE" in code or conn_data.get('db_path'):
+                    db_type = "sqlite"
+                elif (
+                    conn_data.get('service_name')
+                    or conn_data.get('oracle_db_type')
+                    or 'oracle' in str(item_data.get('type', '')).lower()
+                ):
+                    db_type = 'oracle'
+                elif (
+                    conn_data.get('database')
+                    or conn_data.get('host')
+                    or item_data.get('schema_name')
+                    or item_data.get('table_name')
+                ):
+                    db_type = 'postgres'
+
+        is_supported = (db_type == 'postgres') or ('oracle' in db_type) or (db_type == 'sqlite')
+        if not is_supported:
+            self._clear_container()
+            self.progress_container.setVisible(False)
+            self.scroll.setVisible(False)
+            self.sub_label.setText("Properties are only available for PostgreSQL, Oracle, and SQLite")
+            return
+
+        if show_loading:
+            self._clear_container()
+            self.loading_icon.setVisible(True)
+            self.progress_container.setVisible(True)
+            self.scroll.setVisible(False)
+
         worker = InspectorWorker(item_data, obj_name, task_type="properties")
         worker.signals.finished.connect(self._on_data_loaded)
         worker.signals.error.connect(self._on_load_error)
-        self.main_window.thread_pool.start(worker)
+        pool = getattr(self.main_window, 'thread_pool', None) or QThreadPool.globalInstance()
+        pool.start(worker)
 
     def _on_data_loaded(self, data):
         self.progress_container.setVisible(False)

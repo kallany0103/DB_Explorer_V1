@@ -12,10 +12,9 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 from ui.components import ToastNotification
-from ui.feature_flags import is_connection_type_enabled
+from ui.feature_flags import import_feature_symbol, is_connection_type_enabled
 
 import db
-from widgets.erd.widget import ERDWidget
 from widgets.connection_manager.tree_helpers import TreeHelpers
 from widgets.connection_manager.ui import ConnectionUI
 from widgets.connection_manager.schema_loaders import SchemaLoader
@@ -34,6 +33,8 @@ from workers.connection_workers import (
     ERDSchemaFetchWorker,
     UDSSchemaWorker,
 )
+
+ERDWidget = import_feature_symbol("erd_designer", "widgets.erd.widget", "ERDWidget")
 
 
 
@@ -104,6 +105,8 @@ class ConnectionManager(QWidget):
         self.generate_erd_for_item(item_data, display_name)
 
     def generate_erd_for_item(self, item_data, display_name):
+        if ERDWidget is None or not self.main_window.is_feature_enabled("erd_designer"):
+            return
         if not item_data or not isinstance(item_data, dict):
             ToastNotification.show_toast(self, "Invalid item data for ERD generation.", kind="warning")
             return
@@ -166,7 +169,14 @@ class ConnectionManager(QWidget):
 
         if data.get("schema_name"):
             data["type"] = "schema"
-        elif data.get("conn_data") or data.get("host") or data.get("database"):
+        elif (
+            data.get("conn_data")
+            or data.get("host")
+            or data.get("database")
+            or data.get("db_type")
+            or data.get("instance_url")
+            or data.get("db_path")
+        ):
             data["type"] = "connection"
             data.setdefault("name", obj_name)
         return data

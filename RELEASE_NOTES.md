@@ -1,6 +1,19 @@
 # Release Notes — Universal SQL Client
 
-## [v1.44.7] — Latest Update
+## [v1.44.8] — Latest Update
+
+### 📅 Last Update
+November 25, 2026
+
+### Features & Fixes in Last Update
+- **Unified Monoline Icon System**: Migrated menus, toolbars, dialogs, ERD, dashboard, connection manager, and inspector workbenches to a consistent monoline icon system (`ui/icons.py`).
+- **Object Inspector & Properties Enhancements**: Added Oracle properties and statistics catalog queries, database-aware uppercase data types in the Columns tab, silent refresh on save, and unsupported-source feedback for non-RDBMS connections.
+- **UI & Dialog Modernization**: Redesigned Export Data, Quick Describe, Describe Prompt, Explain Plan, Dashboard, and Settings dialogs; cached CLI binary discovery to eliminate Settings dialog lag.
+- **ServiceNow & Build Packaging**: Updated ServiceNow local database storage to use `user_data_path` and added build-time feature flags (`features.py`) for modular packaging.
+
+---
+
+## [v1.44.7] — Previous Update
 
 ### 📅 Last Update
 November 19, 2026

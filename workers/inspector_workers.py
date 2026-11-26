@@ -1,9 +1,11 @@
 # workers/inspector_workers.py
 
 import datetime
+import os
 from PySide6.QtCore import QObject, Signal, QRunnable
 import db
-from dialogs.properties import pg_queries, oracle_queries
+import dialogs.properties.pg_queries as pg_queries
+import dialogs.properties.oracle_queries as oracle_queries
 from workers.inspector_stats import fetch_statistics_results
 
 _INT64_MAX = 9223372036854775807
@@ -44,6 +46,21 @@ class InspectorWorker(QRunnable):
         self.task_type = task_type
         self.signals = InspectorSignals()
 
+    def _is_sqlite(self):
+        conn_data = self.item_data.get('conn_data') or self.item_data
+        db_type = (self.item_data.get('db_type') or conn_data.get('db_type') or '').lower()
+        if 'sqlite' in db_type:
+            return True
+        node_type = str(self.item_data.get('type', '')).lower()
+        if 'sqlite' in node_type:
+            return True
+        code = str(conn_data.get('code', '')).upper()
+        if 'SQLITE' in code:
+            return True
+        if conn_data.get('db_path') and not conn_data.get('host'):
+            return True
+        return False
+
     def _is_oracle(self):
         conn_data = self.item_data.get('conn_data') or self.item_data
         db_type = (self.item_data.get('db_type') or conn_data.get('db_type') or '').lower()
@@ -76,6 +93,21 @@ class InspectorWorker(QRunnable):
                     result = self._fetch_oracle_properties(cursor, conn_data)
                 else:
                     result = self._fetch_oracle_statistics(cursor)
+                result = _sanitize_for_qt(result)
+                self.signals.finished.emit(result)
+            elif self._is_sqlite():
+                db_path = conn_data.get('db_path')
+                if not db_path:
+                    raise ValueError("SQLite database file path is missing in connection data.")
+                conn = db.create_sqlite_connection(db_path)
+                if not conn:
+                    raise ConnectionError(f"Failed to open SQLite database at: {db_path}")
+                cursor = conn.cursor()
+                result = {}
+                if self.task_type == "properties":
+                    result = self._fetch_sqlite_properties(cursor, conn_data)
+                else:
+                    result = self._fetch_sqlite_statistics(cursor)
                 result = _sanitize_for_qt(result)
                 self.signals.finished.emit(result)
             else:
@@ -700,3 +732,149 @@ class InspectorWorker(QRunnable):
 
     def _fetch_oracle_statistics(self, cursor):
         return fetch_statistics_results(cursor, self.item_data, self.obj_name)
+
+    def _fetch_sqlite_statistics(self, cursor):
+        return fetch_statistics_results(cursor, self.item_data, self.obj_name)
+
+    def _fetch_sqlite_properties(self, cursor, conn_data):
+        obj_type = self.item_data.get('type', '')
+        if obj_type == 'connection':
+            return self._fetch_sqlite_connection_properties(cursor, conn_data)
+        table_name = self.item_data.get('table_name') or self.obj_name
+        return self._fetch_sqlite_table_properties(cursor, conn_data, table_name)
+
+    def _fetch_sqlite_connection_properties(self, cursor, conn_data):
+        data = {"type": "object", "details": {}, "sql": ""}
+        db_path = conn_data.get('db_path')
+        version_str = "SQLite"
+        try:
+            cursor.execute("SELECT sqlite_version()")
+            row = cursor.fetchone()
+            if row:
+                version_str = f"SQLite {row[0]}"
+        except Exception:
+            pass
+
+        file_size_str = "N/A"
+        if db_path and os.path.exists(db_path):
+            try:
+                sz = os.path.getsize(db_path)
+                file_size_str = f"{sz / (1024 * 1024):.2f} MB ({sz:,} bytes)"
+            except OSError:
+                pass
+
+        tbl_cnt, view_cnt, idx_cnt = 0, 0, 0
+        try:
+            cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            r = cursor.fetchone()
+            tbl_cnt = r[0] if r else 0
+            cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='view'")
+            r = cursor.fetchone()
+            view_cnt = r[0] if r else 0
+            cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'")
+            r = cursor.fetchone()
+            idx_cnt = r[0] if r else 0
+        except Exception:
+            pass
+
+        conn_name = self.item_data.get('name') or self.item_data.get('short_name') or self.obj_name
+        data["details"] = {
+            "Version": version_str,
+            "Connection Name": conn_name,
+            "Database File": os.path.basename(db_path) if db_path else "N/A",
+            "File Path": str(db_path or "N/A"),
+            "File Size": file_size_str,
+            "Tables": tbl_cnt,
+            "Views": view_cnt,
+            "Indexes": idx_cnt,
+        }
+        return data
+
+    def _fetch_sqlite_constraints(self, cursor, table_name, columns):
+        constraints = []
+        pk_cols = [c["name"] for c in columns if c.get("is_pk")]
+        if pk_cols:
+            constraints.append({
+                "name": f"pk_{table_name}",
+                "type": "PRIMARY KEY",
+                "definition": f"PRIMARY KEY ({', '.join(pk_cols)})",
+            })
+        try:
+            cursor.execute(f"PRAGMA foreign_key_list('{table_name}')")
+            for r in cursor.fetchall():
+                constraints.append({
+                    "name": f"fk_{table_name}_{r[2]}_{r[3]}",
+                    "type": "FOREIGN KEY",
+                    "definition": f"FOREIGN KEY ({r[3]}) REFERENCES {r[2]}({r[4]}) ON UPDATE {r[5]} ON DELETE {r[6]}",
+                })
+        except Exception:
+            pass
+        try:
+            cursor.execute(f"PRAGMA index_list('{table_name}')")
+            for r in cursor.fetchall():
+                if r[2] and not str(r[1]).startswith("sqlite_autoindex_"):
+                    cursor.execute(f"PRAGMA index_info('{r[1]}')")
+                    icols = [str(ir[2]) for ir in cursor.fetchall()]
+                    constraints.append({
+                        "name": str(r[1]),
+                        "type": "UNIQUE",
+                        "definition": f"UNIQUE ({', '.join(icols)})",
+                    })
+        except Exception:
+            pass
+        return constraints
+
+    def _fetch_sqlite_table_properties(self, cursor, conn_data, table_name):
+        data = {"type": "object", "details": {}, "columns": [], "constraints": [], "sql": ""}
+        is_view, ddl_sql = False, ""
+        try:
+            cursor.execute("SELECT type, sql FROM sqlite_master WHERE name = ?", (table_name,))
+            r = cursor.fetchone()
+            if r:
+                is_view = (r[0] == "view")
+                ddl_sql = (r[1] or "") + ";"
+            cursor.execute("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table_name,))
+            for ir in cursor.fetchall():
+                if ir and ir[0]:
+                    ddl_sql += f"\n\n{ir[0]};"
+        except Exception as e:
+            ddl_sql = f"-- Error generating DDL: {e}"
+
+        row_count = "N/A"
+        if not is_view:
+            try:
+                cursor.execute(f'SELECT count(*) FROM "{table_name}"')
+                r = cursor.fetchone()
+                row_count = r[0] if r else 0
+            except Exception:
+                pass
+
+        columns = []
+        try:
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            for r in cursor.fetchall():
+                columns.append({
+                    "name": str(r[1]),
+                    "data_type": str(r[2]) if r[2] else "TEXT",
+                    "is_pk": bool(r[5]),
+                    "nullable": not bool(r[3]),
+                    "default_value": str(r[4]) if r[4] is not None else None,
+                    "comment": "",
+                })
+        except Exception:
+            pass
+
+        constraints = self._fetch_sqlite_constraints(cursor, table_name, columns)
+        db_path = conn_data.get('db_path')
+        data["details"] = {
+            "Object Name": table_name,
+            "Type": "View" if is_view else "Table",
+            "Rows": row_count,
+            "Columns": len(columns),
+            "Constraints": len(constraints),
+            "Database File": os.path.basename(db_path) if db_path else "N/A",
+        }
+        data["columns"] = columns
+        data["constraints"] = constraints
+        data["sql"] = ddl_sql
+        return data

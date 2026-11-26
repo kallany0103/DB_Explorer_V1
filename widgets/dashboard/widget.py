@@ -27,6 +27,8 @@ from widgets.dashboard.logs_widget import LogsWidget
 from widgets.dashboard.state_widget import StateWidget, StateWorker
 
 class DashboardWidget(QWidget):
+    feature_key = "workspace_dashboard"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("dashboardWidget")

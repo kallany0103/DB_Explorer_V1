@@ -9,19 +9,26 @@ from db.db_retrieval import get_hierarchy_data
 from db.db_modifications import add_connection
 from db.db_connections import DB_FILE, get_downloads_dir
 import sqlite3
+from ui.feature_flags import is_feature_enabled
     
 
 def open_sql_file(main_window):
+    erd_enabled = is_feature_enabled(main_window, "erd_designer")
+    file_filter = (
+        "Supported Files (*.sql *.erd);;SQL Files (*.sql);;ERD Files (*.erd);;All Files (*)"
+        if erd_enabled
+        else "SQL Files (*.sql);;All Files (*)"
+    )
     file_name, _ = QFileDialog.getOpenFileName(
         main_window, 
         "Open File", 
         "", 
-        "Supported Files (*.sql *.erd);;SQL Files (*.sql);;ERD Files (*.erd);;All Files (*)"
+        file_filter,
     )
     if not file_name:
         return
 
-    if file_name.endswith('.erd'):
+    if file_name.endswith('.erd') and erd_enabled:
         main_window.add_erd_tab()
         current_tab = main_window.tab_widget.currentWidget()
         if hasattr(current_tab, "load_erd_file"):

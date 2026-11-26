@@ -308,6 +308,10 @@ def get_database_icon(item_data: Any) -> QIcon:
                 code = "ORACLE"
             elif "postgres" in node_type or conn_data.get("database") or item_data.get("database"):
                 code = "POSTGRES"
+            elif "servicenow" in node_type or item_data.get("instance_url") or conn_data.get("instance_url"):
+                code = "SERVICENOW"
+            elif "csv" in node_type or str(item_data.get("db_path") or conn_data.get("db_path") or "").lower().endswith(".csv"):
+                code = "CSV"
 
     rel_path = _DB_ICON_MAP.get(code)
     if rel_path:

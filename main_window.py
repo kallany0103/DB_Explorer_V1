@@ -19,19 +19,15 @@ from PySide6.QtCore import QUrl
 from ui.icons import get_icon
 from ui.title_bar import TitleBarWidget
 from ui.resize_filter import ResizeFilter
-from widgets.erd.widget import ERDWidget
 from widgets import ConnectionManager, WorksheetManager, ResultsManager
-from widgets.dashboard import DashboardWidget
-from widgets.inspector.properties_view import PropertiesWorkbench
-from widgets.inspector.statistics_view import StatisticsWorkbench
-from widgets.usql_tool.terminal_widget import USQLToolWidget
 from dialogs import PreferencesDialog
-from widgets.login_dialog import LoginDialog
 from ui.theme import setup_theme
 from ui.menu_style import apply_menu_style
 from ui.feature_flags import (
     CONNECTOR_FEATURE_KEYS,
     default_feature_flags,
+    get_widget_feature_key,
+    import_feature_symbol,
     is_feature_enabled as check_feature_flag,
     normalize_feature_flags,
 )
@@ -60,11 +56,18 @@ from widgets.app_shell import (
     export_connections,
     import_connections,
 )
-from ui.account_menu import AccountMenu
-from auth.session import AuthSession
-from workers.google_login_worker import GoogleSignInWorker
 import os
 import subprocess
+
+ERDWidget = import_feature_symbol("erd_designer", "widgets.erd.widget", "ERDWidget")
+DashboardWidget = import_feature_symbol("workspace_dashboard", "widgets.dashboard", "DashboardWidget")
+PropertiesWorkbench = import_feature_symbol("object_inspector", "widgets.inspector.properties_view", "PropertiesWorkbench")
+StatisticsWorkbench = import_feature_symbol("object_inspector", "widgets.inspector.statistics_view", "StatisticsWorkbench")
+USQLToolWidget = import_feature_symbol("terminal_psql", "widgets.usql_tool.terminal_widget", "USQLToolWidget")
+LoginDialog = import_feature_symbol("auth_sso", "widgets.login_dialog", "LoginDialog")
+AccountMenu = import_feature_symbol("auth_sso", "ui.account_menu", "AccountMenu")
+AuthSession = import_feature_symbol("auth_sso", "auth.session", "AuthSession")
+GoogleSignInWorker = import_feature_symbol("auth_sso", "workers.google_login_worker", "GoogleSignInWorker")
 
 class MainWindow(QMainWindow):
     QUERY_TIMEOUT = 360000
@@ -101,11 +104,14 @@ class MainWindow(QMainWindow):
         self.grid_show_row_numbers = True
         self.grid_copy_headers = True
 
-        self.auth_session = AuthSession(self)
-        self.auth_session.state_changed.connect(self._on_auth_state_changed)
+        if AuthSession is not None and self.is_feature_enabled("auth_sso"):
+            self.auth_session = AuthSession(self)
+            self.auth_session.state_changed.connect(self._on_auth_state_changed)
+            self.auth_session.refresh_avatar()
+        else:
+            self.auth_session = None
         self._google_worker = None
         self._google_progress = None
-        self.auth_session.refresh_avatar()
 
         # 1. Initialize Status Bar (needed by managers)
         self.status = QStatusBar()
@@ -135,7 +141,8 @@ class MainWindow(QMainWindow):
         self._title_bar = TitleBarWidget(self)
         self._title_bar.embed_menu_bar(self.menuBar())
         self.setMenuWidget(self._title_bar)
-        self._title_bar.set_user_state(self.auth_session)
+        if self.auth_session is not None:
+            self._title_bar.set_user_state(self.auth_session)
 
         # 4 Initialize Managers
         if self._splash:
@@ -364,6 +371,8 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.renumber_tabs()
 
     def _find_inspector_tab(self, workbench_cls):
+        if workbench_cls is None:
+            return None, None
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
             if isinstance(widget, workbench_cls):
@@ -456,7 +465,7 @@ class MainWindow(QMainWindow):
         prepared = self.connection_manager.prepare_inspector_item_data(item_data, name)
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
-            if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
+            if get_widget_feature_key(widget) == "object_inspector":
                 widget.update_view(prepared, name)
 
     def _on_connection_selection_changed(self, current, previous):
@@ -481,7 +490,7 @@ class MainWindow(QMainWindow):
         if depth in (0, 1, 2):
             for i in range(self.tab_widget.count()):
                 widget = self.tab_widget.widget(i)
-                if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
+                if get_widget_feature_key(widget) == "object_inspector":
                     widget.show_empty_state("Select a database or object to view details")
             return
 
@@ -493,7 +502,7 @@ class MainWindow(QMainWindow):
         # Update all open inspector tabs
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
-            if isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)):
+            if get_widget_feature_key(widget) == "object_inspector":
                 widget.update_view(prepared, name)
 
 
@@ -604,7 +613,7 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.clear_query_text()
 
     def show_about_dialog(self):
-        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.7</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
+        QMessageBox.about(self, "About SQL Client", "<b>SQL Client Application</b><p>Version 1.44.8</p><p>This is a versatile SQL client designed to connect to and manage multiple database systems including PostgreSQL and SQLite.</p><p><b>Features:</b></p><ul><li>Object Explorer for database schemas</li><li>Multi-tab query editor with syntax highlighting</li><li>Query history per connection</li><li>Asynchronous query execution to keep the UI responsive</li></ul><p>Developed to provide a simple and effective tool for database management.</p>")
 
     def show_release_notes_dialog(self):
         """Open RELEASE_NOTES.md in Notepad or standard text/document reader."""
@@ -790,6 +799,8 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.explain_plan_query()
 
     def describe_query(self):
+        if not self.is_feature_enabled("object_describe"):
+            return
         self.worksheet_manager.describe_query()
 
     def optimize_query(self):
@@ -798,9 +809,13 @@ class MainWindow(QMainWindow):
         self.worksheet_manager.optimize_query()
 
     def describe_object(self, target: str = None, conn_data: dict = None):
+        if not self.is_feature_enabled("object_describe"):
+            return
         self.worksheet_manager.describe_object(target=target, conn_data=conn_data)
 
     def quick_describe(self, target: str = None, conn_data: dict = None):
+        if not self.is_feature_enabled("object_describe"):
+            return
         self.worksheet_manager.quick_describe(target=target, conn_data=conn_data)
 
     def change_password(self):
@@ -832,7 +847,7 @@ class MainWindow(QMainWindow):
         if widget is not None and widget is self.dashboard_widget:
             self.dashboard_widget = None
 
-        if isinstance(widget, USQLToolWidget):
+        if get_widget_feature_key(widget) == "terminal_psql" and hasattr(widget, "close_process"):
             widget.close_process()
         return close_tab_action(self, index, prompt=prompt)
 
@@ -1099,11 +1114,8 @@ class MainWindow(QMainWindow):
         disabled_indices = []
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
-            if isinstance(widget, DashboardWidget) and not self.is_feature_enabled("workspace_dashboard"):
-                disabled_indices.append(i)
-            elif isinstance(widget, (PropertiesWorkbench, StatisticsWorkbench)) and not self.is_feature_enabled("object_inspector"):
-                disabled_indices.append(i)
-            elif isinstance(widget, ERDWidget) and not self.is_feature_enabled("erd_designer"):
+            feature_key = get_widget_feature_key(widget)
+            if feature_key and not self.is_feature_enabled(feature_key):
                 disabled_indices.append(i)
 
         if not disabled_indices:
@@ -1132,6 +1144,7 @@ class MainWindow(QMainWindow):
             ("workspace_dashboard", ("dashboard_action",)),
             ("object_inspector", ("properties_tool_action", "statistics_tool_action")),
             ("schema_compare", ("schema_diff_tool_action",)),
+            ("object_describe", ("describe_object_action", "quick_describe_action", "describe_query_action")),
             ("connector_oracle", ("oracle_help_action",)),
         )
         for key, attrs in action_feature_map:
@@ -1139,14 +1152,18 @@ class MainWindow(QMainWindow):
             for attr in attrs:
                 self._set_action_feature_state(getattr(self, attr, None), enabled)
 
-        terminals_on = self.is_feature_enabled("native_terminals")
-        for attr in ("execute_usql_action", "execute_sqlplus_action"):
+        psql_on = self.is_feature_enabled("terminal_psql")
+        sqlplus_on = self.is_feature_enabled("terminal_sqlplus")
+        for attr, enabled in (
+            ("execute_usql_action", psql_on),
+            ("execute_sqlplus_action", sqlplus_on),
+        ):
             act = getattr(self, attr, None)
             if act is not None:
-                act.setVisible(terminals_on)
-                if not terminals_on:
+                act.setVisible(enabled)
+                if not enabled:
                     act.setEnabled(False)
-        if terminals_on:
+        if psql_on or sqlplus_on:
             self._update_cli_action_states()
 
         cm = getattr(self, "connection_manager", None)
@@ -1224,11 +1241,18 @@ class MainWindow(QMainWindow):
                 table.viewport().update()
 
     def show_login(self):
+        if LoginDialog is None or not self.is_feature_enabled("auth_sso"):
+            return
         dialog = LoginDialog(self)
         dialog.exec()
 
     def show_login_menu(self, anchor):
-        if self.isMinimized():
+        if (
+            self.isMinimized()
+            or AccountMenu is None
+            or self.auth_session is None
+            or not self.is_feature_enabled("auth_sso")
+        ):
             return
         menu = AccountMenu(
             parent=self,
@@ -1264,6 +1288,8 @@ class MainWindow(QMainWindow):
         return pos
 
     def _sign_in_google(self) -> None:
+        if GoogleSignInWorker is None or self.auth_session is None or not self.is_feature_enabled("auth_sso"):
+            return
         if self._google_worker is not None and self._google_worker.isRunning():
             return
         self._google_worker = GoogleSignInWorker(self.auth_session, parent=self)

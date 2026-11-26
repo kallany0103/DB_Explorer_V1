@@ -11,6 +11,8 @@ from widgets.results_view.output_tabs import FlatSelectionDelegate
 
 __all__ = [
     "DataTypeDelegate",
+    "POSTGRES_DATA_TYPES",
+    "ORACLE_DATA_TYPES",
     "CheckboxDelegate",
     "PropertyCellDelegate",
     "CollapsibleCard",
@@ -97,15 +99,112 @@ class CheckboxDelegate(QStyledItemDelegate):
         return super().editorEvent(event, model, option, index)
 
 
+POSTGRES_DATA_TYPES = [
+    # Character / String
+    "VARCHAR(255)",
+    "VARCHAR",
+    "TEXT",
+    "CHAR(1)",
+    "CHAR",
+    "CHARACTER VARYING",
+    # Numeric
+    "INTEGER",
+    "BIGINT",
+    "SMALLINT",
+    "NUMERIC",
+    "NUMERIC(10,2)",
+    "DECIMAL",
+    "REAL",
+    "DOUBLE PRECISION",
+    "SERIAL",
+    "BIGSERIAL",
+    "SMALLSERIAL",
+    "MONEY",
+    # Date / Time
+    "DATE",
+    "TIME",
+    "TIMETZ",
+    "TIME WITH TIME ZONE",
+    "TIMESTAMP",
+    "TIMESTAMPTZ",
+    "TIMESTAMP WITH TIME ZONE",
+    "INTERVAL",
+    # JSON / Binary / Network / Identifiers
+    "BOOLEAN",
+    "JSONB",
+    "JSON",
+    "UUID",
+    "BYTEA",
+    "INET",
+    "CIDR",
+    "MACADDR",
+]
+
+ORACLE_DATA_TYPES = [
+    # Strings / Character
+    "VARCHAR2(50)",
+    "VARCHAR2(100)",
+    "VARCHAR2(255)",
+    "VARCHAR2(4000)",
+    "CHAR(1)",
+    "CHAR",
+    "NVARCHAR2(255)",
+    "NCHAR(1)",
+    "NCHAR",
+    "CLOB",
+    "NCLOB",
+    # Numbers
+    "NUMBER",
+    "NUMBER(10)",
+    "NUMBER(10,2)",
+    "NUMBER(38)",
+    "INTEGER",
+    "FLOAT",
+    "BINARY_FLOAT",
+    "BINARY_DOUBLE",
+    # Date / Time
+    "DATE",
+    "TIMESTAMP",
+    "TIMESTAMP WITH TIME ZONE",
+    "TIMESTAMP WITH LOCAL TIME ZONE",
+    "INTERVAL YEAR TO MONTH",
+    "INTERVAL DAY TO SECOND",
+    # Binary / LOB / Raw
+    "BLOB",
+    "RAW(2000)",
+    "LONG",
+    "BFILE",
+    # Modern / Other
+    "BOOLEAN",
+    "JSON",
+    "XMLTYPE",
+    "ROWID",
+    "UROWID",
+]
+
+SQLITE_DATA_TYPES = [
+    "INTEGER",
+    "TEXT",
+    "REAL",
+    "BLOB",
+    "NUMERIC",
+    "BOOLEAN",
+    "DATE",
+    "DATETIME",
+    "VARCHAR",
+]
+
+
 class DataTypeDelegate(QStyledItemDelegate):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, db_type: str = "postgres"):
         super().__init__(parent)
-        self.data_types = [
-            "integer", "bigint", "smallint", "boolean", "character varying", "character",
-            "text", "date", "timestamp", "timestamp without time zone", "timestamp with time zone",
-            "time", "time without time zone", "numeric", "double precision", "real",
-            "json", "jsonb", "uuid", "bytea", "serial", "bigserial", "smallserial"
-        ]
+        self.db_type = (db_type or "postgres").lower()
+        if "oracle" in self.db_type:
+            self.data_types = list(ORACLE_DATA_TYPES)
+        elif "sqlite" in self.db_type:
+            self.data_types = list(SQLITE_DATA_TYPES)
+        else:
+            self.data_types = list(POSTGRES_DATA_TYPES)
 
     def paint(self, painter, option, index):
         is_editing = False
@@ -143,9 +242,18 @@ class DataTypeDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         editor = QComboBox(parent)
-        editor.addItems(self.data_types)
         editor.setEditable(True)
         editor.setAutoFillBackground(True)
+
+        curr_val = str(index.model().data(index, Qt.ItemDataRole.EditRole) or "").strip().upper()
+        items = list(self.data_types)
+        if curr_val and curr_val not in items:
+            items.insert(0, curr_val)
+
+        editor.addItems(items)
+        if curr_val:
+            editor.setCurrentText(curr_val)
+
         editor.setStyleSheet("""
             QComboBox {
                 background-color: #ffffff;
@@ -179,10 +287,26 @@ class DataTypeDelegate(QStyledItemDelegate):
                 selection-color: #0f172a;
                 border: 1px solid #cbd5e1;
                 outline: none;
+                padding: 2px;
+            }
+            QComboBox QAbstractItemView::item {
+                min-height: 22px;
+                padding: 2px 6px;
             }
         """)
         if editor.lineEdit():
             editor.lineEdit().setStyleSheet("background-color: #ffffff; color: #0f172a; border: none; padding: 0px;")
+
+        # Ensure dropdown popup is wide enough to display any long data type on one single line without elision
+        view = editor.view()
+        view.setTextElideMode(Qt.TextElideMode.ElideNone)
+        fm = editor.fontMetrics()
+        max_item_w = max((fm.horizontalAdvance(item) for item in items), default=140)
+        # 42px margin for item padding, borders, and vertical scrollbar
+        cell_w = option.rect.width() if (option is not None and hasattr(option, "rect")) else 180
+        min_popup_w = max(cell_w, max_item_w + 42)
+        view.setMinimumWidth(min_popup_w)
+
         return editor
 
     def updateEditorGeometry(self, editor, option, index):
@@ -190,10 +314,11 @@ class DataTypeDelegate(QStyledItemDelegate):
 
     def setEditorData(self, editor, index):
         value = index.model().data(index, Qt.ItemDataRole.EditRole)
-        editor.setCurrentText(str(value) if value is not None else "")
+        val_str = str(value).strip().upper() if value is not None else ""
+        editor.setCurrentText(val_str)
 
     def setModelData(self, editor, model, index):
-        value = editor.currentText()
+        value = editor.currentText().strip().upper()
         model.setData(index, value, Qt.ItemDataRole.EditRole)
 
 
