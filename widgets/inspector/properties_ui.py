@@ -142,19 +142,20 @@ POSTGRES_DATA_TYPES = [
 
 ORACLE_DATA_TYPES = [
     # Strings / Character
+    "VARCHAR2(50)",
+    "VARCHAR2(100)",
     "VARCHAR2(255)",
     "VARCHAR2(4000)",
-    "VARCHAR2",
     "CHAR(1)",
     "CHAR",
     "NVARCHAR2(255)",
-    "NVARCHAR2",
     "NCHAR(1)",
     "NCHAR",
     "CLOB",
     "NCLOB",
     # Numbers
     "NUMBER",
+    "NUMBER(10)",
     "NUMBER(10,2)",
     "NUMBER(38)",
     "INTEGER",
@@ -171,7 +172,6 @@ ORACLE_DATA_TYPES = [
     # Binary / LOB / Raw
     "BLOB",
     "RAW(2000)",
-    "RAW",
     "LONG",
     "BFILE",
     # Modern / Other
@@ -182,6 +182,18 @@ ORACLE_DATA_TYPES = [
     "UROWID",
 ]
 
+SQLITE_DATA_TYPES = [
+    "INTEGER",
+    "TEXT",
+    "REAL",
+    "BLOB",
+    "NUMERIC",
+    "BOOLEAN",
+    "DATE",
+    "DATETIME",
+    "VARCHAR",
+]
+
 
 class DataTypeDelegate(QStyledItemDelegate):
     def __init__(self, parent=None, db_type: str = "postgres"):
@@ -189,6 +201,8 @@ class DataTypeDelegate(QStyledItemDelegate):
         self.db_type = (db_type or "postgres").lower()
         if "oracle" in self.db_type:
             self.data_types = list(ORACLE_DATA_TYPES)
+        elif "sqlite" in self.db_type:
+            self.data_types = list(SQLITE_DATA_TYPES)
         else:
             self.data_types = list(POSTGRES_DATA_TYPES)
 

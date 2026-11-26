@@ -1,7 +1,9 @@
 # workers/inspector_stats.py
-"""Resolve database statistics queries (PostgreSQL and Oracle) for inspector workbench and dialogs."""
+"""Resolve database statistics queries (PostgreSQL, Oracle, SQLite) for inspector workbench and dialogs."""
 
-from dialogs.properties import pg_queries, oracle_queries
+import os
+import dialogs.properties.pg_queries as pg_queries
+import dialogs.properties.oracle_queries as oracle_queries
 
 _PG_GROUP_STATS = {
     "Tables": pg_queries.GET_TABLES_GROUP_STATS,
@@ -27,6 +29,25 @@ _ORACLE_GROUP_STATS = {
     "Database Links": oracle_queries.GET_DBLINKS_GROUP_STATS,
     "Java": oracle_queries.GET_JAVA_GROUP_STATS,
 }
+
+
+def is_sqlite(item_data):
+    """Check if item_data represents a SQLite connection or object."""
+    if not item_data:
+        return False
+    db_type = (item_data.get("db_type") or "").lower()
+    if "sqlite" in db_type:
+        return True
+    node_type = str(item_data.get("type", "")).lower()
+    if "sqlite" in node_type:
+        return True
+    conn_data = item_data.get("conn_data") or {}
+    code = str(conn_data.get("code", "")).upper()
+    if "SQLITE" in code:
+        return True
+    if conn_data.get("db_path") and not conn_data.get("host"):
+        return True
+    return False
 
 
 def is_oracle(item_data):
@@ -161,8 +182,159 @@ def resolve_statistics_queries(item_data, obj_name):
     return [{"query": q, "params": p} for q, p in queries]
 
 
+def _format_file_size(size_bytes: int | None) -> str:
+    """Format file size in bytes to a human-readable string."""
+    if size_bytes is None:
+        return "N/A"
+    if size_bytes < 1024:
+        return f"{size_bytes} bytes"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.2f} KB ({size_bytes:,} bytes)"
+    return f"{size_bytes / (1024 * 1024):.2f} MB ({size_bytes:,} bytes)"
+
+
+def _fetch_sqlite_pragmas(cursor) -> dict:
+    """Read standard PRAGMA metadata values from a SQLite database."""
+    res = {
+        "page_size": 4096,
+        "page_count": 0,
+        "freelist_count": 0,
+        "encoding": "UTF-8",
+        "journal_mode": "DELETE",
+    }
+    for pragma_name in ("page_size", "page_count", "freelist_count", "encoding", "journal_mode"):
+        try:
+            cursor.execute(f"PRAGMA {pragma_name}")
+            row = cursor.fetchone()
+            if row:
+                res[pragma_name] = str(row[0]).upper() if pragma_name == "journal_mode" else row[0]
+        except Exception:
+            pass
+    return res
+
+
+def _fetch_sqlite_db_stats(cursor, db_path: str | None, pragmas: dict) -> dict:
+    """Gather overall database statistics for SQLite connection node."""
+    tbl_count, view_count, idx_count, auto_vac, user_ver = 0, 0, 0, "NONE", 0
+    try:
+        cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        r = cursor.fetchone()
+        tbl_count = r[0] if r else 0
+        cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='view'")
+        r = cursor.fetchone()
+        view_count = r[0] if r else 0
+        cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'")
+        r = cursor.fetchone()
+        idx_count = r[0] if r else 0
+        cursor.execute("PRAGMA auto_vacuum")
+        r = cursor.fetchone()
+        if r:
+            auto_vac = {0: "NONE", 1: "FULL", 2: "INCREMENTAL"}.get(r[0], str(r[0]))
+        cursor.execute("PRAGMA user_version")
+        r = cursor.fetchone()
+        user_ver = r[0] if r else 0
+    except Exception:
+        pass
+
+    file_size_str = "N/A"
+    if db_path and os.path.exists(db_path):
+        try:
+            file_size_str = _format_file_size(os.path.getsize(db_path))
+        except OSError:
+            pass
+
+    cols = [
+        "Database file", "File size", "Total tables", "Total views",
+        "Total indexes", "Page size", "Total pages", "Freelist pages",
+        "Encoding", "Journal mode", "Auto vacuum", "User version"
+    ]
+    rows = [(
+        os.path.basename(db_path) if db_path else "N/A",
+        file_size_str, tbl_count, view_count, idx_count,
+        pragmas["page_size"], pragmas["page_count"], pragmas["freelist_count"],
+        pragmas["encoding"], pragmas["journal_mode"], auto_vac, user_ver
+    )]
+    return {"stats": [{"columns": cols, "rows": rows}]}
+
+
+def _fetch_sqlite_table_stats(cursor, table_name: str, db_path: str | None, pragmas: dict) -> dict:
+    """Gather table-level statistics for a SQLite table or view."""
+    is_view = False
+    try:
+        cursor.execute("SELECT type FROM sqlite_master WHERE name = ?", (table_name,))
+        r = cursor.fetchone()
+        is_view = bool(r and r[0] == "view")
+    except Exception:
+        pass
+
+    row_count = "N/A"
+    if not is_view:
+        try:
+            cursor.execute(f'SELECT count(*) FROM "{table_name}"')
+            r = cursor.fetchone()
+            row_count = r[0] if r else 0
+        except Exception:
+            pass
+
+    cols_count, pk_cols = 0, []
+    try:
+        cursor.execute(f"PRAGMA table_info('{table_name}')")
+        c_rows = cursor.fetchall()
+        cols_count = len(c_rows)
+        pk_cols = [str(r[1]) for r in c_rows if r[5]]
+    except Exception:
+        pass
+
+    idx_count, fk_count = 0, 0
+    try:
+        cursor.execute(f"PRAGMA index_list('{table_name}')")
+        idx_count = len(cursor.fetchall())
+        cursor.execute(f"PRAGMA foreign_key_list('{table_name}')")
+        fk_count = len(set(r[0] for r in cursor.fetchall()))
+    except Exception:
+        pass
+
+    file_size_str = "N/A"
+    if db_path and os.path.exists(db_path):
+        try:
+            file_size_str = _format_file_size(os.path.getsize(db_path))
+        except OSError:
+            pass
+
+    cols = [
+        "Table name", "Row count", "Columns count", "Primary key columns",
+        "Indexes count", "Foreign keys count", "File size", "Page size",
+        "Total pages", "Freelist pages", "Encoding", "Journal mode"
+    ]
+    rows = [(
+        table_name, row_count, cols_count,
+        ", ".join(pk_cols) if pk_cols else "None",
+        idx_count, fk_count, file_size_str,
+        pragmas["page_size"], pragmas["page_count"], pragmas["freelist_count"],
+        pragmas["encoding"], pragmas["journal_mode"]
+    )]
+    return {"stats": [{"columns": cols, "rows": rows}]}
+
+
+def _fetch_sqlite_statistics_results(cursor, item_data: dict, obj_name: str) -> dict:
+    """Return {stats: [{columns, rows}]} for a SQLite object or connection."""
+    conn_data = item_data.get("conn_data") or item_data
+    db_path = conn_data.get("db_path")
+    pragmas = _fetch_sqlite_pragmas(cursor)
+    obj_type = item_data.get("type") or ""
+
+    if obj_type == "connection":
+        return _fetch_sqlite_db_stats(cursor, db_path, pragmas)
+
+    table_name = item_data.get("table_name") or obj_name
+    return _fetch_sqlite_table_stats(cursor, table_name, db_path, pragmas)
+
+
 def fetch_statistics_results(cursor, item_data, obj_name):
     """Execute resolved queries and return {stats: [{columns, rows}, ...]}."""
+    if is_sqlite(item_data):
+        return _fetch_sqlite_statistics_results(cursor, item_data, obj_name)
+
     final_results = []
     for item in resolve_statistics_queries(item_data, obj_name):
         try:

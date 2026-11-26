@@ -19,6 +19,8 @@ from .properties_ui import (
 
 
 class PropertiesWorkbench(QWidget):
+    feature_key = "object_inspector"
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -310,6 +312,8 @@ class PropertiesWorkbench(QWidget):
                     db_type = "oracle"
                 elif "POSTGRES" in code:
                     db_type = "postgres"
+                elif "SQLITE" in code or conn_data.get('db_path'):
+                    db_type = "sqlite"
                 elif (
                     conn_data.get('service_name')
                     or conn_data.get('oracle_db_type')
@@ -324,12 +328,12 @@ class PropertiesWorkbench(QWidget):
                 ):
                     db_type = 'postgres'
 
-        is_supported = (db_type == 'postgres') or ('oracle' in db_type)
+        is_supported = (db_type == 'postgres') or ('oracle' in db_type) or (db_type == 'sqlite')
         if not is_supported:
             self._clear_container()
             self.progress_container.setVisible(False)
             self.scroll.setVisible(False)
-            self.sub_label.setText("Properties are only available for PostgreSQL and Oracle")
+            self.sub_label.setText("Properties are only available for PostgreSQL, Oracle, and SQLite")
             return
 
         if show_loading:

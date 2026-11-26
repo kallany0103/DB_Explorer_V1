@@ -166,32 +166,71 @@ class TablePropertiesDialog(BasePropertiesDialog):
 
             elif self.db_type == 'sqlite':
                 # Simpler SQLite loading
-                cursor.execute("SELECT sql FROM sqlite_master WHERE type IN ('table', 'view') AND name=?", (self.table_name,))
+                cursor.execute("SELECT type, sql FROM sqlite_master WHERE type IN ('table', 'view') AND name=?", (self.table_name,))
                 row = cursor.fetchone()
-                if row:
-                    self.sql_display.setText(row[0] + ";")
-                
+                ddl = (row[1] + ";") if row and row[1] else ""
+                self.sql_display.setText(ddl)
+                if (self.is_view or self.is_mview) and hasattr(self, 'definition_display'):
+                    self.definition_display.setText(ddl)
+                self.owner_combo.addItem("sqlite")
+
                 # Fetch columns
                 cursor.execute(f"PRAGMA table_info('{self.table_name}')")
-                for row in cursor.fetchall():
+                col_rows = cursor.fetchall()
+                pk_cols = []
+                for row in col_rows:
                     # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
                     name_item = QStandardItem(str(row[1]))
                     type_item = QStandardItem(str(row[2]))
-                    
+
+                    if row[5]:
+                        pk_cols.append(str(row[1]))
                     pk_item = QStandardItem()
                     pk_item.setCheckable(True)
                     pk_item.setEditable(False)
                     pk_item.setCheckState(Qt.CheckState.Checked if row[5] else Qt.CheckState.Unchecked)
-                    
+
                     not_null_item = QStandardItem()
                     not_null_item.setCheckable(True)
                     not_null_item.setEditable(False)
                     not_null_item.setCheckState(Qt.CheckState.Checked if row[3] else Qt.CheckState.Unchecked)
-                    
+
                     default_item = QStandardItem(str(row[4]) if row[4] is not None else "")
                     comment_item = QStandardItem("")
-                    
+
                     self.columns_model.appendRow([name_item, type_item, pk_item, not_null_item, default_item, comment_item])
+
+                # Fetch constraints
+                if hasattr(self, 'constraints_model'):
+                    if pk_cols:
+                        self.constraints_model.appendRow([
+                            QStandardItem(f"pk_{self.table_name}"),
+                            QStandardItem("PRIMARY KEY"),
+                            QStandardItem(f"PRIMARY KEY ({', '.join(pk_cols)})"),
+                        ])
+                    try:
+                        cursor.execute(f"PRAGMA foreign_key_list('{self.table_name}')")
+                        for fk in cursor.fetchall():
+                            self.constraints_model.appendRow([
+                                QStandardItem(f"fk_{self.table_name}_{fk[2]}_{fk[3]}"),
+                                QStandardItem("FOREIGN KEY"),
+                                QStandardItem(f"FOREIGN KEY ({fk[3]}) REFERENCES {fk[2]}({fk[4]}) ON UPDATE {fk[5]} ON DELETE {fk[6]}"),
+                            ])
+                    except Exception:
+                        pass
+                    try:
+                        cursor.execute(f"PRAGMA index_list('{self.table_name}')")
+                        for idx in cursor.fetchall():
+                            if idx[2] and not str(idx[1]).startswith("sqlite_autoindex_"):
+                                cursor.execute(f"PRAGMA index_info('{idx[1]}')")
+                                icols = [str(ir[2]) for ir in cursor.fetchall()]
+                                self.constraints_model.appendRow([
+                                    QStandardItem(str(idx[1])),
+                                    QStandardItem("UNIQUE"),
+                                    QStandardItem(f"UNIQUE ({', '.join(icols)})"),
+                                ])
+                    except Exception:
+                        pass
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load table properties:\n{e}")

@@ -11,6 +11,8 @@ from PySide6.QtCore import QSize, QThreadPool, Qt
 from ui.components import IconButton
 
 class StatisticsWorkbench(QWidget):
+    feature_key = "object_inspector"
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -179,6 +181,8 @@ class StatisticsWorkbench(QWidget):
                     db_type = "oracle"
                 elif "POSTGRES" in code:
                     db_type = "postgres"
+                elif "SQLITE" in code or conn_data.get('db_path'):
+                    db_type = "sqlite"
                 elif (
                     conn_data.get('service_name')
                     or conn_data.get('oracle_db_type')
@@ -193,12 +197,12 @@ class StatisticsWorkbench(QWidget):
                 ):
                     db_type = 'postgres'
 
-        is_supported = (db_type == 'postgres') or ('oracle' in db_type)
+        is_supported = (db_type == 'postgres') or ('oracle' in db_type) or (db_type == 'sqlite')
         if not is_supported:
             self.progress_container.setVisible(False)
             self.content_container.setVisible(False)
             self.stats_view.clear_stats()
-            self.sub_label.setText("Statistics are only available for PostgreSQL and Oracle")
+            self.sub_label.setText("Statistics are only available for PostgreSQL, Oracle, and SQLite")
             return
 
         self.sub_label.setText(f"Type: {item_data.get('type', 'Unknown').capitalize()}")
