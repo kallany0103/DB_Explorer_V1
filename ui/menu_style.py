@@ -73,6 +73,12 @@ QMenu::right-arrow {
 """
 
 
+DROPDOWN_MENU_STYLE = CONTEXT_MENU_STYLE.replace(
+    "padding: 6px 24px 6px 10px;\n    min-width: 170px;",
+    "padding: 5px 14px 5px 6px;\n    min-width: 0px;",
+)
+
+
 def apply_win11_rounded_corners(menu: QMenu) -> None:
     """Request modern DWM rounded corners on Windows 11.
     
@@ -84,7 +90,7 @@ def apply_win11_rounded_corners(menu: QMenu) -> None:
     return
 
 
-def apply_menu_style(menu: QMenu) -> None:
+def apply_menu_style(menu: QMenu, compact: bool = False) -> None:
     """Apply the shared modern Fluent-style stylesheet and transparency flags to a QMenu and all submenus."""
     try:
         if not isValid(menu):
@@ -98,7 +104,7 @@ def apply_menu_style(menu: QMenu) -> None:
         | Qt.WindowType.NoDropShadowWindowHint
     )
     menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-    menu.setStyleSheet(CONTEXT_MENU_STYLE)
+    menu.setStyleSheet(DROPDOWN_MENU_STYLE if compact else CONTEXT_MENU_STYLE)
     apply_win11_rounded_corners(menu)
 
     def _on_about_to_show():
@@ -109,7 +115,7 @@ def apply_menu_style(menu: QMenu) -> None:
             for act in menu.actions():
                 sub = act.menu()
                 if sub and isValid(sub) and not sub.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground):
-                    apply_menu_style(sub)
+                    apply_menu_style(sub, compact=compact)
         except (RuntimeError, Exception):
             pass
 

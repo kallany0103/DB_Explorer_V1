@@ -651,6 +651,12 @@ class DropdownToolButton(ActionToolButton):
         self._action_group = QActionGroup(self)
         self._action_group.setExclusive(True)
         self.itemTriggered.connect(self.setCurrentText)
+        apply_menu_style(self._menu, compact=True)
+        self._menu.aboutToShow.connect(self._sync_menu_width)
+
+    def _sync_menu_width(self):
+        if self.width() > 0:
+            self._menu.setMinimumWidth(self.width())
 
     def addItem(self, text, icon=None, data=None):
         action = super().addItem(text, icon=icon, data=data)
