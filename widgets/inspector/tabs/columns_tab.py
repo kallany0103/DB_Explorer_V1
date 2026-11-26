@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QSize, QEvent, QModelIndex
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from ui.icons import get_icon
 import db
-from dialogs.properties import pg_queries
+from dialogs.properties import oracle_queries, pg_queries
 from ui.components import IconButton, PrimaryIconButton, ToastNotification
 from workers.workers import WorkerThread
 from widgets.inspector.properties_ui import (
@@ -59,6 +59,8 @@ class ColumnsTab(QWidget):
             or conn_data.get("oracle_db_type")
         ):
             return "oracle"
+        if "SQLITE" in code or "SQLITE" in dt or "sqlite" in nt or conn_data.get("db_path"):
+            return "sqlite"
         return "postgres"
 
     def init_ui(self):
@@ -78,7 +80,8 @@ class ColumnsTab(QWidget):
 
         table_type = (self.item_data.get('table_type') or '').upper()
         self.is_read_only = bool(
-            'MATERIALIZED' in table_type
+            self.db_type == 'sqlite'
+            or 'MATERIALIZED' in table_type
             or 'VIEW' in table_type
             or self.item_data.get('type') in ('materialized_view', 'matview', 'view')
         )
@@ -275,17 +278,32 @@ class ColumnsTab(QWidget):
         elif hasattr(wb, "progress"):
             wb.progress.setVisible(visible)
 
-    def _save_column_changes(self):
-        self.save_btn.start_loading()
-        QApplication.processEvents()
+    def _open_db_connection(self, conn_data: dict):
+        """Open a database connection matching the current tab's dialect."""
+        if self.db_type == "oracle":
+            conn = db.get_pooled_oracle_connection(conn_data=conn_data)
+        else:
+            pg_conn_data = {
+                key: conn_data.get(key)
+                for key in ('host', 'port', 'database', 'user', 'password')
+            }
+            conn = db.create_postgres_connection(**pg_conn_data)
+        if not conn:
+            raise ConnectionError("Failed to establish database connection.")
+        return conn
 
-        schema_name = self.item_data.get('schema_name', 'public')
-        table_name = self.obj_name
+    def _format_ddl(self, stmt: str) -> str:
+        """Normalize statement terminator for the active database dialect."""
+        stripped = stmt.rstrip(";")
+        return stripped if self.db_type == "oracle" else f"{stripped};"
 
+    def _build_column_alter_statements(self, schema_name: str, table_name: str):
+        """Compute DDL statements, PK lists, and dropped columns from grid edits."""
+        target = f'"{schema_name}"."{table_name}"'
+        is_oracle = self.db_type == "oracle"
         alter_statements = []
         new_pk_columns = []
         old_pk_columns = [col['name'] for col in self.original_columns_data if col.get('is_pk')]
-
         orig_names_set = {col['name'] for col in self.original_columns_data}
         orig_by_name = {col['name']: col for col in self.original_columns_data}
         grid_orig_names = set()
@@ -307,39 +325,84 @@ class ColumnsTab(QWidget):
                 orig = orig_by_name[orig_name]
 
                 if name != orig_name:
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" RENAME COLUMN "{orig_name}" TO "{name}";')
+                    alter_statements.append(self._format_ddl(
+                        f'ALTER TABLE {target} RENAME COLUMN "{orig_name}" TO "{name}"'
+                    ))
 
-                if data_type.strip().upper() != str(orig.get('data_type', '')).strip().upper():
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" TYPE {data_type} USING "{name}"::{data_type};')
+                if data_type.upper() != str(orig.get('data_type', '')).strip().upper():
+                    if is_oracle:
+                        stmt = f'ALTER TABLE {target} MODIFY ("{name}" {data_type})'
+                    else:
+                        stmt = f'ALTER TABLE {target} ALTER COLUMN "{name}" TYPE {data_type} USING "{name}"::{data_type}'
+                    alter_statements.append(self._format_ddl(stmt))
 
                 if not_null != (not orig.get('nullable', True)):
-                    action = "SET NOT NULL" if not_null else "DROP NOT NULL"
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" {action};')
+                    if is_oracle:
+                        clause = "NOT NULL" if not_null else "NULL"
+                        stmt = f'ALTER TABLE {target} MODIFY ("{name}" {clause})'
+                    else:
+                        action = "SET NOT NULL" if not_null else "DROP NOT NULL"
+                        stmt = f'ALTER TABLE {target} ALTER COLUMN "{name}" {action}'
+                    alter_statements.append(self._format_ddl(stmt))
 
                 orig_default = str(orig.get('default_value', '')) if orig.get('default_value') else ""
                 if default_val != orig_default:
-                    if default_val:
-                        alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" SET DEFAULT {default_val};')
+                    if is_oracle:
+                        dval = default_val if default_val else "NULL"
+                        stmt = f'ALTER TABLE {target} MODIFY ("{name}" DEFAULT {dval})'
+                    elif default_val:
+                        stmt = f'ALTER TABLE {target} ALTER COLUMN "{name}" SET DEFAULT {default_val}'
                     else:
-                        alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ALTER COLUMN "{name}" DROP DEFAULT;')
+                        stmt = f'ALTER TABLE {target} ALTER COLUMN "{name}" DROP DEFAULT'
+                    alter_statements.append(self._format_ddl(stmt))
 
                 orig_comment = str(orig.get('comment', '')) if orig.get('comment') else ""
                 if comment != orig_comment:
-                    alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
+                    safe_comment = comment.replace("'", "''")
+                    alter_statements.append(self._format_ddl(
+                        f"COMMENT ON COLUMN {target}.\"{name}\" IS '{safe_comment}'"
+                    ))
             else:
                 if not name:
                     continue
-                stmt = f'ALTER TABLE "{schema_name}"."{table_name}" ADD COLUMN "{name}" {data_type}'
-                if not_null:
-                    stmt += " NOT NULL"
-                if default_val:
-                    stmt += f" DEFAULT {default_val}"
-                stmt += ";"
-                alter_statements.append(stmt)
+                if is_oracle:
+                    parts = [f'"{name}" {data_type}']
+                    if default_val:
+                        parts.append(f"DEFAULT {default_val}")
+                    if not_null:
+                        parts.append("NOT NULL")
+                    stmt = f"ALTER TABLE {target} ADD ({' '.join(parts)})"
+                else:
+                    stmt = f'ALTER TABLE {target} ADD COLUMN "{name}" {data_type}'
+                    if not_null:
+                        stmt += " NOT NULL"
+                    if default_val:
+                        stmt += f" DEFAULT {default_val}"
+                alter_statements.append(self._format_ddl(stmt))
                 if comment:
-                    alter_statements.append(f"COMMENT ON COLUMN \"{schema_name}\".\"{table_name}\".\"{name}\" IS '{comment}';")
+                    safe_comment = comment.replace("'", "''")
+                    alter_statements.append(self._format_ddl(
+                        f"COMMENT ON COLUMN {target}.\"{name}\" IS '{safe_comment}'"
+                    ))
 
         dropped_cols = orig_names_set - grid_orig_names
+        return alter_statements, new_pk_columns, old_pk_columns, dropped_cols
+
+    def _save_column_changes(self):
+        self.save_btn.start_loading()
+        QApplication.processEvents()
+
+        conn_data = self.item_data.get('conn_data') or self.item_data
+        if self.db_type == "oracle":
+            schema_name = self.item_data.get('schema_name') or (conn_data.get('user') or '').upper()
+        else:
+            schema_name = self.item_data.get('schema_name', 'public')
+        table_name = self.obj_name
+        target = f'"{schema_name}"."{table_name}"'
+
+        alter_statements, new_pk_columns, old_pk_columns, dropped_cols = self._build_column_alter_statements(
+            schema_name, table_name
+        )
 
         # Fast in-memory check: if nothing changed, exit immediately without network overhead
         if not alter_statements and not dropped_cols and sorted(new_pk_columns) == sorted(old_pk_columns):
@@ -347,47 +410,56 @@ class ColumnsTab(QWidget):
             ToastNotification.show_toast(self, "No column changes detected.", kind="info")
             return
 
-        conn_data = self.item_data.get('conn_data') or self.item_data
-        pg_conn_data = {key: conn_data.get(key) for key in ['host', 'port', 'database', 'user', 'password']}
         try:
-            conn = db.create_postgres_connection(**pg_conn_data)
+            conn = self._open_db_connection(conn_data)
             cursor = conn.cursor()
         except Exception as e:
             self.save_btn.stop_loading()
             QMessageBox.critical(self, "Connection Error", f"Failed to connect to database:\n{e}")
             return
 
+        queries_mod = oracle_queries if self.db_type == "oracle" else pg_queries
+        cascade_kw = "CASCADE CONSTRAINTS" if self.db_type == "oracle" else "CASCADE"
+
         for col_name in dropped_cols:
-            deps = pg_queries.check_column_dependencies(cursor, schema_name, table_name, col_name)
+            deps = queries_mod.check_column_dependencies(cursor, schema_name, table_name, col_name)
             if deps:
                 dep_lines = "\n".join(f"  • Constraint '{d[0]}' on table '{d[1]}'" for d in deps)
                 msg = QMessageBox(self)
                 msg.setWindowTitle("Drop Cascade Required")
                 msg.setIcon(QMessageBox.Icon.Warning)
-                msg.setText(f'Column <b>"{col_name}"</b> cannot be dropped without CASCADE.')
+                msg.setText(f'Column <b>"{col_name}"</b> cannot be dropped without {cascade_kw}.')
                 msg.setInformativeText(
                     f"The following dependent objects will also be dropped:\n\n{dep_lines}\n\n"
-                    "Do you want to proceed with DROP CASCADE?"
+                    f"Do you want to proceed with DROP {cascade_kw}?"
                 )
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-                msg.button(QMessageBox.StandardButton.Ok).setText("Drop CASCADE")
+                msg.button(QMessageBox.StandardButton.Ok).setText(f"Drop {cascade_kw}")
                 msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
                 if msg.exec() == QMessageBox.StandardButton.Ok:
-                    alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}" CASCADE;')
+                    alter_statements.append(self._format_ddl(
+                        f'ALTER TABLE {target} DROP COLUMN "{col_name}" {cascade_kw}'
+                    ))
                 else:
                     conn.close()
                     self.save_btn.stop_loading()
                     return
             else:
-                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP COLUMN "{col_name}";')
+                alter_statements.append(self._format_ddl(
+                    f'ALTER TABLE {target} DROP COLUMN "{col_name}"'
+                ))
 
         if sorted(new_pk_columns) != sorted(old_pk_columns):
-            pk_res = pg_queries.get_primary_key_constraint(cursor, schema_name, table_name)
+            pk_res = queries_mod.get_primary_key_constraint(cursor, schema_name, table_name)
             if pk_res:
-                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" DROP CONSTRAINT "{pk_res}";')
+                alter_statements.append(self._format_ddl(
+                    f'ALTER TABLE {target} DROP CONSTRAINT "{pk_res}"'
+                ))
             if new_pk_columns:
                 pk_cols_str = ", ".join([f'"{c}"' for c in new_pk_columns])
-                alter_statements.append(f'ALTER TABLE "{schema_name}"."{table_name}" ADD PRIMARY KEY ({pk_cols_str});')
+                alter_statements.append(self._format_ddl(
+                    f'ALTER TABLE {target} ADD PRIMARY KEY ({pk_cols_str})'
+                ))
 
         conn.close()
 
@@ -397,7 +469,7 @@ class ColumnsTab(QWidget):
             return
 
         def _worker_execute():
-            exec_conn = db.create_postgres_connection(**pg_conn_data)
+            exec_conn = self._open_db_connection(conn_data)
             try:
                 cur = exec_conn.cursor()
                 for stmt in alter_statements:
@@ -413,10 +485,75 @@ class ColumnsTab(QWidget):
         self._save_worker.finished_signal.connect(self._on_save_finished)
         self._save_worker.start()
 
+    def _collect_type_changes(self) -> list[tuple[str, str, str]]:
+        """Return list of (column_name, old_type, new_type) for modified column types."""
+        orig_by_name = {col['name']: col for col in self.original_columns_data}
+        changes = []
+        for row in range(self.columns_model.rowCount()):
+            name = self.columns_model.item(row, 0).text().strip()
+            new_type = self.columns_model.item(row, 1).text().strip()
+            orig_name = self.columns_model.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""
+            if orig_name in orig_by_name:
+                old_type = str(orig_by_name[orig_name].get('data_type', '')).strip().upper()
+                if new_type.upper() != old_type:
+                    changes.append((name, old_type, new_type.upper()))
+        return changes
+
+    def _format_save_error(self, error: str) -> tuple[str, str]:
+        """Return a user-friendly (title, message) pair for DDL execution errors."""
+        err_str = str(error)
+        type_changes = self._collect_type_changes()
+        change_desc = (
+            f'column "{type_changes[0][0]}" from {type_changes[0][1]} to {type_changes[0][2]}'
+            if len(type_changes) == 1
+            else "the selected column data type"
+        )
+
+        if "ORA-01440" in err_str:
+            return (
+                "Cannot Reduce Precision or Scale",
+                f"Cannot change {change_desc} because the column contains existing data.\n\n"
+                "Oracle does not allow decreasing numeric precision or scale on a populated column.\n\n"
+                "Recommended options:\n"
+                "  • Choose a data type with equal or greater precision/scale (e.g., NUMBER or NUMBER(38)).\n"
+                "  • Clear the column values (set to NULL) before modifying the type.\n"
+                "  • Add a new column with the target type, copy/convert the data, and drop the old column.\n\n"
+                f"Details: {err_str}",
+            )
+        if "ORA-01439" in err_str:
+            return (
+                "Incompatible Data Type Change",
+                f"Cannot change {change_desc} because the column contains existing data.\n\n"
+                "Oracle does not allow converting between incompatible data types while rows contain non-null values.\n\n"
+                "Recommended options:\n"
+                "  • Clear the column values (set to NULL) before modifying the type.\n"
+                "  • Add a new column with the target type, migrate the data, and drop the old column.\n\n"
+                f"Details: {err_str}",
+            )
+        if "ORA-01441" in err_str:
+            return (
+                "Cannot Reduce Column Length",
+                f"Cannot change {change_desc} because existing values exceed the new maximum length.\n\n"
+                "Choose a larger length or shorten the existing values before saving.\n\n"
+                f"Details: {err_str}",
+            )
+        if "ORA-00902" in err_str or "ORA-00906" in err_str:
+            return (
+                "Invalid Data Type",
+                "The specified data type is invalid for this Oracle version or is missing a required length/precision "
+                "(for example, VARCHAR2(255) instead of VARCHAR2).\n\n"
+                f"Details: {err_str}",
+            )
+
+        if self.db_type == "oracle":
+            return ("Execution Error", f"Failed to execute changes:\n{err_str}")
+        return ("Execution Error", f"Failed to execute changes:\n{err_str}\n\nTransaction rolled back.")
+
     def _on_save_finished(self, _result, error):
         self.save_btn.stop_loading()
         if error:
-            QMessageBox.critical(self, "Execution Error", f"Failed to execute changes:\n{error}\n\nTransaction rolled back.")
+            title, message = self._format_save_error(error)
+            QMessageBox.critical(self, title, message)
             return
 
         ToastNotification.show_toast(self, "Table columns updated successfully.", kind="success")

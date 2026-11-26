@@ -502,3 +502,37 @@ GET_JAVA_GROUP_STATS = """
     FROM all_objects
     WHERE owner = :own AND object_type LIKE 'JAVA %'
 """
+
+
+def check_column_dependencies(cursor, schema_name: str, table_name: str, col_name: str) -> list[tuple[str, str]]:
+    """Return list of (constraint_name, referencing_table) tuples for FK deps on col_name."""
+    q = """
+        SELECT fk.constraint_name, fk.table_name
+        FROM all_constraints fk
+        JOIN all_constraints pk
+            ON fk.r_owner = pk.owner
+           AND fk.r_constraint_name = pk.constraint_name
+        JOIN all_cons_columns pk_cols
+            ON pk.owner = pk_cols.owner
+           AND pk.constraint_name = pk_cols.constraint_name
+        WHERE fk.constraint_type = 'R'
+          AND pk.owner = :own
+          AND pk.table_name = :tbl
+          AND pk_cols.column_name = :col
+    """
+    cursor.execute(q, {"own": schema_name.upper(), "tbl": table_name.upper(), "col": col_name.upper()})
+    return cursor.fetchall()
+
+
+def get_primary_key_constraint(cursor, schema_name: str, table_name: str) -> str | None:
+    """Return the primary key constraint name for the given Oracle table, or None."""
+    q = """
+        SELECT constraint_name
+        FROM all_constraints
+        WHERE constraint_type = 'P'
+          AND owner = :own
+          AND table_name = :tbl
+    """
+    cursor.execute(q, {"own": schema_name.upper(), "tbl": table_name.upper()})
+    row = cursor.fetchone()
+    return row[0] if row else None
